@@ -1,0 +1,47 @@
+# ── Python ──────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ── Environment / secrets ───────────────────────────────
+.env
+.env.*.local
+
+# ── Persistent and runtime state (generated, not source) ─
+/data/
+/runtime/
+
+# ── Build output ─────────────────────────────────────────
+node_modules/
+dist/
+build/
+release/
+packaging/**/dist/
+
+# ── Logs ────────────────────────────────────────────────
+*.log
+/logs/
+
+# ── Local dev scratch (design notes, prompts, references) ──
+.local/
+/.docs/
+/.agents/
+/AGENTS.md
+.playwright-mcp/
+
+# Stable tests are public source. Generated test state is covered by the
+# cache, log, database, data, runtime, and secret rules above and below.
+test/artifacts/
+
+# ── opencode config (local user overrides) ──────────────
+opencode.json
+
+# ── OS junk ─────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

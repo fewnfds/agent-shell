@@ -1,0 +1,171 @@
+# 开发与版本
+
+## 运行通道
+
+| 场景 | 后端 | 前端 | 入口 |
+| --- | --- | --- | --- |
+| 滚动源码 Clone | 当前 `server/src/` | 输入变化时自动 build | `start_server.bat` |
+| 前端 Debug | 当前 `server/src/` | Vite HMR | `packaging/development/start_dev.ps1` |
+
+`frontend/` 是唯一前端源码。production 产物只生成到 Git 忽略的 `runtime/frontend_dist/`，不进入
+`server/src/`，避免源码搜索读取生成 bundle。
+
+## 分支
+
+- `workflow`：GitHub 默认分支，承载滚动源码与日常集成；每次推送保持可启动；
+- `main`：经实际使用确认的稳定源码；由 `workflow` merge/fast-forward 晋升；
+- `v<project.version>` tag：从 `main` 创建，标记正式源码版本；
+- `hotfix/*`：从 `main` 修复，合并回 `main` 后同步进 `workflow`。
+
+源码维护目录不作为用户实例运行。滚动用户使用独立 Clone，并保留该 Clone 自己的 `data/`。
+
+## 源码运行
+
+Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按
+`packaging/windows/runtime-lock.json` 在 `runtime/app` 准备固定的内置 CPython 3.12 和锁定依赖，后端直接
+读取当前源码；前端输入变化时执行锁定的 npm build。项目只维护这套内置解释器，不声明兼容宿主 Python。
+
+```powershell
+.\start_server.bat
+```
+
+更新前停止服务：
+
+```powershell
+git pull --ff-only
+.\start_server.bat
+```
+
+依赖和前端使用输入指纹刷新。普通 Python、文档或配置修改不会无条件重建整个 runtime。
+
+停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
+`runtime/cache` 中的旧下载缓存可按需重建，不是安装位置契约。
+
+文件化 Python 配置扩展的 `requirements.txt` 不进入项目 `pyproject.toml`。Windows 启动器在核心 runtime 准备完成后，
+只按启用 Workflow 可达的 Command、Dispatcher、Main Agent 与 Subagent 配置所引用扩展的需求指纹生成 `runtime/python_packages/site-packages`；静态模板和未触达的配置扩展
+不参与，输入未变化时复用。扩展层只能
+增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终
+服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
+
+依赖准备开始时终端先显示当前 requirements，随后直接显示 uv 原生的解析、下载、安装进度和错误；完成后才显示服务启动阶段。启动器不为扩展依赖安装设置主动超时，操作者根据终端中的真实进度决定继续等待、换网络或中止重启。
+
+## 当前运行时与依赖基线
+
+当前运行基线由两个锁共同决定：`packaging/windows/runtime-lock.json` 锁定 Windows portable runtime，
+`server/uv.lock` 锁定 Python wheel。当前稳定基线为：
+
+| 层 | 当前版本 |
+| --- | --- |
+| 内置 CPython | `3.12.13` |
+| runtime/CI uv | `0.12.2` |
+| Deep Agents | `0.7.7` |
+| FastAPI / Uvicorn | `0.141.1` / `0.52.1` |
+| LangChain adapters | Anthropic `1.6.0`；DeepSeek `1.1.0`；Google GenAI `4.3.4`；Google Vertex AI `3.2.4`；OpenAI `1.6.0`；xAI `1.3.0` |
+| LangChain core/graph | `langchain 1.3.15`；`langchain-core 1.6.0`；`langgraph 1.2.11`；LangSmith `0.11.1` |
+| 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
+
+截至本基线，`uv lock --dry-run --upgrade` 不再产生可解析的锁变化。`uv tree --outdated` 仍可能显示
+`websockets 17`、`protobuf 7`、`pydantic-core 2.48` 或 `pyarrow 25`，但它们分别受 LangGraph/Google
+依赖范围或当前 Provider 组合约束；不得为了消除提示而放宽上游边界、删除 Provider 或改业务源码。新的
+依赖升级应从重新运行上述 dry-run 开始，并按单一影响面批量推进。LangChain 系的版本边界、LangSmith
+`>=0.11.1,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
+
+## 前端 Debug
+
+只有需要 HMR 时使用隔离启动器。它分配临时 loopback 端口和临时 data，不读取正常实例数据：
+
+```powershell
+$pythonHome = (Get-Content .\runtime\app\python-home.txt -Raw).Trim()
+$python = Join-Path (Join-Path .\runtime\app $pythonHome) python.exe
+pwsh.exe -NoProfile -File .\packaging\development\start_dev.ps1 `
+  -ProjectRoot $PWD -PythonExe $python
+```
+
+自动化 Debug 可以显式传入仓库外的本地凭据文件。第一行必须是无空格的可打印 ASCII，并仅用于隔离 Debug；
+启动器将它同时用作临时 management token 和临时 API key，且不会打印内容。未传参数时仍分别生成随机凭据。
+
+```powershell
+$credentialFile = Join-Path $env:LOCALAPPDATA 'AgentShell\codex-debug-token.txt'
+pwsh.exe -NoProfile -File .\packaging\development\start_dev.ps1 `
+  -ProjectRoot $PWD -PythonExe $python -CredentialFile $credentialFile
+```
+
+## 验证
+
+按改动风险选择最接近的一项，不把所有检查固定串联：
+
+```powershell
+cd frontend
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m pytest ..\test\<domain>\test_relevant_module.py -q
+.\.venv\Scripts\python.exe ..\test\smoke_http.py
+```
+
+首次准备开发依赖时在 `server/` 显式使用项目自带的 uv 与 CPython，避免 PATH 上其他软件附带的 uv 或用户目录中的
+Python 被写入 `.venv`：
+
+```powershell
+$pythonHome = (Get-Content ..\runtime\app\python-home.txt -Raw).Trim()
+$python = Join-Path (Join-Path ..\runtime\app $pythonHome) python.exe
+& ..\runtime\bootstrap\uv.exe sync --python $python --extra dev --frozen --no-python-downloads
+```
+
+之后的日常定向 pytest 直接使用项目 `.venv`。测试会在 session startup 校验
+`agent_shell` 的实际来源必须是当前仓库的 `server/src/agent_shell`；如果系统 Python 或用户级
+editable 安装把其他项目注入 `sys.path`，测试会立即失败，不会静默执行错误源码。避免
+每轮测试都让 `uv` 重复检查环境。pytest 临时文件使用 Windows 系统临时目录，不在源码目录设置 `basetemp`；同时禁用
+pytest cache provider，避免生成仓库内 `.pytest_cache`。不要为一次局部改动运行完整 `test/`。大量 TestClient 用例会
+分别创建隔离 data root 和 SQLite，Windows 杀毒软件与目录索引会放大这类全量运行的磁盘成本。
+
+永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/fixtures/` 和 `test/` 的直接支撑模块中。
+用户可观察行为、API 和持久化结果是验收证据。
+
+推送 `workflow` 或 `main` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 typecheck、UI policy 与
+Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：
+
+```powershell
+cd frontend
+npm run typecheck
+npm run ui:check
+npm test
+```
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m pytest ..\test -q
+```
+
+`test/smoke_http.py` 是显式进程 smoke，不在默认 pytest 收集范围；真实 Provider 与 Agent eval 也不进入
+日常门禁。完整 pytest 门禁默认交给 GitHub Actions；普通局部修改只运行一个最接近的 contract owner，完整门禁不是
+每次小改的本地流程。本地确需复现完整门禁时才使用上面的 `uv run` 命令。
+
+## 源码版本
+
+版本权威字段是 `server/pyproject.toml` 的 `project.version`。tag 必须为 `v<project.version>`。
+
+创建版本 tag 前：
+
+```powershell
+git status --short
+git diff --check
+```
+
+当前阶段的维护与复核以 Windows 源码 Clone 启动方式为准。修改 Windows runtime bootstrap、依赖锁或启动入口时，
+按本页的源码 Clone 启动方式复核。
+
+确认 `main` 后创建 annotated tag：
+
+```powershell
+git push origin main
+git tag -a v<version> -m "release: v<version>"
+git push origin v<version>
+```
+
+已公开 tag 不移动；修复后更新项目版本并创建新 tag。

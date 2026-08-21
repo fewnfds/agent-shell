@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "platform": "windows-x64",
+  "python": "3.12.13",
+  "uv": {
+    "version": "0.12.2",
+    "url": "https://github.com/astral-sh/uv/releases/download/0.12.2/uv-x86_64-pc-windows-msvc.zip",
+    "sha256": "01442d8ce5c7124151a73e697c836d252c6da853c18c73206d3cc4c2378a91d2"
+  }
+}

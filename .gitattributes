@@ -1,0 +1,7 @@
+# Keep repository text files stable across Windows and Linux checkouts.
+* text=auto eol=lf
+
+# Vite hashes source content, so frontend inputs and committed output must use
+# the same line endings on Windows and Linux checkouts.
+frontend/** text=auto eol=lf
+server/src/agent_shell/frontend_dist/** text=auto eol=lf

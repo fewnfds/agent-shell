@@ -1,0 +1,1440 @@
+from __future__ import annotations
+
+import asyncio
+import warnings
+from copy import deepcopy
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal
+from uuid import UUID, uuid4
+
+from agent_shell.contracts import FilesystemBlock
+from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
+from agent_shell.runtime.capabilities import DeepAgentsWorkspace
+from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
+from agent_shell.command_packages import CommandPackageRuntime
+from agent_shell.event_output_packages import (
+    EventOutputCallable,
+    EventOutputPackageRuntime,
+)
+from agent_shell.task_dispatcher_packages import TaskDispatcherPackageRuntime
+from agent_shell.tool_packages import ToolPackageRuntime
+from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.diagnostics import (
+    RuntimeDiagnosticContext,
+    RuntimeDiagnostics,
+)
+from agent_shell.runtime.model_response import ModelResponse
+from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
+from agent_shell.runtime.limits import (
+    GRAPH_RECURSION_LIMIT,
+    WORKFLOW_MAX_CONCURRENCY,
+)
+from agent_shell.runtime.media_response import MainAgentMediaResponse
+from agent_shell.runtime.output_event_pool import OutputEventRectifier
+from agent_shell.runtime.output_projection import (
+    EventOutputError,
+    OutputProjector,
+    WorkflowOutputProjector,
+)
+from agent_shell.runtime.output_stream import (
+    ModelCallBoundary,
+    OutputEvent,
+    MainAgentMediaBlock,
+    V3EventNormalizer,
+)
+from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
+from agent_shell.storage.media_outputs import MediaOutputStore
+from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
+from agent_shell.storage.blocks import BlockStore
+from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
+from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
+from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
+from agent_shell.workflow.validation import validate_workflow_executable
+from agent_shell.validation import ValidationReport
+from agent_shell.validation.assembly import StaticAssembly
+from agent_shell.workflow_event_output import WorkflowEventOutputBlock
+from langgraph.errors import GraphRecursionError
+from langgraph.prebuilt import ToolCallTransformer
+
+EXECUTION_TIMEOUT_SECONDS = 1_200
+
+
+@dataclass(slots=True)
+class RunExecution:
+    graph: Any
+    input_state: dict[str, Any]
+    rectifier: OutputEventRectifier
+    normalizer: V3EventNormalizer
+    middleware_runtime: MiddlewarePackageRuntime | None
+    media_response: MainAgentMediaResponse
+    tool_runtime: ToolPackageRuntime | None = None
+    middleware_runtimes: tuple[MiddlewarePackageRuntime, ...] = ()
+    tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
+    command_runtime: CommandPackageRuntime | None = None
+    task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None
+    event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = ()
+    event_observers: tuple[Callable[[OutputEvent], None], ...] = ()
+    context: WorkflowRuntimeContext | None = None
+    run_config: dict[str, Any] | None = None
+    durability: str | None = None
+    lifecycle_service: WorkflowLifecycleService | None = None
+    lifecycle_id: str = ""
+    owns_lifecycle: bool = False
+    runtime_diagnostics: RuntimeDiagnostics | None = None
+    request_id: str = ""
+    public_model: str = ""
+    agent_name: str = ""
+    include_tool_call_transformer: bool = True
+    public_output: bool = True
+    run_kind: Literal["agent", "workflow"] = "agent"
+    journal_node_kinds: dict[str, str] | None = None
+    journal_agent_names: dict[str, str] | None = None
+    execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
+    final_state: dict[str, Any] | None = None
+    _started: bool = False
+    _lifecycle_finished: bool = False
+
+    @property
+    def usage(self) -> dict[str, int]:
+        return dict(self.normalizer.usage)
+
+    @property
+    def finish_reason(self) -> str:
+        if self.run_kind == "workflow":
+            return "stop"
+        return self.normalizer.finish_reason
+
+    @property
+    def finish_reason_source(self) -> str | None:
+        if self.run_kind == "workflow":
+            return None
+        return self.normalizer.finish_reason_source
+
+    def diagnostic_context(self) -> RuntimeDiagnosticContext:
+        context = self.context
+        if context is None:
+            return RuntimeDiagnosticContext(
+                request_id=self.request_id,
+                subject_kind="workflow" if self.run_kind == "workflow" else "agent",
+                subject_name=self.public_model or self.agent_name,
+            )
+        workflow_id = str(context.workflow.get("id", ""))
+        workflow_name = str(
+            context.workflow.get(
+                "name",
+                self.public_model if self.run_kind == "workflow" else "",
+            )
+        )
+        is_workflow = self.run_kind == "workflow"
+        return RuntimeDiagnosticContext(
+            request_id=context.request_id or self.request_id,
+            lifecycle_id=context.lifecycle_id,
+            run_id=context.run_id,
+            thread_id=context.thread_id,
+            parent_workflow_id=(
+                workflow_id if self.owns_lifecycle or not is_workflow else ""
+            ),
+            parent_workflow_name=(
+                workflow_name if self.owns_lifecycle or not is_workflow else ""
+            ),
+            subject_kind="workflow" if is_workflow else "agent",
+            subject_id=workflow_id if is_workflow else context.agent_id,
+            subject_name=(
+                workflow_name if is_workflow else self.agent_name or self.public_model
+            ),
+            workflow_node_id=context.workflow_node_id,
+            node_invocation_id=context.invocation_id,
+        )
+
+    async def stream_text(self) -> AsyncIterator[str]:
+        if self._started:
+            raise RuntimeError("RunExecution can only be consumed once")
+        self._started = True
+        try:
+            async for part in self._stream_text_inner():
+                yield part
+        finally:
+            runtimes = tuple(
+                runtime
+                for runtime in (self.middleware_runtime, *self.middleware_runtimes)
+                if runtime is not None
+            )
+            for runtime in runtimes:
+                await runtime.close()
+            tool_runtimes = tuple(
+                runtime
+                for runtime in (self.tool_runtime, *self.tool_runtimes)
+                if runtime is not None
+            )
+            for runtime in tool_runtimes:
+                await runtime.close()
+            if self.command_runtime is not None:
+                await self.command_runtime.close()
+            if self.task_dispatcher_runtime is not None:
+                await self.task_dispatcher_runtime.close()
+            for runtime in self.event_output_runtimes:
+                await runtime.close()
+
+    async def _stream_text_inner(self) -> AsyncIterator[str]:
+
+        def observation_error(exc: BaseException, code: str) -> None:
+            if self.lifecycle_service is not None and self.context is not None:
+                try:
+                    self.lifecycle_service.mark_run_observation_partial(
+                        self.context.run_id
+                    )
+                except Exception:
+                    pass
+            if self.runtime_diagnostics is not None:
+                self.runtime_diagnostics.observation_error(
+                    exc,
+                    code=code,
+                    component="observability",
+                    context=self.diagnostic_context(),
+                )
+
+        def start_run() -> None:
+            if self.lifecycle_service is None or self.context is None:
+                return
+            try:
+                if not self.lifecycle_service.start_run(self.context.run_id):
+                    record = self.lifecycle_service.history.get_run(self.context.run_id)
+                    if record is None:
+                        raise RuntimeError("the Run registry record is unavailable")
+            except Exception as exc:
+                observation_error(exc, "workflow_run_record_failed")
+
+        def finish_run(status: str, *, error_code: str = "") -> None:
+            if self.lifecycle_service is None or self.context is None:
+                return
+            try:
+                if not self.lifecycle_service.finish_run(
+                    self.context.run_id,
+                    status=status,
+                    error_code=error_code,
+                    finish_reason=self.finish_reason if status == "completed" else "",
+                    usage=self.usage,
+                ):
+                    record = self.lifecycle_service.history.get_run(self.context.run_id)
+                    if record is None:
+                        raise RuntimeError("the Run registry record is unavailable")
+            except Exception as exc:
+                observation_error(exc, "workflow_run_record_failed")
+
+        async def finish_lifecycle(status: str) -> None:
+            if (
+                not self.owns_lifecycle
+                or self.lifecycle_service is None
+                or not self.lifecycle_id
+                or self._lifecycle_finished
+            ):
+                return
+            self._lifecycle_finished = True
+            try:
+                await self.lifecycle_service.finish_parent(self.lifecycle_id, status)
+            except Exception as exc:
+                try:
+                    self.lifecycle_service.mark_run_observation_partial(
+                        self.context.run_id
+                    )
+                except Exception:
+                    pass
+                if self.runtime_diagnostics is not None:
+                    self.runtime_diagnostics.observation_error(
+                        exc,
+                        code="workflow_lifecycle_record_failed",
+                        component="persistence",
+                        context=self.diagnostic_context(),
+                    )
+
+        def record_runtime_error(
+            exc: BaseException,
+            code: str,
+            *,
+            detail_exception: BaseException | None = None,
+        ) -> None:
+            if self.runtime_diagnostics is not None:
+                self.runtime_diagnostics.runtime_error(
+                    exc,
+                    code=code,
+                    component="workflow_runtime",
+                    context=self.diagnostic_context(),
+                    detail_exception=detail_exception,
+                )
+
+        def project_event(event: OutputEvent) -> list[str]:
+            if not self.public_output:
+                return []
+            for observer in self.event_observers:
+                observer(event)
+            return self.rectifier.feed(event)
+
+        def failure_output(error_code: str) -> list[str]:
+            self.normalizer.abort_main_agent_messages()
+            parts = self.rectifier.abort()
+            try:
+                parts.extend(
+                    project_event(
+                        self.normalizer.lifecycle(
+                            "error",
+                            status="failed",
+                            finish_reason="error",
+                            error_code=error_code,
+                        )
+                    )
+                )
+            except Exception:
+                # A broken user lifecycle projector must not replace the safe
+                # runtime error that is already crossing the public boundary.
+                self.rectifier.discard()
+            return parts
+
+        journal: WorkflowRunJournal | None = None
+        start_run()
+        try:
+            for rendered in project_event(
+                self.normalizer.lifecycle("start", status="running")
+            ):
+                if rendered:
+                    yield rendered
+            loop = asyncio.get_running_loop()
+            remaining_timeout = float(self.execution_timeout_seconds)
+            timeout_scope = asyncio.timeout(None)
+
+            @contextmanager
+            def pause_execution_timeout():
+                nonlocal remaining_timeout
+                deadline = timeout_scope.when()
+                if deadline is not None:
+                    remaining_timeout = max(0.0, deadline - loop.time())
+                timeout_scope.reschedule(None)
+                try:
+                    yield
+                finally:
+                    timeout_scope.reschedule(loop.time() + remaining_timeout)
+
+            async with timeout_scope:
+                timeout_scope.reschedule(loop.time() + remaining_timeout)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=(
+                            r"The v3 streaming protocol on Pregel is experimental\."
+                        ),
+                    )
+                    config: dict[str, Any] = {
+                        "recursion_limit": GRAPH_RECURSION_LIMIT,
+                        **(self.run_config or {}),
+                    }
+                    if self.context is not None and self.lifecycle_service is not None:
+                        callbacks = list(config.get("callbacks", ()))
+                        journal = WorkflowRunJournal(
+                            self.lifecycle_service,
+                            self.runtime_diagnostics,
+                            self.context,
+                            workflow_node_kinds=self.journal_node_kinds or {},
+                            agent_names=self.journal_agent_names or {},
+                        )
+                        callbacks.append(journal)
+                        config["callbacks"] = callbacks
+                    stream_kwargs: dict[str, Any] = {
+                        "config": config,
+                        "version": "v3",
+                        "transformers": (
+                            (RawCustomEventTransformer, ToolCallTransformer)
+                            if self.include_tool_call_transformer
+                            else (RawCustomEventTransformer,)
+                        ),
+                    }
+                    if self.durability is not None:
+                        stream_kwargs["durability"] = self.durability
+                    if self.context is not None:
+                        stream_kwargs["context"] = self.context
+                    stream = await self.graph.astream_events(
+                        self.input_state,
+                        **stream_kwargs,
+                    )
+                # The v3 run stream owns the graph iterator. Its async context
+                # manager aborts in-flight provider/tool work when an OpenAI
+                # streaming client disconnects and this generator is cancelled.
+                async with stream:
+                    envelopes = aiter(stream)
+                    while True:
+                        try:
+                            envelope = await anext(envelopes)
+                        except StopAsyncIteration:
+                            break
+                        for event in self.normalizer.feed(envelope):
+                            if isinstance(event, ModelCallBoundary):
+                                if not self.public_output:
+                                    projected = []
+                                elif event.source_key and event.cycle_key:
+                                    projected = self.rectifier.flush_cycle(
+                                        event.source_key, event.cycle_key
+                                    )
+                                elif event.source_key:
+                                    projected = self.rectifier.flush_source(
+                                        event.source_key
+                                    )
+                                else:
+                                    projected = self.rectifier.flush()
+                            elif isinstance(event, MainAgentMediaBlock):
+                                notification = (
+                                    await self.media_response.project(event)
+                                    if self.public_output
+                                    else None
+                                )
+                                projected = (
+                                    project_event(
+                                        self.normalizer.media_notification(
+                                            event, notification
+                                        )
+                                    )
+                                    if notification is not None
+                                    else []
+                                )
+                            else:
+                                projected = project_event(event)
+                            for rendered in projected:
+                                if rendered:
+                                    with pause_execution_timeout():
+                                        yield rendered
+                    output = await stream.output()
+                    self.final_state = dict(output) if isinstance(output, Mapping) else None
+                    self.normalizer.close_main_agent_messages()
+                    final_parts = (
+                        self.rectifier.flush()
+                        if self.public_output
+                        else []
+                    )
+                    for rendered in final_parts:
+                        if rendered:
+                            with pause_execution_timeout():
+                                yield rendered
+            if journal is not None:
+                journal.finish_open_spans("completed")
+            for rendered in project_event(
+                self.normalizer.lifecycle(
+                    "end",
+                    status="completed",
+                    finish_reason=self.finish_reason,
+                )
+            ):
+                if rendered:
+                    yield rendered
+        except asyncio.CancelledError:
+            if journal is not None:
+                journal.finish_open_spans(
+                    "cancelled", error_code="request_cancelled"
+                )
+            self.normalizer.abort_main_agent_messages()
+            self.rectifier.discard()
+            finish_run("cancelled", error_code="request_cancelled")
+            await finish_lifecycle("cancelled")
+            raise
+        except TimeoutError as exc:
+            error = AgentRuntimeError(
+                "execution_timeout",
+                "The Agent execution exceeded the runtime time limit.",
+                status_code=504,
+            )
+            if journal is not None:
+                journal.finish_open_spans("failed", error_code=error.code)
+            for rendered in failure_output(error.code):
+                yield rendered
+            record_runtime_error(error, error.code, detail_exception=exc)
+            finish_run("failed", error_code=error.code)
+            await finish_lifecycle("failed")
+            raise error from exc
+        except AgentRuntimeError as exc:
+            if journal is not None:
+                journal.finish_open_spans("failed", error_code=exc.code)
+            for rendered in failure_output(exc.code):
+                yield rendered
+            record_runtime_error(
+                exc,
+                exc.code,
+                detail_exception=(
+                    exc.__cause__ if isinstance(exc, EventOutputError) else None
+                ),
+            )
+            finish_run("failed", error_code=exc.code)
+            await finish_lifecycle("failed")
+            raise
+        except Exception as exc:
+            if isinstance(exc, GraphRecursionError):
+                error = AgentRuntimeError(
+                    "execution_step_limit",
+                    "The Agent exceeded the runtime step limit.",
+                    status_code=508,
+                )
+            else:
+                error = AgentRuntimeError(
+                    "agent_execution_failed",
+                    "The Agent failed during graph execution.",
+                    status_code=502,
+                )
+            if journal is not None:
+                journal.finish_open_spans("failed", error_code=error.code)
+            for rendered in failure_output(error.code):
+                yield rendered
+            record_runtime_error(error, error.code, detail_exception=exc)
+            finish_run("failed", error_code=error.code)
+            await finish_lifecycle("failed")
+            raise error from exc
+        finish_run("completed")
+        await finish_lifecycle("completed")
+
+    async def run(self) -> tuple[str, dict[str, int]]:
+        parts = [part async for part in self.stream_text()]
+        return "".join(parts), self.usage
+
+    async def execute(self) -> None:
+        """Run to completion without collecting a public response body."""
+
+        async for _part in self.stream_text():
+            pass
+
+
+class AgentRuntime:
+    def __init__(
+        self,
+        builder: AgentBuilder,
+        media_outputs: MediaOutputStore,
+        *,
+        blocks: BlockStore | None = None,
+        python_packages_dir: Path | None = None,
+        runtime_dir: Path | None = None,
+        workflow_checkpoints: WorkflowCheckpointService | None = None,
+        workflow_lifecycle: WorkflowLifecycleService,
+        runtime_diagnostics: RuntimeDiagnostics | None = None,
+        runtime_policy: RuntimePolicyStore | None = None,
+    ) -> None:
+        self._builder = builder
+        self._media_outputs = media_outputs
+        self._blocks = blocks
+        self._python_packages_dir = python_packages_dir
+        self._runtime_dir = runtime_dir
+        self._workflow_checkpoints = workflow_checkpoints
+        self._workflow_lifecycle = workflow_lifecycle
+        self._runtime_diagnostics = runtime_diagnostics
+        self._runtime_policy = runtime_policy
+
+    def _input_policy(self):
+        return (
+            self._runtime_policy.snapshot()
+            if self._runtime_policy is not None
+            else RUNTIME_POLICY_DEFAULTS
+        )
+
+    async def _finish_parent_lifecycle(
+        self,
+        lifecycle_id: str,
+        status: str,
+        *,
+        context: RuntimeDiagnosticContext,
+    ) -> None:
+        try:
+            await self._workflow_lifecycle.finish_parent(lifecycle_id, status)
+        except Exception as exc:
+            try:
+                self._workflow_lifecycle.mark_run_observation_partial(context.run_id)
+            except Exception:
+                pass
+            if self._runtime_diagnostics is not None:
+                self._runtime_diagnostics.observation_error(
+                    exc,
+                    code="workflow_lifecycle_record_failed",
+                    component="persistence",
+                    context=context,
+                )
+
+    def _register_run_observation(
+        self,
+        record: dict[str, object],
+        *,
+        context: RuntimeDiagnosticContext,
+    ) -> None:
+        try:
+            self._workflow_lifecycle.register_run(record)
+        except Exception as exc:
+            if self._runtime_diagnostics is not None:
+                self._runtime_diagnostics.observation_error(
+                    exc,
+                    code="workflow_run_record_failed",
+                    component="observability",
+                    context=context,
+                )
+
+    def _finish_run_observation(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        error_code: str,
+        context: RuntimeDiagnosticContext,
+    ) -> None:
+        try:
+            if not self._workflow_lifecycle.finish_run(
+                run_id,
+                status=status,
+                error_code=error_code,
+            ) and self._workflow_lifecycle.history.get_run(run_id) is None:
+                raise RuntimeError("the Run registry record is unavailable")
+        except Exception as exc:
+            try:
+                self._workflow_lifecycle.mark_run_observation_partial(run_id)
+            except Exception:
+                pass
+            if self._runtime_diagnostics is not None:
+                self._runtime_diagnostics.observation_error(
+                    exc,
+                    code="workflow_run_record_failed",
+                    component="observability",
+                    context=context,
+                )
+
+    async def build_agent(
+        self,
+        main_agent_id: str,
+        raw_messages: object,
+        *,
+        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
+        model_response_observer: Callable[[ModelResponse], None] | None = None,
+        request_id: str = "",
+        workflow_node_id: str | None = None,
+        workspace: DeepAgentsWorkspace | None = None,
+    ) -> BuiltAgent:
+        try:
+            return await self._builder.build(
+                main_agent_id,
+                raw_messages,
+                model_request_observer=model_request_observer,
+                model_response_observer=model_response_observer,
+                request_id=request_id,
+                workflow_node_id=workflow_node_id,
+                workspace=workspace,
+            )
+        except Exception:
+            await self._builder.close_failed_build()
+            raise
+
+    async def build_resolved_agent(
+        self,
+        assembly: StaticAssembly,
+        raw_messages: object,
+        **kwargs: Any,
+    ) -> BuiltAgent:
+        try:
+            return await self._builder.build_resolved(assembly, raw_messages, **kwargs)
+        except Exception:
+            await self._builder.close_failed_build()
+            raise
+
+    async def _resolved_mapped_directory_paths_by_filesystem(
+        self,
+        lifecycle_id: str,
+        assembly: StaticAssembly,
+    ) -> dict[str, dict[str, Path]]:
+        stored_filesystems: dict[str, dict[str, Any]] = {}
+        for blocks in (
+            assembly.blocks,
+            *(node.blocks for node in assembly.subagent_nodes.values()),
+        ):
+            stored = blocks.get("filesystem")
+            if stored is None:
+                continue
+            filesystem_id = str(stored.get("id", ""))
+            if not filesystem_id:
+                raise AgentRuntimeError(
+                    "filesystem_identity_missing",
+                    "The selected Filesystem has no stable identity.",
+                    status_code=422,
+                )
+            stored_filesystems[filesystem_id] = stored
+
+        resolved: dict[str, dict[str, Path]] = {}
+        for filesystem_id, stored in stored_filesystems.items():
+            filesystem = FilesystemBlock.model_validate(
+                {key: value for key, value in stored.items() if key != "id"}
+            )
+            try:
+                resolved[filesystem_id] = (
+                    await self._workflow_lifecycle.resolve_mapped_directories(
+                        lifecycle_id,
+                        filesystem_id,
+                        filesystem,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise AgentRuntimeError(
+                    "filesystem_mapping_unavailable",
+                    "The selected Filesystem mapping could not be resolved.",
+                    status_code=422,
+                ) from exc
+        return resolved
+
+    def _execution(
+        self,
+        built: BuiltAgent | None,
+        *,
+        graph: Any | None = None,
+        input_state: dict[str, Any] | None = None,
+        workflow_node_id: str = "",
+        event_observer: Callable[[OutputEvent], None] | None = None,
+        model_response_observer: Callable[[ModelResponse], None] | None = None,
+        request_id: str = "",
+        public_model: str = "",
+        workflow_built: tuple[tuple[str, BuiltAgent], ...] = (),
+        agent_event_outputs: Mapping[str, EventOutputCallable] | None = None,
+        workflow_event_output: EventOutputCallable | None = None,
+        event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = (),
+        command_runtime: CommandPackageRuntime | None = None,
+        task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None,
+        context: WorkflowRuntimeContext | None = None,
+        run_config: dict[str, Any] | None = None,
+        durability: str | None = None,
+        owns_lifecycle: bool = False,
+        include_tool_call_transformer: bool = True,
+        public_output: bool = True,
+        execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
+        run_kind: Literal["agent", "workflow"] = "agent",
+    ) -> RunExecution:
+        if built is None:
+            if graph is None or input_state is None or run_kind != "workflow":
+                raise ValueError(
+                    "an Agent-free execution requires a Workflow graph and input state"
+                )
+            effective_graph = graph
+            effective_input_state = input_state
+        else:
+            effective_graph = graph if graph is not None else built.graph
+            effective_input_state = (
+                input_state if input_state is not None else built.input_state
+            )
+        observers = []
+        if event_observer is not None:
+            observers.append(event_observer)
+        workflow_agents = workflow_built or (
+            ((workflow_node_id, built),) if built is not None else ()
+        )
+        if run_kind == "workflow":
+            from agent_shell.workflow.events import WorkflowEventSourceV1
+
+            workflow_sources = {
+                node_id: WorkflowEventSourceV1(
+                    source_type="agent",
+                    workflow_node_id=node_id,
+                    agent_profile_id=agent.agent_id,
+                )
+                for node_id, agent in workflow_agents
+            }
+        else:
+            workflow_sources = None
+        if public_output:
+            if run_kind != "workflow":
+                raise ValueError("public output requires a Workflow execution")
+            projector = WorkflowOutputProjector(
+                agent_event_outputs or {},
+                workflow_output=workflow_event_output,
+            )
+        else:
+            projector = OutputProjector(None)
+        journal_node_kinds: dict[str, str] = {}
+        if context is not None:
+            graph_document = context.workflow.get("graph")
+            definition = (
+                graph_document.get("definition")
+                if isinstance(graph_document, Mapping)
+                else None
+            )
+            nodes = definition.get("nodes", ()) if isinstance(definition, Mapping) else ()
+            journal_node_kinds = {
+                str(node.get("id", "")): str(node.get("type", ""))
+                for node in nodes
+                if isinstance(node, Mapping)
+            }
+        return RunExecution(
+            graph=effective_graph,
+            input_state=effective_input_state,
+            middleware_runtime=(built.middleware_runtime if built is not None else None),
+            tool_runtime=(built.tool_runtime if built is not None else None),
+            media_response=MainAgentMediaResponse(self._media_outputs, request_id),
+            rectifier=OutputEventRectifier(projector),
+            normalizer=V3EventNormalizer(
+                built.agent_name if built is not None else "",
+                model_response_observers=(model_response_observer,)
+                if model_response_observer is not None
+                else (),
+                workflow_mode=run_kind == "workflow",
+                workflow_sources=workflow_sources,
+                subagent_profile_ids=(
+                    built.subagent_profile_ids if built is not None else {}
+                ),
+                main_agent_names=tuple(agent.agent_name for _, agent in workflow_agents),
+                workflow_subagent_profile_ids={
+                    node_id: agent.subagent_profile_ids
+                    for node_id, agent in workflow_agents
+                } if run_kind == "workflow" else None,
+                workflow_agent_names={
+                    node_id: agent.agent_name
+                    for node_id, agent in workflow_agents
+                } if run_kind == "workflow" else None,
+            ),
+            event_observers=tuple(observers),
+            middleware_runtimes=tuple(
+                agent.middleware_runtime
+                for _, agent in workflow_agents[1:]
+            ),
+            tool_runtimes=tuple(
+                agent.tool_runtime
+                for _, agent in workflow_agents[1:]
+            ),
+            command_runtime=command_runtime,
+            task_dispatcher_runtime=task_dispatcher_runtime,
+            event_output_runtimes=event_output_runtimes,
+            context=context,
+            run_config=run_config,
+            durability=durability,
+            lifecycle_service=self._workflow_lifecycle,
+            lifecycle_id=context.lifecycle_id if context is not None else "",
+            owns_lifecycle=owns_lifecycle,
+            runtime_diagnostics=self._runtime_diagnostics,
+            request_id=request_id,
+            public_model=public_model,
+            agent_name=(
+                built.agent_name
+                if run_kind == "agent" and built is not None
+                else ""
+            ),
+            include_tool_call_transformer=include_tool_call_transformer,
+            public_output=public_output,
+            run_kind=run_kind,
+            journal_node_kinds=journal_node_kinds,
+            journal_agent_names={
+                node_id: agent.agent_name for node_id, agent in workflow_agents
+            },
+            execution_timeout_seconds=execution_timeout_seconds,
+        )
+
+    async def start_background_agent(
+        self,
+        assembly: StaticAssembly,
+        raw_messages: object,
+        *,
+        workflow_snapshot: Mapping[str, Any],
+        launcher_id: str,
+        request_id: str,
+        lifecycle_id: str,
+        run_id: str,
+        thread_id: str,
+        parent_run_id: str,
+        background_task_id: str,
+        run_depth: int,
+        initial_shared_vars: Mapping[str, Any] | None = None,
+        initial_workflow_task: Mapping[str, Any] | None = None,
+        background_runtime: Any | None = None,
+    ) -> RunExecution:
+        messages = validate_client_messages(raw_messages, self._input_policy())
+        mapped_directory_paths_by_filesystem = (
+            await self._resolved_mapped_directory_paths_by_filesystem(
+                lifecycle_id,
+                assembly,
+            )
+        )
+        built = await self.build_resolved_agent(
+            assembly,
+            messages,
+            request_id=request_id,
+            workflow_node_id=None,
+            mapped_directory_paths_by_filesystem=(
+                mapped_directory_paths_by_filesystem
+            ),
+        )
+        context = WorkflowRuntimeContext.for_run(
+            request_id=request_id,
+            lifecycle_id=lifecycle_id,
+            run_id=run_id,
+            thread_id=thread_id,
+            parent_run_id=parent_run_id,
+            background_task_id=background_task_id,
+            launcher_id=launcher_id,
+            run_depth=run_depth,
+            workflow=workflow_snapshot,
+            background_runtime=background_runtime,
+        ).for_background_agent(
+            agent_id=built.agent_id,
+            invocation_id=background_task_id,
+        )
+        input_state = deepcopy(dict(built.input_state))
+        input_state["messages"] = []
+        input_state["shared_vars"] = deepcopy(dict(initial_shared_vars or {}))
+        if initial_workflow_task is not None:
+            input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
+        return self._execution(
+            built,
+            input_state=input_state,
+            request_id=request_id,
+            public_model=built.agent_name,
+            context=context,
+            run_config={
+                "recursion_limit": int(
+                    workflow_snapshot.get("recursion_limit", GRAPH_RECURSION_LIMIT)
+                ),
+                "max_concurrency": int(
+                    workflow_snapshot.get("max_concurrency", WORKFLOW_MAX_CONCURRENCY)
+                ),
+            },
+            execution_timeout_seconds=int(
+                workflow_snapshot.get(
+                    "execution_timeout_seconds",
+                    EXECUTION_TIMEOUT_SECONDS,
+                )
+            ),
+            include_tool_call_transformer=False,
+            public_output=False,
+        )
+
+    async def start_workflow(
+        self,
+        document: WorkflowGraphDocumentV1,
+        raw_messages: object,
+        *,
+        workflow_snapshot: Mapping[str, Any] | None = None,
+        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
+        model_response_observer: Callable[[ModelResponse], None] | None = None,
+        event_observer: Callable[[OutputEvent], None] | None = None,
+        request_id: str = "",
+        public_model: str = "",
+        lifecycle_id: str | None = None,
+        run_id: str | None = None,
+        thread_id: str | None = None,
+        parent_run_id: str = "",
+        background_task_id: str = "",
+        launcher_id: str = "",
+        run_depth: int = 0,
+        initial_shared_vars: Mapping[str, Any] | None = None,
+        initial_workflow_task: Mapping[str, Any] | None = None,
+        background_runtime: Any | None = None,
+        public_output: bool = True,
+    ) -> RunExecution:
+        from agent_shell.workflow.catalog import (
+            AgentNodeConfig,
+            CommandNodeConfig,
+            TaskDispatcherNodeConfig,
+        )
+        from agent_shell.workflow.compiler import compile_workflow
+
+        agent_nodes = [
+            node for node in document.definition.nodes if node.type == "agent"
+        ]
+        command_nodes = [
+            node
+            for node in document.definition.nodes
+            if node.type == "command"
+        ]
+        task_dispatcher_nodes = [
+            node
+            for node in document.definition.nodes
+            if node.type == "task-dispatcher"
+        ]
+        messages = validate_client_messages(raw_messages, self._input_policy())
+        messages_sha = client_messages_sha(messages)
+        assemblies: dict[str, StaticAssembly] = {}
+
+        def validate_main_agent(main_agent_id: str) -> ValidationReport:
+            if main_agent_id in assemblies:
+                return ValidationReport(stage="workflow_publish")
+            try:
+                assemblies[main_agent_id] = self._builder.resolve(main_agent_id)
+            except AgentRuntimeError as exc:
+                if exc.validation_report is not None:
+                    return exc.validation_report
+                raise
+            return ValidationReport(stage="workflow_publish")
+
+        from agent_shell.command import CommandBlock
+        from agent_shell.task_dispatcher import TaskDispatcherBlock
+
+        command_blocks: dict[str, tuple[str, CommandBlock]] = {}
+        for command_node in command_nodes:
+            command_id = str(
+                CommandNodeConfig.model_validate(
+                    command_node.config
+                ).command_id
+            )
+            stored_command = (
+                self._blocks.get_block_internal("command", command_id)
+                if self._blocks is not None
+                else None
+            )
+            if stored_command is None:
+                continue
+            try:
+                command_blocks[command_node.id] = (
+                    command_id,
+                    CommandBlock.model_validate(
+                        {key: value for key, value in stored_command.items() if key != "id"}
+                    ),
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow.command_invalid",
+                    "The selected Command Node configuration is invalid.",
+                    status_code=422,
+                ) from exc
+
+        task_dispatcher_blocks: dict[
+            str,
+            tuple[str, TaskDispatcherBlock],
+        ] = {}
+        for dispatcher_node in task_dispatcher_nodes:
+            dispatcher_id = str(
+                TaskDispatcherNodeConfig.model_validate(
+                    dispatcher_node.config
+                ).task_dispatcher_id
+            )
+            stored_dispatcher = (
+                self._blocks.get_block_internal(
+                    "task-dispatcher",
+                    dispatcher_id,
+                )
+                if self._blocks is not None
+                else None
+            )
+            if stored_dispatcher is None:
+                continue
+            try:
+                task_dispatcher_blocks[dispatcher_node.id] = (
+                    dispatcher_id,
+                    TaskDispatcherBlock.model_validate(
+                        {
+                            key: value
+                            for key, value in stored_dispatcher.items()
+                            if key != "id"
+                        }
+                    ),
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow.task_dispatcher_invalid",
+                    "The selected Task Dispatcher configuration is invalid.",
+                    status_code=422,
+                ) from exc
+
+        resolved_command_nodes: dict[str, Any] = {
+            node_id: block for node_id, (_command_id, block) in command_blocks.items()
+        }
+        resolved_task_dispatcher_nodes: dict[str, Any] = {
+            node_id: block for node_id, (_dispatcher_id, block) in task_dispatcher_blocks.items()
+        }
+        executable = validate_workflow_executable(
+            document,
+            validate_main_agent=validate_main_agent,
+            commands=resolved_command_nodes,
+            task_dispatchers=resolved_task_dispatcher_nodes,
+            workflow_role=(workflow_snapshot or {}).get("workflow_role"),
+        )
+        if not executable.valid:
+            issue = executable.issues[0]
+            raise AgentRuntimeError(
+                issue.code,
+                issue.message,
+                status_code=422,
+                validation_report=executable,
+            )
+        workflow_context = {
+            **dict(workflow_snapshot or {}),
+            "graph": document.model_dump(mode="json"),
+        }
+        workflow_checkpoints = getattr(self, "_workflow_checkpoints", None)
+        runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
+        workflow_identity = dict(workflow_snapshot or {})
+        checkpoint_context = (
+            workflow_checkpoints.create_context(
+                request_id=request_id,
+                workflow_id=str(workflow_identity.get("id", "")),
+                workflow_name=str(
+                    workflow_identity.get("name", public_model or "workflow")
+                ),
+                messages_sha=messages_sha,
+                run_id=UUID(run_id) if run_id else None,
+                thread_id=thread_id,
+            )
+            if workflow_checkpoints is not None
+            else None
+        )
+        resolved_run_id = (
+            str(checkpoint_context.run_id)
+            if checkpoint_context is not None
+            else run_id or str(uuid4())
+        )
+        resolved_thread_id = (
+            checkpoint_context.thread_id
+            if checkpoint_context is not None
+            else thread_id or str(uuid4())
+        )
+        owns_lifecycle = lifecycle_id is None
+        if owns_lifecycle:
+            resolved_lifecycle_id = await self._workflow_lifecycle.create(
+                messages,
+                request_id=request_id,
+                run_id=resolved_run_id,
+                thread_id=resolved_thread_id,
+                workflow_id=str(workflow_identity.get("id", "")),
+                workflow_name=str(
+                    workflow_identity.get("name", public_model or "workflow")
+                ),
+            )
+        else:
+            if await self._workflow_lifecycle.input_record(lifecycle_id) is None:
+                raise AgentRuntimeError(
+                    "workflow_lifecycle_not_found",
+                    "The Workflow lifecycle input does not exist.",
+                    status_code=409,
+                )
+            resolved_lifecycle_id = lifecycle_id
+        assembly_diagnostic_context = RuntimeDiagnosticContext(
+            request_id=request_id,
+            lifecycle_id=resolved_lifecycle_id,
+            run_id=resolved_run_id,
+            thread_id=resolved_thread_id,
+            parent_workflow_id=(
+                str(workflow_identity.get("id", "")) if owns_lifecycle else ""
+            ),
+            parent_workflow_name=(
+                str(workflow_identity.get("name", public_model or "workflow"))
+                if owns_lifecycle
+                else ""
+            ),
+            subject_kind="workflow",
+            subject_id=str(workflow_identity.get("id", "")),
+            subject_name=str(
+                workflow_identity.get("name", public_model or "workflow")
+            ),
+        )
+        self._register_run_observation(
+            {
+                "run_id": resolved_run_id,
+                "lifecycle_id": resolved_lifecycle_id,
+                "request_id": request_id,
+                "thread_id": resolved_thread_id,
+                "run_kind": "workflow",
+                "target_id": str(workflow_identity.get("id", "")),
+                "target_name": str(
+                    workflow_identity.get("name", public_model or "workflow")
+                ),
+                "parent_run_id": parent_run_id,
+                "launcher_id": launcher_id,
+                "background_task_id": background_task_id,
+                "run_depth": run_depth,
+                "checkpoint_available": True,
+            },
+            context=assembly_diagnostic_context,
+        )
+        built_agents: list[tuple[str, BuiltAgent]] = []
+        workflow_initial_files: dict[str, Any] = {}
+        agent_event_output_runtime: EventOutputPackageRuntime | None = None
+        workflow_event_output_runtime: EventOutputPackageRuntime | None = None
+        agent_event_outputs: dict[str, EventOutputCallable] = {}
+        workflow_event_output: EventOutputCallable | None = None
+        command_runtime: CommandPackageRuntime | None = None
+        task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None
+        commands: dict[str, Any] = {}
+        task_dispatchers: dict[str, Any] = {}
+        workspace = None
+
+        async def close_workflow_package_runtimes() -> None:
+            if command_runtime is not None:
+                await command_runtime.close()
+            if task_dispatcher_runtime is not None:
+                await task_dispatcher_runtime.close()
+            if agent_event_output_runtime is not None:
+                await agent_event_output_runtime.close()
+            if workflow_event_output_runtime is not None:
+                await workflow_event_output_runtime.close()
+
+        try:
+            resolved_agents: list[tuple[Any, StaticAssembly]] = []
+            for agent_node in agent_nodes:
+                main_agent_id = str(
+                    AgentNodeConfig.model_validate(agent_node.config).main_agent_id
+                )
+                resolved_agents.append(
+                    (
+                        agent_node,
+                        assemblies[main_agent_id],
+                    )
+                )
+            context = WorkflowRuntimeContext.for_run(
+                request_id=request_id,
+                lifecycle_id=resolved_lifecycle_id,
+                run_id=resolved_run_id,
+                thread_id=resolved_thread_id,
+                parent_run_id=parent_run_id,
+                background_task_id=background_task_id,
+                launcher_id=launcher_id,
+                run_depth=run_depth,
+                workflow=workflow_context,
+                background_runtime=background_runtime,
+            )
+
+            output_id = (workflow_snapshot or {}).get("workflow_event_output_id")
+            if (
+                command_blocks
+                or task_dispatcher_blocks
+                or (public_output and (resolved_agents or output_id is not None))
+            ):
+                if self._python_packages_dir is None or self._runtime_dir is None:
+                    raise AgentRuntimeError(
+                        "workflow.python_package_runtime_unavailable",
+                        "The Python package runtime is not configured.",
+                        status_code=500,
+                    )
+            if public_output and resolved_agents:
+                assert self._python_packages_dir is not None
+                assert self._runtime_dir is not None
+                agent_event_output_runtime = EventOutputPackageRuntime(
+                    "agent",
+                    request_id=request_id,
+                    packages_dir=self._python_packages_dir,
+                    runtime_root=self._runtime_dir,
+                )
+            if command_blocks:
+                command_runtime = CommandPackageRuntime(
+                    request_id=request_id,
+                    packages_dir=self._python_packages_dir,
+                    runtime_root=self._runtime_dir,
+                )
+                commands = {
+                    node_id: command_runtime.command_for(
+                        node_id,
+                        command_id,
+                        block.model_dump(mode="python")["python_package"],
+                    )
+                    for node_id, (command_id, block) in command_blocks.items()
+                }
+            if task_dispatcher_blocks:
+                task_dispatcher_runtime = TaskDispatcherPackageRuntime(
+                    request_id=request_id,
+                    packages_dir=self._python_packages_dir,
+                    runtime_root=self._runtime_dir,
+                )
+                task_dispatchers = {
+                    node_id: task_dispatcher_runtime.dispatcher_for(
+                        node_id,
+                        dispatcher_id,
+                        block.model_dump(mode="python")["python_package"],
+                    )
+                    for node_id, (
+                        dispatcher_id,
+                        block,
+                    ) in task_dispatcher_blocks.items()
+                }
+
+            if public_output and output_id is not None:
+                stored_output = (
+                    self._blocks.get_block_internal(
+                        "workflow-event-output", str(output_id)
+                    )
+                    if self._blocks is not None
+                    else None
+                )
+                if stored_output is None:
+                    raise AgentRuntimeError(
+                        "workflow_event_output_not_found",
+                        "The selected event output component does not exist.",
+                        status_code=422,
+                    )
+                try:
+                    output_block = WorkflowEventOutputBlock.model_validate(
+                        {
+                            key: value
+                            for key, value in stored_output.items()
+                            if key != "id"
+                        }
+                    )
+                except Exception as exc:
+                    raise AgentRuntimeError(
+                        "workflow.event_output_invalid",
+                        "The selected Workflow event output configuration is invalid.",
+                        status_code=422,
+                    ) from exc
+                assert self._python_packages_dir is not None
+                assert self._runtime_dir is not None
+                workflow_event_output_runtime = EventOutputPackageRuntime(
+                    "workflow",
+                    request_id=request_id,
+                    packages_dir=self._python_packages_dir,
+                    runtime_root=self._runtime_dir,
+                )
+                workflow_event_output = workflow_event_output_runtime.output_for(
+                    str(workflow_identity.get("id", "")) or "workflow",
+                    str(output_id),
+                    output_block.python_package.model_dump(mode="json"),
+                )
+
+            for agent_node, assembly in resolved_agents:
+                mapped_directory_paths_by_filesystem = (
+                    await self._resolved_mapped_directory_paths_by_filesystem(
+                        resolved_lifecycle_id,
+                        assembly,
+                    )
+                )
+                built = await self.build_resolved_agent(
+                    assembly,
+                    messages,
+                    model_request_observer=model_request_observer,
+                    model_response_observer=model_response_observer,
+                    request_id=request_id,
+                    workflow_node_id=agent_node.id,
+                    workspace=workspace,
+                    mapped_directory_paths_by_filesystem=(
+                        mapped_directory_paths_by_filesystem
+                    ),
+                )
+                built_agents.append((agent_node.id, built))
+                if agent_event_output_runtime is not None:
+                    agent_event_outputs[agent_node.id] = (
+                        agent_event_output_runtime.output_for(
+                            agent_node.id,
+                            built.event_output_id,
+                            built.event_output_reference,
+                        )
+                    )
+                if workspace is None:
+                    workspace = built.workspace
+                for path, value in built.input_state.get("files", {}).items():
+                    previous = workflow_initial_files.get(path)
+                    if previous is not None and previous != value:
+                        raise AgentRuntimeError(
+                            "filesystem_virtual_source_conflict",
+                            f"Workflow Agent virtual sources conflict at {path!r}.",
+                            status_code=422,
+                        )
+                    workflow_initial_files[path] = value
+            graph = compile_workflow(
+                document,
+                node_agents=dict(built_agents),
+                commands=commands,
+                task_dispatchers=task_dispatchers,
+                workflow_role=(workflow_snapshot or {}).get("workflow_role"),
+                checkpointer=(
+                    workflow_checkpoints.checkpointer
+                    if workflow_checkpoints is not None
+                    else None
+                ),
+                store=self._workflow_lifecycle.store,
+            )
+        except asyncio.CancelledError:
+            for _, agent in built_agents:
+                await agent.tool_runtime.close()
+                await agent.middleware_runtime.close()
+            await close_workflow_package_runtimes()
+            self._finish_run_observation(
+                resolved_run_id,
+                status="cancelled",
+                error_code="request_cancelled",
+                context=assembly_diagnostic_context,
+            )
+            if owns_lifecycle:
+                await self._finish_parent_lifecycle(
+                    resolved_lifecycle_id,
+                    "cancelled",
+                    context=assembly_diagnostic_context,
+                )
+            raise
+        except Exception as exc:
+            for _, agent in built_agents:
+                await agent.tool_runtime.close()
+                await agent.middleware_runtime.close()
+            await close_workflow_package_runtimes()
+            error_code = (
+                exc.code
+                if isinstance(exc, AgentRuntimeError)
+                else "workflow_assembly_failed"
+            )
+            if runtime_diagnostics is not None:
+                runtime_diagnostics.runtime_error(
+                    exc,
+                    code=error_code,
+                    component="workflow_runtime",
+                    context=assembly_diagnostic_context,
+                )
+            self._finish_run_observation(
+                resolved_run_id,
+                status="failed",
+                error_code=error_code,
+                context=assembly_diagnostic_context,
+            )
+            if owns_lifecycle:
+                await self._finish_parent_lifecycle(
+                    resolved_lifecycle_id,
+                    "failed",
+                    context=assembly_diagnostic_context,
+                )
+            raise
+        first_node_id = built_agents[0][0] if built_agents else ""
+        built = built_agents[0][1] if built_agents else None
+        input_state: dict[str, Any] = {
+            "shared_vars": deepcopy(dict(initial_shared_vars or {})),
+            "agent_invocations": {},
+            "background_tasks": {},
+        }
+        if initial_workflow_task is not None:
+            input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
+        if workflow_initial_files:
+            input_state["files"] = workflow_initial_files
+        return self._execution(
+            built,
+            graph=graph,
+            input_state=input_state,
+            workflow_node_id=first_node_id,
+            workflow_built=tuple(built_agents),
+            event_observer=event_observer,
+            model_response_observer=model_response_observer,
+            request_id=request_id,
+            public_model=public_model,
+            agent_event_outputs=agent_event_outputs,
+            workflow_event_output=workflow_event_output,
+            event_output_runtimes=tuple(
+                runtime
+                for runtime in (
+                    agent_event_output_runtime,
+                    workflow_event_output_runtime,
+                )
+                if runtime is not None
+            ),
+            context=context,
+            run_config={
+                **(checkpoint_context.config() if checkpoint_context is not None else {}),
+                "recursion_limit": int(
+                    (workflow_snapshot or {}).get(
+                        "recursion_limit",
+                        GRAPH_RECURSION_LIMIT,
+                    )
+                ),
+                "max_concurrency": int(
+                    (workflow_snapshot or {}).get(
+                        "max_concurrency", WORKFLOW_MAX_CONCURRENCY
+                    )
+                ),
+            },
+            execution_timeout_seconds=int(
+                (workflow_snapshot or {}).get(
+                    "execution_timeout_seconds",
+                    EXECUTION_TIMEOUT_SECONDS,
+                )
+            ),
+            durability="sync" if checkpoint_context is not None else None,
+            owns_lifecycle=owns_lifecycle,
+            public_output=public_output,
+            run_kind="workflow",
+            command_runtime=command_runtime,
+            task_dispatcher_runtime=task_dispatcher_runtime,
+        )

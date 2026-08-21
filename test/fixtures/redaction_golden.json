@@ -1,0 +1,14 @@
+{
+  "api_key": "[REDACTED]",
+  "authorization": "[REDACTED]",
+  "url": "https://provider.example/v1",
+  "messages": "[REDACTED]",
+  "tool_args": "[REDACTED]",
+  "local_path": "[LOCAL_PATH]",
+  "nested": [
+    {
+      "provider_response": "[REDACTED]",
+      "safe": "request used Bearer [REDACTED]"
+    }
+  ]
+}

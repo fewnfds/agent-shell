@@ -1,0 +1,1 @@
+"""Atomic configuration bundle domain."""

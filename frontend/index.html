@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-bs-theme="light">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <title>Agent Shell</title>
+    <script>
+      (() => {
+        let preference = 'auto'
+        try {
+          const saved = window.localStorage.getItem('lte-theme')
+          if (saved === 'light' || saved === 'dark' || saved === 'auto') preference = saved
+        } catch {
+          // Theme persistence is optional when browser storage is unavailable.
+        }
+        const systemDark = typeof window.matchMedia === 'function'
+          && window.matchMedia('(prefers-color-scheme: dark)').matches
+        const resolved = preference === 'auto' ? systemDark ? 'dark' : 'light' : preference
+        document.documentElement.setAttribute('data-bs-theme', resolved)
+        document.documentElement.style.colorScheme = resolved
+      })()
+    </script>
+  </head>
+  <body class="layout-fixed sidebar-expand-lg sidebar-mini bg-body-tertiary">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

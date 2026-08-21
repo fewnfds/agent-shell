@@ -1,0 +1,326 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from agent_shell.python_packages.validation import PythonPackageValidationService
+from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.provider_secrets import ProviderSecretResolver
+from agent_shell.runtime.agent_builder import AgentBuilder
+from agent_shell.runtime.agent_runtime import AgentRuntime, RunExecution
+from agent_shell.runtime.background_commands import BackgroundRunCaller
+from agent_shell.runtime.background_tasks import (
+    BackgroundTaskHandle,
+    BackgroundTaskManager,
+    BackgroundTaskSnapshot,
+    BackgroundTaskStatus,
+)
+from agent_shell.runtime.diagnostics import RuntimeDiagnostics
+from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
+from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.storage.blocks import BlockStore
+from agent_shell.storage.agent_configs import AgentConfigStore
+from agent_shell.storage.file_config import FileConfigRepository
+from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
+from agent_shell.storage.media_outputs import MediaOutputStore
+from agent_shell.storage.runtime_policy import RuntimePolicyStore
+from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.validation.assembly import StaticAssembly
+from agent_shell.validation.service import ConfigurationValidationService
+from agent_shell.workflow import workflow_document_sha256
+from agent_shell.runtime.errors import AgentRuntimeError
+
+
+def _detached_context_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _detached_context_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_detached_context_value(item) for item in value]
+    return deepcopy(value)
+
+
+@dataclass(slots=True)
+class RequestRuntimeSnapshot:
+    """Build Workflow and background Runs from one immutable config catalog."""
+
+    _workflows: WorkflowStore
+    _validation: ConfigurationValidationService
+    _runtime: AgentRuntime
+    _runtime_factory: Callable[[], AgentRuntime]
+    _workflow_lifecycle: WorkflowLifecycleService
+    _background_tasks: BackgroundTaskManager
+
+    def workflow_by_name(self, name: str) -> dict[str, Any] | None:
+        return self._workflows.get_item_by_name(name)
+
+    def workflow_by_id(self, workflow_id: str) -> dict[str, Any] | None:
+        return self._workflows.get_item(workflow_id)
+
+    async def start_workflow(
+        self,
+        workflow: Mapping[str, Any],
+        raw_messages: object,
+        **kwargs: Any,
+    ) -> RunExecution:
+        document = self._workflows.get_graph(str(workflow["id"]))
+        if document is None:
+            raise RuntimeError("the captured Workflow no longer exists")
+        return await self._runtime.start_workflow(
+            document,
+            raw_messages,
+            workflow_snapshot=workflow,
+            background_runtime=self,
+            **kwargs,
+        )
+
+    async def start_background_workflow(
+        self,
+        target_workflow_id: str,
+        *,
+        operation_id: str,
+        caller: BackgroundRunCaller,
+        shared_vars: Mapping[str, Any],
+        workflow_task: Mapping[str, Any] | None = None,
+    ) -> BackgroundTaskHandle:
+        target = self._workflows.get_item(target_workflow_id)
+        if (
+            target is None
+            or not target["enabled"]
+            or target["workflow_role"] != "child"
+        ):
+            raise AgentRuntimeError(
+                "background_workflow_target_not_found",
+                "The selected child Workflow does not exist or is disabled.",
+                status_code=422,
+            )
+        document = self._workflows.get_graph(target_workflow_id)
+        if document is None:
+            raise AgentRuntimeError(
+                "background_workflow_target_not_found",
+                "The selected child Workflow does not exist.",
+                status_code=422,
+            )
+        frozen_shared_vars = deepcopy(dict(shared_vars))
+        frozen_workflow_task = (
+            deepcopy(dict(workflow_task)) if workflow_task is not None else None
+        )
+
+        async def build_execution(identity):
+            messages = await self._workflow_lifecycle.messages(
+                caller.lifecycle_id
+            )
+            child_runtime = self._runtime_factory()
+            return await child_runtime.start_workflow(
+                document,
+                messages,
+                workflow_snapshot=target,
+                request_id=caller.request_id,
+                public_model=str(target["name"]),
+                lifecycle_id=caller.lifecycle_id,
+                run_id=identity.child_run_id,
+                thread_id=identity.child_thread_id,
+                parent_run_id=caller.run_id,
+                background_task_id=identity.task_id,
+                launcher_id=caller.caller_id or operation_id,
+                run_depth=identity.run_depth,
+                initial_shared_vars=frozen_shared_vars,
+                initial_workflow_task=frozen_workflow_task,
+                background_runtime=self,
+                public_output=False,
+            )
+
+        return await self._background_tasks.start_workflow(
+            lifecycle_id=caller.lifecycle_id,
+            request_id=caller.request_id,
+            launcher_run_id=caller.run_id,
+            launcher_id=caller.caller_id or operation_id,
+            operation_id=operation_id,
+            caller_run_depth=caller.run_depth,
+            target_id=target_workflow_id,
+            target_name=str(target["name"]),
+            target_graph_sha=workflow_document_sha256(document),
+            execution_factory=build_execution,
+        )
+
+    async def start_background_agent(
+        self,
+        target_agent_id: str,
+        *,
+        operation_id: str,
+        caller: BackgroundRunCaller,
+        shared_vars: Mapping[str, Any],
+        workflow_task: Mapping[str, Any] | None = None,
+    ) -> BackgroundTaskHandle:
+        report, assembly = self._validation.resolve_main_agent(target_agent_id)
+        if assembly is None:
+            issue = report.issues[0]
+            raise AgentRuntimeError(
+                issue.code,
+                issue.message,
+                status_code=422,
+                validation_report=report,
+            )
+        frozen_assembly = deepcopy(assembly)
+        frozen_shared_vars = deepcopy(dict(shared_vars))
+        frozen_workflow_task = (
+            deepcopy(dict(workflow_task)) if workflow_task is not None else None
+        )
+        workflow_snapshot = _detached_context_value(caller.workflow)
+        target_name = str(frozen_assembly.main_agent["name"])
+
+        async def build_execution(identity):
+            messages = await self._workflow_lifecycle.messages(
+                caller.lifecycle_id
+            )
+            child_runtime = self._runtime_factory()
+            return await child_runtime.start_background_agent(
+                frozen_assembly,
+                messages,
+                workflow_snapshot=workflow_snapshot,
+                launcher_id=caller.caller_id or operation_id,
+                request_id=caller.request_id,
+                lifecycle_id=caller.lifecycle_id,
+                run_id=identity.child_run_id,
+                thread_id=identity.child_thread_id,
+                parent_run_id=caller.run_id,
+                background_task_id=identity.task_id,
+                run_depth=identity.run_depth,
+                initial_shared_vars=frozen_shared_vars,
+                initial_workflow_task=frozen_workflow_task,
+                background_runtime=self,
+            )
+
+        return await self._background_tasks.start_agent(
+            lifecycle_id=caller.lifecycle_id,
+            request_id=caller.request_id,
+            launcher_run_id=caller.run_id,
+            launcher_id=caller.caller_id or operation_id,
+            operation_id=operation_id,
+            caller_run_depth=caller.run_depth,
+            target_id=target_agent_id,
+            target_name=target_name,
+            execution_factory=build_execution,
+        )
+
+    async def check_background_tasks(
+        self,
+        task_ids: list[str],
+        *,
+        caller: BackgroundRunCaller,
+    ) -> list[BackgroundTaskSnapshot]:
+        return await self._background_tasks.check(
+            caller.lifecycle_id,
+            task_ids,
+        )
+
+    async def list_background_tasks(
+        self,
+        *,
+        caller: BackgroundRunCaller,
+        statuses: frozenset[BackgroundTaskStatus] | None = None,
+    ) -> list[BackgroundTaskSnapshot]:
+        return await self._background_tasks.list(
+            caller.lifecycle_id,
+            statuses=statuses,
+        )
+
+    async def cancel_background_tasks(
+        self,
+        task_ids: list[str],
+        *,
+        caller: BackgroundRunCaller,
+    ) -> list[BackgroundTaskSnapshot]:
+        return await self._background_tasks.cancel(
+            caller.lifecycle_id,
+            task_ids,
+        )
+
+
+class RequestSnapshotRuntime:
+    """Capture the latest committed file configuration for each Agent construction."""
+
+    def __init__(
+        self,
+        configuration: FileConfigRepository,
+        *,
+        python_packages_dir: Path | Callable[[], Path],
+        runtime_dir: Path,
+        skills_dir: Path | Callable[[], Path],
+        provider_http_clients: ProviderHttpClients,
+        media_outputs: MediaOutputStore,
+        workflow_checkpoints: WorkflowCheckpointService,
+        workflow_lifecycle: WorkflowLifecycleService,
+        background_tasks: BackgroundTaskManager,
+        runtime_diagnostics: RuntimeDiagnostics,
+        runtime_policy: RuntimePolicyStore,
+        model_resources: ModelResourceStore | None = None,
+    ) -> None:
+        self._configuration = configuration
+        self._python_packages_dir_source = python_packages_dir
+        self._runtime_dir = runtime_dir
+        self._skills_dir_source = skills_dir
+        self._provider_http_clients = provider_http_clients
+        self._media_outputs = media_outputs
+        self._workflow_checkpoints = workflow_checkpoints
+        self._workflow_lifecycle = workflow_lifecycle
+        self._background_tasks = background_tasks
+        self._runtime_diagnostics = runtime_diagnostics
+        self._runtime_policy = runtime_policy
+        self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
+
+    def capture(self) -> RequestRuntimeSnapshot:
+        with self._configuration.request_snapshot_context() as context:
+            repository, python_packages_dir, skills_dir, _repository_id = context
+        blocks = BlockStore(repository)
+        configs = AgentConfigStore(repository)
+        workflows = WorkflowStore(repository)
+        model_resources = self._model_resources.snapshot()
+        secrets = ProviderSecretResolver(repository, model_resources)
+        python_package_validation = PythonPackageValidationService(
+            packages_dir=python_packages_dir,
+            runtime_root=self._runtime_dir,
+        )
+        validation = ConfigurationValidationService(
+            blocks,
+            configs,
+            python_package_validation,
+        )
+        def runtime_factory() -> AgentRuntime:
+            return AgentRuntime(
+                AgentBuilder(
+                    secrets,
+                    python_packages_dir=python_packages_dir,
+                    runtime_dir=self._runtime_dir,
+                    skills_dir=skills_dir,
+                    validation=validation,
+                    provider_http_clients=self._provider_http_clients,
+                    store=self._workflow_lifecycle.store,
+                    model_resources=model_resources,
+                    repository_id=_repository_id,
+                    runtime_policy=self._runtime_policy,
+                ),
+                self._media_outputs,
+                python_packages_dir=python_packages_dir,
+                runtime_dir=self._runtime_dir,
+                blocks=blocks,
+                workflow_checkpoints=self._workflow_checkpoints,
+                workflow_lifecycle=self._workflow_lifecycle,
+                runtime_diagnostics=self._runtime_diagnostics,
+                runtime_policy=self._runtime_policy,
+            )
+
+        runtime = runtime_factory()
+        return RequestRuntimeSnapshot(
+            _workflows=workflows,
+            _validation=validation,
+            _runtime=runtime,
+            _runtime_factory=runtime_factory,
+            _workflow_lifecycle=self._workflow_lifecycle,
+            _background_tasks=self._background_tasks,
+        )
