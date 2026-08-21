@@ -12,10 +12,9 @@
 
 ## 分支
 
-- `workflow`：GitHub 默认分支，承载滚动源码与日常集成；每次推送保持可启动；
-- `main`：经实际使用确认的稳定源码；由 `workflow` merge/fast-forward 晋升；
-- `v<project.version>` tag：从 `main` 创建，标记正式源码版本；
-- `hotfix/*`：从 `main` 修复，合并回 `main` 后同步进 `workflow`。
+- `dev`：唯一的 Git 分支和 GitHub 默认分支，承载滚动源码与日常集成；每次推送保持可启动；
+- `v<project.version>` tag：从 `dev` 创建，标记正式源码版本；
+- 发布修复直接提交到 `dev`，通过版本 tag 标记发布点。
 
 源码维护目录不作为用户实例运行。滚动用户使用独立 Clone，并保留该 Clone 自己的 `data/`。
 
@@ -127,7 +126,7 @@ pytest cache provider，避免生成仓库内 `.pytest_cache`。不要为一次�
 永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/fixtures/` 和 `test/` 的直接支撑模块中。
 用户可观察行为、API 和持久化结果是验收证据。
 
-推送 `workflow` 或 `main` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 typecheck、UI policy 与
+推送 `dev` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 typecheck、UI policy 与
 Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：
 
 ```powershell
@@ -160,10 +159,10 @@ git diff --check
 当前阶段的维护与复核以 Windows 源码 Clone 启动方式为准。修改 Windows runtime bootstrap、依赖锁或启动入口时，
 按本页的源码 Clone 启动方式复核。
 
-确认 `main` 后创建 annotated tag：
+确认 `dev` 后创建 annotated tag：
 
 ```powershell
-git push origin main
+git push origin dev
 git tag -a v<version> -m "release: v<version>"
 git push origin v<version>
 ```
