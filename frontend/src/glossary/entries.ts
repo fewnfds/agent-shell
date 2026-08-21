@@ -74,7 +74,7 @@ const SOURCES: Record<string, GlossarySource> = {
     aiSafety: { label: 'Wikipedia: AI safety', url: 'https://en.wikipedia.org/wiki/AI_safety' },
     aiAlignment: { label: 'Wikipedia: AI alignment', url: 'https://en.wikipedia.org/wiki/AI_alignment' },
     owaspPromptInjection: { label: 'OWASP Prompt Injection Prevention', url: 'https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html' },
-    agentShellSystemManagement: { label: 'Agent Shell: Data and system management', url: 'https://github.com/fewnfds/agents-shell/blob/dev/docs/user-guide/system-management.md' },
+    agentShellSystemManagement: { label: 'Agent Shell: Data and system management', url: 'https://github.com/fewnfds/agent-shell/blob/dev/docs/user-guide/system-management.md' },
     hallucination: { label: 'Wikipedia: Hallucination', url: 'https://en.wikipedia.org/wiki/Hallucination_(artificial_intelligence)' },
     benchmark: { label: 'Wikipedia: Benchmark', url: 'https://en.wikipedia.org/wiki/Benchmark_(computing)' },
     reinforcement: { label: 'Wikipedia: Reinforcement learning', url: 'https://en.wikipedia.org/wiki/Reinforcement_learning' },
