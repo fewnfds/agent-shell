@@ -64,6 +64,13 @@ body {
   padding: 0;
 }
 
+.input-group > .action-button,
+.input-group > .icon-action-button {
+  align-self: stretch;
+  height: auto;
+  min-height: 100%;
+}
+
 .action-button > .bi,
 .icon-action-button > .bi {
   line-height: 1;

@@ -37,7 +37,7 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   <LteButton
     class="action-button"
     :disabled="!props.hasSelection || busy"
-    theme="secondary"
+    theme="info"
     type="button"
     @click="emit('copy')"
   >
@@ -79,7 +79,7 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
     v-if="props.showEdit"
     class="action-button"
     :disabled="!props.hasSelection || busy"
-    theme="secondary"
+    theme="warning"
     type="button"
     @click="emit('edit')"
   >

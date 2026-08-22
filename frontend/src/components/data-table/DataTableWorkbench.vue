@@ -97,6 +97,14 @@ function actionLabel(action: DataTableRowAction<Row>, row: Row): string {
   return typeof action.label === 'function' ? action.label(row) : action.label
 }
 
+function actionTheme(icon: DataTableRowAction<Row>['icon']): 'primary' | 'secondary' | 'info' | 'warning' | 'danger' {
+  if (icon === 'activate') return 'primary'
+  if (icon === 'copy' || icon === 'download') return 'info'
+  if (icon === 'delete') return 'danger'
+  if (icon === 'edit') return 'warning'
+  return 'secondary'
+}
+
 function visibleActions(row: Row): readonly DataTableRowAction<Row>[] {
   return rowActions.value.filter((action) => action.visible?.(row) ?? true)
 }
@@ -312,7 +320,7 @@ defineExpose<{
               v-if="config.bulkAction"
               class="action-button"
               :disabled="loading || runningBulkAction || !bulkEnabled"
-              theme="danger"
+              :theme="actionTheme(config.bulkAction.icon)"
               type="button"
               @click="runBulkAction"
             >
@@ -343,7 +351,7 @@ defineExpose<{
     </div>
     <div v-else-if="loadError" data-testid="data-table-error" role="alert">
       <LteAlert :title="label(config.loadErrorTitle)" theme="danger">{{ loadErrorText }}</LteAlert>
-      <LteButton class="action-button" theme="secondary" type="button" @click="reload">
+      <LteButton class="action-button" theme="info" type="button" @click="reload">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.retry') }}
       </LteButton>
@@ -394,7 +402,7 @@ defineExpose<{
                     :aria-label="actionLabel(action, row)"
                     :disabled="Boolean(runningRowAction) || Boolean(action.disabled?.(row))"
                     size="sm"
-                    :theme="action.tone"
+                    :theme="actionTheme(action.icon)"
                     :title="actionLabel(action, row)"
                     type="button"
                     @click="runRowAction(action, row)"

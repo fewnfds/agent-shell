@@ -74,7 +74,7 @@ function refresh(): void {
         :aria-label="t('common.refresh')"
         :disabled="loading"
         size="sm"
-        theme="secondary"
+        theme="info"
         type="button"
         @click="refresh"
       >
@@ -137,7 +137,7 @@ function refresh(): void {
                     :aria-label="t('common.edit')"
                     :title="t('common.edit')"
                     size="sm"
-                    theme="secondary"
+                    theme="warning"
                     type="button"
                     @click="openFile(file.file_manager_path)"
                   >

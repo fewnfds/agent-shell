@@ -335,7 +335,7 @@ defineExpose({ refresh: load })
 <template>
   <section>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <LteButton class="action-button" :disabled="loading" theme="secondary" type="button" @click="load()">
+      <LteButton class="action-button" :disabled="loading" theme="info" type="button" @click="load()">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
@@ -477,7 +477,7 @@ defineExpose({ refresh: load })
                   :aria-label="t('fileManager.download')"
                   :title="t('fileManager.download')"
                   size="sm"
-                  theme="secondary"
+                  theme="info"
                   type="button"
                   @click="download(item)"
                 >
@@ -489,7 +489,7 @@ defineExpose({ refresh: load })
                   :aria-label="t('fileManager.rename')"
                   :title="t('fileManager.rename')"
                   size="sm"
-                  theme="secondary"
+                  theme="warning"
                   type="button"
                   @click="startRename(item)"
                 >

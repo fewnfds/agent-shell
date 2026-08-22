@@ -150,7 +150,7 @@ watch(() => props.path, () => { void load() }, { immediate: true })
     >
       <p class="mb-2">{{ t('fileManager.editor.conflictDescription') }}</p>
       <div class="d-flex flex-wrap gap-2">
-        <LteButton class="action-button" theme="secondary" type="button" @click="load">
+        <LteButton class="action-button" theme="info" type="button" @click="load">
           <i class="bi bi-arrow-clockwise" aria-hidden="true" />
           {{ t('fileManager.editor.reloadDisk') }}
         </LteButton>
@@ -165,7 +165,7 @@ watch(() => props.path, () => { void load() }, { immediate: true })
           <i class="bi bi-floppy" aria-hidden="true" />
           {{ t('fileManager.editor.overwriteLatest') }}
         </LteButton>
-        <LteButton class="action-button" theme="secondary" type="button" @click="keepEditing">
+        <LteButton class="action-button" theme="warning" type="button" @click="keepEditing">
           <i class="bi bi-pencil" aria-hidden="true" />
           {{ t('fileManager.editor.keepEditing') }}
         </LteButton>
@@ -181,7 +181,7 @@ watch(() => props.path, () => { void load() }, { immediate: true })
       v-model="draft"
       class="form-control font-monospace"
       :readonly="!file.capabilities.write"
-      rows="24"
+      rows="18"
       spellcheck="false"
     />
   </section>
