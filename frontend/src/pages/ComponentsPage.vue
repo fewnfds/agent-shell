@@ -930,6 +930,7 @@ onMounted(() => {
   <PageShell>
     <template #actions>
       <LteButton
+        class="action-button"
         :disabled="!draft?.id || loading || saving || deleting"
         theme="secondary"
         type="button"
@@ -939,6 +940,7 @@ onMounted(() => {
         {{ t('common.copy') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="!draft?.id || loading || saving || deleting"
         theme="danger"
         type="button"
@@ -948,6 +950,7 @@ onMounted(() => {
         {{ deleting ? t('common.deleting') : t('common.delete') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="!draft || loading || saving || deleting"
         theme="success"
         type="button"
@@ -957,6 +960,7 @@ onMounted(() => {
         {{ t('common.new') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="!draft || loading || saving || deleting"
         theme="primary"
         type="button"

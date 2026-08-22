@@ -334,32 +334,32 @@ defineExpose({ refresh: load })
 <template>
   <section>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <LteButton :disabled="loading" theme="info" type="button" @click="load()">
+      <LteButton class="action-button" :disabled="loading" theme="info" type="button" @click="load()">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
       <template v-if="directory?.capabilities.create">
-        <LteButton theme="success" type="button" @click="openCreate('directory')">
+        <LteButton class="action-button" theme="success" type="button" @click="openCreate('directory')">
           <i class="bi bi-folder-plus" aria-hidden="true" />
           {{ t('fileManager.createFolder') }}
         </LteButton>
-        <LteButton theme="success" type="button" @click="openCreate('file')">
+        <LteButton class="action-button" theme="success" type="button" @click="openCreate('file')">
           <i class="bi bi-file-earmark-plus" aria-hidden="true" />
           {{ t('fileManager.createFile') }}
         </LteButton>
       </template>
       <template v-if="directory?.capabilities.upload">
-        <LteButton :disabled="uploading" theme="success" type="button" @click="fileInput?.click()">
+        <LteButton class="action-button" :disabled="uploading" theme="success" type="button" @click="fileInput?.click()">
           <i class="bi bi-upload" aria-hidden="true" />
           {{ t('fileManager.uploadFiles') }}
         </LteButton>
-        <LteButton :disabled="uploading" theme="success" type="button" @click="folderInput?.click()">
+        <LteButton class="action-button" :disabled="uploading" theme="success" type="button" @click="folderInput?.click()">
           <i class="bi bi-folder-plus" aria-hidden="true" />
           {{ t('fileManager.uploadFolder') }}
         </LteButton>
       </template>
       <LteButton
-        class="ms-auto"
+        class="action-button ms-auto"
         :disabled="!selectedItems.length || archiveDownloading"
         theme="primary"
         type="button"
@@ -471,24 +471,30 @@ defineExpose({ refresh: load })
             <td>
               <div class="d-flex justify-content-end gap-1">
                 <LteButton
+                  class="icon-action-button"
                   v-if="item.capabilities.download"
                   :aria-label="t('fileManager.download')"
+                  :title="t('fileManager.download')"
                   size="sm"
                   theme="info"
                   type="button"
                   @click="download(item)"
                 ><i class="bi bi-download" aria-hidden="true" /></LteButton>
                 <LteButton
+                  class="icon-action-button"
                   v-if="item.capabilities.rename"
                   :aria-label="t('fileManager.rename')"
+                  :title="t('fileManager.rename')"
                   size="sm"
                   theme="warning"
                   type="button"
                   @click="startRename(item)"
                 ><i class="bi bi-pencil" aria-hidden="true" /></LteButton>
                 <LteButton
+                  class="icon-action-button"
                   v-if="item.capabilities.delete"
                   :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   size="sm"
                   theme="danger"
                   type="button"

@@ -86,7 +86,7 @@ describe('WorkflowsPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain(workflow.name)
-    expect(wrapper.text()).toContain('Edit Flow')
+    expect(wrapper.text()).toContain('Edit')
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')

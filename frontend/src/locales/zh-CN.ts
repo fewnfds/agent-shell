@@ -96,7 +96,7 @@ export const zhCN = {
     },
     actions: {
       configure: '装配配置',
-      editFlow: '编辑 Flow',
+      editFlow: '编辑',
     },
     editor: {
       title: 'Workflow 画布',

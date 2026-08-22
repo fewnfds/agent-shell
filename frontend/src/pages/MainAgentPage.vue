@@ -345,19 +345,20 @@ watch(
 <template>
   <PageShell>
     <template #actions>
-      <LteButton :disabled="!form.id || loading || saving || copying || deleting" theme="secondary" type="button" @click="openCopy">
+      <LteButton class="action-button" :disabled="!form.id || loading || saving || copying || deleting" theme="secondary" type="button" @click="openCopy">
         <i class="bi bi-copy" aria-hidden="true" />
         {{ t('common.copy') }}
       </LteButton>
-      <LteButton :disabled="!form.id || loading || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent">
+      <LteButton class="action-button" :disabled="!form.id || loading || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent">
         <i class="bi bi-trash" aria-hidden="true" />
         {{ deleting ? t('common.deleting') : t('common.delete') }}
       </LteButton>
-      <LteButton :disabled="loading || saving || copying || deleting" theme="success" type="button" @click="startNew">
+      <LteButton class="action-button" :disabled="loading || saving || copying || deleting" theme="success" type="button" @click="startNew">
         <i class="bi bi-plus-lg" aria-hidden="true" />
         {{ t('common.new') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="loading || saving || copying || deleting"
         theme="primary"
         type="button"

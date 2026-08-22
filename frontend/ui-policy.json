@@ -193,9 +193,9 @@
         "name": "forms-and-actions",
         "paths": ["src/components/*.vue", "src/components/data-table/*.vue", "src/components/workflow/*.vue", "src/editors/*.vue", "src/pages/*.vue"],
         "classes": [
-          "btn", "btn-check", "btn-danger", "btn-info", "btn-lg", "btn-outline-primary", "btn-primary", "btn-secondary", "btn-sm", "btn-success", "btn-warning", "form-check",
+          "action-button", "btn", "btn-check", "btn-danger", "btn-info", "btn-lg", "btn-outline-primary", "btn-primary", "btn-secondary", "btn-sm", "btn-success", "btn-warning", "form-check",
           "form-check-input", "form-check-label", "form-control", "form-label", "form-select",
-          "form-select-sm", "form-switch", "input-group", "input-group-text", "is-invalid", "invalid-feedback"
+          "form-select-sm", "form-switch", "icon-action-button", "input-group", "input-group-text", "is-invalid", "invalid-feedback"
         ]
       },
       {

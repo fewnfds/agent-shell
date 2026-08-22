@@ -62,7 +62,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
     <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
       <h2 :id="`${idPrefix}-title`" class="card-title mb-0">{{ title }}</h2>
       <LteButton
-        class="ms-auto"
+        class="icon-action-button ms-auto"
         :data-action="`add-${kind}-reference`"
         :aria-label="addLabel"
         :title="addLabel"
@@ -90,6 +90,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
               <span class="badge text-bg-secondary">{{ index + 1 }}</span>
               <div class="d-flex gap-1 ms-auto" role="group">
                 <LteButton
+                  class="icon-action-button"
                   :data-action="`move-${kind}-reference-up`"
                   :aria-label="t('common.moveUp')"
                   :title="t('common.moveUp')"
@@ -102,6 +103,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
                   <i class="bi bi-arrow-up" aria-hidden="true" />
                 </LteButton>
                 <LteButton
+                  class="icon-action-button"
                   :data-action="`move-${kind}-reference-down`"
                   :aria-label="t('common.moveDown')"
                   :title="t('common.moveDown')"
@@ -114,6 +116,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
                   <i class="bi bi-arrow-down" aria-hidden="true" />
                 </LteButton>
                 <LteButton
+                  class="icon-action-button"
                   :data-action="`remove-${kind}-reference`"
                   :aria-label="t('common.remove')"
                   :title="t('common.remove')"

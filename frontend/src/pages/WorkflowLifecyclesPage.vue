@@ -293,6 +293,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                     <td>
                       <div class="d-flex gap-1">
                       <LteButton
+                        class="icon-action-button"
                         :aria-label="t('workflowLifecycles.viewRun')"
                         size="sm"
                         theme="secondary"
@@ -303,6 +304,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                         <i class="bi bi-eye" aria-hidden="true" />
                       </LteButton>
                       <LteButton
+                        class="icon-action-button"
                         :aria-label="t('workflowLifecycles.downloadRun')"
                         :disabled="downloadingRuns[run.run_id]"
                         size="sm"

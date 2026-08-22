@@ -82,16 +82,16 @@ function remix(): void {
             <button class="btn btn-outline-primary" type="button">{{ t('styleLab.samples.secondary') }}</button>
           </div>
           <div class="lab-cluster" role="group" :aria-label="t('styleLab.samples.actions')">
-            <button class="btn btn-secondary btn-sm" type="button" :title="t('styleLab.samples.add')" :aria-label="t('styleLab.samples.add')">
+            <button class="btn btn-secondary btn-sm icon-action-button" type="button" :title="t('styleLab.samples.add')" :aria-label="t('styleLab.samples.add')">
               <i class="bi bi-plus-lg" aria-hidden="true" />
             </button>
-            <button class="btn btn-secondary btn-sm" type="button" :title="t('styleLab.samples.refresh')" :aria-label="t('styleLab.samples.refresh')">
+            <button class="btn btn-secondary btn-sm icon-action-button" type="button" :title="t('styleLab.samples.refresh')" :aria-label="t('styleLab.samples.refresh')">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             </button>
-            <button class="btn btn-secondary btn-sm" type="button" :title="t('styleLab.samples.download')" :aria-label="t('styleLab.samples.download')">
+            <button class="btn btn-secondary btn-sm icon-action-button" type="button" :title="t('styleLab.samples.download')" :aria-label="t('styleLab.samples.download')">
               <i class="bi bi-download" aria-hidden="true" />
             </button>
-            <button class="btn btn-danger btn-sm" type="button" :title="t('styleLab.samples.delete')" :aria-label="t('styleLab.samples.delete')">
+            <button class="btn btn-danger btn-sm icon-action-button" type="button" :title="t('styleLab.samples.delete')" :aria-label="t('styleLab.samples.delete')">
               <i class="bi bi-trash" aria-hidden="true" />
             </button>
           </div>
@@ -193,7 +193,7 @@ function remix(): void {
             <header class="card-header d-flex align-items-center gap-2">
               <h3 class="card-title">{{ t('styleLab.samples.actionCard') }}</h3>
               <button
-                class="btn btn-secondary btn-sm ms-auto"
+                class="btn btn-secondary btn-sm icon-action-button ms-auto"
                 type="button"
                 :aria-label="t('common.edit')"
                 :title="t('common.edit')"
@@ -237,7 +237,7 @@ function remix(): void {
                 <td>{{ t('styleLab.samples.model') }}</td>
                 <td><span class="badge text-bg-success">{{ t('styleLab.samples.ready') }}</span></td>
                 <td class="text-end">
-                  <button class="btn btn-secondary btn-sm" type="button" :aria-label="t('common.edit')" :title="t('common.edit')">
+                  <button class="btn btn-secondary btn-sm icon-action-button" type="button" :aria-label="t('common.edit')" :title="t('common.edit')">
                     <i class="bi bi-pencil" aria-hidden="true" />
                   </button>
                 </td>
@@ -247,7 +247,7 @@ function remix(): void {
                 <td>{{ t('styleLab.samples.skill') }}</td>
                 <td><span class="badge text-bg-warning">{{ t('styleLab.samples.draft') }}</span></td>
                 <td class="text-end">
-                  <button class="btn btn-secondary btn-sm" type="button" :aria-label="t('common.edit')" :title="t('common.edit')">
+                  <button class="btn btn-secondary btn-sm icon-action-button" type="button" :aria-label="t('common.edit')" :title="t('common.edit')">
                     <i class="bi bi-pencil" aria-hidden="true" />
                   </button>
                 </td>

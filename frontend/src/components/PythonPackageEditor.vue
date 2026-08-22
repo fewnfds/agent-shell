@@ -133,14 +133,15 @@ function refresh(): void {
                 <td>{{ file.size }}</td>
                 <td class="text-end">
                   <LteButton
+                    class="icon-action-button"
                     :aria-label="t('common.edit')"
+                    :title="t('common.edit')"
                     size="sm"
                     theme="info"
                     type="button"
                     @click="openFile(file.file_manager_path)"
                   >
                     <i class="bi bi-pencil" aria-hidden="true" />
-                    {{ t('common.edit') }}
                   </LteButton>
                 </td>
               </tr>

@@ -98,7 +98,7 @@ export const en: MessageSchema = {
     },
     actions: {
       configure: 'Configure',
-      editFlow: 'Edit Flow',
+      editFlow: 'Edit',
     },
     editor: {
       title: 'Workflow canvas',
