@@ -1,7 +1,3 @@
-def _details(summary, message):
-    return f'<details type="agent"><summary>*{summary}*</summary>{message}</details>\n'
-
-
 # Fields available to every branch:
 # event_type, phase, sequence, timestamp, namespace, agent_name, node,
 # source_type, workflow_node_id, agent_profile_id, subagent_profile_id,
@@ -14,7 +10,7 @@ def _details(summary, message):
 # subagent -> subagent_name, tool_call_id, status
 # custom -> channel, data_json
 # lifecycle -> status, finish_reason, error_code
-# data is the complete Python payload. Use message/output/arguments/data_json for
+# data is the complete Python payload. Use message / output / arguments / data_json for
 # bounded, normalized text and check event_type before reading optional fields.
 #
 # This example renders every supported Agent event as an HTML
@@ -22,6 +18,10 @@ def _details(summary, message):
 # returning an empty string filters an event. The complete event contract is
 # documented in docs/wizard-pages/agent-event-output-config.md.
 # Return an empty string from a branch to filter that event.
+
+def _details(summary, message):
+    return f'<details type="agent"><summary>*{summary}*</summary>{message}</details>\n'
+
 def output(event):
     event_type = event["event_type"]
     agent_name = event["agent_name"]

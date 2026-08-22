@@ -5,10 +5,8 @@ Command 节点是 Workflow 画布上可同时更新 State 和动态选择后继�
 
 ## Package 与入口
 
-静态模板位于 `data/templates/workflow/command/<template-key>/`。新配置首次保存时复制为
-`data/configuration-repositories/<repository-uuid>/python_package_instances/command/<configuration-uuid>/` 下的配置扩展。
-配置扩展至少包含 `package.json` 和 `main.py`，并可包含 `requirements.txt`、本地模块和测试。manifest 固定使用 `family: workflow-node` 与
-`adapter: command`。完整目录、manifest、imports 和依赖规则见[文件化 Python 扩展包](../user-guide/middleware-packages.md)。
+静态模板位于 `data/templates/workflow/command/<template-key>/`。新配置首次保存时复制为 `data/configuration-repositories/<repository-uuid>/python_package_instances/command/<configuration-uuid>/` 下的配置扩展。
+配置扩展至少包含 `package.json` 和 `main.py`，并可包含 `requirements.txt`、本地模块和测试。manifest 固定使用 `family: workflow-node` 与 `adapter: command`。完整目录、manifest、imports 和依赖规则见[文件化 Python 扩展包](../user-guide/middleware-packages.md)。
 
 `main.py` 必须提供同步工厂 `create_command()`，工厂返回固定签名的 async callable：
 
@@ -45,8 +43,7 @@ def create_command():
 - Shell 不保留兜底 key。条件是否覆盖完整、使用 `if/elif/else` 还是 `match`，由脚本自己负责。
 - 返回未知或未连接的 key、重复 key、非法 State 字段/值、无效入口或异常都会使本次 Workflow 运行失败。
 
-运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态
-`add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触画布 Node ID，也不直接返回 `Command`。
+运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态 `add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触画布 Node ID，也不直接返回 `Command`。
 
 这些 Python 代码运行在服务进程的受信任边界内，没有 sandbox。源码修改在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后必须重启 Agent Shell，依赖状态才会重新准备。

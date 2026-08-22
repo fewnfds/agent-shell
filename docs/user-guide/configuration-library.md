@@ -17,15 +17,13 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - 批量删除与引用摘除由文件配置仓库统一写入；每条记录保存为独立 YAML 文件；
 - catalog 中无法装配的组件类型会显示为失效引用，可在 Agent 编辑页移除；删除该记录时服务端也会自动摘除引用。
 
-Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及
-Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看和编辑，复制与运行会重新校验；
+Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看和编辑，复制与运行会重新校验；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
 组件、Agent 和 Workflow YAML 以及 Python/Skill private package 保存在 `data/configuration-repositories/<repository-uuid>/`；`data/config/` 还保存实例私有 Model Connection 与 repository-scoped model binding，但这些不属于可迁移配置；其余内容为系统配置、secret env 和 active repository pointer。SQLite 只保存运行记录、checkpoint、诊断和媒体元数据。
 
 ## 原子配置 Bundle API
 
-当前后端可以把一个 Component、Subagent、Main Agent 或 Workflow 作为单根导出。Bundle 是 ZIP，根记录所需的
-声明式配置依赖会自动闭合；共享依赖只保存一次。管理 API 为：
+当前后端可以把一个 Component、Subagent、Main Agent 或 Workflow 作为单根导出。Bundle 是 ZIP，根记录所需的声明式配置依赖会自动闭合；共享依赖只保存一次。管理 API 为：
 
 - `POST /api/configuration-bundles/export`：JSON body 使用 `kind`、`source_id`，Component 根另带 `type`；返回 ZIP。下载名只保留 ASCII 字母数字、`-`、`_` 和 `.`，其他字符替换为 `-`，Windows 保留设备名增加 `configuration-` 前缀，并统一使用 `.agent-shell-config.zip` 后缀；实际文件名以响应的 `Content-Disposition` 为准；
 - `POST /api/configuration-bundles/preview`：multipart 的 `bundle` 文件；返回 `bundle_sha256`、固定 target UUID map、名称建议、
@@ -36,8 +34,7 @@ Graph admission 问题也会显示。满足磁盘身份格式但业务配置无�
 配置库根据当前名称输入、服务端 blocker 和 Filesystem binding 实时决定是否允许导入；mapped directory 还需明确 path origin。名称冲突时服务端建议的新名称只作为提示，不会被当成用户已确认值；输入有效新名称后可提交，commit 仍由服务端按当前 active Repository 再次校验。commit 复用本次 preview 的 `bundle_sha256`、`plan_token` 和 target UUID map。导入成功后刷新当前列表并留在原页面。
 
 导入不会按源 UUID 或名称复用、更新或覆盖配置。每条配置使用 preview 给出的新 UUID，声明式引用由后端机械重写；
-名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为
-`enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
+名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为 `enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
 
 单根 Bundle 的 manifest 固定保存 root `kind`、Component `type` 或 Workflow `role`，preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，不由当前页面分类或文件名推断，因此 Filesystem Bundle 不会被写成 Filesystem Permissions。【配置库 / 全局 / 组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式；当前只提供整仓库下载，不提供整仓库上传恢复。
 

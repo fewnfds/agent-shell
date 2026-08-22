@@ -1,7 +1,6 @@
 # 任务分发
 
-任务分发是 Workflow 画布上的动态 map 节点。它从当前 Workflow State/Runtime Context 生成运行时数量的任务，Shell 使用
-LangGraph 官方 `Send` 把任务发给一个或多个 Agent Node。画布只保存一个 Task Dispatcher Node 和候选 Dispatch Edge，
+任务分发是 Workflow 画布上的动态 map 节点。它从当前 Workflow State/Runtime Context 生成运行时数量的任务，Shell 使用 LangGraph 官方 `Send` 把任务发给一个或多个 Agent Node。画布只保存一个 Task Dispatcher Node 和候选 Dispatch Edge，
 不会为每条运行时任务持久化临时 Node。
 
 ## 从内置示例创建
@@ -25,8 +24,7 @@ state["shared_vars"] = {
 
 ## Package 与入口
 
-用户模板位于 `data/templates/workflow/task_dispatcher/<template-key>/`；首次保存后复制为
-`data/configuration-repositories/<repository-uuid>/python_package_instances/task-dispatcher/<configuration-uuid>/`。manifest 固定使用 `family: workflow-node`、
+用户模板位于 `data/templates/workflow/task_dispatcher/<template-key>/`；首次保存后复制为 `data/configuration-repositories/<repository-uuid>/python_package_instances/task-dispatcher/<configuration-uuid>/`。manifest 固定使用 `family: workflow-node`、
 `adapter: task-dispatcher`。`main.py` 必须提供同步工厂：
 
 ```python
@@ -63,19 +61,15 @@ def create_dispatcher():
 
 ## Worker 如何读取任务
 
-Shell 为每项任务补充 `dispatcher_node_id` 与 `dispatcher_invocation_id`，形成 `WorkflowTaskContext`。目标 Agent 子图及其
-Middleware 从私有 State 读取：
+Shell 为每项任务补充 `dispatcher_node_id` 与 `dispatcher_invocation_id`，形成 `WorkflowTaskContext`。目标 Agent 子图及其 Middleware 从私有 State 读取：
 
 ```python
 task_from_state = state["workflow_task"]
 ```
 
-worker 完成后，父 Workflow State 的 `agent_invocations` 轻量记录带不含 payload 的 `workflow_task` identity，因此下游启用
-`defer=True` 的汇总 Agent 可以等待 pending worker 完成，再按 `(dispatcher_node_id, task_id)` 选择结果；完整 task payload
-和 messages 通过 `result_ref` 从 Store 读取。
+worker 完成后，父 Workflow State 的 `agent_invocations` 轻量记录带不含 payload 的 `workflow_task` identity，因此下游启用 `defer=True` 的汇总 Agent 可以等待 pending worker 完成，再按 `(dispatcher_node_id, task_id)` 选择结果；完整 task payload 和 messages 通过 `result_ref` 从 Store 读取。
 
-WIC 可以把 payload 编排进当前 worker 的私有 `messages`，但不负责任务认领或共享锁。任务并发由 LangGraph 调度，当前
-Workflow 设置有限的 `max_concurrency`，任一 worker 未处理的异常会使本次运行 fail-fast。
+WIC 可以把 payload 编排进当前 worker 的私有 `messages`，但不负责任务认领或共享锁。任务并发由 LangGraph 调度，当前 Workflow 设置有限的 `max_concurrency`，任一 worker 未处理的异常会使本次运行 fail-fast。
 
 这些 Python 代码运行在服务进程的受信任边界内，没有 sandbox。源码在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后需要重启 Agent Shell。

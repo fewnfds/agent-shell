@@ -25,8 +25,7 @@ Content-Type: application/json
 在【代理组件 -> 模型要求】创建可迁移的模型能力要求，只填写名称和多行 description。导入配置后，在【模型 -> 模型映射】按 description 选择模型连接；未绑定只产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
 
 `credential` 是 management-only 的 write-only input。创建 Model Connection 时在 HTTPS 或本机 loopback 连接中提交真实 Provider Key；
-服务端会把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中只保存 variable reference。响应不会回显 plaintext。不要把 Key 写进
-script、普通日志或后续 GET/PUT payload；编辑同一 Provider 与 Base URL 时传 `null` 会保留现有 Key。
+服务端会把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中只保存 variable reference。响应不会回显 plaintext。不要把 Key 写进 script、普通日志或后续 GET/PUT payload；编辑同一 Provider 与 Base URL 时传 `null` 会保留现有 Key。
 
 ```http
 POST /api/model-connections
@@ -46,10 +45,7 @@ Content-Type: application/json
 }
 ```
 
-Provider 和 Provider-specific field 以【模型 / 模型连接】页及 backend validation 为准。OpenAI Model 的
-`provider_settings.use_responses_api` 默认是 `false`，即 OpenAI-compatible Chat Completions；只有
-直连的 endpoint 支持官方 OpenAI Responses API 时才设为 `true`。示例中的 model ID 不是当前实例可用
-Model 的事实来源。
+Provider 和 Provider-specific field 以【模型 / 模型连接】页及 backend validation 为准。OpenAI Model 的 `provider_settings.use_responses_api` 默认是 `false`，即 OpenAI-compatible Chat Completions；只有直连的 endpoint 支持官方 OpenAI Responses API 时才设为 `true`。示例中的 model ID 不是当前实例可用 Model 的事实来源。
 
 ## Skill
 
@@ -81,9 +77,7 @@ Main Agent 的 required reference 包含一个 `agent-event-output` package。�
 }
 ```
 
-提交到 `POST /api/blocks/agent-event-output`。推荐先读取
-`GET /api/python-package-templates/agent-event-output`，使用返回的 `key` 和 `revision`，保存后配置拥有独占 package
-目录。
+提交到 `POST /api/blocks/agent-event-output`。推荐先读取 `GET /api/python-package-templates/agent-event-output`，使用返回的 `key` 和 `revision`，保存后配置拥有独占 package 目录。
 
 
 若只需要最终 Assistant text，可以在同一个入口中过滤其他 event：
@@ -106,8 +100,7 @@ Middleware template catalog 来自：
 GET /api/python-package-templates/middleware
 ```
 
-在 `catalog` 中按精确 `key == "内置示例-workflow-input-context"` 选择 template。使用该项返回的 `key` 和 `revision`
-创建 Custom Middleware。catalog 返回当前模板身份、文件投影和 revision，文档不复制整份 WIC source：
+在 `catalog` 中按精确 `key == "内置示例-workflow-input-context"` 选择 template。使用该项返回的 `key` 和 `revision` 创建 Custom Middleware。catalog 返回当前模板身份、文件投影和 revision，文档不复制整份 WIC source：
 
 ```json
 {
@@ -122,11 +115,8 @@ GET /api/python-package-templates/middleware
 
 提交到 `POST /api/blocks/custom-middleware`。独占 package folder 由服务端生成，客户端 payload 中的 folder 初始为空。
 
-内置 WIC 给出三项建议起点：Main Agent 读取本次 Lifecycle 的 request `messages[]`、Subagent 保留 delegated messages、Task Dispatcher worker 把自己的
-private task 加入 Agent context。它们不是强制的业务策略。当前 Agent 可以在
-`build_workflow_input_messages(state, runtime, request_messages, backend)` 中按职责选择 request messages、private State、parent Graph snapshot、
-Task Dispatcher task、Runtime Context、Store 或当前 Agent Filesystem 材料；不需要的默认步骤可以删除。详细边界见
-[Workflow Input Context](../workflow-input-context.md)。
+内置 WIC 给出三项建议起点：Main Agent 读取本次 Lifecycle 的 request `messages[]`、Subagent 保留 delegated messages、Task Dispatcher worker 把自己的 private task 加入 Agent context。它们不是强制的业务策略。当前 Agent 可以在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按职责选择 request messages、private State、parent Graph snapshot、
+Task Dispatcher task、Runtime Context、Store 或当前 Agent Filesystem 材料；不需要的默认步骤可以删除。详细边界见[Workflow Input Context](../workflow-input-context.md)。
 
 ## Main Agent
 
@@ -157,8 +147,7 @@ Content-Type: application/json
 多个 Middleware 改写 `messages` 时，list order 决定组合方式。
 
 `tool_refs` 也有顺序；每个引用对应一个独立 Custom Tool Python extension。Main Agent 与 Subagent 分别维护自己的 Tool 列表，
-不会通过 capability override 继承、替换或关闭。扩展的 `create_tool()` 返回一个 LangChain `BaseTool`，最后按这个列表传给
-`create_deep_agent(tools=...)`。
+不会通过 capability override 继承、替换或关闭。扩展的 `create_tool()` 返回一个 LangChain `BaseTool`，最后按这个列表传给 `create_deep_agent(tools=...)`。
 
 ## 可选 Subagent
 
@@ -179,20 +168,16 @@ POST /api/subagents
 }
 ```
 
-然后把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。Subagent 默认继承 Main Agent 的 inheritable capability；不同的
-Model Requirement、system prompt 或 Filesystem Permissions 通过 `replace`/`disabled` override 表达，Tool 通过自己的 `settings.tool_refs` 独立装配。Main Agent 引用 `subagent` delegation capability component 后，
+然后把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。Subagent 默认继承 Main Agent 的 inheritable capability；不同的 Model Requirement、system prompt 或 Filesystem Permissions 通过 `replace`/`disabled` override 表达，Tool 通过自己的 `settings.tool_refs` 独立装配。Main Agent 引用 `subagent` delegation capability component 后，
 `task` Tool description 与 routing prompt 来自当前业务配置。
 
-Subagent 的 `name` 是 Model-visible routing name；清楚描述 delegation timing、职责和 return content 有助于 Model routing。当前 contract 只支持
-Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
+Subagent 的 `name` 是 Model-visible routing name；清楚描述 delegation timing、职责和 return content 有助于 Model routing。当前 contract 只支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
 
 ## 可移植配置 Bundle
 
 管理台的【配置库】是单根 Bundle 下载和上传入口；Repository 切换、复制、整仓库下载和删除位于【配置库 / 全局 / 组件配置】。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理配置库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
 
-需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿
-`configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source
-中的 UUID。preview 为每个 source Configuration UUID 给出固定 target UUID，并返回名称建议、Filesystem bindings、阻塞项、warnings 和 trusted-code warnings。
+需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿 `configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source 中的 UUID。preview 为每个 source Configuration UUID 给出固定 target UUID，并返回名称建议、Filesystem bindings、阻塞项、warnings 和 trusted-code warnings。
 
 导入时提交 preview 返回的同一 `bundle_sha256`、`plan_token` 和完整 target map。所有配置 UUID 都改变，Node/Edge ID 等 Workflow-local topology key 保持不变；
 Python package folder/manifest owner UUID 跟随 Component target UUID。Workflow 必须保持 disabled，待 credential、path、Skill、

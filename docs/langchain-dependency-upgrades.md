@@ -1,7 +1,6 @@
 # LangChain 系依赖升级
 
-本文记录 LangChain 系依赖的当前维护边界。版本事实仍以 `server/pyproject.toml` 和
-`server/uv.lock` 为准；本文说明约束为什么存在，以及下一次升级必须复核什么。
+本文记录 LangChain 系依赖的当前维护边界。版本事实仍以 `server/pyproject.toml` 和 `server/uv.lock` 为准；本文说明约束为什么存在，以及下一次升级必须复核什么。
 
 ## 当前已审查基线
 
@@ -17,8 +16,7 @@
 
 ## LangSmith 约束说明
 
-`langsmith>=0.11.1,<0.12` 是有意设置的预 1.0 minor 复审边界，不表示项目已知与
-`0.12` 不兼容，也不是为了维持 `0.11` 内的旧行为：
+`langsmith>=0.11.1,<0.12` 是有意设置的预 1.0 minor 复审边界，不表示项目已知与 `0.12` 不兼容，也不是为了维持 `0.11` 内的旧行为：
 
 - `0.11.1` 是已经阅读 release/source diff 并通过本项目直接验证的最低基线；
 - LangSmith 仍为 `0.x` 包，下一次 minor 可能改变 tracing、上传或 Client contract，
@@ -26,11 +24,8 @@
 - 审查 `0.12` 后，应同时把下限更新为已验证版本，并把上限推进到下一个需要复审的
   minor；不得继续保留一个已经失去理由的旧上限。
 
-项目使用 LangSmith 的范围很窄：`server/src/agent_shell/langsmith_tracing.py` 在进程
-启动时构造官方 `Client` 并调用 `langsmith.configure`，由 LangChain/LangGraph 产生标准
-自动 trace；保存连接设置时使用 `list_projects(limit=1)` 验证 Endpoint、Key 和 Workspace，
-服务关闭时调用 `Client.close()` 刷新并释放资源。项目没有自建 trace ingestion、直接
-`RunTree`、OpenTelemetry、evaluation、pytest plugin 或 Sandbox 集成。
+项目使用 LangSmith 的范围很窄：`server/src/agent_shell/langsmith_tracing.py` 在进程启动时构造官方 `Client` 并调用 `langsmith.configure`，由 LangChain/LangGraph 产生标准自动 trace；保存连接设置时使用 `list_projects(limit=1)` 验证 Endpoint、Key 和 Workspace，
+服务关闭时调用 `Client.close()` 刷新并释放资源。项目没有自建 trace ingestion、直接 `RunTree`、OpenTelemetry、evaluation、pytest plugin 或 Sandbox 集成。
 
 下一次 LangSmith 升级只需围绕上述真实调用面检查：
 
@@ -43,9 +38,6 @@
 ## 通用升级顺序
 
 LangChain 系升级按依赖与影响面分批进行：先 Core/LangGraph contract，再 Provider adapter，
-再 Deep Agents，最后 LangSmith。每批使用明确的 `uv lock --upgrade-package <package>`，检查
-lock diff 后再同步环境；不要用无范围升级把多个行为面混在一起。
+再 Deep Agents，最后 LangSmith。每批使用明确的 `uv lock --upgrade-package <package>`，检查 lock diff 后再同步环境；不要用无范围升级把多个行为面混在一起。
 
-Provider adapter 的 release 如果改变错误内容、协议选择、model profile、token usage、tool
-call 或 stream block，必须先确定 Shell 的公开失败边界和配置 contract。上游默认行为适合
-项目时直接采用，不建立重复的 Provider catalog 或兼容分支。
+Provider adapter 的 release 如果改变错误内容、协议选择、model profile、token usage、tool call 或 stream block，必须先确定 Shell 的公开失败边界和配置 contract。上游默认行为适合项目时直接采用，不建立重复的 Provider catalog 或兼容分支。

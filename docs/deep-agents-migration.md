@@ -1,20 +1,15 @@
 # Deep Agents runtime 基线
 
-Agent Shell 使用锁定的 `deepagents==0.7.7` 和 `deepagents.create_deep_agent()` 构造 Main Agent。直接 Subagent 通过 Deep Agents 官方
-dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 只在外层画布 Main Agent node 建立
-invocation identity 和父子 State 输入输出边界，不实现委派调度或第二套 Agent loop。
+Agent Shell 使用锁定的 `deepagents==0.7.7` 和 `deepagents.create_deep_agent()` 构造 Main Agent。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 只在外层画布 Main Agent node 建立 invocation identity 和父子 State 输入输出边界，不实现委派调度或第二套 Agent loop。
 
 ## 责任边界
 
-Agent Shell 保留 Main Agent、组件、直接 Subagent 和 Provider secret 的完整装配能力，并由
-`deepagents.create_deep_agent()` 构造 compiled graph。当前 Workflow Agent node 引用完整 Main Agent，由父图 wrapper
-通过公开 `ainvoke()` 显式建立父子 State 输入输出边界。
+Agent Shell 保留 Main Agent、组件、直接 Subagent 和 Provider secret 的完整装配能力，并由 `deepagents.create_deep_agent()` 构造 compiled graph。当前 Workflow Agent node 引用完整 Main Agent，由父图 wrapper 通过公开 `ainvoke()` 显式建立父子 State 输入输出边界。
 
 Deep Agents/LangGraph 负责模型循环、工具执行、同步委派、summarization、tool-call repair、prompt caching、
 state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
-用户 Python 扩展只返回官方 `AgentMiddleware`。Shell 不执行 prepare、fixed-delay lifecycle 或 complete，不建立第二套
-model/tool/agent Hook。需要 checkpoint 的业务数据通过官方 state update 写入 `AgentShellState`。
+用户 Python 扩展只返回官方 `AgentMiddleware`。Shell 不执行 prepare、fixed-delay lifecycle 或 complete，不建立第二套 model/tool/agent Hook。需要 checkpoint 的业务数据通过官方 state update 写入 `AgentShellState`。
 
 ## 装配
 
@@ -41,9 +36,7 @@ model/tool/agent Hook。需要 checkpoint 的业务数据通过官方 state upda
 
 ### Middleware 禁用装配查证表（deepagents 0.7.7）
 
-以下是当前 Agent Shell 装配中会使用“同名、无行为 replacement”的能力。replacement 是通过
-`create_deep_agent(middleware=...)` 的官方同名覆盖规则生效的；它会替换默认实例，但不会让该名称从最终
-middleware 列表中消失。
+以下是当前 Agent Shell 装配中会使用“同名、无行为 replacement”的能力。replacement 是通过 `create_deep_agent(middleware=...)` 的官方同名覆盖规则生效的；它会替换默认实例，但不会让该名称从最终 middleware 列表中消失。
 
 | Agent Shell capability | Deep Agents middleware name | 触发 replacement 的情况 | 最终是否物理移除 |
 | --- | --- | --- | --- |
@@ -51,8 +44,7 @@ middleware 列表中消失。
 | `summarization` | `SummarizationMiddleware` | Main 未选择；或 Subagent 选择 `disabled` | 否，保留无行为 placeholder |
 | `prompt-caching` | `AnthropicPromptCachingMiddleware` | Main 未选择；或 Subagent 选择 `disabled` | 否，保留无行为 placeholder |
 
-当前核心依赖只装配 Anthropic Prompt Caching replacement；如果未来启用 Deep Agents 的 Bedrock、Fireworks 等
-额外 provider middleware，必须为新增的 middleware name 增加对应 replacement 和回归测试。
+当前核心依赖只装配 Anthropic Prompt Caching replacement；如果未来启用 Deep Agents 的 Bedrock、Fireworks 等额外 provider middleware，必须为新增的 middleware name 增加对应 replacement 和回归测试。
 
 下列项目不走这套 replacement：
 
@@ -60,25 +52,16 @@ middleware 列表中消失。
 - `FilesystemMiddleware`：官方要求的 protected scaffolding，不能移除，只能限制其工具或权限；
 - `PatchToolCallsMiddleware`：当前是 Deep Agents 核心修复 middleware，没有 Agent Shell 的可选禁用开关。
 
-Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 middleware，但它是按 model/provider profile
-生效，无法表达同一模型下每个 Agent 独立的 capability 选择，因此当前运行时没有用它承载上述 per-agent 设置。
+Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 middleware，但它是按 model/provider profile 生效，无法表达同一模型下每个 Agent 独立的 capability 选择，因此当前运行时没有用它承载上述 per-agent 设置。
 
-当前项目仍支持把 Agent Filesystem 的 mapped directories 接到 Deep Agents `FilesystemBackend`。LangChain 官方文档明确把
-`FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend；这是一条官方限制记录，不是 Shell 自己声称的安全保证。
+当前项目仍支持把 Agent Filesystem 的 mapped directories 接到 Deep Agents `FilesystemBackend`。LangChain 官方文档明确把 `FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend；这是一条官方限制记录，不是 Shell 自己声称的安全保证。
 如果未来要消除该限制，应按官方建议改用 `StateBackend`、`StoreBackend` 或 sandbox backend，并另立需求，不在本次 ctx 迁移中偷偷替换。
 
-Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages[]` 冻结在应用级 LangGraph Store 的 Lifecycle
-namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent 活动消息。已装配的官方
-`before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取输入；同步 Subagent 默认从其 delegated private
-`state.messages` 整理输入，不自动混入根请求。
+Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages[]` 冻结在应用级 LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent 活动消息。已装配的官方 `before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取输入；同步 Subagent 默认从其 delegated private `state.messages` 整理输入，不自动混入根请求。
 
-同步 Subagent 是 Agent 内部的官方 `SubAgentMiddleware` 能力，不与外层 Workflow 竞争调度职责。后续
-AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方装配入口，并单独处理 `graph_id`、
+同步 Subagent 是 Agent 内部的官方 `SubAgentMiddleware` 能力，不与外层 Workflow 竞争调度职责。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方装配入口，并单独处理 `graph_id`、
 Agent Protocol 地址、认证和后台 task state。
 
-外层后台 Workflow 不是 Deep Agents Subagent：Shell 的应用级 Manager 只负责 detached execution handle/status，实际 child
-仍由现有 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与
-checkpointer 服务，但不共享 Builder 的 Middleware package runtime，也不向 parent stream 转发事件。
+外层后台 Workflow 不是 Deep Agents Subagent：Shell 的应用级 Manager 只负责 detached execution handle/status，实际 child 仍由现有 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与 checkpointer 服务，但不共享 Builder 的 Middleware package runtime，也不向 parent stream 转发事件。
 
-更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent 字段、默认 Middleware、backend/state
-transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 事件 namespace，并只为 Shell 自有转换保留行为测试。
+更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent 字段、默认 Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 事件 namespace，并只为 Shell 自有转换保留行为测试。

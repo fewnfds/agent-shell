@@ -1,14 +1,10 @@
-def _details(summary, message):
-    return f'<details type="workflow"><summary>*{summary}*</summary>{message}</details>\n'
-
-
 # Fields available to every branch:
 # event_type, phase, sequence, timestamp, namespace, agent_name, node,
 # source_type, workflow_node_id, agent_profile_id, subagent_profile_id,
 # message, data.
 # custom -> channel, data_json
 # lifecycle -> status, finish_reason, error_code
-# values/updates/tasks/checkpoints/input/input.requested/debug/other -> channel, data_json
+# values / updates / tasks / checkpoints / input / input.requested / debug / other -> channel, data_json
 # data is the complete Python payload. Use message/data_json for bounded display;
 # inspect data only after checking event_type because its shape depends on the method.
 #
@@ -19,6 +15,10 @@ def _details(summary, message):
 # an event. The complete event contract is documented in
 # docs/wizard-pages/workflow-event-output-config.md.
 # Return an empty string from a branch to filter that event.
+
+def _details(summary, message):
+    return f'<details type="workflow"><summary>*{summary}*</summary>{message}</details>\n'
+
 def output(event):
     event_type = event["event_type"]
     if event_type == "custom":

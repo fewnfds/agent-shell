@@ -1,10 +1,8 @@
 # Workflow 事件输出
 
-Workflow 事件输出是可复用的 Workflow 组件。每个 Workflow 可绑定零或一个；不绑定时，Workflow-owned 的非 Agent 事件不会写入
-OpenAI 响应。画布 Agent Node 产生的事件仍使用各 Main Agent 的[Agent 事件输出](agent-event-output-config.md)。
+Workflow 事件输出是可复用的 Workflow 组件。每个 Workflow 可绑定零或一个；不绑定时，Workflow-owned 的非 Agent 事件不会写入 OpenAI 响应。画布 Agent Node 产生的事件仍使用各 Main Agent 的[Agent 事件输出](agent-event-output-config.md)。
 
-它与 Agent 事件输出使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 只提供一个同步
-`output(event)`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
+它与 Agent 事件输出使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 只提供一个同步 `output(event)`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
 可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。
 
 内置示例使用与 Agent 事件输出相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
@@ -42,9 +40,7 @@ def output(event):
 | `debug` | `channel`, `data_json` | LangGraph debug payload，通常为 `dict` |
 | `other` | `channel`, `data_json` | 当前未归入上述 method 的原始 payload；`channel` 保留原 method 名 |
 
-`channel` 对已知 State 类事件等于事件 method；`data_json` 是用于显示和简单拼接的 JSON 文本。要访问完整 State、消息
-对象、`Command` 或其他 Python 值，应使用 `event["data"]`。这些对象来自锁定 LangChain/LangGraph 版本的 v3 语义 payload，
+`channel` 对已知 State 类事件等于事件 method；`data_json` 是用于显示和简单拼接的 JSON 文本。要访问完整 State、消息对象、`Command` 或其他 Python 值，应使用 `event["data"]`。这些对象来自锁定 LangChain/LangGraph 版本的 v3 语义 payload，
 不保证本身 JSON-compatible；本页外层 `event` dict 和字段名才是 Agent Shell 的稳定输出脚本 contract。
 
-脚本异常、返回非字符串、签名、依赖和独占目录边界与[Agent 事件输出](agent-event-output-config.md)相同。组件源码在受信任
-服务进程中执行，不是 sandbox。创建 payload 结构也相同，仅 endpoint 改为 `POST /api/blocks/workflow-event-output`。
+脚本异常、返回非字符串、签名、依赖和独占目录边界与[Agent 事件输出](agent-event-output-config.md)相同。组件源码在受信任服务进程中执行，不是 sandbox。创建 payload 结构也相同，仅 endpoint 改为 `POST /api/blocks/workflow-event-output`。

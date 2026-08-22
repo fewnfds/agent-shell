@@ -52,11 +52,8 @@
   `write_file`、`edit_file`、`delete`、`glob`、`grep`。`read_file` 固定可见；`execute` 固定不可见；
   `delete` 默认关闭。`glob` 未以 `/` 开头的模式递归匹配整个虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录。
 
-同一个 Workflow Run 中的 Main Agent 与同步 Subagent 按 Deep Agents 官方行为共享普通 StateBackend 文件状态；每个 Agent
-按自己的有效 Filesystem 构造初始文件和 mapped route 视图，Subagent 可继承、选择自己的项目 Filesystem 或回到最小 Filesystem。
-独立后台 Run 各自拥有私有 StateBackend，不复制或合并其中的临时文件；同一 Lifecycle 的
-父 Run 和后台 Run 通过相同的 resolved mapped route 共享已落盘文件。每个 Agent 的 `/skills/` 仍按最终 Skill 选择建立只读视图。需要让不同 Agent 对共享
-workspace 使用不同路径权限、文件工具或文件系统提示词时，另行选择[文件系统权限](filesystem-permissions-config.md)。
+同一个 Workflow Run 中的 Main Agent 与同步 Subagent 按 Deep Agents 官方行为共享普通 StateBackend 文件状态；每个 Agent 按自己的有效 Filesystem 构造初始文件和 mapped route 视图，Subagent 可继承、选择自己的项目 Filesystem 或回到最小 Filesystem。
+独立后台 Run 各自拥有私有 StateBackend，不复制或合并其中的临时文件；同一 Lifecycle 的父 Run 和后台 Run 通过相同的 resolved mapped route 共享已落盘文件。每个 Agent 的 `/skills/` 仍按最终 Skill 选择建立只读视图。需要让不同 Agent 对共享 workspace 使用不同路径权限、文件工具或文件系统提示词时，另行选择[文件系统权限](filesystem-permissions-config.md)。
 
 ## 来源类型
 
@@ -79,6 +76,5 @@ Deep Agents 在 `/conversation_history/{session_uuid}.md` 保存摘要前的原�
 `max_execute_timeout` 是 execute 单次命令的最大秒数（execute 当前默认不可见，但仍可提前配置）。
 没有装配文件系统权限时，路径默认可读写，文件系统组件中的提示词和工具配置直接生效。
 
-动态目录不会在 Workflow End 时隐式删除，生命周期清理由管理能力显式处理。磁盘目录不进入 checkpoint，平台也不处理
-多个 Agent 同时写同一文件的冲突。虚拟来源会在每个新请求中重新完整读取，当前没有单文件、展开文件数或总字节配额。不要选择依赖缓存、
+动态目录不会在 Workflow End 时隐式删除，生命周期清理由管理能力显式处理。磁盘目录不进入 checkpoint，平台也不处理多个 Agent 同时写同一文件的冲突。虚拟来源会在每个新请求中重新完整读取，当前没有单文件、展开文件数或总字节配额。不要选择依赖缓存、
 构建产物、媒体目录或其他大型路径。并行 Subagent 不应同时修改同一临时文件。

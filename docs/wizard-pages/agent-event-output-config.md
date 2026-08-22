@@ -1,7 +1,6 @@
 # Agent 事件输出
 
-Agent 事件输出是 Main Agent 必选组件。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为
-`/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
+Agent 事件输出是 Main Agent 必选组件。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为 `/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
 
 ## 编写 Python 扩展
 
@@ -28,11 +27,8 @@ def output(event):
     return f"<tool>{tool}: {event['output']}</tool>"
 ```
 
-函数签名必须恰好是 `def output(event)`：不接受 `async def`、额外参数、默认参数、`*args` 或 `**kwargs`。脚本异常或
-返回非字符串会终止本次运行，并经过普通运行错误边界返回；普通 API 和日志摘要不包含脚本 traceback 或事件正文。
-扩展在受信任的服务进程内运行，不是 sandbox。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需
-重启服务准备，源码在下一次请求重新加载。`requirements.txt` 可以不存在或保持为空，表示没有额外依赖；只有 source 实际 import
-平台核心之外的 package 时才需要逐行声明 direct dependency。
+函数签名必须恰好是 `def output(event)`：不接受 `async def`、额外参数、默认参数、`*args` 或 `**kwargs`。脚本异常或返回非字符串会终止本次运行，并经过普通运行错误边界返回；普通 API 和日志摘要不包含脚本 traceback 或事件正文。
+扩展在受信任的服务进程内运行，不是 sandbox。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需重启服务准备，源码在下一次请求重新加载。`requirements.txt` 可以不存在或保持为空，表示没有额外依赖；只有 source 实际 import 平台核心之外的 package 时才需要逐行声明 direct dependency。
 
 ## 公共 dict 字段
 
@@ -69,9 +65,7 @@ def output(event):
 | `custom` | `channel`, `data_json` | custom event 的原始 Python payload；`data_json` 是 JSON 文本 |
 | `lifecycle` | `status`, `finish_reason`, `error_code` | lifecycle envelope `dict`，或 Shell 构造的状态 `dict` |
 
-`assistant_text` 和 `reasoning` 的 token delta 会先缓冲。脚本只在完整语义 block 到达时执行一次，不能依赖每个 token
-调用一次 `output()`。工具调用与可匹配的结果仍按同一来源和调用周期配对，并保持相邻输出。返回空字符串只过滤配对后的
-渲染文本，不会让该事件绕过整流；因此 `tool_call` 即使最终被过滤，也可能先等待匹配的结果或调用周期边界。
+`assistant_text` 和 `reasoning` 的 token delta 会先缓冲。脚本只在完整语义 block 到达时执行一次，不能依赖每个 token 调用一次 `output()`。工具调用与可匹配的结果仍按同一来源和调用周期配对，并保持相邻输出。返回空字符串只过滤配对后的渲染文本，不会让该事件绕过整流；因此 `tool_call` 即使最终被过滤，也可能先等待匹配的结果或调用周期边界。
 
 ## 读取 `data`
 
@@ -102,6 +96,5 @@ Agent 事件输出没有独立事件过滤配置。需要过滤时直接在 `out
 }
 ```
 
-先从 `GET /api/python-package-templates/agent-event-output` 取得精确 `key` 与 `revision`，再提交到
-`POST /api/blocks/agent-event-output`。首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致。
+先从 `GET /api/python-package-templates/agent-event-output` 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致。
 组件页通过共享文件管理工作区编辑复制后的私有包。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent 事件输出读取原始 Agent 内容。

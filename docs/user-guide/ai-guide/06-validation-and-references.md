@@ -34,13 +34,9 @@ Content-Type: application/json
 }
 ```
 
-配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node
-的 Workflow 同样可以 invoke，但不保证产生 Assistant text。
+配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node 的 Workflow 同样可以 invoke，但不保证产生 Assistant text。
 
-配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；解决 preview
-报告的 data-root-relative missing path；审查随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对
-disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用
-返回的 target UUID；Workflow Node/Edge ID 仍是 Graph-local key，不参与 Configuration UUID map。
+配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；解决 preview 报告的 data-root-relative missing path；审查随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对 disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用返回的 target UUID；Workflow Node/Edge ID 仍是 Graph-local key，不参与 Configuration UUID map。
 
 ## 详细文档
 
@@ -57,8 +53,5 @@ disabled Workflow 提交 candidate Graph validation 并显式 publish。不要�
 - Debug thread、checkpoint 与 log boundary：[Runtime observability](../runtime-observability.md)
 - secret 与远程访问边界：[安全与部署](../../security-and-deployment.md)
 
-Agent Shell 使用 Deep Agents 官方 assembly 和 LangGraph Graph API。官方 context engineering 把始终相关的约定放在
-concise prompt 中，由 WIC/Skill 按需加载 task-specific material，把长且独立的工作交给描述清晰的 Subagent，并把 large result 放入 shared
-Filesystem 后按需读取。参考 [Deep Agents context engineering](https://docs.langchain.com/oss/python/deepagents/context-engineering)、
-[Subagents](https://docs.langchain.com/oss/python/deepagents/subagents) 和
-[Custom middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom)。
+Agent Shell 使用 Deep Agents 官方 assembly 和 LangGraph Graph API。官方 context engineering 把始终相关的约定放在 concise prompt 中，由 WIC/Skill 按需加载 task-specific material，把长且独立的工作交给描述清晰的 Subagent，并把 large result 放入 shared Filesystem 后按需读取。参考 [Deep Agents context engineering](https://docs.langchain.com/oss/python/deepagents/context-engineering)、
+[Subagents](https://docs.langchain.com/oss/python/deepagents/subagents) 和[Custom middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom)。

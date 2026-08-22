@@ -17,5 +17,4 @@
 
 ## 代理组件中的模型要求
 
-“代理组件 -> 模型要求”只编辑可迁移的 name 与多行 description。Main Agent 和 Subagent 引用模型要求 UUID；Provider、endpoint 和 credential
-由本机模型连接维护。导出和导入配置时不会携带本机凭据，目标实例可以用自己的模型连接完成映射。
+“代理组件 -> 模型要求”只编辑可迁移的 name 与多行 description。Main Agent 和 Subagent 引用模型要求 UUID；Provider、endpoint 和 credential 由本机模型连接维护。导出和导入配置时不会携带本机凭据，目标实例可以用自己的模型连接完成映射。

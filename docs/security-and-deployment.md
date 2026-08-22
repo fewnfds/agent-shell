@@ -7,32 +7,27 @@
 - 两者都必须是无空格的可打印 ASCII，均为 write-only；
 - `/api/health` 用于存活探测，`/api/readiness` 返回分层就绪状态。
 
-默认监听 `127.0.0.1`。监听非 loopback 地址前，必须在系统配置显式允许远程访问，并配置管理密码和
-API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
+默认监听 `127.0.0.1`。监听非 loopback 地址前，必须在系统配置显式允许远程访问，并配置管理密码和 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
 ## CORS 与代理
 
 CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userinfo、path、query 或 fragment。
 可信代理使用精确 CIDR，并且只在远程访问模式下启用。不要信任未受控制的代理网段。
 
-应用只依据当前安全配置解释转发信息。反向代理必须覆盖客户端可伪造的 forwarded headers，并把管理台
-和推理 API 的访问策略一并纳入部署设计。
+应用只依据当前安全配置解释转发信息。反向代理必须覆盖客户端可伪造的 forwarded headers，并把管理台和推理 API 的访问策略一并纳入部署设计。
 
 ## Secret 与用户内容
 
-Provider credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接 YAML 只保存
-credential 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
+Provider credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接 YAML 只保存 credential 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
 不要提交 Git 或公开分享。
 
-普通 API、普通 DOM、系统日志和运行诊断摘要不回显 credential、Bearer token、宿主敏感路径、traceback 或
-Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
+普通 API、普通 DOM、系统日志和运行诊断摘要不回显 credential、Bearer token、宿主敏感路径、traceback 或 Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
 - 用户创建的组件、文件和 Python 资源。
 
-运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的
-运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
+运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
 
 ## 配置 Bundle
 
@@ -41,34 +36,25 @@ Provider 原始错误正文。以下 management-only 功能会按产品用途保
 Python template、`skills-template` 公共素材或 runtime cache。模型要求会随配置导入，模型连接和 credential 需要在目标实例单独维护并完成模型映射。
 Skill Component 导出的是该 Component 已拥有的私有 Skill package。
 
-平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者
-导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和
-导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
+平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
 
 ZIP 只接受当前 format version、canonical `manifest.json`、规范相对 POSIX path 和匹配的 SHA-256 asset tree hash；绝对路径、
-`..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field
-或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
+`..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field 或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
 Filesystem host content 不进入 Bundle；绝对 mapped path 和全部 virtual source path 必须在目标实例显式重绑。
 
-导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与
-prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的
-反向代理仍负责按实例资源条件设置上传 request body 边界；应用不隐藏另设 Bundle 大小、文件数或展开字节上限。
+导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用不隐藏另设 Bundle 大小、文件数或展开字节上限。
 
 ## 用户代码与文件系统
 
-自定义工具和自定义 Middleware 包是受信任的本地代码，真实请求会 import 或执行。只有实例维护者可以
-管理这些资源，并应预先审查依赖、网络、文件和进程权限。
+自定义工具和自定义 Middleware 包是受信任的本地代码，真实请求会 import 或执行。只有实例维护者可以管理这些资源，并应预先审查依赖、网络、文件和进程权限。
 
 Windows Middleware 包可以声明公开 PyPI 的二进制 wheel 依赖。第三方 wheel 与包代码具有相同的服务进程权限；
 包名仿冒、恶意更新和依赖接管都属于供应链风险。平台固定公开 PyPI、拒绝 requirements 中的 URL/索引配置，
 并约束核心版本，但这不代替维护者对包名、发布者、版本和许可证的审查。
 
-Middleware 包没有 sandbox，以 Agent Shell 服务进程权限运行。它可以修改消息、实例文件、持久 Skill、mapped
-目录和服务账号可访问的其他宿主资源，也可以发起网络或进程操作。平台不备份、不回滚、不加锁，也不协调
-多个包的文件或变量冲突。
+Middleware 包没有 sandbox，以 Agent Shell 服务进程权限运行。它可以修改消息、实例文件、持久 Skill、mapped 目录和服务账号可访问的其他宿主资源，也可以发起网络或进程操作。平台不备份、不回滚、不加锁，也不协调多个包的文件或变量冲突。
 
-项目 filesystem 的 mapped directories 可读写宿主真实目录。只映射 Agent 确实需要的路径；写入、编辑
-和递归删除工具按最小权限启用。Agent 看到的 Skill namespace 始终只读。
+项目 filesystem 的 mapped directories 可读写宿主真实目录。只映射 Agent 确实需要的路径；写入、编辑和递归删除工具按最小权限启用。Agent 看到的 Skill namespace 始终只读。
 
 文件管理页面只接受允许列表内的软件根相对 `data/...` 路径。普通文件、Skill/Python 模板和配置私有包可编辑；
 Component、Agent 与 Workflow 配置树只读。`data/config/`、Repository metadata/import journal、state、logs、media、runtime、
@@ -76,11 +62,9 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 ## 容量与保留
 
-部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界
-可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
+部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。
-降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle
-Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
+降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
 运行历史诊断包属于 management-only 敏感出口，但只导出结构记录、Checkpoint/Store 摘要和关联诊断，不复制运行正文。
 
 ## 系统配置与变量
@@ -113,15 +97,11 @@ AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY="<model credential>"
 LANGSMITH_API_KEY="<LangSmith API key>"
 ```
 
-值按 JSON 字符串解析，因此引号、反斜杠、换行和前后空白可以精确保留。管理页面负责生成该格式；未知的 `AGENT_SHELL_*` key、重复 key、BOM
-或无效 JSON 会使启动失败。
+值按 JSON 字符串解析，因此引号、反斜杠、换行和前后空白可以精确保留。管理页面负责生成该格式；未知的 `AGENT_SHELL_*` key、重复 key、BOM 或无效 JSON 会使启动失败。
 
 模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。
 LangSmith 连接在系统配置中管理；启用或修改 Endpoint、API Key、
-Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步
-设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选
-`LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace
-可能上传 prompt、模型输出和工具输入/输出，必须按敏感数据策略控制。
+Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 可能上传 prompt、模型输出和工具输入/输出，必须按敏感数据策略控制。
 
 实例敏感值只从 `data/config/agent-shell.env` 读取；服务启动和配置 Repository 都不把宿主进程中的同名 Secret 当作回退来源。非敏感 `AGENT_SHELL_*` 启动变量也不作为配置来源；未知键和误放入环境文件的键会使启动失败。Windows 源码启动器读取当前 Clone 的 data 配置；启动和维护方式见[开发与版本](development-and-release.md)。

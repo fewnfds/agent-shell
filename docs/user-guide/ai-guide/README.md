@@ -5,8 +5,7 @@ OpenAPI 中的通用 JSON body 不表达各 component 的完整字段；当前�
 
 ## Terminology convention
 
-本目录中的项目 keyword 使用源码、API field 和正式 contract 的英文原名，普通说明仍使用中文。不要翻译 keyword，也不要把一个
-keyword 拆成中英混合词组。搜索源码时直接使用英文原名或 identifier，例如 `system prompt` 和 `system_prompt`。
+本目录中的项目 keyword 使用源码、API field 和正式 contract 的英文原名，普通说明仍使用中文。不要翻译 keyword，也不要把一个 keyword 拆成中英混合词组。搜索源码时直接使用英文原名或 identifier，例如 `system prompt` 和 `system_prompt`。
 
 固定使用以下 terminology：
 
@@ -52,17 +51,14 @@ End 或没有 successor 的 reachable leaf 结束当前 path。
 
 ### Output event projection
 
-runner 使用 LangGraph `astream_events(version="v3")` 观察 Workflow、Agent、Model、Tool 和用户 Python 产生的 event。event 不会
-自动改写 Workflow State：
+runner 使用 LangGraph `astream_events(version="v3")` 观察 Workflow、Agent、Model、Tool 和用户 Python 产生的 event。event 不会自动改写 Workflow State：
 
 - Agent Node 内的 event 按来源归属该 Main Agent，由它的 Agent Event Output projection；
 - Workflow-owned event 由 Workflow 可选绑定的 Workflow Event Output projection；
 - Command/Task Dispatcher 可在 Runtime 中用 `get_stream_writer()` 主动写出 `custom` event；
 - 每个启用的 `output(event)` 返回一个 string，runner 按 event order 组成响应；未启用或返回空 string 的 event 不输出。
 
-Node 的 State/routing return value 与 output event 是两条独立 channel。output event 只用于单向展示，不向产生 event 的 Node 返回处理结果。具体 Python
-用法见[编写 Python extension](04-python-extensions.md)，event field 见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)和
-[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)。
+Node 的 State/routing return value 与 output event 是两条独立 channel。output event 只用于单向展示，不向产生 event 的 Node 返回处理结果。具体 Python 用法见[编写 Python extension](04-python-extensions.md)，event field 见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)和[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)。
 
 ## 最小 Graph 事实
 
