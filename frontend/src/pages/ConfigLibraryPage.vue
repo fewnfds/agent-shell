@@ -485,29 +485,29 @@ onMounted(async () => {
       :layout-test-id="'library-layout'"
       :manifests="manifests"
     >
-        <LteAlert
-          v-if="catalogError"
-          class="mb-3"
-          data-testid="catalog-error"
-          :title="t('library.catalogUnavailable')"
-          theme="danger"
-        >
-          {{ catalogError }}
-        </LteAlert>
+      <LteAlert
+        v-if="catalogError"
+        class="mb-3"
+        data-testid="catalog-error"
+        :title="t('library.catalogUnavailable')"
+        theme="danger"
+      >
+        {{ catalogError }}
+      </LteAlert>
 
-        <DataTableWorkbench
-          v-if="catalogReady && currentCategory"
-          :key="activeCategoryId"
-          ref="libraryTable"
-          :config="libraryTableConfig"
-        >
-          <template #cell-name="{ value }">
-            <span class="fw-semibold text-break">{{ value }}</span>
-          </template>
-        </DataTableWorkbench>
-        <LteAlert v-else-if="catalogReady" :title="currentCategoryLabel" theme="danger">
-          {{ currentCategoryLabel }}
-        </LteAlert>
+      <DataTableWorkbench
+        v-if="catalogReady && currentCategory"
+        :key="activeCategoryId"
+        ref="libraryTable"
+        :config="libraryTableConfig"
+      >
+        <template #cell-name="{ value }">
+          <span class="fw-semibold text-break">{{ value }}</span>
+        </template>
+      </DataTableWorkbench>
+      <LteAlert v-else-if="catalogReady" :title="currentCategoryLabel" theme="danger">
+        {{ currentCategoryLabel }}
+      </LteAlert>
       <template #aside>
         <ValidationChecklist
           :title="t('library.validationTitle')"

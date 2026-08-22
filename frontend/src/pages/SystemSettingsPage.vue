@@ -408,7 +408,7 @@ onMounted(() => { void load() })
                   </div>
                 </div>
               </div>
-              <div class="row g-3">
+              <div class="row g-3 mt-3">
                 <div class="col-lg-3 col-md-6">
                   <div class="form-check form-switch">
                     <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
@@ -554,10 +554,10 @@ onMounted(() => { void load() })
                       <i v-if="showLangsmithApiKey" class="bi bi-eye-slash" aria-hidden="true" />
                       <i v-else class="bi bi-eye" aria-hidden="true" />
                     </LteButton>
+                  </div>
                 </div>
               </div>
-              </div>
-              <div class="row g-3">
+              <div class="row g-3 mt-3">
                 <div class="col-lg-3 col-md-6">
                   <div class="form-check form-switch">
                     <input id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-check-input" role="switch" type="checkbox">

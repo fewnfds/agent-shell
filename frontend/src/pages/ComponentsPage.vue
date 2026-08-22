@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LteAlert, LteButton } from '@adminlte/vue'
+import { LteAlert } from '@adminlte/vue'
 import { computed, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,8 +11,6 @@ import {
   type ModelConnection,
   type ModelProviderCatalog,
   type ManagedComponentType,
-  type WorkflowComponentManifest,
-  type CapabilityManifest,
   type SkillPackageInspection,
   type LocalizedMessagePayload,
   type PythonPackageInspection,
@@ -128,7 +126,6 @@ const componentBasePath = computed(() => (
 const { confirm } = useConfirmation()
 const { notify } = useToasts()
 
-type ManagedManifest = CapabilityManifest | WorkflowComponentManifest
 const manifests = ref<EditorManifest[]>([])
 const editorDefaults = ref<Record<string, unknown>>({})
 const activeType = ref<EditorType | null>(null)

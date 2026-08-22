@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
   errors?: Record<string, LocalizedMessagePayload>
   loading?: boolean
 }>(), {
+  defaults: undefined,
   catalog: () => [],
   errors: () => ({}),
   loading: false,

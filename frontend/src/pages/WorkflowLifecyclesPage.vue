@@ -279,100 +279,100 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                 </thead>
                 <tbody>
                   <template v-for="run in details[row.lifecycle_id]!.runs" :key="run.run_id">
-                  <tr>
-                    <td>{{ run.target_name || run.target_id }}</td>
-                    <td>{{ t(`workflowLifecycles.runKinds.${run.run_kind}`) }}</td>
-                    <td>
-                      {{ runStatus(run.status) }}
-                      <span v-if="run.error_code" class="d-block small text-danger">{{ run.error_code }}</span>
-                    </td>
-                    <td><code>{{ shortId(run.run_id) }}</code></td>
-                    <td><code>{{ shortId(run.parent_run_id) }}</code></td>
-                    <td>{{ run.run_depth }}</td>
-                    <td>{{ run.usage.total_tokens.toLocaleString() }}</td>
-                    <td>
-                      <div class="d-flex gap-1">
-                      <LteButton
-                        class="icon-action-button"
-                        :aria-label="t('workflowLifecycles.viewRun')"
-                        size="sm"
-                        theme="secondary"
-                        :title="t('workflowLifecycles.viewRun')"
-                        type="button"
-                        @click="toggleRunDetail(row.lifecycle_id, run)"
-                      >
-                        <i class="bi bi-eye" aria-hidden="true" />
-                      </LteButton>
-                      <LteButton
-                        class="icon-action-button"
-                        :aria-label="t('workflowLifecycles.downloadRun')"
-                        :disabled="downloadingRuns[run.run_id]"
-                        size="sm"
-                        theme="info"
-                        :title="t('workflowLifecycles.downloadRun')"
-                        type="button"
-                        @click="downloadRun(run)"
-                      >
-                        <i class="bi bi-download" aria-hidden="true" />
-                      </LteButton>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr v-if="selectedRuns[row.lifecycle_id] === run.run_id">
-                    <td colspan="8">
-                      <dl class="row g-3 mb-0 p-3">
-                        <div class="col-12 col-lg-4">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.threadId') }}</dt>
-                          <dd class="mb-0"><code>{{ run.thread_id }}</code></dd>
+                    <tr>
+                      <td>{{ run.target_name || run.target_id }}</td>
+                      <td>{{ t(`workflowLifecycles.runKinds.${run.run_kind}`) }}</td>
+                      <td>
+                        {{ runStatus(run.status) }}
+                        <span v-if="run.error_code" class="d-block small text-danger">{{ run.error_code }}</span>
+                      </td>
+                      <td><code>{{ shortId(run.run_id) }}</code></td>
+                      <td><code>{{ shortId(run.parent_run_id) }}</code></td>
+                      <td>{{ run.run_depth }}</td>
+                      <td>{{ run.usage.total_tokens.toLocaleString() }}</td>
+                      <td>
+                        <div class="d-flex gap-1">
+                          <LteButton
+                            class="icon-action-button"
+                            :aria-label="t('workflowLifecycles.viewRun')"
+                            size="sm"
+                            theme="secondary"
+                            :title="t('workflowLifecycles.viewRun')"
+                            type="button"
+                            @click="toggleRunDetail(row.lifecycle_id, run)"
+                          >
+                            <i class="bi bi-eye" aria-hidden="true" />
+                          </LteButton>
+                          <LteButton
+                            class="icon-action-button"
+                            :aria-label="t('workflowLifecycles.downloadRun')"
+                            :disabled="downloadingRuns[run.run_id]"
+                            size="sm"
+                            theme="info"
+                            :title="t('workflowLifecycles.downloadRun')"
+                            type="button"
+                            @click="downloadRun(run)"
+                          >
+                            <i class="bi bi-download" aria-hidden="true" />
+                          </LteButton>
                         </div>
-                        <div class="col-12 col-lg-4">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.launcher') }}</dt>
-                          <dd class="mb-0"><code>{{ run.launcher_id || t('common.none') }}</code></dd>
+                      </td>
+                    </tr>
+                    <tr v-if="selectedRuns[row.lifecycle_id] === run.run_id">
+                      <td colspan="8">
+                        <dl class="row g-3 mb-0 p-3">
+                          <div class="col-12 col-lg-4">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.threadId') }}</dt>
+                            <dd class="mb-0"><code>{{ run.thread_id }}</code></dd>
+                          </div>
+                          <div class="col-12 col-lg-4">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.launcher') }}</dt>
+                            <dd class="mb-0"><code>{{ run.launcher_id || t('common.none') }}</code></dd>
+                          </div>
+                          <div class="col-12 col-lg-4">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.task') }}</dt>
+                            <dd class="mb-0"><code>{{ run.background_task_id || t('common.none') }}</code></dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.started') }}</dt>
+                            <dd class="mb-0">{{ localTime(run.started_at) }}</dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.finished') }}</dt>
+                            <dd class="mb-0">{{ localTime(run.finished_at) }}</dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.checkpoints') }}</dt>
+                            <dd class="mb-0">
+                              {{ run.checkpoint_available
+                                ? (runDetails[run.run_id]?.checkpoint_count ?? t('common.loading'))
+                                : t('workflowLifecycles.run.notAvailable') }}
+                            </dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.timeline') }}</dt>
+                            <dd class="mb-0">{{ runDetails[run.run_id]?.event_count ?? t('common.loading') }}</dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.diagnostics') }}</dt>
+                            <dd class="mb-0">{{ runDetails[run.run_id]?.diagnostic_count ?? t('common.loading') }}</dd>
+                          </div>
+                          <div class="col-12 col-md-6 col-lg-3">
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.columns.observation') }}</dt>
+                            <dd class="mb-0">{{ observationStatus(run.observation_status) }}</dd>
+                          </div>
+                        </dl>
+                        <div v-if="runDetailLoading[run.run_id]" class="d-flex align-items-center gap-2 p-3" role="status">
+                          <span class="spinner-border spinner-border-sm" aria-hidden="true" />
+                          <span>{{ t('common.loading') }}</span>
                         </div>
-                        <div class="col-12 col-lg-4">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.task') }}</dt>
-                          <dd class="mb-0"><code>{{ run.background_task_id || t('common.none') }}</code></dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.started') }}</dt>
-                          <dd class="mb-0">{{ localTime(run.started_at) }}</dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.finished') }}</dt>
-                          <dd class="mb-0">{{ localTime(run.finished_at) }}</dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.checkpoints') }}</dt>
-                          <dd class="mb-0">
-                            {{ run.checkpoint_available
-                              ? (runDetails[run.run_id]?.checkpoint_count ?? t('common.loading'))
-                              : t('workflowLifecycles.run.notAvailable') }}
-                          </dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.timeline') }}</dt>
-                          <dd class="mb-0">{{ runDetails[run.run_id]?.event_count ?? t('common.loading') }}</dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.diagnostics') }}</dt>
-                          <dd class="mb-0">{{ runDetails[run.run_id]?.diagnostic_count ?? t('common.loading') }}</dd>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-3">
-                          <dt class="small text-body-secondary">{{ t('workflowLifecycles.columns.observation') }}</dt>
-                          <dd class="mb-0">{{ observationStatus(run.observation_status) }}</dd>
-                        </div>
-                      </dl>
-                      <div v-if="runDetailLoading[run.run_id]" class="d-flex align-items-center gap-2 p-3" role="status">
-                        <span class="spinner-border spinner-border-sm" aria-hidden="true" />
-                        <span>{{ t('common.loading') }}</span>
-                      </div>
-                      <LteAlert
-                        v-else-if="runDetailErrors[run.run_id]"
-                        :title="t('workflowLifecycles.run.detailLoadFailed')"
-                        theme="danger"
-                      />
-                    </td>
-                  </tr>
+                        <LteAlert
+                          v-else-if="runDetailErrors[run.run_id]"
+                          :title="t('workflowLifecycles.run.detailLoadFailed')"
+                          theme="danger"
+                        />
+                      </td>
+                    </tr>
                   </template>
                 </tbody>
               </table>

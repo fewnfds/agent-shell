@@ -50,6 +50,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   initialPath: 'data',
   highlightedPath: '',
+  api: undefined,
 })
 const emit = defineEmits<{
   'open-file': [path: string]
@@ -471,35 +472,41 @@ defineExpose({ refresh: load })
             <td>
               <div class="d-flex justify-content-end gap-1">
                 <LteButton
-                  class="icon-action-button"
                   v-if="item.capabilities.download"
+                  class="icon-action-button"
                   :aria-label="t('fileManager.download')"
                   :title="t('fileManager.download')"
                   size="sm"
                   theme="info"
                   type="button"
                   @click="download(item)"
-                ><i class="bi bi-download" aria-hidden="true" /></LteButton>
+                >
+                  <i class="bi bi-download" aria-hidden="true" />
+                </LteButton>
                 <LteButton
-                  class="icon-action-button"
                   v-if="item.capabilities.rename"
+                  class="icon-action-button"
                   :aria-label="t('fileManager.rename')"
                   :title="t('fileManager.rename')"
                   size="sm"
                   theme="warning"
                   type="button"
                   @click="startRename(item)"
-                ><i class="bi bi-pencil" aria-hidden="true" /></LteButton>
+                >
+                  <i class="bi bi-pencil" aria-hidden="true" />
+                </LteButton>
                 <LteButton
-                  class="icon-action-button"
                   v-if="item.capabilities.delete"
+                  class="icon-action-button"
                   :aria-label="t('common.delete')"
                   :title="t('common.delete')"
                   size="sm"
                   theme="danger"
                   type="button"
                   @click="removeItem(item)"
-                ><i class="bi bi-trash" aria-hidden="true" /></LteButton>
+                >
+                  <i class="bi bi-trash" aria-hidden="true" />
+                </LteButton>
               </div>
             </td>
           </tr>

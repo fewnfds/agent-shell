@@ -174,24 +174,24 @@ onMounted(() => {
       :layout-test-id="'configuration-repositories-layout'"
       :manifests="manifests"
     >
-        <LteAlert
-          v-if="catalogError"
-          class="mb-3"
-          :title="t('library.catalogUnavailable')"
-          theme="danger"
-        >
-          {{ catalogError }}
-        </LteAlert>
-        <DataTableWorkbench ref="table" :config="tableConfig">
-          <template #cell-active="{ row, value }">
-            <span v-if="row.active" class="badge text-bg-success">
-              {{ value }}
-            </span>
-            <span v-else class="badge text-bg-secondary">
-              {{ value }}
-            </span>
-          </template>
-        </DataTableWorkbench>
+      <LteAlert
+        v-if="catalogError"
+        class="mb-3"
+        :title="t('library.catalogUnavailable')"
+        theme="danger"
+      >
+        {{ catalogError }}
+      </LteAlert>
+      <DataTableWorkbench ref="table" :config="tableConfig">
+        <template #cell-active="{ row, value }">
+          <span v-if="row.active" class="badge text-bg-success">
+            {{ value }}
+          </span>
+          <span v-else class="badge text-bg-secondary">
+            {{ value }}
+          </span>
+        </template>
+      </DataTableWorkbench>
       <template #aside>
         <ValidationChecklist
           :title="t('library.validationTitle')"

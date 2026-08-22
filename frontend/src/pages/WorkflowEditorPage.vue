@@ -813,7 +813,9 @@ onUnmounted(() => {
             class="btn btn-sm btn-outline-danger"
             type="button"
             @click="retryValidation"
-          >{{ t('workflows.editor.retryValidation') }}</button>
+          >
+            {{ t('workflows.editor.retryValidation') }}
+          </button>
         </div>
         <VueFlow
           v-if="!loadError"

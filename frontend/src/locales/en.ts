@@ -56,6 +56,7 @@ export const en: MessageSchema = {
       warning: '{count} model requirements are not bound to a model connection.',
       description: 'Requirement description',
       connection: 'Model connection',
+      connectionSummary: '({provider} / {model})',
       unbound: 'Unbound',
       empty: 'The active Configuration Repository has no model requirements.',
       loadFailed: 'Could not load model mapping',
