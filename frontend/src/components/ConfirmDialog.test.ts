@@ -26,7 +26,7 @@ describe('ConfirmDialog', () => {
     const wrapper = mountDialog()
     await nextTick()
 
-    await wrapper.get('.modal-footer .btn-danger').trigger('click')
+    await wrapper.get('.modal-footer [data-action="delete"]').trigger('click')
 
     expect(wrapper.emitted('confirm')).toHaveLength(1)
   })

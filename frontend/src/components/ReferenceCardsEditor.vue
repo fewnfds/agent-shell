@@ -67,7 +67,6 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
         :aria-label="addLabel"
         :title="addLabel"
         size="sm"
-        theme="primary"
         type="button"
         @click="addReference"
       >
@@ -96,7 +95,6 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
                   :title="t('common.moveUp')"
                   :disabled="index === 0"
                   size="sm"
-                  theme="secondary"
                   type="button"
                   @click="moveReference(index, -1)"
                 >
@@ -109,7 +107,6 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
                   :title="t('common.moveDown')"
                   :disabled="index === references.length - 1"
                   size="sm"
-                  theme="secondary"
                   type="button"
                   @click="moveReference(index, 1)"
                 >
@@ -121,7 +118,6 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
                   :aria-label="t('common.remove')"
                   :title="t('common.remove')"
                   size="sm"
-                  theme="danger"
                   type="button"
                   @click="removeReference(index)"
                 >

@@ -116,7 +116,7 @@ async function importBundle(): Promise<void> {
 
 <template>
   <input ref="bundleInput" accept=".zip,application/zip" class="visually-hidden" type="file" @change="selectBundle">
-  <LteButton class="action-button" :disabled="bundleBusy" theme="primary" type="button" @click="openBundlePicker">
+  <LteButton class="action-button" :disabled="bundleBusy" type="button" @click="openBundlePicker">
     <i class="bi bi-upload" aria-hidden="true" />
     {{ t('library.bundle.upload') }}
   </LteButton>
@@ -136,6 +136,6 @@ async function importBundle(): Promise<void> {
       <LteAlert v-if="bundleBlockingErrors.length" :title="t('library.bundle.blockers')" theme="danger"><p v-for="issue in bundleBlockingErrors" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
       <LteAlert v-if="bundlePreview.warnings.length" :title="t('library.bundle.warnings')" theme="warning"><p v-for="issue in bundlePreview.warnings" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
     </template>
-    <template #footer><LteButton class="action-button" :disabled="bundleBusy" theme="secondary" type="button" @click="closeBundle"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton><LteButton class="action-button" :disabled="bundleBusy || !canImport" theme="primary" type="button" @click="importBundle"><span v-if="bundleBusy" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-upload" aria-hidden="true" />{{ t('library.bundle.import') }}</LteButton></template>
+    <template #footer><LteButton class="action-button" :disabled="bundleBusy" type="button" @click="closeBundle"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton><LteButton class="action-button" :disabled="bundleBusy || !canImport" type="button" @click="importBundle"><span v-if="bundleBusy" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-upload" aria-hidden="true" />{{ t('library.bundle.import') }}</LteButton></template>
   </ModalHost>
 </template>

@@ -68,7 +68,7 @@ describe('AuthGate', () => {
     await nextTick()
     await nextTick()
 
-    await wrapper.get('.btn-warning').trigger('click')
+    await wrapper.get('[data-action="cancel"]').trigger('click')
 
     await rejection
     expect(managementAuth.getSnapshot().open).toBe(false)

@@ -132,9 +132,6 @@
       "LteCard": ["gradient", "outline", "solid", "theme"]
     },
     "dynamicPropPaths": {
-      "LteButton": {
-        "theme": ["src/components/data-table/DataTableWorkbench.vue"]
-      },
       "LteModal": {
         "size": ["src/components/ModalHost.vue"]
       },

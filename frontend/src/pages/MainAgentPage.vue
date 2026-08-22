@@ -407,7 +407,6 @@ watch(
                 :title="t('agents.obsoleteReferences.remove')"
                 data-action="remove-obsolete-capability-reference"
                 size="sm"
-                theme="danger"
                 type="button"
                 @click="removeObsoleteReference(item.index)"
               >

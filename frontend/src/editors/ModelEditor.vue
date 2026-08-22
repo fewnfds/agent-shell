@@ -300,7 +300,6 @@ function setBooleanNumber(key: string, event: Event): void {
                   class="action-button"
                   data-action="fetch-models"
                   :disabled="loadingModels"
-                  theme="primary"
                   type="submit"
                 >
                   <span v-if="loadingModels" class="spinner-border spinner-border-sm" aria-hidden="true" />

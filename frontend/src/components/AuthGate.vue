@@ -89,11 +89,11 @@ onUnmounted(() => unsubscribe?.())
       </div>
     </form>
     <template #footer>
-      <LteButton class="action-button" theme="secondary" @click="cancel">
+      <LteButton class="action-button" data-action="cancel" @click="cancel">
         <i class="bi bi-x-lg" aria-hidden="true" />
         {{ t('auth.cancel') }}
       </LteButton>
-      <LteButton class="action-button" theme="primary" @click="submit">
+      <LteButton class="action-button" data-action="confirm" @click="submit">
         <i class="bi bi-check-lg" aria-hidden="true" />
         {{ t('auth.submit') }}
       </LteButton>

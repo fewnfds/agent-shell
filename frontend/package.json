@@ -4,9 +4,8 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "generate:style-baseline": "node scripts/generate-style-baseline.mjs",
-    "dev": "npm run generate:style-baseline && vite",
-    "build": "npm run generate:style-baseline && vue-tsc --noEmit && vite build",
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",

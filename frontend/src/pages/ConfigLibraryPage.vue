@@ -414,7 +414,6 @@ onMounted(async () => {
               class="action-button"
               v-if="issue.code === 'storage.unknown_block_type' && issue.owner_id && issue.owner_type"
               :disabled="deletingUnsupportedBlockId === issue.owner_id"
-              theme="danger"
               type="button"
               @click="deleteUnsupportedBlock(issue)"
             >
@@ -458,14 +457,13 @@ onMounted(async () => {
       :value="detailValue"
     />
     <template #footer>
-      <LteButton class="action-button" theme="secondary" type="button" @click="closeDetail">
+      <LteButton class="action-button" type="button" @click="closeDetail">
         <i class="bi bi-x-lg" aria-hidden="true" />
         {{ t('common.close') }}
       </LteButton>
       <LteButton
         v-if="detailItem"
         class="action-button"
-        theme="secondary"
         type="button"
         @click="editItem(detailItem)"
       >

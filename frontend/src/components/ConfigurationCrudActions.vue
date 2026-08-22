@@ -37,7 +37,6 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   <LteButton
     class="action-button"
     :disabled="!props.hasSelection || busy"
-    theme="info"
     type="button"
     @click="emit('copy')"
   >
@@ -47,7 +46,6 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   <LteButton
     class="action-button"
     :disabled="!props.hasSelection || busy"
-    theme="danger"
     type="button"
     @click="emit('delete')"
   >
@@ -57,7 +55,6 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   <LteButton
     class="action-button"
     :disabled="busy"
-    theme="primary"
     type="button"
     @click="emit('new')"
   >
@@ -67,7 +64,6 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   <LteButton
     class="action-button"
     :disabled="!props.canSave || busy"
-    theme="primary"
     type="button"
     @click="emit('save')"
   >
@@ -79,7 +75,6 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
     v-if="props.showEdit"
     class="action-button"
     :disabled="!props.hasSelection || busy"
-    theme="warning"
     type="button"
     @click="emit('edit')"
   >

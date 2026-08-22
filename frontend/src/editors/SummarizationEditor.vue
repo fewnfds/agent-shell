@@ -225,7 +225,6 @@ function setThresholdType(threshold: SummarizationThresholdDraft, event: Event):
             class="action-button"
             data-action="restore-summary-prompt"
             size="sm"
-            theme="warning"
             type="button"
             @click="draft.summary_prompt_override = defaults.summary_prompt_default"
           >

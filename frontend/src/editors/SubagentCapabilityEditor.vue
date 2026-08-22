@@ -23,7 +23,7 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
       </header>
       <div class="card-body">
         <div class="d-flex justify-content-end mb-3">
-          <LteButton class="action-button" theme="warning" @click="draft.instruction_override = defaults.system_prompt">
+          <LteButton class="action-button" data-action="restore-default" @click="draft.instruction_override = defaults.system_prompt">
             <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             {{ t('editors.common.restoreDefault') }}
           </LteButton>
@@ -41,7 +41,7 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
       </header>
       <div class="card-body">
         <div class="d-flex justify-content-end mb-3">
-          <LteButton class="action-button" theme="warning" @click="draft.task_description_override = defaults.tool_description">
+          <LteButton class="action-button" data-action="restore-default" @click="draft.task_description_override = defaults.tool_description">
             <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             {{ t('editors.common.restoreDefault') }}
           </LteButton>

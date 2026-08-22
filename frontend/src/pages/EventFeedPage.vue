@@ -376,7 +376,7 @@ onMounted(() => { void loadControls() })
 <template>
   <PageShell>
     <template #actions>
-      <LteButton v-if="stale" class="action-button" data-testid="load-new-events" theme="primary" @click="refreshWindow">
+      <LteButton v-if="stale" class="action-button" data-testid="load-new-events" @click="refreshWindow">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
@@ -414,7 +414,7 @@ onMounted(() => { void loadControls() })
                 step="1"
                 type="number"
               >
-              <LteButton class="action-button" :disabled="savingControl === `${source}-retention`" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="savingControl === `${source}-retention`" type="submit">
                 <i class="bi bi-floppy" aria-hidden="true" />
                 {{ t('common.save') }}
               </LteButton>
@@ -433,7 +433,7 @@ onMounted(() => { void loadControls() })
                 type="number"
               >
               <span class="input-group-text">{{ 'MiB' }}</span>
-              <LteButton class="action-button" :disabled="savingControl === 'system-log-settings'" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="savingControl === 'system-log-settings'" type="submit">
                 <i class="bi bi-floppy" aria-hidden="true" />
                 {{ t('common.save') }}
               </LteButton>
@@ -449,7 +449,7 @@ onMounted(() => { void loadControls() })
       @query-applied="stale = false"
     >
       <template #filter-actions>
-        <LteButton class="action-button" :disabled="controlsLoading" theme="secondary" type="button" @click="refreshAll">
+        <LteButton class="action-button" :disabled="controlsLoading" type="button" @click="refreshAll">
           <span v-if="controlsLoading" class="spinner-border spinner-border-sm" aria-hidden="true" />
           <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
           {{ t('common.refresh') }}

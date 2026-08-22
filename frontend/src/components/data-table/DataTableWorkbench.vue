@@ -97,14 +97,6 @@ function actionLabel(action: DataTableRowAction<Row>, row: Row): string {
   return typeof action.label === 'function' ? action.label(row) : action.label
 }
 
-function actionTheme(icon: DataTableRowAction<Row>['icon']): 'primary' | 'secondary' | 'info' | 'warning' | 'danger' {
-  if (icon === 'activate') return 'primary'
-  if (icon === 'copy' || icon === 'download') return 'info'
-  if (icon === 'delete') return 'danger'
-  if (icon === 'edit') return 'warning'
-  return 'secondary'
-}
-
 function visibleActions(row: Row): readonly DataTableRowAction<Row>[] {
   return rowActions.value.filter((action) => action.visible?.(row) ?? true)
 }
@@ -237,11 +229,11 @@ defineExpose<{
               :placeholder="label(config.search.placeholder)"
               type="search"
             >
-            <LteButton class="action-button" :disabled="loading" theme="primary" type="submit">
+            <LteButton class="action-button" :disabled="loading" type="submit">
               <i class="bi bi-search" aria-hidden="true" />
               {{ t('common.search') }}
             </LteButton>
-            <LteButton class="action-button" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+            <LteButton class="action-button" :disabled="loading" type="button" @click="clearQuery">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('common.reset') }}
             </LteButton>
@@ -306,11 +298,11 @@ defineExpose<{
           <legend class="collection-filter-legend form-label">{{ t('common.dataTable.operations') }}</legend>
           <div class="collection-filter-options">
             <template v-if="!config.search && filters.length">
-              <LteButton class="action-button" :disabled="loading" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="loading" type="submit">
                 <i class="bi bi-search" aria-hidden="true" />
                 {{ t('common.search') }}
               </LteButton>
-              <LteButton class="action-button" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+              <LteButton class="action-button" :disabled="loading" type="button" @click="clearQuery">
                 <i class="bi bi-arrow-clockwise" aria-hidden="true" />
                 {{ t('common.reset') }}
               </LteButton>
@@ -320,7 +312,6 @@ defineExpose<{
               v-if="config.bulkAction"
               class="action-button"
               :disabled="loading || runningBulkAction || !bulkEnabled"
-              :theme="actionTheme(config.bulkAction.icon)"
               type="button"
               @click="runBulkAction"
             >
@@ -351,7 +342,7 @@ defineExpose<{
     </div>
     <div v-else-if="loadError" data-testid="data-table-error" role="alert">
       <LteAlert :title="label(config.loadErrorTitle)" theme="danger">{{ loadErrorText }}</LteAlert>
-      <LteButton class="action-button" theme="info" type="button" @click="reload">
+      <LteButton class="action-button" type="button" @click="reload">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.retry') }}
       </LteButton>
@@ -402,7 +393,6 @@ defineExpose<{
                     :aria-label="actionLabel(action, row)"
                     :disabled="Boolean(runningRowAction) || Boolean(action.disabled?.(row))"
                     size="sm"
-                    :theme="actionTheme(action.icon)"
                     :title="actionLabel(action, row)"
                     type="button"
                     @click="runRowAction(action, row)"

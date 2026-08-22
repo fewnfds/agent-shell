@@ -61,7 +61,7 @@ const { t } = useI18n()
       </LteAlert>
     </form>
     <template #footer>
-      <LteButton class="action-button" :disabled="props.busy" theme="secondary" type="button" @click="emit('close')">
+      <LteButton class="action-button" :disabled="props.busy" type="button" @click="emit('close')">
         <i class="bi bi-x-lg" aria-hidden="true" />
         {{ t('common.cancel') }}
       </LteButton>
@@ -69,7 +69,6 @@ const { t } = useI18n()
         class="action-button"
         :disabled="props.busy"
         :form="props.formId"
-        theme="primary"
         type="submit"
       >
         <span v-if="props.busy" class="spinner-border spinner-border-sm" aria-hidden="true" />

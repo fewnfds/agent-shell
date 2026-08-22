@@ -33,8 +33,8 @@ const emit = defineEmits<{
     <template #footer>
       <LteButton
         class="action-button"
+        data-action="cancel"
         :disabled="busy"
-        theme="secondary"
         @click="emit('cancel')"
       >
         <i class="bi bi-x-lg" aria-hidden="true" />
@@ -43,8 +43,8 @@ const emit = defineEmits<{
       <LteButton
         v-if="dangerous"
         class="action-button"
+        data-action="delete"
         :disabled="busy"
-        theme="danger"
         @click="emit('confirm')"
       >
         <i class="bi bi-trash" aria-hidden="true" />
@@ -53,8 +53,8 @@ const emit = defineEmits<{
       <LteButton
         v-else
         class="action-button"
+        data-action="confirm"
         :disabled="busy"
-        theme="primary"
         @click="emit('confirm')"
       >
         <i class="bi bi-check-lg" aria-hidden="true" />

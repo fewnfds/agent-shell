@@ -50,7 +50,6 @@ function close(): void {
         data-action="close-modal"
         :title="t('common.close')"
         size="sm"
-        theme="secondary"
         type="button"
         @click="close"
       ><i class="bi bi-x-lg" aria-hidden="true" /></LteButton>

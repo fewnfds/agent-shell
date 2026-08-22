@@ -474,7 +474,6 @@ watch(
                 :title="t('agents.obsoleteReferences.remove')"
                 data-action="remove-obsolete-capability-override"
                 size="sm"
-                theme="danger"
                 type="button"
                 @click="removeObsoleteOverride(item.index)"
               >

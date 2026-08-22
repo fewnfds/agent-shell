@@ -288,7 +288,7 @@ onMounted(() => { void load() })
 <template>
   <PageShell>
     <template #actions>
-      <LteButton class="action-button" :disabled="loading || saving" theme="secondary" type="button" @click="load">
+      <LteButton class="action-button" :disabled="loading || saving" type="button" @click="load">
         <span v-if="loading" class="spinner-border spinner-border-sm" aria-hidden="true" />
         <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
@@ -296,7 +296,6 @@ onMounted(() => { void load() })
       <LteButton
         class="action-button"
         :disabled="loading || !settings || !apiServerSettings || !runtimePolicy || saving || !settingsValid"
-        theme="primary"
         type="button"
         @click="save"
       >
@@ -377,7 +376,6 @@ onMounted(() => { void load() })
                       class="icon-action-button"
                       :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
                       :aria-pressed="showManagementPassword"
-                      theme="secondary"
                       type="button"
                       @click="showManagementPassword = !showManagementPassword"
                     >
@@ -403,7 +401,6 @@ onMounted(() => { void load() })
                       class="icon-action-button"
                       :aria-label="showApiKey ? t('common.hide') : t('common.show')"
                       :aria-pressed="showApiKey"
-                      theme="secondary"
                       type="button"
                       @click="showApiKey = !showApiKey"
                     >
@@ -556,7 +553,6 @@ onMounted(() => { void load() })
                       class="icon-action-button"
                       :aria-label="showLangsmithApiKey ? t('common.hide') : t('common.show')"
                       :aria-pressed="showLangsmithApiKey"
-                      theme="secondary"
                       type="button"
                       @click="showLangsmithApiKey = !showLangsmithApiKey"
                     >

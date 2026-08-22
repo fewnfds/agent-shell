@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
-import { styleBaseline } from '@/generated/styleBaseline'
+import { styleBaseline } from 'virtual:style-baseline'
 
 const { t } = useI18n()
 const search = ref('')

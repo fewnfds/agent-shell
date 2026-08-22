@@ -335,26 +335,26 @@ defineExpose({ refresh: load })
 <template>
   <section>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <LteButton class="action-button" :disabled="loading" theme="info" type="button" @click="load()">
+      <LteButton class="action-button" :disabled="loading" type="button" @click="load()">
         <i class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
       <template v-if="directory?.capabilities.create">
-        <LteButton class="action-button" theme="primary" type="button" @click="openCreate('directory')">
+        <LteButton class="action-button" type="button" @click="openCreate('directory')">
           <i class="bi bi-folder-plus" aria-hidden="true" />
           {{ t('fileManager.createFolder') }}
         </LteButton>
-        <LteButton class="action-button" theme="primary" type="button" @click="openCreate('file')">
+        <LteButton class="action-button" type="button" @click="openCreate('file')">
           <i class="bi bi-file-earmark-plus" aria-hidden="true" />
           {{ t('fileManager.createFile') }}
         </LteButton>
       </template>
       <template v-if="directory?.capabilities.upload">
-        <LteButton class="action-button" :disabled="uploading" theme="primary" type="button" @click="fileInput?.click()">
+        <LteButton class="action-button" :disabled="uploading" type="button" @click="fileInput?.click()">
           <i class="bi bi-upload" aria-hidden="true" />
           {{ t('fileManager.uploadFiles') }}
         </LteButton>
-        <LteButton class="action-button" :disabled="uploading" theme="primary" type="button" @click="folderInput?.click()">
+        <LteButton class="action-button" :disabled="uploading" type="button" @click="folderInput?.click()">
           <i class="bi bi-folder-plus" aria-hidden="true" />
           {{ t('fileManager.uploadFolder') }}
         </LteButton>
@@ -362,7 +362,6 @@ defineExpose({ refresh: load })
       <LteButton
         class="action-button ms-auto"
         :disabled="!selectedItems.length || archiveDownloading"
-        theme="primary"
         type="button"
         @click="downloadArchive"
       >
@@ -477,7 +476,6 @@ defineExpose({ refresh: load })
                   :aria-label="t('fileManager.download')"
                   :title="t('fileManager.download')"
                   size="sm"
-                  theme="info"
                   type="button"
                   @click="download(item)"
                 >
@@ -489,7 +487,6 @@ defineExpose({ refresh: load })
                   :aria-label="t('fileManager.rename')"
                   :title="t('fileManager.rename')"
                   size="sm"
-                  theme="warning"
                   type="button"
                   @click="startRename(item)"
                 >
@@ -501,7 +498,6 @@ defineExpose({ refresh: load })
                   :aria-label="t('common.delete')"
                   :title="t('common.delete')"
                   size="sm"
-                  theme="danger"
                   type="button"
                   @click="removeItem(item)"
                 >
@@ -522,8 +518,8 @@ defineExpose({ refresh: load })
         <input id="file-workspace-create-name" v-model="createName" class="form-control" type="text">
       </div>
       <div class="d-flex gap-2">
-        <LteButton class="action-button" theme="secondary" type="button" @click="createOpen = false"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton>
-        <LteButton class="action-button" :disabled="!createName.trim() || createSaving" theme="primary" type="submit">
+        <LteButton class="action-button" type="button" @click="createOpen = false"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton>
+        <LteButton class="action-button" :disabled="!createName.trim() || createSaving" type="submit">
           <span v-if="createSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
           <i v-else class="bi bi-floppy" aria-hidden="true" />
           {{ t('common.save') }}
@@ -539,8 +535,8 @@ defineExpose({ refresh: load })
         <input id="file-workspace-rename-name" v-model="renameName" class="form-control" type="text">
       </div>
       <div class="d-flex gap-2">
-        <LteButton class="action-button" theme="secondary" type="button" @click="renameOpen = false"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton>
-        <LteButton class="action-button" :disabled="!renameName.trim() || renameSaving" theme="primary" type="submit">
+        <LteButton class="action-button" type="button" @click="renameOpen = false"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton>
+        <LteButton class="action-button" :disabled="!renameName.trim() || renameSaving" type="submit">
           <span v-if="renameSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
           <i v-else class="bi bi-floppy" aria-hidden="true" />
           {{ t('common.save') }}
