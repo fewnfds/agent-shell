@@ -132,6 +132,16 @@ def test_bundle_archive_rejects_path_traversal_unknown_version_and_asset_tamperi
     with pytest.raises(BundleArchiveError, match="current contract"):
         parse_bundle(unknown_version)
 
+    raw_manifest = manifest.model_dump(mode="json", by_alias=True)
+    raw_manifest["root"]["type"] = "filesystem-permissions"
+    mismatched_root_type = _rewrite_entry(
+        bundle,
+        "manifest.json",
+        canonical_json_bytes(raw_manifest),
+    )
+    with pytest.raises(BundleArchiveError, match="current contract"):
+        parse_bundle(mismatched_root_type)
+
     tampered = _rewrite_entry(
         bundle,
         f"assets/skill-packages/{SOURCE_ID}/outline/SKILL.md",

@@ -216,7 +216,7 @@
         "classes": [
           "align-items-center", "align-items-end", "align-items-start", "bg-body-tertiary", "col", "col-12", "col-lg-3", "col-lg-4", "col-lg-6", "col-lg-8", "col-lg-9", "col-md-6", "col-xl-5", "col-xl-7", "col-xxl-4", "d-block", "d-flex", "d-none", "d-sm-inline", "flex-wrap", "font-monospace", "form-text", "fw-semibold", "g-3", "gap-1", "gap-2", "gap-3", "h-100", "h4", "h5",
           "flex-column", "fs-6", "justify-content-between", "justify-content-end", "lh-sm", "mb-0", "mb-1", "mb-2", "mb-3", "me-2", "ms-auto", "mt-2", "mt-3", "overflow-auto", "p-3", "small",
-          "text-body-secondary", "text-break", "text-center", "text-danger", "text-end", "text-start", "text-success", "text-uppercase", "visually-hidden", "w-100"
+          "text-body-secondary", "text-break", "text-center", "text-danger", "text-decoration-none", "text-end", "text-start", "text-success", "text-uppercase", "visually-hidden", "w-100"
         ]
       },
       {
@@ -281,6 +281,7 @@
           "src/pages/ApiServerSettingsPage.vue",
           "src/pages/ComponentsPage.vue",
           "src/pages/ConfigLibraryPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
           "src/pages/MainAgentPage.vue",
           "src/pages/SubagentPage.vue"
         ],
@@ -382,7 +383,12 @@
           "src/components/ConfirmDialog.vue",
           "src/components/AuthGate.vue",
           "src/components/FileWorkspaceDialog.vue",
-          "src/pages/ConfigLibraryPage.vue"
+          "src/pages/ComponentsPage.vue",
+          "src/pages/ConfigLibraryPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
+          "src/pages/MainAgentPage.vue",
+          "src/pages/SubagentPage.vue",
+          "src/pages/WorkflowsPage.vue"
         ]
       },
       {
@@ -431,7 +437,7 @@
           "src/pages/TerminologyPage.vue",
           "src/pages/WorkflowLifecyclesPage.vue",
           "src/pages/WorkflowsPage.vue",
-          "src/pages/ModelConnectionsPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
           "src/pages/ModelMappingPage.vue"
         ]
       },
@@ -455,8 +461,11 @@
           "src/editors/ModelEditor.vue",
           "src/editors/PromptCachingEditor.vue",
           "src/editors/SummarizationEditor.vue",
+          "src/pages/ComponentsPage.vue",
           "src/pages/ConfigLibraryPage.vue",
-          "src/pages/ModelConnectionsPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
+          "src/pages/MainAgentPage.vue",
+          "src/pages/SubagentPage.vue",
           "src/pages/StyleLabPage.vue",
           "src/pages/SystemSettingsPage.vue",
           "src/pages/WorkflowsPage.vue"
@@ -601,6 +610,7 @@
         "reason": "Owns shared data query, filtering, local/numbered pagination, result states, table rendering and optional row or bulk commands",
         "callers": [
           "src/pages/ConfigLibraryPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
           "src/pages/EventFeedPage.vue",
           "src/pages/TerminologyPage.vue",
           "src/pages/WorkflowLifecyclesPage.vue"

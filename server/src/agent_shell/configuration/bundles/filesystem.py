@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agent_shell.configuration.bundles.contracts import FilesystemBindingResolution
+from agent_shell.configuration.bundles.errors import bundle_issue
 from agent_shell.storage.owned_paths import (
     OwnedPathError,
     resolve_data_root_relative_path,
@@ -126,24 +127,24 @@ def apply_filesystem_bindings(
         if resolution is None:
             if binding.required and require_resolved:
                 errors.append(
-                    {
-                        "code": "filesystem_binding_required",
-                        "source_id": binding.source_id,
-                        "path": binding.path,
-                        "message": "A target filesystem path must be selected.",
-                    }
+                    bundle_issue(
+                        "filesystem_binding_required",
+                        "A target filesystem path must be selected.",
+                        source_id=binding.source_id,
+                        path=binding.path,
+                    )
                 )
             continue
         target = Path(resolution.value)
         if binding.kind == "mapped-directory":
             if resolution.path_origin is None:
                 errors.append(
-                    {
-                        "code": "filesystem_path_origin_required",
-                        "source_id": binding.source_id,
-                        "path": binding.path,
-                        "message": "A mapped directory binding must declare its path origin.",
-                    }
+                    bundle_issue(
+                        "filesystem_path_origin_required",
+                        "A mapped directory binding must declare its path origin.",
+                        source_id=binding.source_id,
+                        path=binding.path,
+                    )
                 )
                 continue
             if resolution.path_origin == "absolute":
@@ -161,12 +162,12 @@ def apply_filesystem_bindings(
                     valid = True
             if not valid:
                 errors.append(
-                    {
-                        "code": "filesystem_directory_invalid",
-                        "source_id": binding.source_id,
-                        "path": binding.path,
-                        "message": "The target mapped directory binding is invalid.",
-                    }
+                    bundle_issue(
+                        "filesystem_directory_invalid",
+                        "The target mapped directory binding is invalid.",
+                        source_id=binding.source_id,
+                        path=binding.path,
+                    )
                 )
                 continue
             parent: Any = output[binding.source_id]
@@ -182,12 +183,12 @@ def apply_filesystem_bindings(
                 valid = target.is_file()
             if not valid:
                 errors.append(
-                    {
-                        "code": "filesystem_source_invalid",
-                        "source_id": binding.source_id,
-                        "path": binding.path,
-                        "message": "The target virtual source path is invalid.",
-                    }
+                    bundle_issue(
+                        "filesystem_source_invalid",
+                        "The target virtual source path is invalid.",
+                        source_id=binding.source_id,
+                        path=binding.path,
+                    )
                 )
                 continue
         _set_value(output[binding.source_id], binding.location, resolution.value)

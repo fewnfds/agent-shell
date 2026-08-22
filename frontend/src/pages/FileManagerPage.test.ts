@@ -94,8 +94,11 @@ describe('File Workspace', () => {
     expect(wrapper.text()).toContain('files')
     expect(wrapper.text()).not.toContain('New folder')
 
-    const filesButton = wrapper.findAll('button').find((button) => button.text().includes('files'))
-    await filesButton!.trigger('click')
+    const filesLink = wrapper.findAll('a').find((link) => link.text().includes('files'))
+    expect(filesLink?.classes()).toContain('text-decoration-none')
+    expect(wrapper.get('tbody td:nth-child(2) a').exists()).toBe(true)
+    expect(wrapper.find('tbody td:nth-child(2) button').exists()).toBe(false)
+    await filesLink!.trigger('click')
     await flushPromises()
 
     expect(api.listManagedFiles).toHaveBeenLastCalledWith('data/files')
@@ -137,8 +140,9 @@ describe('File Workspace', () => {
     expect(wrapper.text()).toContain('main.py')
     expect(wrapper.get('tr[aria-current="true"] strong').text()).toBe('main.py')
 
-    const fileButton = wrapper.findAll('button').find((button) => button.text().includes('main.py'))
-    await fileButton!.trigger('click')
+    const fileLink = wrapper.findAll('a').find((link) => link.text().includes('main.py'))
+    expect(fileLink?.classes()).toContain('text-decoration-none')
+    await fileLink!.trigger('click')
     await flushPromises()
 
     expect(read).toHaveBeenCalledWith(path)

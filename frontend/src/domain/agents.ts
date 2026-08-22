@@ -57,10 +57,14 @@ export interface AgentAuthoringService {
   getMainAgent(id: string): Promise<MainAgent>
   createMainAgent(payload: MainAgentPayload): Promise<MainAgent>
   updateMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent>
+  copyMainAgent(id: string, name: string): Promise<MainAgent>
+  deleteMainAgent(id: string): Promise<{ ok: boolean }>
   listSubagents(): Promise<SubagentProfile[]>
   getSubagent(id: string): Promise<SubagentProfile>
   createSubagent(payload: SubagentPayload): Promise<SubagentProfile>
   updateSubagent(id: string, payload: SubagentPayload): Promise<SubagentProfile>
+  copySubagent(id: string, componentName: string): Promise<SubagentProfile>
+  deleteSubagent(id: string): Promise<{ ok: boolean }>
   validateDraft(request: DraftValidationRequest): Promise<ValidationReport>
 }
 
@@ -73,10 +77,14 @@ export const managementAgentAuthoringService: AgentAuthoringService = {
   getMainAgent: (id) => managementApi.getMainAgent(id),
   createMainAgent: (payload) => managementApi.saveMainAgent(payload),
   updateMainAgent: (id, payload) => managementApi.saveMainAgent({ id, ...payload }),
+  copyMainAgent: (id, name) => managementApi.copyMainAgent(id, name),
+  deleteMainAgent: (id) => managementApi.deleteMainAgent(id),
   listSubagents: () => managementApi.listSubagents(),
   getSubagent: (id) => managementApi.getSubagent(id),
   createSubagent: (payload) => managementApi.saveSubagent(payload),
   updateSubagent: (id, payload) => managementApi.saveSubagent({ id, ...payload }),
+  copySubagent: (id, componentName) => managementApi.copySubagent(id, componentName),
+  deleteSubagent: (id) => managementApi.deleteSubagent(id),
   validateDraft: (request) => managementApi.validateDraft(request),
 }
 

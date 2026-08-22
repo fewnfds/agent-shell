@@ -213,6 +213,25 @@ export const managementApi = {
     )
   },
 
+  copyConfigurationRepository(id: string, name: string): Promise<ConfigurationRepository> {
+    return managementRequest(
+      `${recordPath('/api/configuration-repositories', id)}/copy`,
+      jsonBody({ name }),
+    )
+  },
+
+  downloadConfigurationRepository(id: string): Promise<NamedDownload> {
+    return managementNamedDownload(
+      `${recordPath('/api/configuration-repositories', id)}/download`,
+    )
+  },
+
+  deleteConfigurationRepository(id: string): Promise<{ ok: boolean }> {
+    return managementRequest(recordPath('/api/configuration-repositories', id), {
+      method: 'DELETE',
+    })
+  },
+
   exportConfigurationBundle(root: ConfigurationBundleRoot): Promise<NamedDownload> {
     return managementNamedDownload(
       '/api/configuration-bundles/export',
@@ -263,6 +282,10 @@ export const managementApi = {
 
   createWorkflow(payload: WorkflowPayload): Promise<Workflow> {
     return managementRequest('/api/workflows', jsonBody(payload))
+  },
+
+  copyWorkflow(id: string, name: string): Promise<Workflow> {
+    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/copy`, jsonBody({ name }))
   },
 
   updateWorkflow(id: string, payload: WorkflowPayload): Promise<Workflow> {

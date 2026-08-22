@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
+import json
+from zipfile import ZipFile
+
+import yaml
+
+from agent_shell.configuration.repositories import list_configuration_repositories
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import (
@@ -79,6 +86,135 @@ def test_repository_names_are_unique_without_switching_on_create(
         assert conflict.json()["detail"]["code"] == "configuration_repository_conflict"
 
 
+def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        source_repository = client.get(
+            "/api/configuration-repositories"
+        ).json()["repositories"][0]
+        main_agent = create_main_agent(client)
+        workflow = create_workflow(client, name="Copied repository Workflow")
+        source_graph = save_linear_workflow_graph(client, workflow, main_agent)
+        source_config = FileConfigRepository(tmp_path / "data").config()
+        source_ids = FileConfigRepository._configuration_ids(source_config)
+        source_requirement = next(
+            item
+            for item in source_config["components"]["model-requirement"]
+        )
+        source_output = next(
+            item
+            for item in source_config["components"]["agent-event-output"]
+        )
+        source_binding = next(
+            item
+            for item in client.get("/api/model-requirements").json()
+            if item["id"] == source_requirement["id"]
+        )
+
+        copied_response = client.post(
+            f"/api/configuration-repositories/{source_repository['id']}/copy",
+            json={"name": "Independent copy"},
+        )
+        assert copied_response.status_code == 200, copied_response.text
+        copied_repository = copied_response.json()
+        assert copied_repository["active"] is False
+
+        downloaded = client.get(
+            f"/api/configuration-repositories/{copied_repository['id']}/download"
+        )
+        assert downloaded.status_code == 200, downloaded.text
+        with ZipFile(BytesIO(downloaded.content)) as archive:
+            names = set(archive.namelist())
+            manifest = json.loads(archive.read("manifest.json"))
+            archive_bytes = b"".join(archive.read(name) for name in names)
+        assert manifest["format"] == "agent-shell.configuration-repository"
+        assert not any("model-connections" in name for name in names)
+        assert b"provider-test-secret" not in archive_bytes
+
+        activated = client.post(
+            f"/api/configuration-repositories/{copied_repository['id']}/activate"
+        )
+        assert activated.status_code == 200, activated.text
+        copied_config = FileConfigRepository(tmp_path / "data").config()
+        copied_ids = FileConfigRepository._configuration_ids(copied_config)
+        assert copied_ids
+        assert copied_ids.isdisjoint(source_ids)
+        assert len(copied_ids) == len(source_ids)
+
+        copied_agent = client.get("/api/main-agents").json()[0]
+        copied_workflow = client.get("/api/workflows").json()[0]
+        copied_requirement = client.get(
+            "/api/blocks/model-requirement"
+        ).json()[0]
+        copied_output = client.get("/api/blocks/agent-event-output").json()[0]
+        assert copied_agent["id"] != main_agent["id"]
+        assert {
+            reference["block_id"]
+            for reference in copied_agent["capability_refs"]
+        }.issubset(copied_ids)
+        assert copied_workflow["enabled"] is False
+        copied_graph = client.get(
+            f"/api/workflows/{copied_workflow['id']}/graph"
+        ).json()
+        assert copied_graph["layout"] == source_graph["layout"]
+        copied_agent_node = next(
+            node
+            for node in copied_graph["definition"]["nodes"]
+            if node["type"] == "agent"
+        )
+        assert copied_agent_node["config"]["main_agent_id"] == copied_agent["id"]
+        copied_binding = next(
+            item
+            for item in client.get("/api/model-requirements").json()
+            if item["id"] == copied_requirement["id"]
+        )
+        assert copied_binding["binding"] == source_binding["binding"]
+
+        copied_package = (
+            tmp_path
+            / "data"
+            / "configuration-repositories"
+            / copied_repository["id"]
+            / "python_package_instances"
+            / "agent-event-output"
+            / copied_output["id"]
+        )
+        assert copied_package.is_dir()
+        assert json.loads(
+            (copied_package / "package.json").read_text(encoding="utf-8")
+        )["id"] == copied_output["id"]
+        assert not (copied_package.parent / source_output["id"]).exists()
+
+        active_delete = client.delete(
+            f"/api/configuration-repositories/{copied_repository['id']}"
+        )
+        assert active_delete.status_code == 409
+        assert active_delete.json()["detail"]["code"] == (
+            "active_configuration_repository_delete_forbidden"
+        )
+
+        switched_back = client.post(
+            f"/api/configuration-repositories/{source_repository['id']}/activate"
+        )
+        assert switched_back.status_code == 200, switched_back.text
+        deleted = client.delete(
+            f"/api/configuration-repositories/{copied_repository['id']}"
+        )
+        assert deleted.json() == {"ok": True}
+        listed_ids = {
+            item["id"]
+            for item in client.get("/api/configuration-repositories").json()[
+                "repositories"
+            ]
+        }
+        assert copied_repository["id"] not in listed_ids
+        bindings_path = tmp_path / "data" / "config" / "model-bindings.yaml"
+        bindings = yaml.safe_load(bindings_path.read_text(encoding="utf-8"))
+        assert copied_repository["id"] not in bindings
+
+
 def test_invalid_repository_name_does_not_leave_an_orphan_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -88,6 +224,24 @@ def test_invalid_repository_name_does_not_leave_an_orphan_directory(
         assert response.status_code == 409, response.text
         repository_root = tmp_path / "data" / "configuration-repositories"
         assert len(list(repository_root.iterdir())) == 1
+
+
+def test_repository_listing_ignores_only_internal_work_directories(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    repository = FileConfigRepository(data_root)
+    repository_root = data_root / "configuration-repositories"
+    (repository_root / ".repository-copy-interrupted").mkdir()
+    (repository_root / ".repository-delete-interrupted").mkdir()
+
+    assert [
+        item.id for item in list_configuration_repositories(data_root)
+    ] == [repository.repository_id]
+
+    (repository_root / "invalid-repository").mkdir()
+    with pytest.raises(ValueError, match="repository manifest is invalid"):
+        list_configuration_repositories(data_root)
 
 
 def test_configuration_stores_reject_writes_after_repository_switch(

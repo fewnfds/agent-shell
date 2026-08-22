@@ -22,4 +22,4 @@
 模型要求和 Agent 事件输出是 Main Agent 必选组件；模型连接在实例“模型”页面维护并通过模型映射绑定；Filesystem 由每个 Agent 自选，未选时使用最小 Filesystem；Workflow 事件输出由 Workflow 可选绑定；Command 与任务分发由画布 Node 引用；
 Main Agent 显示“最小 / 项目 Filesystem”，Subagent 显示“继承 / 最小 / 项目 Filesystem”。其余 Agent capability 按需引用。
 组件使用 UUID 建立引用；名称用于显示。
-编辑页提供草稿校验、新建、重置和保存，删除集中在组件库。
+组件和模型连接编辑页提供草稿校验、选择、复制、删除、新建和保存，不提供重置；配置库提供对应的通用列表操作。

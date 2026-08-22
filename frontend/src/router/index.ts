@@ -3,6 +3,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 const ApiServerSettingsPage = () => import('@/pages/ApiServerSettingsPage.vue')
 const ComponentsPage = () => import('@/pages/ComponentsPage.vue')
 const ConfigLibraryPage = () => import('@/pages/ConfigLibraryPage.vue')
+const ConfigurationRepositoriesPage = () => import('@/pages/ConfigurationRepositoriesPage.vue')
 const EventFeedPage = () => import('@/pages/EventFeedPage.vue')
 const FileManagerPage = () => import('@/pages/FileManagerPage.vue')
 const MainAgentPage = () => import('@/pages/MainAgentPage.vue')
@@ -14,7 +15,6 @@ const TerminologyPage = () => import('@/pages/TerminologyPage.vue')
 const WorkflowsPage = () => import('@/pages/WorkflowsPage.vue')
 const WorkflowEditorPage = () => import('@/pages/WorkflowEditorPage.vue')
 const WorkflowLifecyclesPage = () => import('@/pages/WorkflowLifecyclesPage.vue')
-const ModelConnectionsPage = () => import('@/pages/ModelConnectionsPage.vue')
 const ModelMappingPage = () => import('@/pages/ModelMappingPage.vue')
 
 export const router = createRouter({
@@ -23,7 +23,12 @@ export const router = createRouter({
     { path: '/', component: ApiServerSettingsPage, meta: { titleKey: 'apiServer.homeTitle' } },
     { path: '/workflows', redirect: '/workflows/parents' },
     { path: '/models', redirect: '/models/connections' },
-    { path: '/models/connections', component: ModelConnectionsPage, meta: { titleKey: 'navigation.models' } },
+    {
+      path: '/models/connections',
+      component: ComponentsPage,
+      props: { scope: 'model' },
+      meta: { titleKey: 'navigation.models' },
+    },
     { path: '/models/mapping', component: ModelMappingPage, meta: { titleKey: 'navigation.models' } },
     {
       path: '/workflows/parents',
@@ -66,7 +71,18 @@ export const router = createRouter({
     },
     { path: '/library', redirect: '/library/model-requirement' },
     { path: '/library/:type', component: ConfigLibraryPage, meta: { titleKey: 'library.title' } },
-    { path: '/system', redirect: '/system/config' },
+    { path: '/system', redirect: '/system/configuration-repositories' },
+    {
+      path: '/system/configuration-repositories',
+      component: ConfigurationRepositoriesPage,
+      meta: { titleKey: 'configurationRepositories.title' },
+    },
+    {
+      path: '/system/model-connections',
+      component: ConfigLibraryPage,
+      props: { fixedCategory: 'model-connection' },
+      meta: { titleKey: 'navigation.sections.modelConnections' },
+    },
     {
       path: '/system/config',
       component: SystemSettingsPage,

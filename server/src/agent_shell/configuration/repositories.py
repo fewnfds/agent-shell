@@ -54,7 +54,7 @@ def _write_json_atomic(path: Path, value: dict[str, object]) -> None:
     write_text_atomic(path, text)
 
 
-def _repository_name(value: object) -> str:
+def normalize_repository_name(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("configuration repository name is required")
     name = value.strip()
@@ -81,7 +81,7 @@ def load_configuration_repository(root: Path) -> ConfigurationRepositoryDescript
         raise ValueError("configuration repository schema version is unsupported")
     return ConfigurationRepositoryDescriptor(
         id=repository_id,
-        name=_repository_name(value.get("name")),
+        name=normalize_repository_name(value.get("name")),
         root=root,
     )
 
@@ -94,7 +94,9 @@ def list_configuration_repositories(
         return ()
     repositories: list[ConfigurationRepositoryDescriptor] = []
     for path in sorted(root.iterdir(), key=lambda item: item.name.casefold()):
-        if path.is_dir():
+        if path.is_dir() and not path.name.startswith(
+            (".repository-copy-", ".repository-delete-")
+        ):
             repositories.append(load_configuration_repository(path))
     return tuple(sorted(repositories, key=lambda item: (item.name.casefold(), item.id)))
 
@@ -105,7 +107,7 @@ def create_configuration_repository(
     *,
     repository_id: str | None = None,
 ) -> ConfigurationRepositoryDescriptor:
-    normalized_name = _repository_name(name)
+    normalized_name = normalize_repository_name(name)
     repository_id = require_configuration_id(
         repository_id or str(uuid4()), label="configuration repository id"
     )
@@ -201,5 +203,6 @@ __all__ = [
     "ensure_active_configuration_repository",
     "list_configuration_repositories",
     "load_configuration_repository",
+    "normalize_repository_name",
     "write_active_configuration_repository",
 ]

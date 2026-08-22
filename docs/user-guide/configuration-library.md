@@ -1,6 +1,8 @@
-# 管理组件库
+# 管理配置库
 
-【组件库】按 Workflow、代理组件、工作流组件和 Agent（Main Agent/Subagent）四组显示当前 Configuration Repository 的记录，支持搜索、查看详情、编辑、逐行下载、单项删除和批量删除。页面顶部提供 Repository selector 与创建空 Repository；切换只发布已完成加载的文件化配置上下文。
+【配置库】使用同一个通用列表，按系统、Workflow、代理组件、工作流组件和 Agent（Main Agent/Subagent）分组显示记录。Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除和筛选后批量删除；系统组中的【模型连接】支持查看、编辑、复制和删除，不提供上传、下载或批量删除。
+
+Configuration Repository 的列表和切换入口位于【系统 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。模型连接与 credential 不随 Repository 复制或下载，repository-scoped 模型映射会按新 Model Requirement UUID 复制。
 
 系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template 和模型连接属于实例域，切换 Repository 时保持不变。模型映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置和模型资源视图，后续切换只影响新请求。
 
@@ -31,11 +33,15 @@ Graph admission 问题也会显示。满足磁盘身份格式但业务配置无�
 - `POST /api/configuration-bundles/import`：再次提交同一个 multipart `bundle`，并在 `request` form field 中提交 JSON；JSON 包含
   preview 的 `bundle_sha256`、`plan_token`，以及 `resolutions.target_ids`、可选 `resolutions.names` 和 `resolutions.filesystem_bindings`。
 
-组件库只在 preview 为 ready、没有 blocker、全部名称已填写且所有 Filesystem binding 已完成时启用导入；mapped directory 还需明确 path origin。commit 复用本次 preview 的 `bundle_sha256`、`plan_token` 和 target UUID map。导入成功后，页面打开新 root 记录的编辑页。
+配置库根据当前名称输入、服务端 blocker 和 Filesystem binding 实时决定是否允许导入；mapped directory 还需明确 path origin。名称冲突时服务端建议的新名称只作为提示，不会被当成用户已确认值；输入有效新名称后可提交，commit 仍由服务端按当前 active Repository 再次校验。commit 复用本次 preview 的 `bundle_sha256`、`plan_token` 和 target UUID map。导入成功后刷新当前列表并留在原页面。
 
 导入不会按源 UUID 或名称复用、更新或覆盖配置。每条配置使用 preview 给出的新 UUID，声明式引用由后端机械重写；
 名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为
 `enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
+
+单根 Bundle 的 manifest 固定保存 root `kind`、Component `type` 或 Workflow `role`，preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，不由当前页面分类或文件名推断，因此 Filesystem Bundle 不会被写成 Filesystem Permissions。系统【组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式；当前只提供整仓库下载，不提供整仓库上传恢复。
+
+未知或不受信任的配置可能包含以 Agent Shell 权限运行的 Python/Skill 代码、文件系统访问、网络访问或欺骗性引用。导入或分享前必须检查来源、提示词、Skill 文件、Python 源码、requirements、文件系统绑定与权限。preview 的 warning 使用稳定 `message_key/message_args` 本地化显示，不直接把后端英文作为普通界面文案。
 
  Python-backed Component 会携带完整 owner package，并在目标实例用新 UUID 重建 folder 和 `package.json.id`；导入过程只做
  静态扫描，不 import factory。Skill Component 携带完整 owner private package，目标实例始终用新 Component UUID 重建目录，不做全局 Skill 名称复用或冲突判断。Filesystem 的绝对 mapped path、

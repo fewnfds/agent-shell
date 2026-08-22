@@ -37,7 +37,7 @@ Content-Type: application/json
 配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node
 的 Workflow 同样可以 invoke，但不保证产生 Assistant text。
 
-配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定本机模型连接；解决 preview
+配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；解决 preview
 报告的 data-root-relative missing path；审查随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对
 disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用
 返回的 target UUID；Workflow Node/Edge ID 仍是 Graph-local key，不参与 Configuration UUID map。

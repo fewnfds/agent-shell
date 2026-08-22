@@ -143,6 +143,51 @@ class WorkflowStore:
         )
         emit_configuration_events(self._events, action="updated" if existing else "created", entity="workflow", entity_id=item_id)
 
+    def copy_item(
+        self,
+        source_id: str,
+        item_id: str,
+        data: dict,
+        *,
+        expected_repository_id: str | None = None,
+    ) -> bool:
+        copied = False
+        empty_definition = WorkflowGraphDefinitionV1().model_dump(mode="json")
+        empty_layout = WorkflowLayoutV1().model_dump(mode="json")
+
+        def mutate(config: dict) -> None:
+            nonlocal copied
+            records = config.setdefault("workflows", [])
+            source = next(
+                (item for item in records if item.get("id") == source_id),
+                None,
+            )
+            if source is None:
+                return
+            if any(item.get("name") == data["name"] for item in records):
+                raise ValueError("workflow name already exists")
+            stored = deepcopy(data)
+            stored["id"] = item_id
+            stored["enabled"] = False
+            stored["definition"] = deepcopy(
+                source.get("definition", empty_definition)
+            )
+            stored["layout"] = deepcopy(source.get("layout", empty_layout))
+            records.append(stored)
+            copied = True
+
+        self._repository.update_config(
+            mutate, expected_repository_id=expected_repository_id
+        )
+        if copied:
+            emit_configuration_events(
+                self._events,
+                action="created",
+                entity="workflow",
+                entity_id=item_id,
+            )
+        return copied
+
     def get_graph(self, item_id: str) -> WorkflowGraphDocumentV1 | None:
         for item in self._repository.config().get("workflows", []):
             if item.get("id") == item_id:

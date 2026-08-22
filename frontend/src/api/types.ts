@@ -287,6 +287,8 @@ export interface ConfigurationBundleFilesystemBinding {
 export interface ConfigurationBundleIssue {
   code: string
   message: string
+  message_key?: string
+  message_args?: Record<string, JsonPrimitive>
   source_id?: string
   path?: string
 }
@@ -617,6 +619,7 @@ export type Subagent = SubagentPayload & { id: string }
 type ValidationTarget =
   | { kind: 'block'; type: BlockType; id?: string }
   | { kind: 'main_agent'; type?: ''; id?: string }
+  | { kind: 'model_connection'; type?: ''; id?: string }
   | { kind: 'subagent'; type?: ''; id?: string }
 
 export interface DraftValidationRequest {

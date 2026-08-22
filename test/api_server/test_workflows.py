@@ -30,6 +30,52 @@ def test_workflow_runtime_boundaries_are_managed(
         assert updated.json()["max_concurrency"] == 32
 
 
+def test_workflow_copy_preserves_graph_layout_and_role_as_a_draft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        source = create_workflow(
+            client,
+            name="Source Child",
+            workflow_role="child",
+        )
+        document = save_linear_workflow_graph(client, source, main_agent)
+        assert client.get(f"/api/workflows/{source['id']}").json()["enabled"] is True
+
+        copied = client.post(
+            f"/api/workflows/{source['id']}/copy",
+            json={"name": "Copied Child"},
+        )
+
+        assert copied.status_code == 200, copied.text
+        copied_item = copied.json()
+        assert copied_item["id"] != source["id"]
+        assert copied_item["name"] == "Copied Child"
+        assert copied_item["workflow_role"] == "child"
+        assert copied_item["enabled"] is False
+        assert client.get(
+            f"/api/workflows/{copied_item['id']}/graph"
+        ).json() == document
+        assert [item["id"] for item in client.get(
+            "/api/workflows?workflow_role=child"
+        ).json()] == [copied_item["id"], source["id"]]
+
+        conflict = client.post(
+            f"/api/workflows/{source['id']}/copy",
+            json={"name": "Copied Child"},
+        )
+        missing = client.post(
+            "/api/workflows/00000000-0000-4000-8000-000000000099/copy",
+            json={"name": "Missing copy"},
+        )
+
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "workflow_name_conflict"
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "workflow_not_found"
+
+
 def test_workflow_event_output_is_a_reusable_component_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

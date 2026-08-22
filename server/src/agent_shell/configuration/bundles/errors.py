@@ -12,4 +12,20 @@ class BundleImportError(ValueError):
         self.issues = issues or []
 
 
-__all__ = ["BundleImportError"]
+def bundle_issue(
+    code: str,
+    message: str,
+    *,
+    message_args: dict[str, object] | None = None,
+    **fields: object,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "message": message,
+        "message_key": f"configurationBundle.issues.{code}",
+        "message_args": message_args or {},
+        **fields,
+    }
+
+
+__all__ = ["BundleImportError", "bundle_issue"]

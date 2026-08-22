@@ -87,7 +87,8 @@ describe('WorkflowsPage', () => {
 
     expect(wrapper.text()).toContain(workflow.name)
     expect(wrapper.text()).toContain('Edit Flow')
-    expect(wrapper.text()).not.toContain('Delete')
+    expect(wrapper.text()).toContain('Copy')
+    expect(wrapper.text()).toContain('Delete')
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await flushPromises()
 
@@ -112,6 +113,60 @@ describe('WorkflowsPage', () => {
       max_concurrency: 300,
     })
 
+    wrapper.unmount()
+  })
+
+  it('copies the selected Workflow and switches to the draft copy', async () => {
+    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
+    mockComponentLists()
+    const copied = {
+      ...workflow,
+      id: 'workflow-copy',
+      name: 'Research Workflow copy',
+      enabled: false,
+    }
+    const copy = vi.spyOn(managementApi, 'copyWorkflow').mockResolvedValue(copied)
+    const router = testRouter()
+    await router.push('/workflows/parents')
+    await router.isReady()
+    const wrapper = mount(WorkflowsPage, {
+      props: { workflowRole: 'parent' },
+      global: { plugins: [i18n(), router] },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Copy')!.trigger('click')
+    await wrapper.get('#workflow-copy-form input').setValue(copied.name)
+    await wrapper.get('#workflow-copy-form').trigger('submit')
+    await flushPromises()
+
+    expect(copy).toHaveBeenCalledWith(workflow.id, copied.name)
+    expect(router.currentRoute.value.query.id).toBe(copied.id)
+    expect(wrapper.text()).toContain('Draft')
+    wrapper.unmount()
+  })
+
+  it('deletes the selected Workflow and returns to a blank form', async () => {
+    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
+    mockComponentLists()
+    const remove = vi.spyOn(managementApi, 'deleteWorkflow').mockResolvedValue({ ok: true })
+    const router = testRouter()
+    await router.push(`/workflows/parents?id=${workflow.id}`)
+    await router.isReady()
+    const wrapper = mount(WorkflowsPage, {
+      props: { workflowRole: 'parent' },
+      global: { plugins: [i18n(), router] },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Delete')!.trigger('click')
+    useConfirmation().accept()
+    await flushPromises()
+
+    expect(remove).toHaveBeenCalledWith(workflow.id)
+    expect(router.currentRoute.value.query.id).toBeUndefined()
+    expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.text()).toContain('Not saved')
     wrapper.unmount()
   })
 

@@ -3,22 +3,24 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent_shell.api.errors import management_error
-from agent_shell.contracts import MANAGED_COMPONENT_MODELS
+from agent_shell.contracts import MANAGED_COMPONENT_MODELS, ModelConnectionBlock
 from agent_shell.storage.validation_settings import (
     MIN_VALIDATION_DEBOUNCE_MS,
     ConfigurationValidationSettingsStore,
 )
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.repository import RepositoryValidationService
+from agent_shell.validation import report_from_validation_error
+from agent_shell.validation.models import ValidationReport
 
 
 class DraftValidationTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["block", "main_agent", "subagent"]
+    kind: Literal["block", "main_agent", "model_connection", "subagent"]
     type: str = ""
     id: str = ""
 
@@ -83,12 +85,25 @@ def build_validation_router(
                 stage="draft_validation",
                 owner_id=target.id,
             )
-        else:
+        elif target.kind == "subagent":
             report, _ = validation.validate_subagent(
                 request.payload,
                 stage="draft_validation",
                 owner_id=target.id,
             )
+        else:
+            try:
+                ModelConnectionBlock.model_validate(request.payload)
+            except ValidationError as exc:
+                report = report_from_validation_error(
+                    exc,
+                    stage="draft_validation",
+                    scope="model_connection",
+                    owner_id=target.id,
+                    owner_name=str(request.payload.get("name", "")),
+                )
+            else:
+                report = ValidationReport(stage="draft_validation")
         return report.as_dict()
 
     return router

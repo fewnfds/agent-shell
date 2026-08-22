@@ -3,23 +3,42 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
+from io import BytesIO
+import json
+import os
 from pathlib import Path
+import shutil
 import threading
 from typing import Any, Callable
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import yaml
 
 from agent_shell.configuration.identity import require_configuration_id
 from agent_shell.configuration.identity import new_configuration_id as generate_configuration_id
+from agent_shell.configuration.bundles.archive import (
+    canonical_json_bytes,
+    materialize_files,
+    snapshot_directory,
+)
+from agent_shell.configuration.dependencies import (
+    ConfigurationEntity,
+    iter_configuration_entities,
+    rewrite_configuration_references,
+)
 from agent_shell.configuration.repositories import (
     ConfigurationRepositoryDescriptor,
+    REPOSITORY_SCHEMA_VERSION,
+    configuration_repositories_root,
     create_configuration_repository,
     ensure_active_configuration_repository,
     list_configuration_repositories,
     load_configuration_repository,
+    normalize_repository_name,
     write_active_configuration_repository,
 )
 from agent_shell.configuration.storage import validate_configuration_snapshot
+from agent_shell.python_packages.authoring import PACKAGE_COMPONENT_SPECS
 from agent_shell.storage.atomic_files import write_text_atomic
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 from agent_shell.storage.environment import (
@@ -33,6 +52,10 @@ CONFIG_VERSION = 2
 
 class ActiveRepositoryChangedError(RuntimeError):
     """Raised when a request tries to commit against a different Repository."""
+
+
+class ActiveRepositoryDeleteError(ValueError):
+    """Raised when deletion targets the active Configuration Repository."""
 
 
 def _default_config() -> dict[str, Any]:
@@ -376,6 +399,293 @@ class FileConfigRepository:
                 raise ValueError("configuration repository name already exists")
             descriptor = create_configuration_repository(self.data_root, name)
             return descriptor.as_dict(active=False)
+
+    @staticmethod
+    def _snapshot_from_entities(
+        entities: list[ConfigurationEntity],
+    ) -> dict[str, Any]:
+        config = _default_config()
+        for entity in entities:
+            record = deepcopy(entity.payload)
+            if entity.kind == "component":
+                config["components"].setdefault(entity.component_type, []).append(
+                    record
+                )
+            elif entity.kind == "main_agent":
+                config["main_agents"].append(record)
+            elif entity.kind == "subagent":
+                config["subagents"].append(record)
+            else:
+                config["workflows"].append(record)
+        return config
+
+    def _repository_descriptor(
+        self, repository_id: str
+    ) -> ConfigurationRepositoryDescriptor:
+        repository_id = require_configuration_id(
+            repository_id,
+            label="configuration repository id",
+        )
+        return load_configuration_repository(
+            configuration_repositories_root(self.data_root) / repository_id
+        )
+
+    def _copy_repository_assets(
+        self,
+        source: ConfigurationRepositoryDescriptor,
+        target: ConfigurationRepositoryDescriptor,
+        entities: list[ConfigurationEntity],
+        target_ids: dict[str, str],
+    ) -> None:
+        for entity in entities:
+            if entity.kind != "component":
+                continue
+            target_id = target_ids[entity.id]
+            spec = PACKAGE_COMPONENT_SPECS.get(entity.component_type)
+            if spec is not None:
+                reference = entity.payload.get("python_package")
+                if (
+                    not isinstance(reference, dict)
+                    or reference.get("folder") != entity.id
+                ):
+                    raise ValueError(
+                        "Python package ownership does not match its Component UUID"
+                    )
+                source_folder = (
+                    source.python_packages_root / spec.adapter / entity.id
+                )
+                files = snapshot_directory(
+                    source_folder,
+                    exclude_python_runtime=True,
+                )
+                target_folder = (
+                    target.python_packages_root / spec.adapter / target_id
+                )
+                materialize_files(target_folder, files)
+                manifest_path = target_folder / "package.json"
+                try:
+                    manifest = json.loads(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                    raise ValueError(
+                        "Python package manifest is invalid"
+                    ) from exc
+                if not isinstance(manifest, dict):
+                    raise ValueError("Python package manifest must be an object")
+                manifest["id"] = target_id
+                write_text_atomic(
+                    manifest_path,
+                    json.dumps(
+                        manifest,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                )
+            if entity.component_type == "skill":
+                reference = entity.payload.get("skill_package")
+                if (
+                    not isinstance(reference, dict)
+                    or reference.get("folder") != entity.id
+                ):
+                    raise ValueError(
+                        "Skill package ownership does not match its Component UUID"
+                    )
+                materialize_files(
+                    target.skill_packages_root / target_id,
+                    snapshot_directory(source.skill_packages_root / entity.id),
+                )
+
+    def copy_repository(
+        self,
+        source_id: str,
+        name: str,
+    ) -> tuple[dict[str, object], dict[str, str]]:
+        normalized_name = normalize_repository_name(name)
+        with self._mutations.mutation(), self._lock:
+            repositories = list_configuration_repositories(self.data_root)
+            if any(
+                item.name.casefold() == normalized_name.casefold()
+                for item in repositories
+            ):
+                raise ValueError("configuration repository name already exists")
+            source = self._repository_descriptor(source_id)
+            source_config = self._load_config_from(source.root)
+            source_entities = list(iter_configuration_entities(source_config))
+            existing_ids = self.all_configuration_ids()
+            target_ids: dict[str, str] = {}
+            for entity in source_entities:
+                target_id = generate_configuration_id()
+                while target_id in existing_ids:
+                    target_id = generate_configuration_id()
+                existing_ids.add(target_id)
+                target_ids[entity.id] = target_id
+
+            target_entities: list[ConfigurationEntity] = []
+            for entity in source_entities:
+                payload = rewrite_configuration_references(entity, target_ids)
+                target_id = target_ids[entity.id]
+                payload["id"] = target_id
+                if entity.kind == "workflow":
+                    payload["enabled"] = False
+                if entity.kind == "component":
+                    if entity.component_type in PACKAGE_COMPONENT_SPECS:
+                        payload["python_package"]["folder"] = target_id
+                    if entity.component_type == "skill":
+                        payload["skill_package"]["folder"] = target_id
+                target_entities.append(
+                    ConfigurationEntity(
+                        id=target_id,
+                        kind=entity.kind,
+                        name=entity.name,
+                        payload=payload,
+                        component_type=entity.component_type,
+                    )
+                )
+            target_config = self._snapshot_from_entities(target_entities)
+            validate_configuration_snapshot(
+                target_config,
+                config_version=CONFIG_VERSION,
+            )
+
+            target_id = generate_configuration_id()
+            repository_ids = {item.id for item in repositories}
+            while target_id in repository_ids:
+                target_id = generate_configuration_id()
+            repositories_root = configuration_repositories_root(self.data_root)
+            final_root = repositories_root / target_id
+            staging_root = repositories_root / f".repository-copy-{target_id}"
+            staging = ConfigurationRepositoryDescriptor(
+                id=target_id,
+                name=normalized_name,
+                root=staging_root,
+            )
+            try:
+                staging_root.mkdir(parents=True, exist_ok=False)
+                write_text_atomic(
+                    staging_root / "repository.json",
+                    json.dumps(
+                        {
+                            "id": target_id,
+                            "name": normalized_name,
+                            "schema_version": REPOSITORY_SCHEMA_VERSION,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                )
+                staged_repository = FileConfigRepository(
+                    self.data_root,
+                    _config=_default_config(),
+                    _system=self._system,
+                    _persist=True,
+                    _repository=staging,
+                    mutations=self._mutations,
+                    environment=self._environment,
+                )
+                staged_repository.update_config(
+                    lambda candidate: (
+                        candidate.clear(),
+                        candidate.update(deepcopy(target_config)),
+                    ),
+                    expected_repository_id=target_id,
+                )
+                staging.imports_root.mkdir(parents=True, exist_ok=True)
+                self._copy_repository_assets(
+                    source,
+                    staging,
+                    source_entities,
+                    target_ids,
+                )
+                os.replace(staging_root, final_root)
+            except BaseException:
+                shutil.rmtree(staging_root, ignore_errors=True)
+                shutil.rmtree(final_root, ignore_errors=True)
+                raise
+            descriptor = ConfigurationRepositoryDescriptor(
+                id=target_id,
+                name=normalized_name,
+                root=final_root,
+            )
+            return descriptor.as_dict(active=False), target_ids
+
+    def delete_repository(self, repository_id: str) -> dict[str, object]:
+        with self._mutations.mutation(), self._lock:
+            if repository_id == self.repository_id:
+                raise ActiveRepositoryDeleteError(
+                    "the active configuration repository cannot be deleted"
+                )
+            descriptor = self._repository_descriptor(repository_id)
+            tombstone = descriptor.root.parent / f".repository-delete-{descriptor.id}"
+            if tombstone.exists():
+                raise ValueError(
+                    "configuration repository deletion staging already exists"
+                )
+            os.replace(descriptor.root, tombstone)
+            shutil.rmtree(tombstone, ignore_errors=True)
+            return descriptor.as_dict(active=False)
+
+    def export_repository(
+        self, repository_id: str
+    ) -> tuple[bytes, str]:
+        with self._mutations.mutation(), self._lock:
+            descriptor = self._repository_descriptor(repository_id)
+            files: dict[str, bytes] = {
+                "repository/repository.json": (
+                    descriptor.root / "repository.json"
+                ).read_bytes(),
+            }
+            for directory_name in (
+                "components",
+                "agents",
+                "workflows",
+                "python_package_instances",
+                "skill_package_instances",
+            ):
+                directory = descriptor.root / directory_name
+                if not directory.exists():
+                    continue
+                files.update(
+                    {
+                        f"repository/{directory_name}/{path}": body
+                        for path, body in snapshot_directory(directory).items()
+                    }
+                )
+            manifest = {
+                "format": "agent-shell.configuration-repository",
+                "format_version": 1,
+                "repository": {
+                    "id": descriptor.id,
+                    "name": descriptor.name,
+                    "schema_version": REPOSITORY_SCHEMA_VERSION,
+                },
+            }
+            files["manifest.json"] = canonical_json_bytes(manifest)
+            output = BytesIO()
+            with ZipFile(
+                output,
+                "w",
+                compression=ZIP_DEFLATED,
+                allowZip64=True,
+            ) as archive:
+                for path, body in sorted(files.items()):
+                    info = ZipInfo(path, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.compress_type = ZIP_DEFLATED
+                    archive.writestr(info, body)
+            safe_name = "".join(
+                character
+                if character.isascii()
+                and (character.isalnum() or character in {"-", "_", "."})
+                else "-"
+                for character in descriptor.name.strip()
+            ).strip("-.") or "configuration-repository"
+            return (
+                output.getvalue(),
+                f"{safe_name}.agent-shell-repository.zip",
+            )
 
     @staticmethod
     def _configuration_ids(config: dict[str, Any]) -> set[str]:

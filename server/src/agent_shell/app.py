@@ -83,6 +83,9 @@ from agent_shell.storage.permissions import secure_directory, secure_file
 from agent_shell.configuration.component_mutations import ComponentMutationService
 from agent_shell.configuration.bundles.journal import recover_configuration_imports
 from agent_shell.configuration.bundles.service import ConfigurationBundleService
+from agent_shell.configuration.repository_management import (
+    ConfigurationRepositoryManagementService,
+)
 
 
 def create_app(
@@ -205,6 +208,12 @@ def create_app(
         packages_dir=lambda: configuration.python_package_instances_root,
         skills_dir=lambda: configuration.skill_package_instances_root,
         runtime_root=runtime_dir,
+    )
+    configuration_repository_management = (
+        ConfigurationRepositoryManagementService(
+            configuration,
+            model_resources,
+        )
     )
     api_server_store = ApiServerStore(
         database,
@@ -563,6 +572,7 @@ def create_app(
     app.include_router(
         build_configuration_repository_router(
             configuration,
+            configuration_repository_management,
             repository_validation,
             runtime_root=runtime_dir,
         )

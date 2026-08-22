@@ -22,6 +22,7 @@ export const en: MessageSchema = {
     styleLab: 'Style lab',
     sectionAriaLabel: 'Current area pages',
     sections: {
+      configurationRepositories: 'Component configurations',
       systemSettings: 'System settings',
       messageInterception: 'Message interception',
       eventFeed: 'Log center',
@@ -43,6 +44,7 @@ export const en: MessageSchema = {
       deleteDescription: 'Delete model connection “{name}”? Existing requirement bindings will be cleared.',
       empty: 'No model connections have been saved.',
       loadFailed: 'Could not load model connections',
+      saved: 'The model connection was saved.',
       saveFailed: 'Could not save the model connection',
       copyFailed: 'Could not copy the model connection',
       deleteFailed: 'Could not delete the model connection',
@@ -51,9 +53,9 @@ export const en: MessageSchema = {
     },
     mapping: {
       warningTitle: 'Model requirements need mapping',
-      warning: '{count} model requirements are not bound to a local model connection.',
+      warning: '{count} model requirements are not bound to a model connection.',
       description: 'Requirement description',
-      connection: 'Local model connection',
+      connection: 'Model connection',
       unbound: 'Unbound',
       empty: 'The active Configuration Repository has no model requirements.',
       loadFailed: 'Could not load model mapping',
@@ -84,10 +86,16 @@ export const en: MessageSchema = {
     childCreateTitle: 'Create child Workflow',
     editTitle: 'Edit Workflow',
     saved: 'Workflow saved.',
+    copied: 'Workflow copied.',
     deleted: 'Workflow deleted.',
     deleteTitle: 'Delete Workflow',
     deleteDescription: 'Delete Workflow “{name}”?',
     deleteFailed: 'Could not delete Workflow',
+    copy: {
+      title: 'Copy Workflow',
+      nameHint: 'Enter the name for the copied Workflow.',
+      nameRequired: 'Enter a name for the copied Workflow.',
+    },
     actions: {
       configure: 'Configure',
       editFlow: 'Edit Flow',
@@ -294,12 +302,10 @@ export const en: MessageSchema = {
     host: 'Listen address',
     port: 'Port',
     allowRemote: 'Allow remote access',
-    credentials: 'Access credentials',
     managementPassword: 'Management password',
-    runtimeControls: 'API and runtime',
     validationDebounceMs: 'Configuration alert interval',
     runtimePolicy: {
-      title: 'Input and resource policy',
+      title: 'Restriction policy',
       chatBody: 'Chat request body',
       contentBlocks: 'Content block count',
       mediaBlock: 'Single input media',
@@ -552,6 +558,10 @@ export const en: MessageSchema = {
     },
   },
   capabilities: {
+    'model-connection': {
+      label: 'Model connection',
+      description: 'Instance-local upstream Provider endpoint, model, and credential',
+    },
     'model-requirement': {
       label: 'Model requirement',
       description: 'Portable capability requirement resolved to a local model',
@@ -987,6 +997,7 @@ export const en: MessageSchema = {
     view: 'View',
     edit: 'Edit',
     copy: 'Copy',
+    download: 'Download',
     copying: 'Copying…',
     delete: 'Delete',
     deleting: 'Deleting…',
@@ -1003,7 +1014,7 @@ export const en: MessageSchema = {
     apiKeyPlaceholder: 'Enter an API key',
     configuredSecretPlaceholder: '••••••••',
     recordPicker: {
-      load: 'Load configuration',
+      load: 'Choose configuration',
       name: 'Configuration name',
       newOption: 'New configuration',
     },
@@ -1046,6 +1057,21 @@ export const en: MessageSchema = {
       description: 'A configuration named {name} already exists. Continuing replaces it with this draft while preserving its UUID and existing Agent references.',
       confirm: 'Replace configuration',
     },
+    new: {
+      title: 'Create a new configuration?',
+      description: 'Return to a blank new configuration?',
+    },
+    copy: {
+      title: 'Copy configuration',
+      nameHint: 'Enter a name for the new configuration.',
+      nameRequired: 'Enter a name for the new configuration.',
+      succeeded: 'The configuration was copied.',
+    },
+    delete: {
+      title: 'Delete configuration?',
+      description: 'Permanently delete configuration “{name}”?',
+      succeeded: 'The configuration was deleted.',
+    },
     feedback: {
       loadFailed: 'Could not load the configuration',
       catalogFailed: 'Could not load the capability catalog',
@@ -1082,6 +1108,7 @@ export const en: MessageSchema = {
     title: 'Configuration library',
     validationTitle: 'Repository validation',
     groups: {
+      system: 'System',
       components: 'Agent components',
       agentComponents: 'Agent components',
       workflowComponents: 'Workflow components',
@@ -1095,12 +1122,15 @@ export const en: MessageSchema = {
       restartRequired: 'The repository was activated. Restart to prepare its Python dependencies.',
     },
     bundle: {
-      upload: 'Upload configuration Bundle', download: 'Download Bundle', exportFailed: 'Could not export Bundle',
+      upload: 'Upload', download: 'Download', exportFailed: 'Could not export Bundle',
       previewTitle: 'Import configuration Bundle', digest: 'Bundle digest', originalName: 'Original name',
       importName: 'Import name', targetId: 'New UUID', bindings: 'Path bindings', pathOrigin: 'Path origin',
       selectPathOrigin: 'Select path origin',
       absolute: 'Absolute path', dataRootRelative: 'Relative to data root', blockers: 'Blocking items', warnings: 'Warnings',
       import: 'Import', imported: 'The configuration Bundle was imported.',
+      securityWarningTitle: 'Importing untrusted configurations is dangerous',
+      securityWarning: 'An unknown or untrusted Bundle may contain Python or Skill code that runs with Agent Shell privileges, access local files or network services, or contain deceptive or broken references. Before importing or sharing, review its source, prompts, Skill files, Python source, requirements, filesystem bindings, and permissions.',
+      unknownIssue: 'Bundle issue ({code}). Review the Bundle and its source before importing.',
     },
     catalogUnavailable: 'The capability catalog is currently unavailable.',
     unknownCategory: 'Unknown configuration type',
@@ -1147,6 +1177,55 @@ export const en: MessageSchema = {
       description: 'Delete all {count} configurations in the current category matching the applied search. The server checks every reference first and deletes nothing if any target is still referenced.',
       succeeded: 'Deleted {count} configurations.',
       failed: 'Could not delete filtered configurations',
+    },
+  },
+  configurationBundle: {
+    issues: {
+      configuration_name_confirmation_required: 'Enter and confirm a distinct name for the imported configuration.',
+      configuration_name_conflict: 'That imported configuration name already exists in the same scope.',
+      filesystem_binding_required: 'Select a target filesystem path before importing.',
+      filesystem_path_origin_required: 'Choose whether the mapped directory is absolute or relative to the data root.',
+      filesystem_directory_invalid: 'The selected mapped directory is invalid or unavailable.',
+      filesystem_source_invalid: 'The selected virtual file or directory source is invalid or unavailable.',
+      filesystem_relative_target_missing: 'The data-root-relative mapped directory does not exist on this instance.',
+      review_user_authored_content_for_secrets: 'Danger: unknown or untrusted configurations may execute Python or Skill code and access files or networks. Review prompts, Skill files, Python source, requirements, bindings, and permissions before importing or sharing.',
+      model_requirement_unbound: 'The imported Model Requirement is not bound to a model connection on this instance.',
+      workflow_imported_disabled: 'The imported Workflow is disabled until it is explicitly validated and enabled.',
+      trusted_python_package: 'Danger: this Bundle contains Python code that can run with Agent Shell privileges.',
+      opaque_python_runtime_target: 'Static validation cannot prove what the bundled Python factory will do at runtime.',
+      python_requirements_restart_required: 'Restart Agent Shell after import to prepare the bundled Python dependencies.',
+    },
+  },
+  configurationRepositories: {
+    title: 'Component configurations',
+    tableAriaLabel: 'Configuration Repository list',
+    empty: 'No Configuration Repository exists.',
+    loadFailed: 'Could not load Configuration Repositories',
+    searchLabel: 'Search Configuration Repositories',
+    searchPlaceholder: 'Name or UUID',
+    active: 'Active',
+    inactive: 'Inactive',
+    activated: 'Configuration Repository activated.',
+    activateFailed: 'Could not activate the Configuration Repository',
+    downloadFailed: 'Could not download the Configuration Repository',
+    columns: {
+      name: 'Name',
+      active: 'Active status',
+    },
+    actions: {
+      activate: 'Switch',
+    },
+    copy: {
+      title: 'Copy Configuration Repository',
+      nameHint: 'Enter the name for the independent repository copy.',
+      nameRequired: 'Enter a name for the repository copy.',
+      succeeded: 'Configuration Repository copied.',
+    },
+    delete: {
+      title: 'Delete Configuration Repository',
+      description: 'Permanently delete “{name}” and all configurations and private packages it owns?',
+      succeeded: 'Configuration Repository deleted.',
+      failed: 'Could not delete the Configuration Repository',
     },
   },
   apiServer: {
@@ -1350,6 +1429,18 @@ export const en: MessageSchema = {
       loadFailed: 'Could not load the configuration',
       saved: 'The configuration was saved.',
       saveFailed: 'Could not save the configuration',
+      copied: 'The configuration was copied.',
+      deleted: 'The configuration was deleted.',
+      deleteFailed: 'Could not delete the configuration',
+    },
+    copy: {
+      title: 'Copy configuration',
+      nameHint: 'Enter the name for the copied configuration.',
+      nameRequired: 'Enter a name for the copied configuration.',
+    },
+    delete: {
+      title: 'Delete configuration',
+      description: 'Permanently delete “{name}”?',
     },
     capability: {
       required: 'Required',
@@ -1416,6 +1507,7 @@ export const en: MessageSchema = {
     scope: {
       block: 'component configuration',
       main_agent: 'Main Agent configuration',
+      model_connection: 'model connection configuration',
       subagent: 'Subagent configuration',
     },
     location: {
@@ -1484,7 +1576,7 @@ export const en: MessageSchema = {
     },
     issue: {
       fallback: '{location} did not pass configuration validation (error code: {code}).',
-      modelRequirementUnbound: 'This model requirement is not bound to a local model connection. Bind it in Model mapping before running.',
+      modelRequirementUnbound: 'This model requirement is not bound to a model connection. Bind it in Model mapping before running.',
       workflow: {
         edgeDuplicate: 'The Workflow contains a duplicate Edge.',
         edgeIdDuplicate: 'Workflow Edge IDs must be unique.',

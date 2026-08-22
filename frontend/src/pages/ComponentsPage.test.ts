@@ -20,6 +20,15 @@ const api = vi.hoisted(() => ({
   listBlocks: vi.fn(),
   getBlock: vi.fn(),
   saveBlock: vi.fn(),
+  copyBlock: vi.fn(),
+  deleteBlock: vi.fn(),
+  listModelProviders: vi.fn(),
+  listModelConnections: vi.fn(),
+  getModelConnection: vi.fn(),
+  saveModelConnection: vi.fn(),
+  copyModelConnection: vi.fn(),
+  deleteModelConnection: vi.fn(),
+  fetchModels: vi.fn(),
   validateDraft: vi.fn(),
   validateRepository: vi.fn(),
   listCustomToolTemplates: vi.fn(),
@@ -127,6 +136,21 @@ function skillRecord(id: string): SavedBlock {
   }
 }
 
+function modelConnection(id: string, name = 'Local model') {
+  return {
+    id,
+    name,
+    provider: 'openai',
+    base_url: 'https://api.openai.com/v1',
+    credential: { status: 'masked' as const },
+    model: 'gpt-5-mini',
+    provider_settings: {},
+    tool_choice: null,
+    response_format: null,
+    model_settings: {},
+  }
+}
+
 function privateSkillInspection(ownerId: string, skillName: string): SkillPackageInspection {
   return {
     folder: ownerId,
@@ -191,6 +215,18 @@ beforeEach(() => {
     ...data,
     id: data.id ?? '00000000-0000-0000-0000-000000000099',
   }))
+  api.copyBlock.mockImplementation(async (_type: BlockType, _id: string, name: string) => ({
+    ...modelRequirementRecord('00000000-0000-4000-8000-000000000088'),
+    name,
+  }))
+  api.deleteBlock.mockResolvedValue({ ok: true })
+  api.listModelProviders.mockResolvedValue({ providers: [] })
+  api.listModelConnections.mockResolvedValue([])
+  api.getModelConnection.mockRejectedValue(new Error('unexpected model connection load'))
+  api.saveModelConnection.mockRejectedValue(new Error('unexpected model connection save'))
+  api.copyModelConnection.mockRejectedValue(new Error('unexpected model connection copy'))
+  api.deleteModelConnection.mockResolvedValue({ ok: true })
+  api.fetchModels.mockResolvedValue([])
   api.validateDraft.mockResolvedValue({ valid: true, stage: 'draft_validation', issues: [] })
   api.validateRepository.mockResolvedValue({ valid: true, stage: 'repository_load', issues: [] })
   api.listCustomToolTemplates.mockResolvedValue({ catalog: [], errors: {} })
@@ -239,8 +275,9 @@ describe('ComponentsPage', () => {
       'navigation.sections.taskDispatcher',
     ])
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
+      'common.copy',
+      'common.delete',
       'common.new',
-      'common.reset',
       'common.save',
     ])
     wrapper.unmount()
@@ -299,8 +336,9 @@ describe('ComponentsPage', () => {
     expect(wrapper.find('.app-content-header').exists()).toBe(false)
     expect(wrapper.find('[data-testid="editor-region"] > h2').exists()).toBe(false)
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
+      'common.copy',
+      'common.delete',
       'common.new',
-      'common.reset',
       'common.save',
     ])
     expect(api.listBlocks).toHaveBeenCalledTimes(1)
@@ -316,6 +354,46 @@ describe('ComponentsPage', () => {
     expect(wrapper.text()).not.toContain('common.loading')
     expect(wrapper.text()).not.toContain(id)
     expect(api.listSkills).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('uses the same component editor framework for model connections', async () => {
+    const id = '00000000-0000-4000-8000-000000000077'
+    const connection = modelConnection(id)
+    api.listModelConnections.mockResolvedValueOnce([connection])
+    api.getModelConnection.mockResolvedValueOnce(connection)
+    api.listModelProviders.mockResolvedValueOnce({
+      langchain_version: '1.0.0',
+      providers: [{
+        provider: 'openai', package: 'langchain-openai', class_name: 'ChatOpenAI',
+        installed: true, version: '1.0.0', documentation_url: 'https://example.invalid',
+      }],
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{
+        path: '/models/connections',
+        component: ComponentsPage,
+        props: { scope: 'model' },
+      }],
+    })
+    await router.push(`/models/connections?id=${id}`)
+    await router.isReady()
+    const wrapper = mount(ComponentsPage, {
+      props: { scope: 'model' },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    expect(api.getCatalog).not.toHaveBeenCalled()
+    expect(api.listModelConnections).toHaveBeenCalledOnce()
+    expect(api.getModelConnection).toHaveBeenCalledWith(id)
+    expect(wrapper.find('[data-editor="model"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="editor-region"]').classes()).toContain('component-editor-region')
+    expect(wrapper.get('[data-testid="inspector-region"] [data-testid="validation-checklist"]').exists()).toBe(true)
+    expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
+      'common.copy', 'common.delete', 'common.new', 'common.save',
+    ])
     wrapper.unmount()
   })
 
@@ -515,6 +593,7 @@ describe('ComponentsPage', () => {
     const newButton = wrapper.findAll('button').find((button) => button.text() === 'common.new')
     if (!newButton) throw new Error('new button not found')
     await newButton.trigger('click')
+    useConfirmation().accept()
     await flushPromises()
     const nameInput = wrapper.get('[data-field="record-name"]')
     expect(nameInput.classes()).toContain('is-invalid')
@@ -529,6 +608,28 @@ describe('ComponentsPage', () => {
     const createPayload = api.saveBlock.mock.calls[1]?.[1]
     expect(createPayload).toEqual(expect.objectContaining({ name: 'Another name' }))
     expect(createPayload).not.toHaveProperty('id')
+    wrapper.unmount()
+  })
+
+  it('copies and deletes from the shared editor actions', async () => {
+    const id = '00000000-0000-0000-0000-000000000001'
+    const copyId = '00000000-0000-4000-8000-000000000088'
+    const { router, wrapper } = await mountAt(`/agent-components/model-requirement?id=${id}`)
+
+    await buttonByText(wrapper, 'common.copy').trigger('click')
+    await wrapper.get('#component-copy-form input').setValue('Copied configuration')
+    await wrapper.get('#component-copy-form').trigger('submit')
+    await flushPromises()
+
+    expect(api.copyBlock).toHaveBeenCalledWith('model-requirement', id, 'Copied configuration')
+    expect(router.currentRoute.value.query.id).toBe(copyId)
+
+    await buttonByText(wrapper, 'common.delete').trigger('click')
+    useConfirmation().accept()
+    await flushPromises()
+
+    expect(api.deleteBlock).toHaveBeenCalledWith('model-requirement', copyId)
+    expect(router.currentRoute.value.query.id).toBeUndefined()
     wrapper.unmount()
   })
 

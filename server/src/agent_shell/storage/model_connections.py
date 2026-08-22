@@ -456,6 +456,66 @@ class ModelResourceStore:
                 value.pop(repository_id, None)
             self._write_bindings(value)
 
+    def copy_repository_bindings(
+        self,
+        source_repository_id: str,
+        target_repository_id: str,
+        target_ids: dict[str, str],
+    ) -> None:
+        source_repository_id = require_configuration_id(
+            source_repository_id,
+            label="source model binding repository id",
+        )
+        target_repository_id = require_configuration_id(
+            target_repository_id,
+            label="target model binding repository id",
+        )
+        with self._mutations.mutation(), self._lock:
+            value = self._load_bindings()
+            source = value.get(source_repository_id, {})
+            copied = {
+                target_ids[requirement_id]: connection_id
+                for requirement_id, connection_id in source.items()
+                if requirement_id in target_ids
+            }
+            if copied:
+                value[target_repository_id] = copied
+            else:
+                value.pop(target_repository_id, None)
+            self._write_bindings(value)
+
+    def remove_repository_bindings(
+        self,
+        repository_id: str,
+    ) -> dict[str, str]:
+        repository_id = require_configuration_id(
+            repository_id,
+            label="model binding repository id",
+        )
+        with self._mutations.mutation(), self._lock:
+            value = self._load_bindings()
+            removed = value.pop(repository_id, {})
+            if removed:
+                self._write_bindings(value)
+            return removed
+
+    def restore_repository_bindings(
+        self,
+        repository_id: str,
+        bindings: dict[str, str],
+    ) -> None:
+        repository_id = require_configuration_id(
+            repository_id,
+            label="model binding repository id",
+        )
+        with self._mutations.mutation(), self._lock:
+            value = self._load_bindings()
+            if bindings:
+                value[repository_id] = dict(bindings)
+            else:
+                value.pop(repository_id, None)
+            self._write_bindings(value)
+
 
 __all__ = [
     "ModelConnectionNameConflictError",

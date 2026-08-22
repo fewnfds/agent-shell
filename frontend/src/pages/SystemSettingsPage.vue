@@ -84,17 +84,19 @@ const runtimePolicyFields: Array<{
   labelKey: string
   unit: string
   step: number
+  mib?: boolean
 }> = [
-  { key: 'chat_completion_body_bytes', labelKey: 'systemSettings.runtimePolicy.chatBody', unit: 'bytes', step: 1024 },
+  { key: 'chat_completion_body_bytes', labelKey: 'systemSettings.runtimePolicy.chatBody', unit: 'MiB', step: 1, mib: true },
   { key: 'content_blocks', labelKey: 'systemSettings.runtimePolicy.contentBlocks', unit: '', step: 1 },
-  { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'bytes', step: 1024 },
-  { key: 'decoded_total_bytes', labelKey: 'systemSettings.runtimePolicy.mediaTotal', unit: 'bytes', step: 1024 },
-  { key: 'media_output_bytes', labelKey: 'systemSettings.runtimePolicy.mediaOutput', unit: 'bytes', step: 1024 },
-  { key: 'text_edit_bytes', labelKey: 'systemSettings.runtimePolicy.textEdit', unit: 'bytes', step: 1024 },
+  { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'MiB', step: 1, mib: true },
+  { key: 'decoded_total_bytes', labelKey: 'systemSettings.runtimePolicy.mediaTotal', unit: 'MiB', step: 1, mib: true },
+  { key: 'media_output_bytes', labelKey: 'systemSettings.runtimePolicy.mediaOutput', unit: 'MiB', step: 1, mib: true },
+  { key: 'text_edit_bytes', labelKey: 'systemSettings.runtimePolicy.textEdit', unit: 'MiB', step: 1, mib: true },
   { key: 'provider_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerTimeout', unit: 's', step: 1 },
   { key: 'provider_connect_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerConnectTimeout', unit: 's', step: 1 },
   { key: 'provider_catalog_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerCatalogTimeout', unit: 's', step: 1 },
 ]
+const MIB_BYTES = 1024 * 1024
 
 const apiKeyPlaceholder = computed(() => apiServerSettings.value?.api_key.configured
   ? t('common.configuredSecretPlaceholder')
@@ -184,6 +186,16 @@ function applyRuntimePolicy(value: RuntimePolicySettings): void {
   for (const { key } of runtimePolicyFields) {
     runtimePolicyDraft[key] = value[key]
   }
+}
+
+function runtimePolicyDisplayValue(field: (typeof runtimePolicyFields)[number]): number {
+  const value = Number(runtimePolicyDraft[field.key])
+  return field.mib ? value / MIB_BYTES : value
+}
+
+function updateRuntimePolicyValue(field: (typeof runtimePolicyFields)[number], event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value)
+  runtimePolicyDraft[field.key] = field.mib ? Math.round(value * MIB_BYTES) : value
 }
 
 async function load(): Promise<void> {
@@ -316,8 +328,8 @@ onMounted(() => { void load() })
       @submit.prevent="save"
     >
       <div class="row g-3">
-        <div class="col-lg-6">
-          <section class="card mb-3" data-testid="system-card-network">
+        <div class="col-12">
+          <section class="card" data-testid="system-card-network">
             <header class="card-header">
               <h2 class="card-title">
                 <i class="bi bi-hdd-network me-2" aria-hidden="true" />
@@ -326,10 +338,10 @@ onMounted(() => { void load() })
             </header>
             <div class="card-body">
               <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-lg-3 col-md-6">
                   <LteInput v-model="host" :label="fieldLabel('systemSettings.host', 'host')" spellcheck="false" />
                 </div>
-                <div class="col-md-6">
+                <div class="col-lg-3 col-md-6">
                   <label class="form-label" for="system-port">
                     {{ fieldLabel('systemSettings.port', 'port') }}
                   </label>
@@ -344,136 +356,74 @@ onMounted(() => { void load() })
                     type="number"
                   >
                 </div>
-              </div>
-              <div class="mt-3">
-                <div class="form-check form-switch">
-                  <input
-                    id="allow-remote"
-                    v-model="allowRemote"
-                    class="form-check-input"
-                    role="switch"
-                    type="checkbox"
-                  >
-                  <label class="form-check-label" for="allow-remote">
-                    {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
+                <div class="col-lg-3 col-md-6">
+                  <label class="form-label" for="management-password">
+                    {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
                   </label>
+                  <div class="input-group">
+                    <input
+                      id="management-password"
+                      v-model="managementPassword"
+                      autocomplete="new-password"
+                      class="form-control"
+                      :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
+                      spellcheck="false"
+                      :type="showManagementPassword ? 'text' : 'password'"
+                    >
+                    <LteButton
+                      :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
+                      :aria-pressed="showManagementPassword"
+                      theme="info"
+                      type="button"
+                      @click="showManagementPassword = !showManagementPassword"
+                    >
+                      <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
+                      <i v-else class="bi bi-eye" aria-hidden="true" />
+                    </LteButton>
+                  </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                  <label class="form-label" for="api-server-key">{{ fieldLabel('apiServer.key.title', 'api_key') }}</label>
+                  <div class="input-group">
+                    <input
+                      id="api-server-key"
+                      v-model="apiKey"
+                      autocomplete="off"
+                      class="form-control"
+                      :placeholder="apiKeyPlaceholder"
+                      spellcheck="false"
+                      :type="showApiKey ? 'text' : 'password'"
+                      @input="apiKeyDirty = true"
+                    >
+                    <LteButton
+                      :aria-label="showApiKey ? t('common.hide') : t('common.show')"
+                      :aria-pressed="showApiKey"
+                      theme="info"
+                      type="button"
+                      @click="showApiKey = !showApiKey"
+                    >
+                      <i v-if="showApiKey" class="bi bi-eye-slash" aria-hidden="true" />
+                      <i v-else class="bi bi-eye" aria-hidden="true" />
+                    </LteButton>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
-
-          <section class="card" data-testid="system-card-credentials">
-            <header class="card-header">
-              <h2 class="card-title">
-                <i class="bi bi-key me-2" aria-hidden="true" />
-                {{ t('systemSettings.credentials') }}
-              </h2>
-            </header>
-            <div class="card-body">
-              <div class="mb-3">
-                <label class="form-label" for="management-password">
-                  {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
-                </label>
-                <div class="input-group">
-                  <input
-                    id="management-password"
-                    v-model="managementPassword"
-                    autocomplete="new-password"
-                    class="form-control"
-                    :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
-                    spellcheck="false"
-                    :type="showManagementPassword ? 'text' : 'password'"
-                  >
-                  <LteButton
-                    :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
-                    :aria-pressed="showManagementPassword"
-                    theme="info"
-                    type="button"
-                    @click="showManagementPassword = !showManagementPassword"
-                  >
-                    <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
-                    <i v-else class="bi bi-eye" aria-hidden="true" />
-                  </LteButton>
-                </div>
-              </div>
-
-              <div>
-                <label class="form-label" for="api-server-key">{{ fieldLabel('apiServer.key.title', 'api_key') }}</label>
-                <div class="input-group">
-                  <input
-                    id="api-server-key"
-                    v-model="apiKey"
-                    autocomplete="off"
-                    class="form-control"
-                    :placeholder="apiKeyPlaceholder"
-                    spellcheck="false"
-                    :type="showApiKey ? 'text' : 'password'"
-                    @input="apiKeyDirty = true"
-                  >
-                  <LteButton
-                    :aria-label="showApiKey ? t('common.hide') : t('common.show')"
-                    :aria-pressed="showApiKey"
-                    theme="info"
-                    type="button"
-                    @click="showApiKey = !showApiKey"
-                  >
-                    <i v-if="showApiKey" class="bi bi-eye-slash" aria-hidden="true" />
-                    <i v-else class="bi bi-eye" aria-hidden="true" />
-                  </LteButton>
+              <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                  <div class="form-check form-switch">
+                    <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
+                    <label class="form-check-label" for="allow-remote">
+                      {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
           </section>
         </div>
 
-        <div class="col-lg-6">
-          <section class="card mb-3" data-testid="system-card-runtime">
-            <header class="card-header">
-              <h2 class="card-title">
-                <i class="bi bi-sliders me-2" aria-hidden="true" />
-                {{ t('systemSettings.runtimeControls') }}
-              </h2>
-            </header>
-            <div class="card-body">
-              <div class="mb-3">
-                <label class="form-label" for="max-initial-messages">
-                  {{ fieldLabel('apiServer.request.maxInitialMessages', 'max_initial_messages') }}
-                </label>
-                <input
-                  id="max-initial-messages"
-                  v-model.number="maxInitialMessages"
-                  class="form-control"
-                  min="1"
-                  required
-                  step="1"
-                  type="number"
-                >
-              </div>
-
-              <FormField
-                control-id="configuration-validation-debounce"
-                field-path="debounce_ms"
-                label-key="systemSettings.validationDebounceMs"
-              >
-                <div class="input-group">
-                  <input
-                    id="configuration-validation-debounce"
-                    v-model.number="validationDebounceMs"
-                    aria-describedby="configuration-validation-debounce-unit"
-                    class="form-control"
-                    :min="validationDebounceMin"
-                    required
-                    step="100"
-                    type="number"
-                  >
-                  <span id="configuration-validation-debounce-unit" class="input-group-text">ms</span>
-                </div>
-              </FormField>
-
-            </div>
-          </section>
-
-          <section class="card mb-3" data-testid="system-card-runtime-policy">
+        <div class="col-12">
+          <section class="card" data-testid="system-card-runtime-policy">
             <header class="card-header">
               <h2 class="card-title">
                 <i class="bi bi-sliders me-2" aria-hidden="true" />
@@ -482,10 +432,37 @@ onMounted(() => { void load() })
             </header>
             <div class="card-body">
               <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                  <label class="form-label" for="max-initial-messages">
+                    {{ fieldLabel('apiServer.request.maxInitialMessages', 'max_initial_messages') }}
+                  </label>
+                  <input id="max-initial-messages" v-model.number="maxInitialMessages" class="form-control" min="1" required step="1" type="number">
+                </div>
+                <div class="col-lg-3 col-md-6">
+                  <FormField
+                    control-id="configuration-validation-debounce"
+                    field-path="debounce_ms"
+                    label-key="systemSettings.validationDebounceMs"
+                  >
+                    <div class="input-group">
+                      <input
+                        id="configuration-validation-debounce"
+                        v-model.number="validationDebounceMs"
+                        aria-describedby="configuration-validation-debounce-unit"
+                        class="form-control"
+                        :min="validationDebounceMin"
+                        required
+                        step="100"
+                        type="number"
+                      >
+                      <span id="configuration-validation-debounce-unit" class="input-group-text">ms</span>
+                    </div>
+                  </FormField>
+                </div>
                 <div
                   v-for="field in runtimePolicyFields"
                   :key="field.key"
-                  class="col-md-6"
+                  class="col-lg-3 col-md-6"
                 >
                   <label class="form-label" :for="`runtime-policy-${field.key}`">
                     {{ fieldLabel(field.labelKey, field.key) }}
@@ -493,12 +470,13 @@ onMounted(() => { void load() })
                   <div class="input-group">
                     <input
                       :id="`runtime-policy-${field.key}`"
-                      v-model.number="runtimePolicyDraft[field.key]"
+                      :value="runtimePolicyDisplayValue(field)"
                       class="form-control"
-                      :min="runtimePolicy.minimums[field.key]"
+                      :min="field.mib ? runtimePolicy.minimums[field.key] / MIB_BYTES : runtimePolicy.minimums[field.key]"
                       required
                       :step="field.step"
                       type="number"
+                      @input="updateRuntimePolicyValue(field, $event)"
                     >
                     <span v-if="field.unit" class="input-group-text">{{ field.unit }}</span>
                   </div>
@@ -506,8 +484,10 @@ onMounted(() => { void load() })
               </div>
             </div>
           </section>
+        </div>
 
-          <section class="card mb-3" data-testid="system-card-langsmith">
+        <div class="col-12">
+          <section class="card" data-testid="system-card-langsmith">
             <header class="card-header">
               <h2 class="card-title">
                 <i class="bi bi-gear me-2" aria-hidden="true" />
@@ -515,36 +495,14 @@ onMounted(() => { void load() })
               </h2>
             </header>
             <div class="card-body">
-              <div class="form-check form-switch mb-3">
-                <input
-                  id="langsmith-tracing"
-                  v-model="langsmithTracingEnabled"
-                  class="form-check-input"
-                  role="switch"
-                  type="checkbox"
-                >
-                <label class="form-check-label" for="langsmith-tracing">
-                  {{ fieldLabel('systemSettings.langsmith.tracing', 'langsmith_tracing_enabled') }}
-                </label>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label" for="langsmith-endpoint">
-                  {{ fieldLabel('systemSettings.langsmith.endpoint', 'langsmith_endpoint') }}
-                </label>
-                <input
-                  id="langsmith-endpoint"
-                  v-model="langsmithEndpoint"
-                  autocomplete="url"
-                  class="form-control"
-                  required
-                  spellcheck="false"
-                  type="url"
-                >
-              </div>
-
-              <div class="row g-3 mb-3">
-                <div class="col-md-6">
+              <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                  <label class="form-label" for="langsmith-endpoint">
+                    {{ fieldLabel('systemSettings.langsmith.endpoint', 'langsmith_endpoint') }}
+                  </label>
+                  <input id="langsmith-endpoint" v-model="langsmithEndpoint" autocomplete="url" class="form-control" required spellcheck="false" type="url">
+                </div>
+                <div class="col-lg-3 col-md-6">
                   <label class="form-label" for="langsmith-project">
                     {{ fieldLabel('systemSettings.langsmith.project', 'langsmith_project') }}
                   </label>
@@ -558,7 +516,7 @@ onMounted(() => { void load() })
                     type="text"
                   >
                 </div>
-                <div class="col-md-6">
+                <div class="col-lg-3 col-md-6">
                   <label class="form-label" for="langsmith-workspace-id">
                     {{ fieldLabel('systemSettings.langsmith.workspaceId', 'langsmith_workspace_id') }}
                   </label>
@@ -571,36 +529,49 @@ onMounted(() => { void load() })
                     type="text"
                   >
                 </div>
+                <div class="col-lg-3 col-md-6">
+                  <label class="form-label" for="langsmith-api-key">
+                    {{ fieldLabel('systemSettings.langsmith.apiKey', 'langsmith_api_key') }}
+                  </label>
+                  <div class="input-group">
+                    <input
+                      id="langsmith-api-key"
+                      v-model="langsmithApiKey"
+                      autocomplete="off"
+                      class="form-control"
+                      :placeholder="langsmithApiKeyPlaceholder"
+                      spellcheck="false"
+                      :type="showLangsmithApiKey ? 'text' : 'password'"
+                      @input="langsmithApiKeyDirty = true"
+                    >
+                    <LteButton
+                      :aria-label="showLangsmithApiKey ? t('common.hide') : t('common.show')"
+                      :aria-pressed="showLangsmithApiKey"
+                      theme="info"
+                      type="button"
+                      @click="showLangsmithApiKey = !showLangsmithApiKey"
+                    >
+                      <i v-if="showLangsmithApiKey" class="bi bi-eye-slash" aria-hidden="true" />
+                      <i v-else class="bi bi-eye" aria-hidden="true" />
+                    </LteButton>
+                </div>
               </div>
-
-              <label class="form-label" for="langsmith-api-key">
-                {{ fieldLabel('systemSettings.langsmith.apiKey', 'langsmith_api_key') }}
-              </label>
-              <div class="input-group">
-                <input
-                  id="langsmith-api-key"
-                  v-model="langsmithApiKey"
-                  autocomplete="off"
-                  class="form-control"
-                  :placeholder="langsmithApiKeyPlaceholder"
-                  spellcheck="false"
-                  :type="showLangsmithApiKey ? 'text' : 'password'"
-                  @input="langsmithApiKeyDirty = true"
-                >
-                <LteButton
-                  :aria-label="showLangsmithApiKey ? t('common.hide') : t('common.show')"
-                  :aria-pressed="showLangsmithApiKey"
-                  theme="info"
-                  type="button"
-                  @click="showLangsmithApiKey = !showLangsmithApiKey"
-                >
-                  <i v-if="showLangsmithApiKey" class="bi bi-eye-slash" aria-hidden="true" />
-                  <i v-else class="bi bi-eye" aria-hidden="true" />
-                </LteButton>
+              </div>
+              <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                  <div class="form-check form-switch">
+                    <input id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-check-input" role="switch" type="checkbox">
+                    <label class="form-check-label" for="langsmith-tracing">
+                      {{ fieldLabel('systemSettings.langsmith.tracing', 'langsmith_tracing_enabled') }}
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
+        </div>
 
+        <div class="col-12">
           <section class="card" data-testid="system-card-proxy">
             <header class="card-header">
               <h2 class="card-title">
@@ -609,10 +580,14 @@ onMounted(() => { void load() })
               </h2>
             </header>
             <div class="card-body">
-              <div class="mb-3">
-                <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
+                </div>
+                <div class="col-md-6">
+                  <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
+                </div>
               </div>
-              <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
             </div>
           </section>
         </div>

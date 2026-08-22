@@ -19,7 +19,7 @@ model/tool/agent Hook。需要 checkpoint 的业务数据通过官方 state upda
 ## 装配
 
 - 启用的父图 Workflow 名称是公开 model ID；子图名称不进入 `/v1`；Main Agent 引用保存在 Graph Agent node config，不在 Workflow metadata 中；
-- Main Agent 必须有模型要求与 Agent 事件输出；模型要求在模型映射页绑定本机模型连接后才能运行；
+- Main Agent 必须有模型要求与 Agent 事件输出；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
 - Main Agent 可选择项目 Filesystem 或最小 Filesystem；Subagent 可继承、选择自己的项目 Filesystem 或回到最小 Filesystem，Workflow 不保存 Filesystem ref；
 - Subagent 能力按 inherit/replace/disabled 解析，并投影为官方 `CompiledSubAgent` 字典 spec；

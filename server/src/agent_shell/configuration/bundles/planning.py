@@ -17,7 +17,7 @@ from agent_shell.configuration.bundles.assets import (
 from agent_shell.configuration.bundles.contracts import (
     ImportResolutions,
 )
-from agent_shell.configuration.bundles.errors import BundleImportError
+from agent_shell.configuration.bundles.errors import BundleImportError, bundle_issue
 from agent_shell.configuration.bundles.exporting import snapshot_config
 from agent_shell.configuration.bundles.filesystem import (
     FilesystemBinding,
@@ -52,10 +52,6 @@ class PreparedImport:
     skill_plans: tuple[SkillPackageAssetPlan, ...]
     filesystem_bindings: tuple[FilesystemBinding, ...]
     public_plan: dict[str, object]
-
-
-def _issue(code: str, message: str, **fields: object) -> dict[str, object]:
-    return {"code": code, "message": message, **fields}
 
 
 class BundleImportPlanner:
@@ -133,9 +129,13 @@ class BundleImportPlanner:
 
         errors: list[dict[str, object]] = [*name_errors, *binding_errors]
         warnings: list[dict[str, object]] = [
-            _issue(
+            bundle_issue(
                 "review_user_authored_content_for_secrets",
-                "Review prompts, Skill files, and Python source before sharing or importing.",
+                (
+                    "Importing an unknown or untrusted configuration is dangerous. "
+                    "Review prompts, Skill files, Python source, requirements, "
+                    "filesystem bindings, and permissions before sharing or importing."
+                ),
             )
         ]
         for binding in bindings:
@@ -150,7 +150,7 @@ class BundleImportPlanner:
             )
             if binding.required and not require_resolved:
                 errors.append(
-                    _issue(
+                    bundle_issue(
                         "filesystem_binding_required",
                         "A target filesystem path must be selected.",
                         source_id=binding.source_id,
@@ -168,7 +168,7 @@ class BundleImportPlanner:
                     continue
                 if not relative_target.is_dir():
                     warnings.append(
-                        _issue(
+                        bundle_issue(
                             "filesystem_relative_target_missing",
                             "The data-root-relative mapped directory does not exist on this instance.",
                             source_id=binding.source_id,
@@ -245,7 +245,7 @@ class BundleImportPlanner:
         for entity in source_entities:
             if entity.kind == "component" and entity.component_type == "model-requirement":
                 warnings.append(
-                    _issue(
+                    bundle_issue(
                         "model_requirement_unbound",
                         "The imported Model Requirement is not bound to a local model connection.",
                         source_id=entity.id,
@@ -253,7 +253,7 @@ class BundleImportPlanner:
                 )
             if entity.kind == "workflow":
                 warnings.append(
-                    _issue(
+                    bundle_issue(
                         "workflow_imported_disabled",
                         "Imported Workflows are disabled until explicitly validated and enabled.",
                         source_id=entity.id,
@@ -261,14 +261,14 @@ class BundleImportPlanner:
                 )
         for plan in package_plans:
             warnings.append(
-                _issue(
+                bundle_issue(
                     "trusted_python_package",
                     "The bundle contains Python code that will run with Agent Shell privileges.",
                     source_id=plan.source_id,
                 )
             )
             warnings.append(
-                _issue(
+                bundle_issue(
                     "opaque_python_runtime_target",
                     "Static validation cannot prove the behavior of the bundled Python factory.",
                     source_id=plan.source_id,
@@ -276,7 +276,7 @@ class BundleImportPlanner:
             )
             if plan.requirements:
                 warnings.append(
-                    _issue(
+                    bundle_issue(
                         "python_requirements_restart_required",
                         "Restart Agent Shell after import to prepare Python dependencies.",
                         source_id=plan.source_id,

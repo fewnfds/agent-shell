@@ -25,6 +25,12 @@ class WorkflowBulkDelete(BaseModel):
     ids: list[str] = Field(min_length=1)
 
 
+class WorkflowCopy(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=120)
+
+
 def _validated(payload: dict) -> dict:
     try:
         return WorkflowDefinition.model_validate(payload).model_dump(mode="json")
@@ -121,6 +127,48 @@ def build_workflow_router(
             payload,
             expected_repository_id=mutation_repository_id,
         )
+
+    @router.post("/api/workflows/{item_id}/copy")
+    async def copy_workflow(item_id: str, payload: WorkflowCopy) -> dict:
+        mutation_repository_id = store.repository_id()
+        source = store.get_item(item_id)
+        if source is None:
+            raise management_error(
+                404,
+                code="workflow_not_found",
+                message_key="errors.workflowNotFound",
+                message="The Workflow does not exist.",
+            )
+        candidate = dict(source)
+        candidate["name"] = payload.name
+        candidate.pop("id", None)
+        candidate.pop("enabled", None)
+        validated = _validated(candidate)
+        copy_id = store.new_id()
+        try:
+            copied = store.copy_item(
+                item_id,
+                copy_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="workflow_name_conflict",
+                message_key="errors.workflowNameConflict",
+                message="A Workflow with this name already exists.",
+            ) from exc
+        if not copied:
+            raise management_error(
+                404,
+                code="workflow_not_found",
+                message_key="errors.workflowNotFound",
+                message="The Workflow does not exist.",
+            )
+        copied_item = store.get_item(copy_id)
+        assert copied_item is not None
+        return copied_item
 
     @router.post("/api/workflows/delete")
     async def delete_workflows(payload: WorkflowBulkDelete) -> dict[str, int]:

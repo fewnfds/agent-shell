@@ -8,6 +8,8 @@ import {
   managementApi,
   ManagementApiError,
   type BlockPayload,
+  type ModelConnection,
+  type ModelProviderCatalog,
   type ManagedComponentType,
   type WorkflowComponentManifest,
   type CapabilityManifest,
@@ -18,6 +20,8 @@ import {
   type ValidationReport,
 } from '@/api'
 import PageShell from '@/components/PageShell.vue'
+import FormField from '@/components/FormField.vue'
+import ModalHost from '@/components/ModalHost.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
@@ -32,6 +36,7 @@ import { useToasts } from '@/composables/useToasts'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import {
   blockAdapters,
+  modelAdapter,
   type AgentEventOutputCatalogItem,
   type CommandCatalogItem,
   type TaskDispatcherCatalogItem,
@@ -39,6 +44,7 @@ import {
   type CustomMiddlewareCatalogItem,
   type CustomToolCatalogItem,
   type FilesystemImportSource,
+  type ModelDraft,
   type SkillCatalogItem,
   type WorkflowEventOutputCatalogItem,
 } from '@/domain/blocks'
@@ -52,6 +58,7 @@ import {
   ExceptionRetryEditor,
   FilesystemEditor,
   FilesystemPermissionsEditor,
+  ModelEditor,
   ModelRequirementEditor,
   AgentEventOutputEditor,
   PromptCachingEditor,
@@ -65,19 +72,28 @@ import {
   TaskDispatcherEditor,
 } from '@/editors'
 
+type EditorType = ManagedComponentType | 'model-connection'
+type EditorRecord = SavedBlock | ModelConnection
+
 interface PageBlockAdapter {
   blank(defaults?: unknown): BlockDraftBase
-  fromApi(value: SavedBlock, defaults?: unknown): BlockDraftBase
+  fromApi(value: EditorRecord, defaults?: unknown): BlockDraftBase
   toPayload(value: BlockDraftBase, defaults?: unknown): BlockPayload
 }
 
+interface EditorManifest {
+  type: EditorType
+  editor_key: string
+  order: number
+}
+
 const props = withDefaults(defineProps<{
-  scope?: 'agent' | 'workflow'
+  scope?: 'agent' | 'model' | 'workflow'
 }>(), {
   scope: 'agent',
 })
 
-const editorComponents: Record<ManagedComponentType, Component> = {
+const editorComponents: Record<EditorType, Component> = {
   'model-requirement': ModelRequirementEditor,
   'system-prompt': SystemPromptEditor,
   filesystem: FilesystemEditor,
@@ -94,6 +110,7 @@ const editorComponents: Record<ManagedComponentType, Component> = {
   'workflow-event-output': WorkflowEventOutputEditor,
   'command': CommandEditor,
   'task-dispatcher': TaskDispatcherEditor,
+  'model-connection': ModelEditor,
 }
 
 const { t } = useI18n()
@@ -101,16 +118,20 @@ const managementError = useManagementError()
 const route = useRoute()
 const router = useRouter()
 const componentBasePath = computed(() => (
-  props.scope === 'workflow' ? '/workflow-components' : '/agent-components'
+  props.scope === 'model'
+    ? '/models/connections'
+    : props.scope === 'workflow'
+      ? '/workflow-components'
+      : '/agent-components'
 ))
 const { confirm } = useConfirmation()
 const { notify } = useToasts()
 
 type ManagedManifest = CapabilityManifest | WorkflowComponentManifest
-const manifests = ref<ManagedManifest[]>([])
+const manifests = ref<EditorManifest[]>([])
 const editorDefaults = ref<Record<string, unknown>>({})
-const activeType = ref<ManagedComponentType | null>(null)
-const records = ref<SavedBlock[]>([])
+const activeType = ref<EditorType | null>(null)
+const records = ref<EditorRecord[]>([])
 const selectedId = ref('')
 const draft = ref<BlockDraftBase | null>(null)
 const loading = ref(true)
@@ -118,8 +139,16 @@ const saving = ref(false)
 const pageError = ref('')
 const saveValidation = ref<ValidationReport | null>(null)
 const storedRecordInvalid = ref(false)
+const copyOpen = ref(false)
+const copyName = ref('')
+const copyError = ref('')
+const copying = ref(false)
+const deleting = ref(false)
+const providers = ref<ModelProviderCatalog | null>(null)
+const models = ref<string[]>([])
+const loadingModels = ref(false)
 
-const { markClean, runAfterDiscard } = useUnsavedChanges(
+const { isDirty, markClean, runAfterDiscard } = useUnsavedChanges(
   () => activeType.value && draft.value
     ? payloadFromDraft(activeType.value, draft.value)
     : draft.value,
@@ -168,7 +197,7 @@ function invalidateResourceRequests(): void {
 
 function resourceRequestIsCurrent(
   sequence: number,
-  type: ManagedComponentType | null,
+  type: EditorType | null,
 ): boolean {
   return sequence === resourceSequence && activeType.value === type
 }
@@ -181,7 +210,7 @@ function privateSkillRequestIsCurrent(sequence: number, ownerId: string): boolea
   )
 }
 
-function defaultsForType(type: ManagedComponentType | null): unknown {
+function defaultsForType(type: EditorType | null): unknown {
   const editorKey = manifests.value.find((item) => item.type === type)?.editor_key
   return editorKey ? editorDefaults.value[editorKey] : undefined
 }
@@ -192,9 +221,35 @@ const navigationItems = computed<SectionNavItem[]>(() => manifests.value.map((ma
   id: manifest.type,
   label: t(`capabilities.${manifest.type}.label`),
 })))
+const selectedModelRecord = computed(() => (
+  activeType.value === 'model-connection'
+    ? records.value.find((record) => record.id === draft.value?.id) as ModelConnection | undefined
+    : undefined
+))
+const credentialReplacementRequired = computed(() => {
+  if (activeType.value !== 'model-connection' || !draft.value) return false
+  const modelDraft = draft.value as ModelDraft
+  const selected = selectedModelRecord.value
+  return Boolean(
+    selected
+    && modelDraft.credential_status === 'masked'
+    && !modelDraft.credential_secret
+    && (
+      modelDraft.provider !== selected.provider
+      || modelDraft.base_url.trim() !== selected.base_url
+    )
+  )
+})
 
 const editorProps = computed<Record<string, unknown>>(() => {
   switch (activeType.value) {
+    case 'model-connection':
+      return {
+        models: models.value,
+        loadingModels: loadingModels.value,
+        providers: providers.value?.providers ?? [],
+        loadingProviders: loading.value,
+      }
     case 'custom-tool':
       return {
         catalog: customTools.value,
@@ -261,23 +316,23 @@ const editorProps = computed<Record<string, unknown>>(() => {
   }
 })
 
-function adapter(type: ManagedComponentType): PageBlockAdapter {
-  return blockAdapters[type] as unknown as PageBlockAdapter
+function adapter(type: EditorType): PageBlockAdapter {
+  return (type === 'model-connection' ? modelAdapter : blockAdapters[type]) as PageBlockAdapter
 }
 
-function blankDraft(type: ManagedComponentType): BlockDraftBase {
+function blankDraft(type: EditorType): BlockDraftBase {
   return adapter(type).blank(defaultsForType(type))
 }
 
-function draftFromApi(type: ManagedComponentType, value: SavedBlock): BlockDraftBase {
+function draftFromApi(type: EditorType, value: EditorRecord): BlockDraftBase {
   return adapter(type).fromApi(value, defaultsForType(type))
 }
 
-function payloadFromDraft(type: ManagedComponentType, value: BlockDraftBase): BlockPayload {
+function payloadFromDraft(type: EditorType, value: BlockDraftBase): BlockPayload {
   return adapter(type).toPayload(value, defaultsForType(type))
 }
 
-function usesPythonExtension(type: ManagedComponentType): boolean {
+function usesPythonExtension(type: EditorType): boolean {
   return (
     type === 'custom-tool'
     || type === 'custom-middleware'
@@ -289,7 +344,7 @@ function usesPythonExtension(type: ManagedComponentType): boolean {
 }
 
 function validationPayloadFromDraft(
-  type: ManagedComponentType,
+  type: EditorType,
   value: BlockDraftBase,
 ): BlockPayload | null {
   const payload = payloadFromDraft(type, value)
@@ -312,6 +367,7 @@ function notifyFailure(titleKey: string, error: unknown): void {
 }
 
 async function isStoredRecordInvalid(id: string): Promise<boolean> {
+  if (activeType.value === 'model-connection') return false
   try {
     const report = await managementApi.validateRepository()
     return report.issues.some((issue) => issue.scope === 'block' && issue.owner_id === id)
@@ -328,8 +384,9 @@ const { validation } = useConfigurationValidation({
     if (payload === null) return null
     return {
       target: {
-        kind: 'block',
-        type: activeType.value,
+        ...(activeType.value === 'model-connection'
+          ? { kind: 'model_connection' as const }
+          : { kind: 'block' as const, type: activeType.value }),
         id: draft.value.id,
       },
       payload,
@@ -362,7 +419,9 @@ watch(draft, () => {
 
 async function loadRoute(): Promise<void> {
   if (manifests.value.length === 0) return
-  const requestedType = typeof route.params.type === 'string' ? route.params.type : ''
+  const requestedType = props.scope === 'model'
+    ? 'model-connection'
+    : typeof route.params.type === 'string' ? route.params.type : ''
   const manifest = manifests.value.find((item) => item.type === requestedType)
   if (!manifest) {
     const fallback = manifests.value[0]
@@ -377,21 +436,28 @@ async function loadRoute(): Promise<void> {
   pageError.value = ''
   saveValidation.value = null
   try {
-    const [listed, filesystemItems] = await Promise.all([
-      managementApi.listBlocks(manifest.type),
+    const [listed, filesystemItems, modelProviders] = await Promise.all([
+      manifest.type === 'model-connection'
+        ? managementApi.listModelConnections()
+        : managementApi.listBlocks(manifest.type),
       manifest.type === 'filesystem-permissions'
         ? managementApi.listBlocks('filesystem')
         : Promise.resolve([]),
+      manifest.type === 'model-connection'
+        ? managementApi.listModelProviders()
+        : Promise.resolve(null),
     ])
     if (sequence !== routeSequence) return
     const id = routeId()
     let loadedDraft: BlockDraftBase
     if (id) {
       const [loaded, invalid, packageInspection] = await Promise.all([
-        managementApi.getBlock(manifest.type, id),
-        isStoredRecordInvalid(id),
+        manifest.type === 'model-connection'
+          ? managementApi.getModelConnection(id)
+          : managementApi.getBlock(manifest.type, id),
+        manifest.type === 'model-connection' ? Promise.resolve(false) : isStoredRecordInvalid(id),
         usesPythonExtension(manifest.type)
-          ? managementApi.inspectPythonPackage(manifest.type, id)
+          ? managementApi.inspectPythonPackage(manifest.type as ManagedComponentType, id)
           : Promise.resolve(null),
       ])
       if (sequence !== routeSequence) return
@@ -414,6 +480,7 @@ async function loadRoute(): Promise<void> {
     activeType.value = manifest.type
     records.value = listed
     filesystems.value = filesystemItems as FilesystemImportSource[]
+    providers.value = modelProviders
     draft.value = loadedDraft
     selectedId.value = loadedDraft.id
     markClean()
@@ -435,6 +502,12 @@ async function loadCatalog(): Promise<void> {
   loading.value = true
   pageError.value = ''
   try {
+    if (scope === 'model') {
+      manifests.value = [{ type: 'model-connection', editor_key: 'model', order: 1 }]
+      editorDefaults.value = {}
+      await loadRoute()
+      return
+    }
     const catalog = await managementApi.getCatalog()
     if (sequence !== catalogSequence || scope !== props.scope) return
     manifests.value = (
@@ -460,65 +533,49 @@ async function selectType(type: string): Promise<void> {
 async function selectRecord(id: string): Promise<void> {
   if (!activeType.value) return
   await runAfterDiscard(async () => {
-    await router.push({
-      path: `${componentBasePath.value}/${activeType.value}`,
-      ...(id ? { query: { id } } : {}),
-    })
+    await router.push(editorLocation(id))
   })
+}
+
+function editorLocation(id = ''): { path: string; query?: { id: string } } {
+  const path = props.scope === 'model'
+    ? componentBasePath.value
+    : `${componentBasePath.value}/${activeType.value}`
+  return { path, ...(id ? { query: { id } } : {}) }
+}
+
+async function showBlankDraft(): Promise<void> {
+  if (!activeType.value) return
+  await router.push(editorLocation())
+  selectedId.value = ''
+  draft.value = blankDraft(activeType.value)
+  storedRecordInvalid.value = false
+  models.value = []
+  markClean()
+  if (activeType.value === 'skill' || usesPythonExtension(activeType.value)) {
+    await refreshResource()
+  }
 }
 
 async function startNew(): Promise<void> {
   if (!activeType.value) return
-  await runAfterDiscard(async () => {
-    await router.push({ path: `${componentBasePath.value}/${activeType.value}` })
-    if (!routeId()) {
-      selectedId.value = ''
-      draft.value = blankDraft(activeType.value!)
-      storedRecordInvalid.value = false
-      markClean()
-      if (activeType.value === 'skill' || usesPythonExtension(activeType.value!)) {
-        await refreshResource()
-      }
-    }
-  })
+  if (isDirty.value) {
+    await runAfterDiscard(showBlankDraft)
+    return
+  }
+  if (draft.value?.id) {
+    const accepted = await confirm({
+      title: t('components.new.title'),
+      description: t('components.new.description'),
+      confirmLabel: t('common.new'),
+      cancelLabel: t('common.cancel'),
+    })
+    if (!accepted) return
+  }
+  await showBlankDraft()
 }
 
-async function reset(): Promise<void> {
-  if (!activeType.value) return
-  await runAfterDiscard(async () => {
-    saveValidation.value = null
-    try {
-      if (draft.value?.id) {
-        const id = draft.value.id
-        const [loaded, invalid, packageInspection] = await Promise.all([
-          managementApi.getBlock(activeType.value!, id),
-          isStoredRecordInvalid(id),
-          usesPythonExtension(activeType.value!)
-            ? managementApi.inspectPythonPackage(activeType.value!, id)
-            : Promise.resolve(null),
-        ])
-        const loadedDraft = draftFromApi(activeType.value!, loaded)
-        if (packageInspection) {
-          applyPythonPackageInspection(
-            loadedDraft as BlockDraftBase & PythonPackageDraftState,
-            packageInspection,
-          )
-        }
-        draft.value = loadedDraft
-        storedRecordInvalid.value = invalid
-      } else {
-        draft.value = blankDraft(activeType.value!)
-        storedRecordInvalid.value = false
-      }
-      markClean()
-      notify({ tone: 'info', title: t('components.feedback.reset') })
-    } catch (error) {
-      notifyFailure('components.feedback.resetFailed', error)
-    }
-  })
-}
-
-function upsertRecord(saved: SavedBlock): void {
+function upsertRecord(saved: EditorRecord): void {
   const index = records.value.findIndex((item) => item.id === saved.id)
   if (index === -1) records.value.push(saved)
   else records.value[index] = saved
@@ -546,8 +603,10 @@ async function save(): Promise<void> {
   ))
   let targetId = draft.value.id
   if (existing) {
-    if (privateAssetType) {
-      pageError.value = t('errors.configurationNameConflict')
+    if (privateAssetType || activeType.value === 'model-connection') {
+      pageError.value = t(activeType.value === 'model-connection'
+        ? 'errors.modelConnectionNameConflict'
+        : 'errors.configurationNameConflict')
       return
     }
     const accepted = await confirm({
@@ -565,12 +624,14 @@ async function save(): Promise<void> {
   saveValidation.value = null
   try {
     const request = targetId ? { id: targetId, ...payload } : payload
-    const saved = await managementApi.saveBlock(activeType.value, request)
+    const saved = activeType.value === 'model-connection'
+      ? await managementApi.saveModelConnection(request)
+      : await managementApi.saveBlock(activeType.value, request)
     const savedDraft = draftFromApi(activeType.value, saved)
     if (packageType) {
       applyPythonPackageInspection(
         savedDraft as BlockDraftBase & PythonPackageDraftState,
-        await managementApi.inspectPythonPackage(activeType.value, saved.id),
+        await managementApi.inspectPythonPackage(activeType.value as ManagedComponentType, saved.id),
       )
     }
     draft.value = savedDraft
@@ -581,19 +642,122 @@ async function save(): Promise<void> {
     selectedId.value = saved.id
     upsertRecord(saved)
     markClean()
-    await router.replace({
-      path: `${componentBasePath.value}/${activeType.value}`,
-      query: { id: saved.id },
+    await router.replace(editorLocation(saved.id))
+    notify({
+      tone: 'success',
+      title: t(activeType.value === 'model-connection'
+        ? 'models.connections.saved'
+        : 'components.feedback.saved'),
     })
-    notify({ tone: 'success', title: t('components.feedback.saved') })
   } catch (error) {
     if (error instanceof ManagementApiError && error.validation) {
       saveValidation.value = error.validation
     } else {
-      notifyFailure('components.feedback.saveFailed', error)
+      notifyFailure(
+        activeType.value === 'model-connection'
+          ? 'models.connections.saveFailed'
+          : 'components.feedback.saveFailed',
+        error,
+      )
     }
   } finally {
     saving.value = false
+  }
+}
+
+async function openCopy(): Promise<void> {
+  if (!draft.value?.id || !activeType.value) return
+  copyName.value = ''
+  copyError.value = ''
+  copyOpen.value = true
+}
+
+function closeCopy(): void {
+  if (copying.value) return
+  copyOpen.value = false
+  copyName.value = ''
+  copyError.value = ''
+}
+
+async function copyCurrent(): Promise<void> {
+  if (!activeType.value || !draft.value?.id || copying.value) return
+  const name = copyName.value.trim()
+  if (!name) {
+    copyError.value = t('components.copy.nameRequired')
+    return
+  }
+  await runAfterDiscard(async () => {
+    copying.value = true
+    copyError.value = ''
+    try {
+      const copied = activeType.value === 'model-connection'
+        ? await managementApi.copyModelConnection(draft.value!.id, name)
+        : await managementApi.copyBlock(activeType.value!, draft.value!.id, name)
+      upsertRecord(copied)
+      copyOpen.value = false
+      copyName.value = ''
+      await router.replace(editorLocation(copied.id))
+      notify({ tone: 'success', title: t('components.copy.succeeded') })
+    } catch (error) {
+      copyError.value = managementError.describe(error).display
+    } finally {
+      copying.value = false
+    }
+  })
+}
+
+async function removeCurrent(): Promise<void> {
+  if (!activeType.value || !draft.value?.id || deleting.value) return
+  await runAfterDiscard(async () => {
+    const id = draft.value!.id
+    const name = draft.value!.name
+    const accepted = await confirm({
+      title: t('components.delete.title'),
+      description: t('components.delete.description', { name }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      dangerous: true,
+    })
+    if (!accepted) return
+    deleting.value = true
+    pageError.value = ''
+    try {
+      if (activeType.value === 'model-connection') {
+        await managementApi.deleteModelConnection(id)
+      } else {
+        await managementApi.deleteBlock(activeType.value!, id)
+      }
+      records.value = records.value.filter((record) => record.id !== id)
+      await showBlankDraft()
+      notify({ tone: 'success', title: t('components.delete.succeeded') })
+    } catch (error) {
+      pageError.value = managementError.describe(error).display
+    } finally {
+      deleting.value = false
+    }
+  })
+}
+
+async function fetchModels(request: {
+  provider: string
+  baseUrl: string
+  credential: string
+  blockId: string
+}): Promise<void> {
+  loadingModels.value = true
+  pageError.value = ''
+  try {
+    models.value = await managementApi.fetchModels(
+      request.provider,
+      request.baseUrl,
+      request.credential || null,
+      request.blockId,
+    )
+  } catch (error) {
+    pageError.value = managementError.describe(error).display
+    models.value = []
+  } finally {
+    loadingModels.value = false
   }
 }
 
@@ -610,7 +774,7 @@ async function refreshResource(): Promise<void> {
   try {
     if (type && usesPythonExtension(type) && ownerId) {
       const inspection: PythonPackageInspection = await managementApi.inspectPythonPackage(
-        type,
+        type as ManagedComponentType,
         ownerId,
       )
       if (resourceRequestIsCurrent(sequence, type) && draft.value?.id === ownerId) {
@@ -749,7 +913,9 @@ watch(
       return
     }
     if (manifests.value.length === 0) return
-    const requestedType = typeof route.params.type === 'string' ? route.params.type : ''
+    const requestedType = props.scope === 'model'
+      ? 'model-connection'
+      : typeof route.params.type === 'string' ? route.params.type : ''
     if (requestedType === activeType.value && routeId() === (draft.value?.id ?? '')) return
     void loadRoute()
   },
@@ -764,28 +930,40 @@ onMounted(() => {
   <PageShell>
     <template #actions>
       <LteButton
-        :disabled="!draft || loading"
+        :disabled="!draft?.id || loading || saving || deleting"
+        theme="secondary"
+        type="button"
+        @click="openCopy"
+      >
+        <i class="bi bi-copy" aria-hidden="true" />
+        {{ t('common.copy') }}
+      </LteButton>
+      <LteButton
+        :disabled="!draft?.id || loading || saving || deleting"
+        theme="danger"
+        type="button"
+        @click="removeCurrent"
+      >
+        <i class="bi bi-trash" aria-hidden="true" />
+        {{ deleting ? t('common.deleting') : t('common.delete') }}
+      </LteButton>
+      <LteButton
+        :disabled="!draft || loading || saving || deleting"
         theme="success"
         type="button"
         @click="startNew"
       >
+        <i class="bi bi-plus-lg" aria-hidden="true" />
         {{ t('common.new') }}
       </LteButton>
       <LteButton
-        :disabled="!draft || loading"
-        theme="warning"
-        type="button"
-        @click="reset"
-      >
-        {{ t('common.reset') }}
-      </LteButton>
-      <LteButton
-        :disabled="!draft || loading || saving"
+        :disabled="!draft || loading || saving || deleting"
         theme="primary"
         type="button"
         @click="save"
       >
         <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-floppy" aria-hidden="true" />
         {{ t('common.save') }}
       </LteButton>
     </template>
@@ -838,13 +1016,18 @@ onMounted(() => {
           />
         </div>
 
-      <component
+        <LteAlert v-if="credentialReplacementRequired" class="mb-3" theme="warning">
+          {{ t('models.connections.credentialReplacementRequired') }}
+        </LteAlert>
+
+        <component
           :is="currentEditor"
           v-bind="editorProps"
           :model-value="draft"
           @refresh="refreshResource"
           @add-skill="addPrivateSkill"
           @remove-skill="removePrivateSkill"
+          @fetch-models="fetchModels"
           @update:model-value="updateDraft"
         />
       </section>
@@ -858,4 +1041,33 @@ onMounted(() => {
       </aside>
     </div>
   </PageShell>
+
+  <ModalHost
+    :open="copyOpen"
+    :title="t('components.copy.title')"
+    @close="closeCopy"
+  >
+    <form id="component-copy-form" novalidate @submit.prevent="copyCurrent">
+      <FormField field-path="name" :hint="t('components.copy.nameHint')">
+        <input v-model="copyName" autocomplete="off" class="form-control">
+      </FormField>
+      <LteAlert v-if="copyError" data-testid="component-copy-error" theme="danger">
+        {{ copyError }}
+      </LteAlert>
+    </form>
+    <template #footer>
+      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">
+        {{ t('common.cancel') }}
+      </LteButton>
+      <LteButton
+        :disabled="copying"
+        form="component-copy-form"
+        theme="primary"
+        type="submit"
+      >
+        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        {{ copying ? t('common.copying') : t('common.copy') }}
+      </LteButton>
+    </template>
+  </ModalHost>
 </template>

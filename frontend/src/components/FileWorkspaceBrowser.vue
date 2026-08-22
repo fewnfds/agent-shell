@@ -380,7 +380,12 @@ defineExpose({ refresh: load })
           class="breadcrumb-item"
           :aria-current="index === breadcrumbs.length - 1 ? 'page' : undefined"
         >
-          <a v-if="index < breadcrumbs.length - 1" href="#" @click.prevent="load(item.path)">
+          <a
+            v-if="index < breadcrumbs.length - 1"
+            class="text-decoration-none"
+            href="#"
+            @click.prevent="load(item.path)"
+          >
             {{ item.label }}
           </a>
           <span v-else>{{ item.label }}</span>
@@ -447,17 +452,17 @@ defineExpose({ refresh: load })
               >
             </td>
             <td>
-              <button
+              <a
                 v-if="item.capabilities.list || item.capabilities.read"
-                class="btn btn-sm btn-outline-primary text-start"
-                type="button"
-                @click="openItem(item)"
+                class="text-decoration-none"
+                href="#"
+                @click.prevent="openItem(item)"
               >
                 <i v-if="item.kind === 'directory'" class="bi bi-folder" aria-hidden="true" />
                 <i v-else class="bi bi-file-earmark" aria-hidden="true" />
                 <strong v-if="item.path === highlightedPath">{{ item.name }}</strong>
                 <span v-else>{{ item.name }}</span>
-              </button>
+              </a>
               <span v-else>{{ item.name }}</span>
             </td>
             <td>{{ t(`fileManager.kinds.${item.kind}`) }}</td>

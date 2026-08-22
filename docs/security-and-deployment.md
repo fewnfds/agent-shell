@@ -42,7 +42,7 @@ Python template、`skills-template` 公共素材或 runtime cache。模型要求
 Skill Component 导出的是该 Component 已拥有的私有 Skill package。
 
 平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者
-需把 Bundle 中的 Python package 视为受信任代码，并在启用 Workflow 前审查源码、requirements、文件与网络权限。导入和
+导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和
 导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
 
 ZIP 只接受当前 format version、canonical `manifest.json`、规范相对 POSIX path 和匹配的 SHA-256 asset tree hash；绝对路径、

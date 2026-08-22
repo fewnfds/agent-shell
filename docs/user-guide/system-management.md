@@ -38,7 +38,7 @@ data/
 
 模型连接是实例私有资源：Provider、endpoint、具体 model 和请求参数保存在
 `data/config/model-connections/<uuid>.yaml`，credential value 保存在 `data/config/agent-shell.env`。
-`data/config/model-bindings.yaml` 按 Configuration Repository 保存模型要求到本机连接的映射。模型连接和映射都不进入配置 Bundle。
+`data/config/model-bindings.yaml` 按 Configuration Repository 保存模型要求到模型连接的映射。模型连接和映射都不进入配置 Bundle。
 切换 Configuration Repository 只改变可装配配置和当前使用的 repository-scoped binding；上述系统设置、secret、SQLite 数据、普通文件、模板和模型连接保持不变。
 
 ## 文件管理
@@ -63,6 +63,12 @@ Configuration Repository 中的 Component、Agent、Workflow 和配置私有包�
 `workflow/command/`、`workflow/task_dispatcher/` 和 `workflow/workflow_event_output/` 六个类别维护静态 Python 模板。
 创建 Python-backed Component 时选择一份合法模板；保存后形成配置独占的完整文件目录。
 
+## 配置管理
+
+【系统 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python/Skill 私有包和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。
+
+【系统 / 模型连接】直接复用【配置库 / 系统 / 模型连接】的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】。
+
 ## 系统设置
 
 【系统 / 系统配置】管理监听地址、端口、远程访问、管理密码、API Key、初始消息条数上限、
@@ -70,10 +76,13 @@ LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API 
 CIDR。secret 只显示是否配置，不回显明文。启用 LangSmith 或修改连接字段时，系统会在保存前验证 API Key、
 Endpoint 区域和 Workspace ID 是否匹配；验证失败时不保存本次修改。
 
-“输入与资源策略”集中设置 Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及
+“限制策略”集中设置 Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及
 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回当前值、默认值和最小值；
 这些字段只有正数约束，没有额外产品最大值。当前默认分别为 64 MiB、4096、24 MiB、48 MiB、64 MiB、2 MiB、
 600 秒、5 秒和 15 秒。
+
+系统配置页面按网络、限制策略、LangSmith 和代理设置分卡展示；管理密码与 API Key 均归入网络卡片。
+限制策略中的容量字段以 MiB 展示（1 MiB = 1024² bytes），保存时仍按后端要求换算为 bytes。
 
 LangSmith 配置项含义如下：
 
@@ -83,7 +92,7 @@ LangSmith 配置项含义如下：
 - Workspace ID：API Key 可访问多个 Workspace 时填写，否则留空；
 - API Key：只写 secret；已配置的值不会回显，留空保存时保留原值。
 
-API Key、消息上限和输入与资源策略立即生效；host、端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。
+API Key、消息上限和限制策略立即生效；host、端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。
 
 【系统 / 拦截消息】管理 Chat Completions 入站拦截。开关立即生效并持久化；开启后，请求会在进入 Workflow 前
 直接收到 OpenAI-compatible 的“消息已拦截”回复。页面只展示进程内最新一条原始 JSON，正文不写入 SQLite、

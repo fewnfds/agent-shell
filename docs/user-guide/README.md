@@ -12,7 +12,7 @@ Agent Shell 通过管理台组合 Deep Agents 配置，并把启用的父图 Wor
 4. [装配 Main Agent 与 Subagent](configuration-workflow.md)
 5. [理解 Workflow Input Context](workflow-input-context.md)
 6. [使用自定义 Middleware 包](middleware-packages.md)
-7. [管理组件库](configuration-library.md)
+7. [管理配置库](configuration-library.md)
 8. [调用 API Server](api-server.md)
 9. [查看日志中心与运行历史](runtime-observability.md)
 10. [管理数据、文件与系统设置](system-management.md)

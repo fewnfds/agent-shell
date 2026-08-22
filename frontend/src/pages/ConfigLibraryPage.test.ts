@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import type {
   CapabilityManifest,
   CatalogResponse,
+  ModelConnection,
   SavedBlock,
   ValidationReport,
 } from '@/api'
@@ -22,6 +23,7 @@ const messages = {
     description: 'Saved configurations.',
     validationTitle: 'Repository validation',
     groups: {
+      system: 'System',
       components: 'Components',
       agentComponents: 'Agent components',
       workflowComponents: 'Workflow components',
@@ -34,10 +36,11 @@ const messages = {
       create: 'Create and switch', created: 'Created', activated: 'Activated', restartRequired: 'Restart required',
     },
     bundle: {
-      upload: 'Upload configuration Bundle', download: 'Download Bundle', exportFailed: 'Export failed',
+      upload: 'Upload', download: 'Download', exportFailed: 'Export failed',
       previewTitle: 'Import Bundle', digest: 'Digest', originalName: 'Original', importName: 'Import name',
       targetId: 'Target UUID', bindings: 'Bindings', pathOrigin: 'Path origin', absolute: 'Absolute',
       selectPathOrigin: 'Select path origin', dataRootRelative: 'Data root relative', blockers: 'Blockers', warnings: 'Warnings', import: 'Import', imported: 'Imported',
+      securityWarningTitle: 'Untrusted imports are dangerous', securityWarning: 'Review code and permissions.', unknownIssue: 'Issue {code}',
     },
     catalogUnavailable: 'Catalog unavailable',
     unknownCategory: 'Unknown category {type}',
@@ -124,6 +127,7 @@ const messages = {
     },
   },
   capabilities: {
+    'model-connection': { label: 'Model connection' },
     filesystem: { label: 'Filesystem' },
     model: { label: 'Model' },
     'main-agent': { label: 'Main Agent' },
@@ -206,6 +210,19 @@ function createApi() {
   const listMainAgents = vi.fn(async () => [])
   const listSubagents = vi.fn(async () => [])
   const listWorkflows = vi.fn(async () => [])
+  const modelConnection: ModelConnection = {
+    id: '33333333-3333-4333-8333-333333333333',
+    name: 'Local GPT',
+    provider: 'openai',
+    base_url: 'https://example.test/v1',
+    credential: { status: 'masked' },
+    model: 'gpt-local',
+    provider_settings: {},
+    tool_choice: null,
+    response_format: null,
+    model_settings: {},
+  }
+  const listModelConnections = vi.fn(async () => [modelConnection])
   const copyBlock = vi.fn(async () => {
     stored = [...stored, copied]
     return copied
@@ -226,24 +243,22 @@ function createApi() {
     listMainAgents,
     listSubagents,
     listWorkflows,
+    listModelConnections,
     copyBlock,
     copyMainAgent: vi.fn(),
     copySubagent: vi.fn(),
+    copyWorkflow: vi.fn(),
+    copyModelConnection: vi.fn(),
     deleteBlock,
     deleteUnsupportedBlock,
     deleteBlocks: vi.fn(async (_type, ids) => deleteBlocks(ids)),
     deleteMainAgent: vi.fn(),
     deleteSubagent: vi.fn(),
     deleteWorkflow: vi.fn(),
+    deleteModelConnection: vi.fn(),
     deleteMainAgents: vi.fn(),
     deleteSubagents: vi.fn(),
     deleteWorkflows: vi.fn(),
-    listConfigurationRepositories: vi.fn(async () => ({
-      active_id: '11111111-1111-4111-8111-111111111111',
-      repositories: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Default', schema_version: 1 as const, active: true }],
-    })),
-    createConfigurationRepository: vi.fn(),
-    activateConfigurationRepository: vi.fn(),
     exportConfigurationBundle: vi.fn(async () => ({
       blob: new Blob(),
       filename: 'configuration.agent-shell-config.zip',
@@ -301,7 +316,7 @@ afterEach(() => {
 })
 
 describe('ConfigLibraryPage', () => {
-  it('lists Workflows in the library without copy and keeps deletion there', async () => {
+  it('lists Workflows with the common copy, download, and delete actions', async () => {
     const api = createApi()
     const workflow = {
       id: 'workflow-uuid', name: 'Parent flow', workflow_role: 'parent' as const,
@@ -313,60 +328,27 @@ describe('ConfigLibraryPage', () => {
 
     expect(api.service.listWorkflows).toHaveBeenCalledWith('parent')
     expect(wrapper.text()).toContain('Parent flow')
-    expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
-    expect(wrapper.findAll('button').some((button) => button.text() === 'Download Bundle')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(true)
   })
 
-  it('activates a selected repository and reloads the active category', async () => {
+  it('lists instance Model Connections without Bundle actions or Repository controls', async () => {
     const api = createApi()
-    vi.mocked(api.service.listConfigurationRepositories).mockResolvedValue({
-      active_id: '11111111-1111-4111-8111-111111111111',
-      repositories: [
-        { id: '11111111-1111-4111-8111-111111111111', name: 'Default', schema_version: 1, active: true },
-        { id: '22222222-2222-4222-8222-222222222222', name: 'Alternate', schema_version: 1, active: false },
-      ],
-    })
-    vi.mocked(api.service.activateConfigurationRepository).mockResolvedValue({
-      id: '22222222-2222-4222-8222-222222222222', name: 'Alternate', schema_version: 1,
-      active: true, restart_required: false,
-      validation: { valid: true, stage: 'repository_load', issues: [] },
-    })
-    const { wrapper } = await mountPage(api.service)
-    await buttonByText(wrapper, 'View').trigger('click')
-    expect(wrapper.text()).toContain('Details for Original model')
-    await wrapper.get('[data-testid="repository-switcher"] select').setValue('22222222-2222-4222-8222-222222222222')
-    await flushPromises()
+    const { wrapper } = await mountPage(api.service, '/library/model-connection')
 
-    expect(api.service.activateConfigurationRepository).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
-    expect(api.listBlocks).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).not.toContain('Details for Original model')
-  })
-
-  it('restores the authoritative repository after create succeeds but activation fails', async () => {
-    const api = createApi()
-    const active = {
-      id: '11111111-1111-4111-8111-111111111111', name: 'Default', schema_version: 1 as const, active: true,
-    }
-    const created = {
-      id: '22222222-2222-4222-8222-222222222222', name: 'Created', schema_version: 1 as const, active: false,
-    }
-    vi.mocked(api.service.listConfigurationRepositories)
-      .mockResolvedValueOnce({ active_id: active.id, repositories: [active] })
-      .mockResolvedValueOnce({ active_id: active.id, repositories: [active, created] })
-    vi.mocked(api.service.createConfigurationRepository).mockResolvedValue(created)
-    vi.mocked(api.service.activateConfigurationRepository).mockRejectedValue(new Error('activation failed'))
-    const { wrapper } = await mountPage(api.service)
-
-    await wrapper.get('#new-repository-name').setValue('Created')
-    await wrapper.get('[data-testid="create-repository-form"]').trigger('submit')
-    await flushPromises()
-
-    expect(api.service.activateConfigurationRepository).toHaveBeenCalledWith(created.id)
-    expect(api.service.listConfigurationRepositories).toHaveBeenCalledTimes(2)
-    expect((wrapper.get('[data-testid="repository-switcher"] select').element as HTMLSelectElement).value).toBe(active.id)
-    expect(wrapper.get('[data-testid="repository-switcher"]').text()).toContain(created.name)
-    expect(wrapper.get('[data-testid="repository-switcher"] [role="alert"]').text()).toContain('Request failed')
+    expect(api.service.listModelConnections).toHaveBeenCalledOnce()
+    expect(api.service.validateRepository).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Local GPT')
+    expect(wrapper.findAll('button').some((button) => button.text() === 'View')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Edit')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Upload')).toBe(false)
+    expect(wrapper.find('[data-testid="repository-switcher"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="library-validation-region"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="library-system-group"] > span').text()).toBe('System')
   })
 
   it('commits the same uploaded Bundle digest and target UUID plan', async () => {
@@ -398,6 +380,52 @@ describe('ConfigLibraryPage', () => {
     })
   })
 
+  it('requires an explicit name for a conflict and enables import after the user renames it', async () => {
+    const api = createApi()
+    const file = new File(['bundle'], 'duplicate.zip', { type: 'application/zip' })
+    vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
+      bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
+      plan_token: 'c'.repeat(64),
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      target_ids: { 'source-id': 'target-id' },
+      records: [{
+        source_id: 'source-id', target_id: 'target-id', kind: 'component', type: 'model',
+        original_name: 'Existing model', suggested_name: 'Existing model (imported)',
+        selected_name: 'Existing model (imported)', requires_confirmation: true,
+      }],
+      filesystem_bindings: [], skill_packages: [], errors: [], warnings: [], ready: false,
+    })
+    vi.mocked(api.service.importConfigurationBundle).mockResolvedValue({
+      bundle_sha256: 'a'.repeat(64),
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      target_ids: { 'source-id': 'target-id' }, records: [], skill_packages: [], warnings: [],
+    })
+    const { wrapper, router } = await mountPage(api.service)
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    const nameInput = wrapper.get('table input')
+    const importButton = buttonByText(wrapper, 'Import')
+    expect((nameInput.element as HTMLInputElement).value).toBe('')
+    expect(nameInput.attributes('placeholder')).toBe('Existing model (imported)')
+    expect(importButton.attributes('disabled')).toBeDefined()
+
+    await nameInput.setValue('Imported model copy')
+    expect(importButton.attributes('disabled')).toBeUndefined()
+    await importButton.trigger('click')
+    await flushPromises()
+
+    expect(api.service.importConfigurationBundle).toHaveBeenCalledWith(
+      file,
+      'a'.repeat(64),
+      'c'.repeat(64),
+      expect.objectContaining({ names: { 'source-id': 'Imported model copy' } }),
+    )
+    expect(router.currentRoute.value.fullPath).toBe('/library/model')
+  })
+
   it('keeps Bundle import disabled until preview and path resolutions are ready', async () => {
     const api = createApi()
     const file = new File(['bundle'], 'filesystem.zip', { type: 'application/zip' })
@@ -413,7 +441,13 @@ describe('ConfigLibraryPage', () => {
         source_value: 'C:/source', source_path_origin: 'absolute', required: true,
         status: 'binding-required', target_value: null,
       }],
-      skill_packages: [], errors: [], warnings: [], ready: true,
+      skill_packages: [],
+      errors: [{
+        code: 'filesystem_binding_required', message: 'Select a target path.',
+        message_key: 'configurationBundle.issues.filesystem_binding_required', message_args: {},
+        source_id: 'source-id', path: 'mapped_directories[0].local_path',
+      }],
+      warnings: [], ready: false,
     })
     const { wrapper } = await mountPage(api.service)
     const input = wrapper.get('input[type="file"]')
@@ -423,10 +457,12 @@ describe('ConfigLibraryPage', () => {
     const importButton = buttonByText(wrapper, 'Import')
 
     expect(importButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Blockers')
     await wrapper.get('[data-testid="bundle-binding-value"]').setValue('D:/target')
     expect(importButton.attributes('disabled')).toBeDefined()
     await wrapper.get('[data-testid="bundle-path-origin"]').setValue('absolute')
     expect(importButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Blockers')
     await wrapper.get('table input').setValue('')
     expect(importButton.attributes('disabled')).toBeDefined()
     await importButton.trigger('click')

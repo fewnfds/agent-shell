@@ -6,8 +6,10 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { managementApi, type SavedBlock, type Workflow, type WorkflowPayload, type WorkflowRole } from '@/api'
 import FormField from '@/components/FormField.vue'
+import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
+import { useConfirmation } from '@/composables/useConfirmation'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 
@@ -17,12 +19,18 @@ const route = useRoute()
 const router = useRouter()
 const managementError = useManagementError()
 const { notify } = useToasts()
+const { confirm } = useConfirmation()
 const records = ref<Workflow[]>([])
 const workflowEventOutputs = ref<SavedBlock[]>([])
 const selectedId = ref('')
 const form = ref<WorkflowPayload>(blankWorkflow())
 const loading = ref(true)
 const saving = ref(false)
+const copying = ref(false)
+const deleting = ref(false)
+const copyOpen = ref(false)
+const copyName = ref('')
+const copyError = ref('')
 const error = ref('')
 
 function pagePath(): string {
@@ -72,13 +80,76 @@ function selectRecord(id: string): void {
 }
 function updateName(value: string): void { form.value.name = value }
 function newWorkflow(): void {
-  if (saving.value) return
+  if (saving.value || copying.value || deleting.value) return
   selectedId.value = ''
   form.value = blankWorkflow()
   void router.replace({ path: pagePath() })
 }
+function openCopy(): void {
+  if (!selectedId.value) return
+  copyName.value = ''
+  copyError.value = ''
+  copyOpen.value = true
+}
+function closeCopy(): void {
+  if (copying.value) return
+  copyOpen.value = false
+  copyName.value = ''
+  copyError.value = ''
+}
+async function copyCurrent(): Promise<void> {
+  if (!selectedId.value || copying.value) return
+  const name = copyName.value.trim()
+  if (!name) {
+    copyError.value = t('workflows.copy.nameRequired')
+    return
+  }
+  copying.value = true
+  copyError.value = ''
+  try {
+    const copied = await managementApi.copyWorkflow(selectedId.value, name)
+    records.value = sortWorkflows([...records.value, copied])
+    selectedId.value = copied.id
+    form.value = toPayload(copied)
+    copyOpen.value = false
+    copyName.value = ''
+    await router.replace({ path: pagePath(), query: { id: copied.id } })
+    notify({ tone: 'success', title: t('workflows.copied') })
+  } catch (cause) {
+    copyError.value = managementError.describe(cause).display
+  } finally {
+    copying.value = false
+  }
+}
+async function removeCurrent(): Promise<void> {
+  if (!selectedId.value || deleting.value) return
+  const id = selectedId.value
+  const name = records.value.find((item) => item.id === id)?.name ?? form.value.name
+  const accepted = await confirm({
+    title: t('workflows.deleteTitle'),
+    description: t('workflows.deleteDescription', { name }),
+    confirmLabel: t('common.delete'),
+    cancelLabel: t('common.cancel'),
+    dangerous: true,
+  })
+  if (!accepted) return
+  deleting.value = true
+  error.value = ''
+  try {
+    await managementApi.deleteWorkflow(id)
+    records.value = records.value.filter((item) => item.id !== id)
+    selectedId.value = ''
+    form.value = blankWorkflow()
+    await router.replace({ path: pagePath() })
+    notify({ tone: 'success', title: t('workflows.deleted') })
+  } catch (cause) {
+    error.value = managementError.describe(cause).display
+  } finally {
+    deleting.value = false
+  }
+}
 async function save(): Promise<void> {
-  if (saving.value) return
+  if (saving.value || copying.value || deleting.value) return
   saving.value = true
   error.value = ''
   try {
@@ -119,6 +190,21 @@ onMounted(() => { void load() })
         </div></div></section>
       <aside class="col-lg-3"><div class="card"><header class="card-header"><h2 class="card-title">{{ t('workflows.statusTitle') }}</h2></header><div class="card-body"><p class="mb-0">{{ selectedId ? (records.find((item) => item.id === selectedId)?.enabled ? t('workflows.status.published') : t('workflows.status.draft')) : t('workflows.newStatus') }}</p></div></div></aside>
     </div>
-    <template #actions><LteButton :disabled="saving" theme="success" type="button" @click="newWorkflow"><i class="bi bi-plus-lg" aria-hidden="true" /> {{ t('common.new') }}</LteButton><LteButton :disabled="saving" theme="primary" type="button" @click="save"><span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-floppy" aria-hidden="true" /> {{ t('common.save') }}</LteButton><LteButton :disabled="!selectedId || saving" theme="info" type="button" @click="editGraph"><i class="bi bi-pencil" aria-hidden="true" /> {{ t('workflows.actions.editFlow') }}</LteButton></template>
+    <template #actions><LteButton :disabled="!selectedId || saving || copying || deleting" theme="secondary" type="button" @click="openCopy"><i class="bi bi-copy" aria-hidden="true" /> {{ t('common.copy') }}</LteButton><LteButton :disabled="!selectedId || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent"><i class="bi bi-trash" aria-hidden="true" /> {{ deleting ? t('common.deleting') : t('common.delete') }}</LteButton><LteButton :disabled="saving || copying || deleting" theme="success" type="button" @click="newWorkflow"><i class="bi bi-plus-lg" aria-hidden="true" /> {{ t('common.new') }}</LteButton><LteButton :disabled="saving || copying || deleting" theme="primary" type="button" @click="save"><span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-floppy" aria-hidden="true" /> {{ t('common.save') }}</LteButton><LteButton :disabled="!selectedId || saving || copying || deleting" theme="info" type="button" @click="editGraph"><i class="bi bi-pencil" aria-hidden="true" /> {{ t('workflows.actions.editFlow') }}</LteButton></template>
   </PageShell>
+
+  <ModalHost :open="copyOpen" :title="t('workflows.copy.title')" @close="closeCopy">
+    <form id="workflow-copy-form" novalidate @submit.prevent="copyCurrent">
+      <FormField field-path="name" :hint="t('workflows.copy.nameHint')">
+        <input v-model="copyName" autocomplete="off" class="form-control">
+      </FormField>
+      <LteAlert v-if="copyError" data-testid="workflow-copy-error" theme="danger">
+        {{ copyError }}
+      </LteAlert>
+    </form>
+    <template #footer>
+      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">{{ t('common.cancel') }}</LteButton>
+      <LteButton :disabled="copying" form="workflow-copy-form" theme="primary" type="submit"><span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />{{ copying ? t('common.copying') : t('common.copy') }}</LteButton>
+    </template>
+  </ModalHost>
 </template>

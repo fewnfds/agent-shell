@@ -50,6 +50,14 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
   {
     prefix: '/system',
     items: [
+      {
+        path: '/system/configuration-repositories',
+        labelKey: 'navigation.sections.configurationRepositories',
+      },
+      {
+        path: '/system/model-connections',
+        labelKey: 'navigation.sections.modelConnections',
+      },
       { path: '/system/config', labelKey: 'navigation.sections.systemSettings' },
       {
         path: '/system/message-interception',

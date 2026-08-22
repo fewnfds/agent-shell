@@ -20,9 +20,9 @@ Content-Type: application/json
 
 ## Model Connection 与 Model Requirement
 
-在【模型 -> 模型连接】创建实例私有连接，按 LangChain Provider contract 填写 endpoint、具体 model、请求参数和凭据。模型连接不属于 Configuration Repository，也不会进入 Bundle；凭据实际值只写入实例 env，普通响应仅返回 masked/missing 状态。
+在【模型 -> 模型连接】创建实例私有 Model Connection，按 LangChain Provider contract 填写 endpoint、具体 model、请求参数和凭据。配置库与系统中的【模型连接】复用通用列表，只提供查看、编辑、复制和删除，不提供下载。连接不属于 Configuration Repository，也不会进入 Bundle；凭据实际值只写入实例 env，普通响应仅返回 masked/missing 状态。
 
-在【代理组件 -> 模型要求】创建可迁移的模型能力要求，只填写名称和多行 description。导入配置后，在【模型 -> 模型映射】按 description 选择本机模型连接；未绑定只产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
+在【代理组件 -> 模型要求】创建可迁移的模型能力要求，只填写名称和多行 description。导入配置后，在【模型 -> 模型映射】按 description 选择模型连接；未绑定只产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
 
 `credential` 是 management-only 的 write-only input。创建 Model Connection 时在 HTTPS 或本机 loopback 连接中提交真实 Provider Key；
 服务端会把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中只保存 variable reference。响应不会回显 plaintext。不要把 Key 写进
@@ -188,7 +188,7 @@ Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
 
 ## 可移植配置 Bundle
 
-管理台的【组件库】是 Repository 选择、Bundle 下载和上传的入口。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理组件库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
+管理台的【配置库】是单根 Bundle 下载和上传入口；Repository 切换、复制、整仓库下载和删除位于【系统 / 组件配置】。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理配置库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
 
 需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿
 `configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source

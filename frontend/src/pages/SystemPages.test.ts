@@ -108,10 +108,10 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
 
     const cards = wrapper.findAll('[data-testid^="system-card-"]')
-    expect(cards).toHaveLength(6)
+    expect(cards).toHaveLength(4)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-hdd-network', 'bi-key', 'bi-sliders', 'bi-sliders', 'bi-gear', 'bi-shield-lock'])
+      .toEqual(['bi-hdd-network', 'bi-sliders', 'bi-gear', 'bi-shield-lock'])
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')

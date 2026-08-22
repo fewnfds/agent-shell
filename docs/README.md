@@ -13,7 +13,7 @@ AI 或自动化程序通过 management API 配置实例时，从 [AI Workflow �
 4. [装配 Main Agent 与 Subagent](user-guide/configuration-workflow.md)
 5. [理解 Workflow Input Context](user-guide/workflow-input-context.md)
 6. [使用自定义 Middleware 包](user-guide/middleware-packages.md)
-7. [管理组件库](user-guide/configuration-library.md)
+7. [管理配置库](user-guide/configuration-library.md)
 8. [调用 API Server](user-guide/api-server.md)
 9. [查看日志中心与运行历史](user-guide/runtime-observability.md)
 10. [管理数据、文件与系统设置](user-guide/system-management.md)

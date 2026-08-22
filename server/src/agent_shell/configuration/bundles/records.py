@@ -6,7 +6,7 @@ from typing import Any
 
 from agent_shell.configuration.bundles.archive import BundleArchiveError
 from agent_shell.configuration.bundles.contracts import BundleManifest, ImportResolutions
-from agent_shell.configuration.bundles.errors import BundleImportError
+from agent_shell.configuration.bundles.errors import BundleImportError, bundle_issue
 from agent_shell.configuration.dependencies import (
     ConfigurationEntity,
     iter_configuration_references,
@@ -221,24 +221,21 @@ def plan_identities(
         path = "component_name" if entity.kind == "subagent" else "name"
         if requires_confirmation and require_resolved and entity.id not in supplied:
             errors.append(
-                {
-                    "code": "configuration_name_confirmation_required",
-                    "message": "The imported configuration name must be confirmed.",
-                    "source_id": entity.id,
-                    "path": path,
-                }
+                bundle_issue(
+                    "configuration_name_confirmation_required",
+                    "The imported configuration name must be confirmed.",
+                    source_id=entity.id,
+                    path=path,
+                )
             )
         if _entity_name_key(entity, selected) in used:
             errors.append(
-                {
-                    "code": "configuration_name_conflict",
-                    "message": (
-                        "The selected imported configuration name already exists "
-                        "in its scope."
-                    ),
-                    "source_id": entity.id,
-                    "path": path,
-                }
+                bundle_issue(
+                    "configuration_name_conflict",
+                    "The selected imported configuration name already exists in its scope.",
+                    source_id=entity.id,
+                    path=path,
+                )
             )
         names[entity.id] = selected
         used.add(_entity_name_key(entity, selected))

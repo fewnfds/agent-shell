@@ -28,7 +28,7 @@ Content-Type: application/json
 构造 Main Agent、Subagent、各自 Filesystem、权限、Middleware、组件和 Provider secret view。构造完成后关闭请求配置快照，
 运行中的图不再回读配置。
 
-Chat 请求体、content block、输入媒体单项/合计和输出媒体边界由【系统 / 系统配置】的输入与资源策略决定；
+Chat 请求体、content block、输入媒体单项/合计和输出媒体边界由【系统 / 系统配置】的限制策略决定；
 API 返回后端当前生效值和默认值，前端不复制隐藏上限。策略只有正数约束，没有额外产品最大值，实际仍受 Provider、
 内存、磁盘和网络能力影响。
 

@@ -7,7 +7,7 @@
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata
 表单不能直接切换。
 只有启用的父图出现在 `/v1/models`；子图不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
-编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；列表、删除和 Bundle 操作集中在【组件库】。
+编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
 Workflow root 不声明 `messages`。每个画布 Agent 节点由 wrapper 以空的私有 `messages` 调用自己的 Agent graph，
 所以后继 Agent 不会自动继承前序对话。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入

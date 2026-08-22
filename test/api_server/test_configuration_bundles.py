@@ -118,6 +118,11 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
         assert {issue["code"] for issue in preview["errors"]} == {
             "filesystem_binding_required"
         }
+        assert all(
+            isinstance(issue["message_key"], str)
+            and isinstance(issue["message_args"], dict)
+            for issue in [*preview["errors"], *preview["warnings"]]
+        )
         binding = preview["filesystem_bindings"][0]
         assert binding["source_value"].endswith("shared-workspace")
         warning_codes = {warning["code"] for warning in preview["warnings"]}
@@ -262,7 +267,7 @@ def test_bundle_import_failure_removes_staged_configuration_and_assets(
                     if isinstance(record, dict)
                 }
                 if ids.intersection(preview["target_ids"].values()):
-                    raise ValueError("injected import failure")
+                    raise BundleImportError("injected import failure")
                 return result
 
             return original_update(self, wrapped)
@@ -636,6 +641,9 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
         assert unconfirmed.status_code == 409, unconfirmed.text
         assert unconfirmed.json()["detail"]["issues"][0]["code"] == (
             "configuration_name_confirmation_required"
+        )
+        assert unconfirmed.json()["detail"]["issues"][0]["message_key"] == (
+            "configurationBundle.issues.configuration_name_confirmation_required"
         )
 
         confirmed_request = deepcopy_json(base_request)

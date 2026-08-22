@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { CapabilityManifest, WorkflowComponentManifest } from '@/api'
 import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
-import { agentLibraryCategories, routeCategory, workflowLibraryCategories } from '@/pages/configLibrary'
+import { agentLibraryCategories, routeCategory, systemLibraryCategories, workflowLibraryCategories } from '@/pages/configLibrary'
 
 const props = defineProps<{
   manifests: readonly (CapabilityManifest | WorkflowComponentManifest)[]
@@ -37,6 +37,10 @@ const workflowItems = computed<SectionNavItem[]>(() => workflowLibraryCategories
   id,
   label: t(`capabilities.${id}.label`),
 })))
+const systemItems = computed<SectionNavItem[]>(() => systemLibraryCategories.map((id) => ({
+  id,
+  label: t(`capabilities.${id}.label`),
+})))
 
 function selectCategory(id: string): void {
   if (id === activeCategoryId.value) return
@@ -45,6 +49,19 @@ function selectCategory(id: string): void {
 </script>
 
 <template>
+  <div
+    class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2"
+    data-testid="library-system-group"
+  >
+    <span class="fw-semibold">{{ t('library.groups.system') }}</span>
+    <SectionNav
+      :active-id="activeCategoryId"
+      :aria-label="t('library.groups.system')"
+      :items="systemItems"
+      layout="inline"
+      @select="selectCategory"
+    />
+  </div>
   <div
     class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2"
     data-testid="library-workflow-group"

@@ -2,13 +2,16 @@
 import { LteAlert, LteButton } from '@adminlte/vue'
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import FormField from '@/components/FormField.vue'
+import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
 import ToolReferencesEditor from '@/components/ToolReferencesEditor.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
+import { useConfirmation } from '@/composables/useConfirmation'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
@@ -37,13 +40,20 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const managementError = useManagementError()
 const { notify } = useToasts()
+const { confirm } = useConfirmation()
 const providedService = inject(agentAuthoringServiceKey, managementAgentAuthoringService)
 const service = computed(() => props.service ?? providedService)
 
 const loading = ref(true)
 const saving = ref(false)
+const copying = ref(false)
+const deleting = ref(false)
+const copyOpen = ref(false)
+const copyName = ref('')
+const copyError = ref('')
 const feedbackKey = ref('')
 const feedbackDetail = ref('')
 const manifests = ref<CapabilityManifest[]>([])
@@ -56,6 +66,10 @@ const recordOptions = computed(() => profiles.value.map((profile) => ({
   name: profile.component_name,
 })))
 let profileLoadSequence = 0
+
+function editorLocation(id = ''): { path: string, query?: { id: string } } {
+  return id ? { path: '/agents/subagents', query: { id } } : { path: '/agents/subagents' }
+}
 
 const obsoleteOverrides = computed(() => {
   const supported = new Set<string>(manifests.value
@@ -144,7 +158,7 @@ function removeObsoleteOverride(index: number): void {
 }
 
 async function startNew(): Promise<void> {
-  await runAfterDiscard(() => {
+  await runAfterDiscard(async () => {
     profileLoadSequence += 1
     selectedProfileId.value = ''
     form.value = blankSubagent()
@@ -152,6 +166,7 @@ async function startNew(): Promise<void> {
     feedbackDetail.value = ''
     notify({ tone: 'info', title: t('agents.feedback.newDraft') })
     markClean()
+    await router.replace(editorLocation())
   })
 }
 
@@ -190,7 +205,12 @@ async function loadProfile(id: string): Promise<void> {
 
 async function loadSelected(value?: string): Promise<void> {
   const id = value ?? selectedProfileId.value
-  await runAfterDiscard(() => loadProfile(id))
+  await runAfterDiscard(async () => {
+    await loadProfile(id)
+    if (selectedProfileId.value === id) {
+      await router.replace(editorLocation(id))
+    }
+  })
 }
 
 function upsertProfile(saved: SubagentProfile): void {
@@ -220,6 +240,7 @@ async function save(): Promise<void> {
     selectedProfileId.value = normalized.id
     upsertProfile(normalized)
     markClean()
+    await router.replace(editorLocation(normalized.id))
     notify({ tone: 'success', title: t('agents.feedback.saved') })
   } catch (error) {
     feedbackKey.value = 'agents.feedback.saveFailed'
@@ -227,6 +248,83 @@ async function save(): Promise<void> {
   } finally {
     saving.value = false
   }
+}
+
+function openCopy(): void {
+  if (!form.value.id) return
+  copyName.value = ''
+  copyError.value = ''
+  copyOpen.value = true
+}
+
+function closeCopy(): void {
+  if (copying.value) return
+  copyOpen.value = false
+  copyName.value = ''
+  copyError.value = ''
+}
+
+async function copyCurrent(): Promise<void> {
+  if (!service.value || !form.value.id || copying.value) return
+  const componentName = copyName.value.trim()
+  if (!componentName) {
+    copyError.value = t('agents.copy.nameRequired')
+    return
+  }
+  await runAfterDiscard(async () => {
+    copying.value = true
+    copyError.value = ''
+    try {
+      const copied = normalizeSubagent(
+        await service.value!.copySubagent(form.value.id, componentName),
+      )
+      upsertProfile(copied)
+      form.value = copied
+      selectedProfileId.value = copied.id
+      markClean()
+      copyOpen.value = false
+      copyName.value = ''
+      await router.replace(editorLocation(copied.id))
+      notify({ tone: 'success', title: t('agents.feedback.copied') })
+    } catch (error) {
+      copyError.value = managementError.describe(error).display
+    } finally {
+      copying.value = false
+    }
+  })
+}
+
+async function removeCurrent(): Promise<void> {
+  if (!service.value || !form.value.id || deleting.value) return
+  await runAfterDiscard(async () => {
+    const id = form.value.id
+    const accepted = await confirm({
+      title: t('agents.delete.title'),
+      description: t('agents.delete.description', { name: form.value.component_name }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      dangerous: true,
+    })
+    if (!accepted) return
+    deleting.value = true
+    feedbackKey.value = ''
+    feedbackDetail.value = ''
+    try {
+      await service.value!.deleteSubagent(id)
+      profiles.value = profiles.value.filter((profile) => profile.id !== id)
+      profileLoadSequence += 1
+      selectedProfileId.value = ''
+      form.value = blankSubagent()
+      markClean()
+      await router.replace(editorLocation())
+      notify({ tone: 'success', title: t('agents.feedback.deleted') })
+    } catch (error) {
+      feedbackKey.value = 'agents.feedback.deleteFailed'
+      feedbackDetail.value = managementError.describe(error).display
+    } finally {
+      deleting.value = false
+    }
+  })
 }
 
 async function loadWorkspace(): Promise<void> {
@@ -282,16 +380,26 @@ watch(
 <template>
   <PageShell>
     <template #actions>
-      <LteButton theme="success" type="button" @click="startNew">
+      <LteButton :disabled="!form.id || loading || saving || copying || deleting" theme="secondary" type="button" @click="openCopy">
+        <i class="bi bi-copy" aria-hidden="true" />
+        {{ t('common.copy') }}
+      </LteButton>
+      <LteButton :disabled="!form.id || loading || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent">
+        <i class="bi bi-trash" aria-hidden="true" />
+        {{ deleting ? t('common.deleting') : t('common.delete') }}
+      </LteButton>
+      <LteButton :disabled="loading || saving || copying || deleting" theme="success" type="button" @click="startNew">
+        <i class="bi bi-plus-lg" aria-hidden="true" />
         {{ t('common.new') }}
       </LteButton>
       <LteButton
-        :disabled="loading || saving"
+        :disabled="loading || saving || copying || deleting"
         theme="primary"
         type="button"
         @click="save"
       >
         <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-floppy" aria-hidden="true" />
         {{ t('common.save') }}
       </LteButton>
     </template>
@@ -514,4 +622,24 @@ watch(
       </aside>
     </div>
   </PageShell>
+
+  <ModalHost :open="copyOpen" :title="t('agents.copy.title')" @close="closeCopy">
+    <form id="subagent-copy-form" novalidate @submit.prevent="copyCurrent">
+      <FormField field-path="component_name" :hint="t('agents.copy.nameHint')">
+        <input v-model="copyName" autocomplete="off" class="form-control">
+      </FormField>
+      <LteAlert v-if="copyError" data-testid="subagent-copy-error" theme="danger">
+        {{ copyError }}
+      </LteAlert>
+    </form>
+    <template #footer>
+      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">
+        {{ t('common.cancel') }}
+      </LteButton>
+      <LteButton :disabled="copying" form="subagent-copy-form" theme="primary" type="submit">
+        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        {{ copying ? t('common.copying') : t('common.copy') }}
+      </LteButton>
+    </template>
+  </ModalHost>
 </template>

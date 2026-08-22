@@ -2,6 +2,7 @@ import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ManagementApiError } from '@/api'
+import { useConfirmation } from '@/composables/useConfirmation'
 import type { MainAgentProfile, SubagentProfile } from '@/domain/agents'
 
 import {
@@ -228,5 +229,63 @@ describe('agent authoring pages', () => {
     expect(wrapper.find('[data-testid="page-feedback"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('old_save_failure')
     wrapper.unmount()
+  })
+
+  it('copies Main Agent and Subagent configurations and switches to each copy', async () => {
+    for (const scenario of [
+      {
+        mountPage: mountMainAgentPage,
+        path: '/agents/main?id=00000000-0000-0000-0000-000000000010',
+        copyMethod: 'copyMainAgent' as const,
+        copyId: 'copied-mainAgent',
+      },
+      {
+        mountPage: mountSubagentPage,
+        path: '/agents/subagents?id=00000000-0000-0000-0000-000000000020',
+        copyMethod: 'copySubagent' as const,
+        copyId: 'copied-subagent',
+      },
+    ]) {
+      const api = service()
+      const { router, wrapper } = await scenario.mountPage(api, scenario.path)
+      await buttonByText(wrapper, 'common.copy').trigger('click')
+      const form = wrapper.get('form[id$="-copy-form"]')
+      await form.get('input').setValue('Copied configuration')
+      await form.trigger('submit')
+      await flushPromises()
+
+      expect(api[scenario.copyMethod]).toHaveBeenCalledWith(
+        expect.any(String),
+        'Copied configuration',
+      )
+      expect(router.currentRoute.value.query.id).toBe(scenario.copyId)
+      wrapper.unmount()
+    }
+  })
+
+  it('deletes Main Agent and Subagent configurations and returns to new drafts', async () => {
+    for (const scenario of [
+      {
+        mountPage: mountMainAgentPage,
+        path: '/agents/main?id=00000000-0000-0000-0000-000000000010',
+        deleteMethod: 'deleteMainAgent' as const,
+      },
+      {
+        mountPage: mountSubagentPage,
+        path: '/agents/subagents?id=00000000-0000-0000-0000-000000000020',
+        deleteMethod: 'deleteSubagent' as const,
+      },
+    ]) {
+      const api = service()
+      const { router, wrapper } = await scenario.mountPage(api, scenario.path)
+      await buttonByText(wrapper, 'common.delete').trigger('click')
+      useConfirmation().accept()
+      await flushPromises()
+
+      expect(api[scenario.deleteMethod]).toHaveBeenCalledOnce()
+      expect(router.currentRoute.value.query.id).toBeUndefined()
+      expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value).toBe('')
+      wrapper.unmount()
+    }
   })
 })
