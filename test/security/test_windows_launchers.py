@@ -38,6 +38,18 @@ def test_source_launcher_refreshes_runtime_and_prepares_production_frontend() ->
     assert "npm run dev" not in launcher
 
 
+def test_source_launcher_confirms_initialization_only_without_data_config() -> None:
+    launcher = (REPOSITORY_ROOT / "start_server.bat").read_text(encoding="utf-8")
+
+    config_guard = 'if not exist "%SCRIPT_DIR%data\\config\\" ('
+    confirmation = (
+        'set /p "INITIALIZE_CONFIRMATION='
+        'Continue with initialization? [y/n]: "'
+    )
+    assert launcher.index('set "SCRIPT_DIR=%~dp0"') < launcher.index(config_guard)
+    assert launcher.index(config_guard) < launcher.index(confirmation)
+
+
 def test_windows_launcher_prepares_dependencies_in_server_process() -> None:
     launcher = (REPOSITORY_ROOT / "start_server.bat").read_text(encoding="utf-8")
 

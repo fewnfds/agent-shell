@@ -1,17 +1,19 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-echo.
-echo Agent Shell will initialize the local runtime and start from this source clone.
-set "INITIALIZE_CONFIRMATION="
-set /p "INITIALIZE_CONFIRMATION=Continue with initialization? [y/n]: "
-if /I not "!INITIALIZE_CONFIRMATION!"=="y" (
-  echo Initialization cancelled.
-  exit /b 0
-)
-echo.
-
 set "SCRIPT_DIR=%~dp0"
+if not exist "%SCRIPT_DIR%data\config\" (
+  echo.
+  echo Agent Shell will initialize the local runtime and start from this source clone.
+  set "INITIALIZE_CONFIRMATION="
+  set /p "INITIALIZE_CONFIRMATION=Continue with initialization? [y/n]: "
+  if /I not "!INITIALIZE_CONFIRMATION!"=="y" (
+    echo Initialization cancelled.
+    exit /b 0
+  )
+  echo.
+)
+
 set "RUNTIME_DIR=%SCRIPT_DIR%runtime"
 set "APP_RUNTIME_DIR=%RUNTIME_DIR%\app"
 set "PYTHON_HOME_FILE=%APP_RUNTIME_DIR%\python-home.txt"
