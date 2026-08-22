@@ -446,7 +446,7 @@
         "path": "src/components/ConfigurationLibraryNav.vue",
         "kind": "layout-composition",
         "reason": "Owns the shared component and Agent navigation rows across configuration repository pages",
-        "callers": ["src/pages/ConfigLibraryPage.vue"]
+        "callers": ["src/pages/ConfigLibraryPage.vue", "src/pages/ConfigurationRepositoriesPage.vue"]
       },
       {
         "name": "FormField",
@@ -592,6 +592,7 @@
           "src/pages/ApiServerSettingsPage.vue",
           "src/pages/ComponentsPage.vue",
           "src/pages/ConfigLibraryPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
           "src/pages/MainAgentPage.vue",
           "src/pages/SubagentPage.vue"
         ]

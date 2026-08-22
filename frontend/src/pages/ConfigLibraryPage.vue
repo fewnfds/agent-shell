@@ -31,7 +31,6 @@ import {
 
 const props = defineProps<{
   api?: ConfigLibraryApi
-  fixedCategory?: LibraryCategoryId
 }>()
 
 const { t, te } = useI18n()
@@ -75,7 +74,7 @@ const {
 })
 
 const activeCategoryId = computed(() => (
-  props.fixedCategory ?? routeCategory(route.params.type)
+  routeCategory(route.params.type)
 ))
 
 const componentCategoryItems = computed<SectionNavItem[]>(() => (
@@ -142,7 +141,6 @@ const canImport = computed(() => {
 })
 
 async function refreshValidationIfOwned(): Promise<void> {
-  if (activeCategoryId.value === 'model-connection') return
   await refreshRepositoryValidation()
 }
 
@@ -489,7 +487,7 @@ onMounted(async () => {
       </LteButton>
     </template>
 
-    <ConfigurationLibraryNav v-if="!props.fixedCategory" :manifests="manifests" />
+    <ConfigurationLibraryNav :manifests="manifests" />
 
     <div class="row g-3 align-items-start" data-testid="library-layout">
       <section class="col" data-testid="library-content-region">
@@ -518,7 +516,7 @@ onMounted(async () => {
         </LteAlert>
       </section>
 
-      <aside v-if="currentCategory !== 'model-connection'" class="col-lg-3 validation-sidebar" data-testid="library-validation-region">
+      <aside class="col-lg-3 validation-sidebar" data-testid="library-validation-region">
         <ValidationChecklist
           :title="t('library.validationTitle')"
           :validation="repositoryValidation"

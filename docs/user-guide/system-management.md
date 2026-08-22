@@ -65,9 +65,9 @@ Configuration Repository 中的 Component、Agent、Workflow 和配置私有包�
 
 ## 配置管理
 
-【系统 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python/Skill 私有包和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。
+【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python/Skill 私有包和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。
 
-【系统 / 模型连接】直接复用【配置库 / 系统 / 模型连接】的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】。
+【配置库 / 全局 / 模型连接】直接复用模型连接的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】。
 
 ## 系统设置
 

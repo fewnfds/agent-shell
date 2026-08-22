@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { CapabilityManifest, WorkflowComponentManifest } from '@/api'
 import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
-import { agentLibraryCategories, routeCategory, systemLibraryCategories, workflowLibraryCategories } from '@/pages/configLibrary'
+import { agentLibraryCategories, globalLibraryCategories, routeCategory, workflowLibraryCategories } from '@/pages/configLibrary'
 
 const props = defineProps<{
   manifests: readonly (CapabilityManifest | WorkflowComponentManifest)[]
@@ -16,7 +16,11 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const activeCategoryId = computed(() => routeCategory(route.params.type))
+const activeCategoryId = computed(() => (
+  route.path === '/library/configuration-repositories'
+    ? 'configuration-repositories'
+    : routeCategory(route.params.type)
+))
 const agentComponentItems = computed<SectionNavItem[]>(() => props.manifests
   .filter((manifest): manifest is CapabilityManifest => 'subagent_policy' in manifest)
   .map((manifest) => ({
@@ -37,9 +41,11 @@ const workflowItems = computed<SectionNavItem[]>(() => workflowLibraryCategories
   id,
   label: t(`capabilities.${id}.label`),
 })))
-const systemItems = computed<SectionNavItem[]>(() => systemLibraryCategories.map((id) => ({
+const globalItems = computed<SectionNavItem[]>(() => globalLibraryCategories.map((id) => ({
   id,
-  label: t(`capabilities.${id}.label`),
+  label: id === 'configuration-repositories'
+    ? t('navigation.sections.configurationRepositories')
+    : t(`capabilities.${id}.label`),
 })))
 
 function selectCategory(id: string): void {
@@ -51,13 +57,13 @@ function selectCategory(id: string): void {
 <template>
   <div
     class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2"
-    data-testid="library-system-group"
+    data-testid="library-global-group"
   >
-    <span class="fw-semibold">{{ t('library.groups.system') }}</span>
+    <span class="fw-semibold">{{ t('library.groups.global') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.system')"
-      :items="systemItems"
+      :aria-label="t('library.groups.global')"
+      :items="globalItems"
       layout="inline"
       @select="selectCategory"
     />
@@ -75,25 +81,7 @@ function selectCategory(id: string): void {
       @select="selectCategory"
     />
   </div>
-  <div
-    v-if="agentComponentItems.length"
-    class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2"
-    data-testid="library-component-group"
-  >
-    <span class="fw-semibold">{{ t('library.groups.agentComponents') }}</span>
-    <SectionNav
-      :active-id="activeCategoryId"
-      :aria-label="t('library.groups.agentComponents')"
-      :items="agentComponentItems"
-      layout="inline"
-      @select="selectCategory"
-    />
-  </div>
-  <div
-    v-if="workflowComponentItems.length"
-    class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2"
-    data-testid="library-workflow-component-group"
-  >
+  <div class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="library-workflow-component-group">
     <span class="fw-semibold">{{ t('library.groups.workflowComponents') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
@@ -112,6 +100,16 @@ function selectCategory(id: string): void {
       :active-id="activeCategoryId"
       :aria-label="t('library.groups.agents')"
       :items="agentItems"
+      layout="inline"
+      @select="selectCategory"
+    />
+  </div>
+  <div class="configuration-library-nav-group d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="library-component-group">
+    <span class="fw-semibold">{{ t('library.groups.agentComponents') }}</span>
+    <SectionNav
+      :active-id="activeCategoryId"
+      :aria-label="t('library.groups.agentComponents')"
+      :items="agentComponentItems"
       layout="inline"
       @select="selectCategory"
     />

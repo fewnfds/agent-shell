@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useConfirmation } from '@/composables/useConfirmation'
@@ -14,6 +15,7 @@ const api = vi.hoisted(() => ({
   copyConfigurationRepository: vi.fn(),
   downloadConfigurationRepository: vi.fn(),
   deleteConfigurationRepository: vi.fn(),
+  validateRepository: vi.fn(),
 }))
 const triggerBrowserDownload = vi.hoisted(() => vi.fn())
 
@@ -65,6 +67,7 @@ beforeEach(() => {
     filename: 'Experiment.agent-shell-repository.zip',
   })
   api.deleteConfigurationRepository.mockResolvedValue({ ok: true })
+  api.validateRepository.mockResolvedValue({ valid: true, stage: 'repository', issues: [] })
 })
 
 afterEach(() => {
@@ -75,9 +78,15 @@ afterEach(() => {
 
 describe('ConfigurationRepositoriesPage', () => {
   it('uses the common table actions and prevents deleting the active repository', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/library/configuration-repositories', component: ConfigurationRepositoriesPage }],
+    })
+    await router.push('/library/configuration-repositories')
+    await router.isReady()
     const wrapper = mount(ConfigurationRepositoriesPage, {
       global: {
-        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
       },
     })
     await flushPromises()

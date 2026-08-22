@@ -1106,7 +1106,7 @@ export const zhCN = {
     title: '配置库',
     validationTitle: '仓库配置校验',
     groups: {
-      system: '系统',
+      global: '全局',
       components: 'Agent 组件',
       agentComponents: 'Agent 组件',
       workflowComponents: 'Workflow 组件',

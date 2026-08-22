@@ -188,7 +188,7 @@ Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
 
 ## 可移植配置 Bundle
 
-管理台的【配置库】是单根 Bundle 下载和上传入口；Repository 切换、复制、整仓库下载和删除位于【系统 / 组件配置】。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理配置库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
+管理台的【配置库】是单根 Bundle 下载和上传入口；Repository 切换、复制、整仓库下载和删除位于【配置库 / 全局 / 组件配置】。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理配置库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
 
 需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿
 `configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source

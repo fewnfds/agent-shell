@@ -53,7 +53,7 @@ export const agentLibraryCategories = [
 ] as const
 
 export const workflowLibraryCategories = ['parent-workflow', 'child-workflow'] as const
-export const systemLibraryCategories = ['model-connection'] as const
+export const globalLibraryCategories = ['configuration-repositories', 'model-connection'] as const
 
 export function routeCategory(value: unknown): string {
   return typeof value === 'string' ? value : ''

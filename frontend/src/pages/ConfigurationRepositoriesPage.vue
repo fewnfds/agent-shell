@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { LteAlert, LteButton } from '@adminlte/vue'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { managementApi, type ConfigurationRepository } from '@/api'
+import ConfigurationLibraryNav from '@/components/ConfigurationLibraryNav.vue'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
 import type { DataTableConfig } from '@/components/data-table/types'
 import FormField from '@/components/FormField.vue'
 import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
+import ValidationChecklist from '@/components/ValidationChecklist.vue'
+import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 import { triggerBrowserDownload } from '@/utils/download'
@@ -21,6 +24,12 @@ const copySource = ref<ConfigurationRepository | null>(null)
 const copyName = ref('')
 const copyError = ref('')
 const copying = ref(false)
+const { validation: repositoryValidation, validateNow: validateRepository } = useConfigurationValidation({
+  buildRequest: () => ({}),
+  validate: () => managementApi.validateRepository(),
+  errorMessage: (error) => managementError.describe(error, 'errors.validationUnavailable').display,
+  immediate: false,
+})
 
 function openCopy(repository: ConfigurationRepository): void {
   copySource.value = repository
@@ -143,20 +152,37 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
   pageSize: 20,
   pageSizeOptions: [20, 50, 100],
 }
+
+onMounted(() => {
+  void validateRepository()
+})
 </script>
 
 <template>
   <PageShell>
-    <DataTableWorkbench ref="table" :config="tableConfig">
-      <template #cell-active="{ row, value }">
-        <span v-if="row.active" class="badge text-bg-success">
-          {{ value }}
-        </span>
-        <span v-else class="badge text-bg-secondary">
-          {{ value }}
-        </span>
-      </template>
-    </DataTableWorkbench>
+    <ConfigurationLibraryNav :manifests="[]" />
+
+    <div class="row g-3 align-items-start" data-testid="configuration-repositories-layout">
+      <section class="col" data-testid="configuration-repositories-content-region">
+        <DataTableWorkbench ref="table" :config="tableConfig">
+          <template #cell-active="{ row, value }">
+            <span v-if="row.active" class="badge text-bg-success">
+              {{ value }}
+            </span>
+            <span v-else class="badge text-bg-secondary">
+              {{ value }}
+            </span>
+          </template>
+        </DataTableWorkbench>
+      </section>
+
+      <aside class="col-lg-3 validation-sidebar" data-testid="configuration-repositories-validation-region">
+        <ValidationChecklist
+          :title="t('library.validationTitle')"
+          :validation="repositoryValidation"
+        />
+      </aside>
+    </div>
   </PageShell>
 
   <ModalHost

@@ -23,7 +23,7 @@ const messages = {
     description: 'Saved configurations.',
     validationTitle: 'Repository validation',
     groups: {
-      system: 'System',
+      global: 'Global',
       components: 'Components',
       agentComponents: 'Agent components',
       workflowComponents: 'Workflow components',
@@ -338,7 +338,7 @@ describe('ConfigLibraryPage', () => {
     const { wrapper } = await mountPage(api.service, '/library/model-connection')
 
     expect(api.service.listModelConnections).toHaveBeenCalledOnce()
-    expect(api.service.validateRepository).not.toHaveBeenCalled()
+    expect(api.service.validateRepository).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('Local GPT')
     expect(wrapper.findAll('button').some((button) => button.text() === 'View')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Edit')).toBe(true)
@@ -347,8 +347,8 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(false)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Upload')).toBe(false)
     expect(wrapper.find('[data-testid="repository-switcher"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="library-validation-region"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="library-system-group"] > span').text()).toBe('System')
+    expect(wrapper.find('[data-testid="library-validation-region"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="library-global-group"] > span').text()).toBe('Global')
   })
 
   it('commits the same uploaded Bundle digest and target UUID plan', async () => {

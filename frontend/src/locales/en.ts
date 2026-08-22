@@ -1108,7 +1108,7 @@ export const en: MessageSchema = {
     title: 'Configuration library',
     validationTitle: 'Repository validation',
     groups: {
-      system: 'System',
+      global: 'Global',
       components: 'Agent components',
       agentComponents: 'Agent components',
       workflowComponents: 'Workflow components',

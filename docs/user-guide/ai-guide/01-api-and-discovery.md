@@ -61,7 +61,7 @@ Invoke-RestMethod "$baseUrl/api/readiness" -Headers $managementHeaders
 `{kind}` 当前为 `custom-tool`、`middleware`、`agent-event-output`、`workflow-event-output`、`command` 或
 `task-dispatcher`。catalog 是 Node 和 component type 的当前来源；模型连接以
 `/api/model-connections` 为事实，模型要求与绑定以 `/api/model-requirements` 为事实。
-实例会自动准备默认 Repository；创建或激活其他 Repository 使用 `/api/configuration-repositories` 对应的 POST 入口。管理台【系统 / 组件配置】负责 Repository 操作，【配置库】负责单根 Bundle 操作。
+实例会自动准备默认 Repository；创建或激活其他 Repository 使用 `/api/configuration-repositories` 对应的 POST 入口。管理台【配置库 / 全局 / 组件配置】负责 Repository 操作和单根 Bundle 操作。
 
 写操作通常沿以下数据流进行：
 

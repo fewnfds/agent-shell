@@ -1,8 +1,8 @@
 # 管理配置库
 
-【配置库】使用同一个通用列表，按系统、Workflow、代理组件、工作流组件和 Agent（Main Agent/Subagent）分组显示记录。Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除和筛选后批量删除；系统组中的【模型连接】支持查看、编辑、复制和删除，不提供上传、下载或批量删除。
+【配置库】使用同一个通用列表，顶部固定为全局、工作流、工作流组件、代理和代理组件五组。全局组包含【组件配置】（Configuration Repository）和【模型连接】；Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除和筛选后批量删除，模型连接支持查看、编辑、复制和删除，不提供上传、下载或批量删除。
 
-Configuration Repository 的列表和切换入口位于【系统 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。模型连接与 credential 不随 Repository 复制或下载，repository-scoped 模型映射会按新 Model Requirement UUID 复制。
+Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。模型连接与 credential 不随 Repository 复制或下载，repository-scoped 模型映射会按新 Model Requirement UUID 复制。
 
 系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template 和模型连接属于实例域，切换 Repository 时保持不变。模型映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置和模型资源视图，后续切换只影响新请求。
 
@@ -39,7 +39,7 @@ Graph admission 问题也会显示。满足磁盘身份格式但业务配置无�
 名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为
 `enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
 
-单根 Bundle 的 manifest 固定保存 root `kind`、Component `type` 或 Workflow `role`，preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，不由当前页面分类或文件名推断，因此 Filesystem Bundle 不会被写成 Filesystem Permissions。系统【组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式；当前只提供整仓库下载，不提供整仓库上传恢复。
+单根 Bundle 的 manifest 固定保存 root `kind`、Component `type` 或 Workflow `role`，preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，不由当前页面分类或文件名推断，因此 Filesystem Bundle 不会被写成 Filesystem Permissions。【配置库 / 全局 / 组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式；当前只提供整仓库下载，不提供整仓库上传恢复。
 
 未知或不受信任的配置可能包含以 Agent Shell 权限运行的 Python/Skill 代码、文件系统访问、网络访问或欺骗性引用。导入或分享前必须检查来源、提示词、Skill 文件、Python 源码、requirements、文件系统绑定与权限。preview 的 warning 使用稳定 `message_key/message_args` 本地化显示，不直接把后端英文作为普通界面文案。
 
