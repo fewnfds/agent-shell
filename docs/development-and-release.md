@@ -28,6 +28,8 @@ Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按
 .\start_server.bat
 ```
 
+源码启动器首先要求确认是否初始化本地 runtime 并启动服务；输入 `y` 继续，其他输入取消启动。
+
 更新前停止服务：
 
 ```powershell
