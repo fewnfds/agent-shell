@@ -54,7 +54,7 @@ export const zhCN = {
       warning: '有 {count} 个模型要求尚未绑定模型连接。',
       description: '要求说明',
       connection: '模型连接',
-      connectionSummary: '（{provider} / {model}）',
+      connectionSummary: '{model} ({configuration} / {provider} provider)',
       unbound: '未绑定',
       empty: '当前配置仓库没有模型要求。',
       loadFailed: '无法载入模型映射',

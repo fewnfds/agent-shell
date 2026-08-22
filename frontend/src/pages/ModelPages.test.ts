@@ -27,7 +27,8 @@ const messages = {
   models: {
     mapping: {
       warningTitle: 'Requirements need mapping', warning: '{count} unbound', description: 'Description',
-      connection: 'Connection', unbound: 'Unbound', empty: 'No requirements', loadFailed: 'Load failed',
+      connection: 'Connection', connectionSummary: '{model} ({configuration} / {provider} provider)',
+      unbound: 'Unbound', empty: 'No requirements', loadFailed: 'Load failed',
     },
   },
 }
@@ -69,6 +70,7 @@ describe('model management pages', () => {
   it('shows requirement description and binds or clears a local connection', async () => {
     const wrapper = await mountPage(ModelMappingPage, '/models/mapping')
     expect(wrapper.get('[data-testid="model-mapping-cards"]').text()).toContain('Use a reasoning-capable local model.')
+    expect(wrapper.get('option[value="11111111-1111-4111-8111-111111111111"]').text()).toBe('gpt-local (Local GPT / openai provider)')
     expect(wrapper.find('[role="alert"]').text()).toContain('1 unbound')
 
     await wrapper.get('select').setValue(connection.id)
