@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { managementApi, type ConfigurationRepository } from '@/api'
+import ConfigurationLibraryActions from '@/components/ConfigurationLibraryActions.vue'
 import ConfigurationLibraryFrame from '@/components/ConfigurationLibraryFrame.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
@@ -20,6 +21,7 @@ const { t } = useI18n()
 const managementError = useManagementError()
 const { notify } = useToasts()
 const table = ref<{ reload: () => Promise<void> } | null>(null)
+const refreshing = ref(false)
 const copySource = ref<ConfigurationRepository | null>(null)
 const copyName = ref('')
 const copyError = ref('')
@@ -50,6 +52,16 @@ function closeCopy(): void {
   copySource.value = null
   copyName.value = ''
   copyError.value = ''
+}
+
+async function refresh(): Promise<void> {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await Promise.all([table.value?.reload(), validateRepository()])
+  } finally {
+    refreshing.value = false
+  }
 }
 
 async function copyRepository(): Promise<void> {
@@ -90,8 +102,8 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
     ).repositories,
   },
   search: {
-    label: () => t('configurationRepositories.searchLabel'),
-    placeholder: () => t('configurationRepositories.searchPlaceholder'),
+    label: () => t('library.search.label'),
+    placeholder: () => t('library.search.placeholder'),
     values: (repository) => [repository.name, repository.id],
   },
   columns: [
@@ -171,6 +183,9 @@ onMounted(() => {
 
 <template>
   <PageShell>
+    <template #actions>
+      <ConfigurationLibraryActions :refreshing="refreshing" @imported="refresh" @refresh="refresh" />
+    </template>
     <ConfigurationLibraryFrame
       :aside-test-id="'configuration-repositories-validation-region'"
       :content-test-id="'configuration-repositories-content-region'"

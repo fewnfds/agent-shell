@@ -162,7 +162,7 @@ describe('AppShell', () => {
 
     await router.push('/agent-components/model')
     await nextTick()
-    expect(title.text()).toBe('Agent 组件配置')
+    expect(title.text()).toBe('代理组件')
 
     await shell.get('#app-language').trigger('click')
     await nextTick()

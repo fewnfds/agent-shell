@@ -80,7 +80,7 @@ export const zhCN = {
     filteredEmpty: '没有符合当前条件的 Workflow。',
     searchPlaceholder: '搜索名称或说明',
     loadFailed: '无法载入 Workflow',
-    componentLoadFailed: '无法载入 Workflow 组件配置',
+    componentLoadFailed: '无法载入工作流组件配置',
     parentCreateTitle: '新建父图',
     childCreateTitle: '新建子图',
     editTitle: '编辑 Workflow',
@@ -1014,8 +1014,8 @@ export const zhCN = {
     confirm: '放弃修改',
   },
   components: {
-    title: 'Agent 组件配置',
-    navigationLabel: 'Agent 组件类型',
+    title: '代理组件',
+    navigationLabel: '代理组件类型',
     storedInvalidWarning: '已保存内容不符合当前结构，当前无法装配。当前表单仅用于修复，保存有效结构后报警才会消失。',
     overwrite: {
       title: '替换同名配置？',
@@ -1051,7 +1051,7 @@ export const zhCN = {
     },
   },
   workflowComponents: {
-    title: 'Workflow 组件',
+    title: '工作流组件',
   },
   terminology: {
     title: '词库',
@@ -1074,9 +1074,9 @@ export const zhCN = {
     validationTitle: '仓库配置校验',
     groups: {
       global: '全局',
-      components: 'Agent 组件',
-      agentComponents: 'Agent 组件',
-      workflowComponents: 'Workflow 组件',
+      components: '代理组件',
+      agentComponents: '代理组件',
+      workflowComponents: '工作流组件',
       agents: '代理',
       workflows: '工作流',
       plugins: '插件',
@@ -1166,8 +1166,6 @@ export const zhCN = {
     tableAriaLabel: 'Configuration Repository 列表',
     empty: '尚无 Configuration Repository。',
     loadFailed: '无法载入 Configuration Repository',
-    searchLabel: '搜索 Configuration Repository',
-    searchPlaceholder: '名称或 UUID',
     active: '已激活',
     inactive: '未激活',
     activated: '已切换 Configuration Repository。',

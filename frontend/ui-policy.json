@@ -382,6 +382,7 @@
           "src/components/AuthGate.vue",
           "src/components/FileWorkspaceDialog.vue",
           "src/pages/ConfigLibraryPage.vue",
+          "src/components/ConfigurationBundleImport.vue",
           "src/components/CopyNameModal.vue"
         ]
       },
@@ -448,6 +449,20 @@
         "kind": "layout-composition",
         "reason": "Owns the shared configuration library navigation, content region and validation sidebar layout",
         "callers": ["src/pages/ConfigLibraryPage.vue", "src/pages/ConfigurationRepositoriesPage.vue"]
+      },
+      {
+        "name": "ConfigurationLibraryActions",
+        "path": "src/components/ConfigurationLibraryActions.vue",
+        "kind": "product-behavior",
+        "reason": "Owns the global configuration library upload and refresh actions for every repository category",
+        "callers": ["src/pages/ConfigLibraryPage.vue", "src/pages/ConfigurationRepositoriesPage.vue"]
+      },
+      {
+        "name": "ConfigurationBundleImport",
+        "path": "src/components/ConfigurationBundleImport.vue",
+        "kind": "product-behavior",
+        "reason": "Owns shared bundle upload, classification preview and import resolution flow",
+        "callers": ["src/components/ConfigurationLibraryActions.vue"]
       },
       {
         "name": "ConfigurationEditorLayout",

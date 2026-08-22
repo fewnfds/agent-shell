@@ -1016,7 +1016,7 @@ export const en: MessageSchema = {
     confirm: 'Discard changes',
   },
   components: {
-    title: 'Agent component configuration',
+    title: 'Agent components',
     navigationLabel: 'Agent component types',
     storedInvalidWarning: 'The saved content does not match the current structure and cannot be assembled. This form is only a repair draft; the alert clears after a valid save.',
     overwrite: {
@@ -1168,8 +1168,6 @@ export const en: MessageSchema = {
     tableAriaLabel: 'Configuration Repository list',
     empty: 'No Configuration Repository exists.',
     loadFailed: 'Could not load Configuration Repositories',
-    searchLabel: 'Search Configuration Repositories',
-    searchPlaceholder: 'Name or UUID',
     active: 'Active',
     inactive: 'Inactive',
     activated: 'Configuration Repository activated.',

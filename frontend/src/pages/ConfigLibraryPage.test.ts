@@ -333,7 +333,7 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(true)
   })
 
-  it('lists instance Model Connections without Bundle actions or Repository controls', async () => {
+  it('keeps the shared Bundle actions on instance Model Connections', async () => {
     const api = createApi()
     const { wrapper } = await mountPage(api.service, '/library/model-connection')
 
@@ -345,7 +345,7 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(false)
-    expect(wrapper.findAll('button').some((button) => button.text() === 'Upload')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Upload')).toBe(true)
     expect(wrapper.find('[data-testid="repository-switcher"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="library-validation-region"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="library-global-group"] > span').text()).toBe('Global')
