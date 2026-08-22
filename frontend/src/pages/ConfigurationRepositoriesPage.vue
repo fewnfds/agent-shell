@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { LteAlert, LteButton } from '@adminlte/vue'
+import { LteAlert } from '@adminlte/vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { managementApi, type ConfigurationRepository } from '@/api'
-import ConfigurationLibraryNav from '@/components/ConfigurationLibraryNav.vue'
+import ConfigurationLibraryFrame from '@/components/ConfigurationLibraryFrame.vue'
+import CopyNameModal from '@/components/CopyNameModal.vue'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
 import type { DataTableConfig } from '@/components/data-table/types'
-import FormField from '@/components/FormField.vue'
-import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
+import { useConfigurationCatalog } from '@/composables/useConfigurationCatalog'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
@@ -24,6 +24,14 @@ const copySource = ref<ConfigurationRepository | null>(null)
 const copyName = ref('')
 const copyError = ref('')
 const copying = ref(false)
+const {
+  manifests,
+  error: catalogError,
+  load: loadCatalog,
+} = useConfigurationCatalog(
+  () => managementApi.getCatalog(),
+  (error) => managementError.describe(error).display,
+)
 const { validation: repositoryValidation, validateNow: validateRepository } = useConfigurationValidation({
   buildRequest: () => ({}),
   validate: () => managementApi.validateRepository(),
@@ -154,16 +162,26 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
 }
 
 onMounted(() => {
-  void validateRepository()
+  void Promise.all([validateRepository(), loadCatalog()])
 })
 </script>
 
 <template>
   <PageShell>
-    <ConfigurationLibraryNav :manifests="[]" />
-
-    <div class="row g-3 align-items-start" data-testid="configuration-repositories-layout">
-      <section class="col" data-testid="configuration-repositories-content-region">
+    <ConfigurationLibraryFrame
+      :aside-test-id="'configuration-repositories-validation-region'"
+      :content-test-id="'configuration-repositories-content-region'"
+      :layout-test-id="'configuration-repositories-layout'"
+      :manifests="manifests"
+    >
+        <LteAlert
+          v-if="catalogError"
+          class="mb-3"
+          :title="t('library.catalogUnavailable')"
+          theme="danger"
+        >
+          {{ catalogError }}
+        </LteAlert>
         <DataTableWorkbench ref="table" :config="tableConfig">
           <template #cell-active="{ row, value }">
             <span v-if="row.active" class="badge text-bg-success">
@@ -174,51 +192,28 @@ onMounted(() => {
             </span>
           </template>
         </DataTableWorkbench>
-      </section>
-
-      <aside class="col-lg-3 validation-sidebar" data-testid="configuration-repositories-validation-region">
+      <template #aside>
         <ValidationChecklist
           :title="t('library.validationTitle')"
           :validation="repositoryValidation"
         />
-      </aside>
-    </div>
+      </template>
+    </ConfigurationLibraryFrame>
   </PageShell>
 
-  <ModalHost
+  <CopyNameModal
+    :busy="copying"
+    :busy-label="t('common.copying')"
+    error-test-id="configuration-repository-copy-error"
+    form-id="configuration-repository-copy-form"
+    :hint="t('configurationRepositories.copy.nameHint')"
+    :name="copyName"
     :open="copySource !== null"
     :title="t('configurationRepositories.copy.title')"
+    :submit-label="t('common.copy')"
+    :error="copyError"
     @close="closeCopy"
-  >
-    <form
-      id="configuration-repository-copy-form"
-      novalidate
-      @submit.prevent="copyRepository"
-    >
-      <FormField field-path="name" :hint="t('configurationRepositories.copy.nameHint')">
-        <input v-model="copyName" autocomplete="off" class="form-control">
-      </FormField>
-      <LteAlert
-        v-if="copyError"
-        data-testid="configuration-repository-copy-error"
-        theme="danger"
-      >
-        {{ copyError }}
-      </LteAlert>
-    </form>
-    <template #footer>
-      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">
-        {{ t('common.cancel') }}
-      </LteButton>
-      <LteButton
-        :disabled="copying"
-        form="configuration-repository-copy-form"
-        theme="primary"
-        type="submit"
-      >
-        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        {{ copying ? t('common.copying') : t('common.copy') }}
-      </LteButton>
-    </template>
-  </ModalHost>
+    @submit="copyRepository"
+    @update:name="copyName = $event"
+  />
 </template>

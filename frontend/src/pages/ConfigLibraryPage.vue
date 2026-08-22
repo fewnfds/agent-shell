@@ -4,17 +4,18 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { managementApi, type CapabilityManifest, type ConfigurationBundlePreview, type WorkflowComponentManifest, type ValidationIssue } from '@/api'
+import { managementApi, type ConfigurationBundlePreview, type ValidationIssue } from '@/api'
 import ConfigDetail from '@/components/ConfigDetail.vue'
-import ConfigurationLibraryNav from '@/components/ConfigurationLibraryNav.vue'
+import ConfigurationLibraryFrame from '@/components/ConfigurationLibraryFrame.vue'
+import CopyNameModal from '@/components/CopyNameModal.vue'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
 import type { DataTableConfig } from '@/components/data-table/types'
-import FormField from '@/components/FormField.vue'
 import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
 import { useConfirmation } from '@/composables/useConfirmation'
+import { useConfigurationCatalog } from '@/composables/useConfigurationCatalog'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
@@ -41,10 +42,7 @@ const { notify } = useToasts()
 const confirmation = useConfirmation()
 const api = computed<ConfigLibraryApi>(() => props.api ?? managementApi)
 
-const manifests = ref<Array<CapabilityManifest | WorkflowComponentManifest>>([])
-const catalogReady = ref(false)
 const refreshing = ref(false)
-const catalogError = ref('')
 const libraryTable = ref<{ reload: () => Promise<void> } | null>(null)
 const detailItem = ref<LibraryItem | null>(null)
 const detailMode = ref<'card' | 'json'>('card')
@@ -60,6 +58,15 @@ const bundleNames = ref<Record<string, string>>({})
 const bundleBindings = ref<Record<string, { value: string; path_origin?: 'absolute' | 'data-root-relative' }>>({})
 const bundleBusy = ref(false)
 const bundleError = ref('')
+const {
+  manifests,
+  ready: catalogReady,
+  error: catalogError,
+  load: loadCatalog,
+} = useConfigurationCatalog(
+  () => api.value.getCatalog(),
+  (error) => managementError.describe(error).display,
+)
 const {
   validation: repositoryValidation,
   validateNow: refreshRepositoryValidation,
@@ -149,21 +156,6 @@ function bundleIssueText(issue: ConfigurationBundlePreview['errors'][number]): s
     return t(issue.message_key, issue.message_args ?? {})
   }
   return t('library.bundle.unknownIssue', { code: issue.code })
-}
-
-async function loadCatalog(): Promise<void> {
-  catalogError.value = ''
-  try {
-    const catalog = await api.value.getCatalog()
-    manifests.value = [
-      ...catalog.block_types,
-      ...catalog.workflow_component_types,
-    ].sort((left, right) => left.order - right.order)
-  } catch (error) {
-    catalogError.value = managementError.describe(error).display
-  } finally {
-    catalogReady.value = true
-  }
 }
 
 async function listCategory(category: LibraryCategoryId): Promise<LibraryItem[]> {
@@ -487,10 +479,12 @@ onMounted(async () => {
       </LteButton>
     </template>
 
-    <ConfigurationLibraryNav :manifests="manifests" />
-
-    <div class="row g-3 align-items-start" data-testid="library-layout">
-      <section class="col" data-testid="library-content-region">
+    <ConfigurationLibraryFrame
+      :aside-test-id="'library-validation-region'"
+      :content-test-id="'library-content-region'"
+      :layout-test-id="'library-layout'"
+      :manifests="manifests"
+    >
         <LteAlert
           v-if="catalogError"
           class="mb-3"
@@ -514,9 +508,7 @@ onMounted(async () => {
         <LteAlert v-else-if="catalogReady" :title="currentCategoryLabel" theme="danger">
           {{ currentCategoryLabel }}
         </LteAlert>
-      </section>
-
-      <aside class="col-lg-3 validation-sidebar" data-testid="library-validation-region">
+      <template #aside>
         <ValidationChecklist
           :title="t('library.validationTitle')"
           :validation="repositoryValidation"
@@ -535,8 +527,8 @@ onMounted(async () => {
             </LteButton>
           </template>
         </ValidationChecklist>
-      </aside>
-    </div>
+      </template>
+    </ConfigurationLibraryFrame>
   </PageShell>
 
   <ModalHost
@@ -582,51 +574,22 @@ onMounted(async () => {
     </template>
   </ModalHost>
 
-  <ModalHost
-    :description="copyItem ? t('library.copy.description', { name: libraryItemName(copyItem), id: copyItem.id }) : ''"
+  <CopyNameModal
+    :busy="copying"
+    :busy-label="t('common.copying')"
+    error-test-id="copy-error"
+    form-id="library-copy-form"
+    :hint="t('library.copy.nameHint')"
+    :name="copyName"
     :open="copyItem !== null"
+    :submit-label="t('library.copy.submit')"
     :title="t('library.copy.title')"
+    :description="copyItem ? t('library.copy.description', { name: libraryItemName(copyItem), id: copyItem.id }) : ''"
+    :error="copyError"
     @close="closeCopy"
-  >
-    <form
-      id="library-copy-form"
-      novalidate
-      @submit.prevent="copyCurrentItem"
-    >
-      <FormField
-        field-path="name"
-        :hint="t('library.copy.nameHint')"
-      >
-        <input v-model="copyName" autocomplete="off" class="form-control">
-      </FormField>
-      <LteAlert
-        v-if="copyError"
-        data-testid="copy-error"
-        theme="danger"
-      >
-        {{ copyError }}
-      </LteAlert>
-    </form>
-    <template #footer>
-      <LteButton
-        :disabled="copying"
-        theme="warning"
-        type="button"
-        @click="closeCopy"
-      >
-        {{ t('common.cancel') }}
-      </LteButton>
-      <LteButton
-        :disabled="copying"
-        form="library-copy-form"
-        theme="primary"
-        type="submit"
-      >
-        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        {{ copying ? t('common.copying') : t('library.copy.submit') }}
-      </LteButton>
-    </template>
-  </ModalHost>
+    @submit="copyCurrentItem"
+    @update:name="copyName = $event"
+  />
 
   <ModalHost
     :open="bundlePreview !== null || Boolean(bundleError)"

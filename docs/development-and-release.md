@@ -71,6 +71,14 @@ git pull --ff-only
 
 ## 前端 Debug
 
+### 前端页面组合
+
+管理台页面按稳定组合接入：`PageShell` 提供管理台内容壳和底部操作区；配置库页面使用
+`ConfigurationLibraryFrame` 与 `useConfigurationCatalog`；配置编辑页面使用
+`ConfigurationEditorLayout`、`ConfigurationCrudActions` 和 `CopyNameModal`。页面保留自己的领域表单、草稿状态和
+management API/service 编排，不重复创建相同的导航、左右工作区、CRUD action dock 或复制弹窗。表格页面直接提供
+`DataTableConfig` 给 `DataTableWorkbench`。
+
 只有需要 HMR 时使用隔离启动器。它分配临时 loopback 端口和临时 data，不读取正常实例数据：
 
 ```powershell

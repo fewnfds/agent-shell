@@ -3,8 +3,9 @@ import { LteAlert, LteButton } from '@adminlte/vue'
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import FormField from '@/components/FormField.vue'
-import ModalHost from '@/components/ModalHost.vue'
+import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
+import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
+import CopyNameModal from '@/components/CopyNameModal.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
@@ -345,29 +346,18 @@ watch(
 <template>
   <PageShell>
     <template #actions>
-      <LteButton class="action-button" :disabled="!form.id || loading || saving || copying || deleting" theme="secondary" type="button" @click="openCopy">
-        <i class="bi bi-copy" aria-hidden="true" />
-        {{ t('common.copy') }}
-      </LteButton>
-      <LteButton class="action-button" :disabled="!form.id || loading || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent">
-        <i class="bi bi-trash" aria-hidden="true" />
-        {{ deleting ? t('common.deleting') : t('common.delete') }}
-      </LteButton>
-      <LteButton class="action-button" :disabled="loading || saving || copying || deleting" theme="success" type="button" @click="startNew">
-        <i class="bi bi-plus-lg" aria-hidden="true" />
-        {{ t('common.new') }}
-      </LteButton>
-      <LteButton
-        class="action-button"
-        :disabled="loading || saving || copying || deleting"
-        theme="primary"
-        type="button"
-        @click="save"
-      >
-        <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <i v-else class="bi bi-floppy" aria-hidden="true" />
-        {{ t('common.save') }}
-      </LteButton>
+      <ConfigurationCrudActions
+        :can-save="true"
+        :copying="copying"
+        :deleting="deleting"
+        :has-selection="Boolean(form.id)"
+        :loading="loading"
+        :saving="saving"
+        @copy="openCopy"
+        @delete="removeCurrent"
+        @new="startNew"
+        @save="save"
+      />
     </template>
 
     <template #status>
@@ -376,13 +366,8 @@ watch(
       </LteAlert>
     </template>
 
-    <div
-      class="row g-3 align-items-start configuration-loading-surface"
-      :aria-busy="loading"
-      :data-loading="loading"
-      :inert="loading || undefined"
-    >
-      <section class="col-lg-9">
+    <ConfigurationEditorLayout :loading="loading">
+      <template #editor>
         <div class="mb-3">
           <RecordPicker
             :model-value="selectedProfileId"
@@ -541,34 +526,29 @@ watch(
           v-model:references="form.subagents"
           :profiles="subagentProfiles"
         />
-      </section>
-
-      <aside class="col-lg-3 validation-sidebar">
+      </template>
+      <template #aside>
         <ValidationChecklist
           :title="t('validation.draftTitle')"
           :validation="validation"
         />
-      </aside>
-    </div>
+      </template>
+    </ConfigurationEditorLayout>
   </PageShell>
 
-  <ModalHost :open="copyOpen" :title="t('agents.copy.title')" @close="closeCopy">
-    <form id="main-agent-copy-form" novalidate @submit.prevent="copyCurrent">
-      <FormField field-path="name" :hint="t('agents.copy.nameHint')">
-        <input v-model="copyName" autocomplete="off" class="form-control">
-      </FormField>
-      <LteAlert v-if="copyError" data-testid="main-agent-copy-error" theme="danger">
-        {{ copyError }}
-      </LteAlert>
-    </form>
-    <template #footer>
-      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">
-        {{ t('common.cancel') }}
-      </LteButton>
-      <LteButton :disabled="copying" form="main-agent-copy-form" theme="primary" type="submit">
-        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        {{ copying ? t('common.copying') : t('common.copy') }}
-      </LteButton>
-    </template>
-  </ModalHost>
+  <CopyNameModal
+    :busy="copying"
+    :busy-label="t('common.copying')"
+    error-test-id="main-agent-copy-error"
+    form-id="main-agent-copy-form"
+    :hint="t('agents.copy.nameHint')"
+    :name="copyName"
+    :open="copyOpen"
+    :submit-label="t('common.copy')"
+    :title="t('agents.copy.title')"
+    :error="copyError"
+    @close="closeCopy"
+    @submit="copyCurrent"
+    @update:name="copyName = $event"
+  />
 </template>

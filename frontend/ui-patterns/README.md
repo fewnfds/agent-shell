@@ -12,6 +12,8 @@
 | 单位输入、毫秒、容量、suffix | `input-with-unit.pattern.md`；`styles.classRecipes[name=forms-and-actions]` | `src/pages/SystemSettingsPage.vue` |
 | 右侧/行尾/Card header 操作 | `end-aligned-action.pattern.md`；`styles.classRecipes[name=approved-utilities]` | `src/pages/StyleLabPage.vue` |
 | 并排表单字段、搜索/筛选、switch 与 label-input 同排 | `aligned-control-row.pattern.md`；`forms-and-actions` + `approved-utilities` | `src/components/data-table/DataTableWorkbench.vue`、`src/pages/EventFeedPage.vue` |
+| 配置库导航、列表和校验侧栏 | `ConfigurationLibraryFrame.vue` + `useConfigurationCatalog` | `src/pages/ConfigLibraryPage.vue`、`src/pages/ConfigurationRepositoriesPage.vue` |
+| 配置编辑左右工作区、CRUD action dock、复制流程 | `ConfigurationEditorLayout.vue` + `ConfigurationCrudActions.vue` + `CopyNameModal.vue` | `src/pages/ComponentsPage.vue`、`src/pages/MainAgentPage.vue`、`src/pages/SubagentPage.vue`、`src/pages/WorkflowsPage.vue` |
 | 普通表单页 | 无额外 pattern | `src/pages/SystemSettingsPage.vue` |
 | 高密度实时页 | 无额外 pattern | `src/pages/EventFeedPage.vue` |
 | 复杂配置工作区 | 无额外 pattern | `src/pages/ComponentsPage.vue` 及 `src/editors/` |

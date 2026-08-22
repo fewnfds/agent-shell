@@ -20,8 +20,9 @@ import {
   type ValidationReport,
 } from '@/api'
 import PageShell from '@/components/PageShell.vue'
-import FormField from '@/components/FormField.vue'
-import ModalHost from '@/components/ModalHost.vue'
+import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
+import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
+import CopyNameModal from '@/components/CopyNameModal.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
@@ -929,47 +930,18 @@ onMounted(() => {
 <template>
   <PageShell>
     <template #actions>
-      <LteButton
-        class="action-button"
-        :disabled="!draft?.id || loading || saving || deleting"
-        theme="secondary"
-        type="button"
-        @click="openCopy"
-      >
-        <i class="bi bi-copy" aria-hidden="true" />
-        {{ t('common.copy') }}
-      </LteButton>
-      <LteButton
-        class="action-button"
-        :disabled="!draft?.id || loading || saving || deleting"
-        theme="danger"
-        type="button"
-        @click="removeCurrent"
-      >
-        <i class="bi bi-trash" aria-hidden="true" />
-        {{ deleting ? t('common.deleting') : t('common.delete') }}
-      </LteButton>
-      <LteButton
-        class="action-button"
-        :disabled="!draft || loading || saving || deleting"
-        theme="success"
-        type="button"
-        @click="startNew"
-      >
-        <i class="bi bi-plus-lg" aria-hidden="true" />
-        {{ t('common.new') }}
-      </LteButton>
-      <LteButton
-        class="action-button"
-        :disabled="!draft || loading || saving || deleting"
-        theme="primary"
-        type="button"
-        @click="save"
-      >
-        <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <i v-else class="bi bi-floppy" aria-hidden="true" />
-        {{ t('common.save') }}
-      </LteButton>
+      <ConfigurationCrudActions
+        :can-save="Boolean(draft)"
+        :copying="copying"
+        :deleting="deleting"
+        :has-selection="Boolean(draft?.id)"
+        :loading="loading"
+        :saving="saving"
+        @copy="openCopy"
+        @delete="removeCurrent"
+        @new="startNew"
+        @save="save"
+      />
     </template>
 
     <template #status>
@@ -993,85 +965,71 @@ onMounted(() => {
       @select="selectType"
     />
 
-    <div
+    <ConfigurationEditorLayout
       v-if="activeType && draft"
-      class="row g-3 align-items-start configuration-loading-surface"
-      data-testid="component-layout"
-      :aria-busy="loading"
-      :data-loading="loading"
-      :inert="loading || undefined"
+      layout-test-id="component-layout"
+      :loading="loading"
+      aside-test-id="inspector-region"
     >
-      <section class="col-lg-9 component-editor-region" data-testid="editor-region">
-        <LteAlert
-          v-if="storedRecordInvalid"
-          class="mb-3"
-          data-testid="stored-invalid-warning"
-          :title="t('components.storedInvalidWarning')"
-          theme="warning"
-        />
-        <div class="mb-3">
-          <RecordPicker
-            :model-value="selectedId"
-            :name="draft.name"
-            :records="records"
-            :disabled="loading"
-            @select="selectRecord"
-            @update:name="draft.name = $event"
+      <template #editor>
+        <div class="component-editor-region" data-testid="editor-region">
+          <LteAlert
+            v-if="storedRecordInvalid"
+            class="mb-3"
+            data-testid="stored-invalid-warning"
+            :title="t('components.storedInvalidWarning')"
+            theme="warning"
+          />
+          <div class="mb-3">
+            <RecordPicker
+              :model-value="selectedId"
+              :name="draft.name"
+              :records="records"
+              :disabled="loading"
+              @select="selectRecord"
+              @update:name="draft.name = $event"
+            />
+          </div>
+
+          <LteAlert v-if="credentialReplacementRequired" class="mb-3" theme="warning">
+            {{ t('models.connections.credentialReplacementRequired') }}
+          </LteAlert>
+
+          <component
+            :is="currentEditor"
+            v-bind="editorProps"
+            :model-value="draft"
+            @refresh="refreshResource"
+            @add-skill="addPrivateSkill"
+            @remove-skill="removePrivateSkill"
+            @fetch-models="fetchModels"
+            @update:model-value="updateDraft"
           />
         </div>
-
-        <LteAlert v-if="credentialReplacementRequired" class="mb-3" theme="warning">
-          {{ t('models.connections.credentialReplacementRequired') }}
-        </LteAlert>
-
-        <component
-          :is="currentEditor"
-          v-bind="editorProps"
-          :model-value="draft"
-          @refresh="refreshResource"
-          @add-skill="addPrivateSkill"
-          @remove-skill="removePrivateSkill"
-          @fetch-models="fetchModels"
-          @update:model-value="updateDraft"
-        />
-      </section>
-
-      <aside class="col-lg-3 validation-sidebar" data-testid="inspector-region">
+      </template>
+      <template #aside>
         <ValidationChecklist
           v-if="showDraftValidation"
           :title="t('validation.draftTitle')"
           :validation="displayedValidation"
         />
-      </aside>
-    </div>
+      </template>
+    </ConfigurationEditorLayout>
   </PageShell>
 
-  <ModalHost
+  <CopyNameModal
+    :busy="copying"
+    :busy-label="t('common.copying')"
+    error-test-id="component-copy-error"
+    form-id="component-copy-form"
+    :hint="t('components.copy.nameHint')"
+    :name="copyName"
     :open="copyOpen"
+    :submit-label="t('common.copy')"
     :title="t('components.copy.title')"
+    :error="copyError"
     @close="closeCopy"
-  >
-    <form id="component-copy-form" novalidate @submit.prevent="copyCurrent">
-      <FormField field-path="name" :hint="t('components.copy.nameHint')">
-        <input v-model="copyName" autocomplete="off" class="form-control">
-      </FormField>
-      <LteAlert v-if="copyError" data-testid="component-copy-error" theme="danger">
-        {{ copyError }}
-      </LteAlert>
-    </form>
-    <template #footer>
-      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">
-        {{ t('common.cancel') }}
-      </LteButton>
-      <LteButton
-        :disabled="copying"
-        form="component-copy-form"
-        theme="primary"
-        type="submit"
-      >
-        <span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        {{ copying ? t('common.copying') : t('common.copy') }}
-      </LteButton>
-    </template>
-  </ModalHost>
+    @submit="copyCurrent"
+    @update:name="copyName = $event"
+  />
 </template>

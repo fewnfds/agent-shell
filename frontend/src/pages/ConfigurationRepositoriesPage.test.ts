@@ -10,6 +10,7 @@ import { en } from '@/locales/en'
 import ConfigurationRepositoriesPage from './ConfigurationRepositoriesPage.vue'
 
 const api = vi.hoisted(() => ({
+  getCatalog: vi.fn(),
   listConfigurationRepositories: vi.fn(),
   activateConfigurationRepository: vi.fn(),
   copyConfigurationRepository: vi.fn(),
@@ -47,6 +48,29 @@ function rowByName(wrapper: ReturnType<typeof mount>, name: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  api.getCatalog.mockResolvedValue({
+    block_types: [{
+      type: 'model-requirement',
+      terminology_key: 'model-requirement',
+      label: 'Model requirement',
+      order: 1,
+      icon_key: 'gear',
+      editor_key: 'model-requirement',
+      subagent_overrideable: true,
+      required: true,
+      subagent_policy: 'inherit',
+      tool_names: [],
+    }],
+    workflow_component_types: [{
+      type: 'command',
+      terminology_key: 'command',
+      label: 'Command',
+      order: 2,
+      icon_key: 'gear',
+      editor_key: 'command',
+    }],
+    editor_defaults: {},
+  })
   api.listConfigurationRepositories.mockResolvedValue({
     active_id: active.id,
     repositories: [active, inactive],
@@ -77,6 +101,27 @@ afterEach(() => {
 })
 
 describe('ConfigurationRepositoriesPage', () => {
+  it('keeps the complete configuration library navigation on the repository page', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/library/configuration-repositories', component: ConfigurationRepositoriesPage }],
+    })
+    await router.push('/library/configuration-repositories')
+    await router.isReady()
+    const wrapper = mount(ConfigurationRepositoriesPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="library-workflow-component-group"]').text()).toContain('Command')
+    expect(wrapper.get('[data-testid="library-component-group"]').text()).toContain('Model requirement')
+    expect(api.getCatalog).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
   it('uses the common table actions and prevents deleting the active repository', async () => {
     const router = createRouter({
       history: createMemoryHistory(),

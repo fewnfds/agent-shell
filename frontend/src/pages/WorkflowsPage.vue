@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { LteAlert, LteButton, LteTextarea } from '@adminlte/vue'
+import { LteAlert, LteTextarea } from '@adminlte/vue'
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { managementApi, type SavedBlock, type Workflow, type WorkflowPayload, type WorkflowRole } from '@/api'
+import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
+import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
+import CopyNameModal from '@/components/CopyNameModal.vue'
 import FormField from '@/components/FormField.vue'
-import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import { useConfirmation } from '@/composables/useConfirmation'
@@ -180,31 +182,83 @@ onMounted(() => { void load() })
 <template>
   <PageShell>
     <LteAlert v-if="error" data-testid="workflow-error" :title="t('workflows.loadFailed')" theme="danger">{{ error }}</LteAlert>
-    <div v-if="!loading" class="row g-3 align-items-start">
-      <section class="col-lg-9">
+    <template #actions>
+      <ConfigurationCrudActions
+        :copying="copying"
+        :deleting="deleting"
+        :has-selection="Boolean(selectedId)"
+        :loading="loading"
+        :saving="saving"
+        :show-edit="true"
+        @copy="openCopy"
+        @delete="removeCurrent"
+        @edit="editGraph"
+        @new="newWorkflow"
+        @save="save"
+      />
+    </template>
+    <ConfigurationEditorLayout v-if="!loading" :loading="loading">
+      <template #editor>
         <RecordPicker :disabled="saving" :model-value="selectedId" :name="form.name" :records="records" @select="selectRecord" @update:name="updateName" />
-        <div class="card mt-3"><header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header><div class="card-body">
-          <FormField field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput"><select v-model="form.workflow_event_output_id" class="form-select"><option :value="null">{{ t('common.none') }}</option><option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option></select></FormField>
-          <FormField field-path="description" label-key="workflows.fields.description"><LteTextarea v-model="form.description" :rows="4" maxlength="2000" /></FormField>
-          <div class="row g-3" data-ui-control-row><div class="col-lg-4"><FormField field-path="recursion_limit" label-key="workflows.fields.recursionLimit"><input v-model.number="form.recursion_limit" class="form-control" min="1" step="1" type="number" required></FormField></div><div class="col-lg-4"><FormField field-path="execution_timeout_seconds" label-key="workflows.fields.executionTimeoutSeconds"><div class="input-group"><input v-model.number="form.execution_timeout_seconds" class="form-control" min="1" step="1" type="number" required><span class="input-group-text">{{ t('workflows.seconds') }}</span></div></FormField></div><div class="col-lg-4"><FormField field-path="max_concurrency" label-key="workflows.fields.maxConcurrency"><input v-model.number="form.max_concurrency" class="form-control" min="1" step="1" type="number" required></FormField></div></div>
-        </div></div></section>
-      <aside class="col-lg-3"><div class="card"><header class="card-header"><h2 class="card-title">{{ t('workflows.statusTitle') }}</h2></header><div class="card-body"><p class="mb-0">{{ selectedId ? (records.find((item) => item.id === selectedId)?.enabled ? t('workflows.status.published') : t('workflows.status.draft')) : t('workflows.newStatus') }}</p></div></div></aside>
-    </div>
-    <template #actions><LteButton class="action-button" :disabled="!selectedId || saving || copying || deleting" theme="secondary" type="button" @click="openCopy"><i class="bi bi-copy" aria-hidden="true" /> {{ t('common.copy') }}</LteButton><LteButton class="action-button" :disabled="!selectedId || saving || copying || deleting" theme="danger" type="button" @click="removeCurrent"><i class="bi bi-trash" aria-hidden="true" /> {{ deleting ? t('common.deleting') : t('common.delete') }}</LteButton><LteButton class="action-button" :disabled="saving || copying || deleting" theme="success" type="button" @click="newWorkflow"><i class="bi bi-plus-lg" aria-hidden="true" /> {{ t('common.new') }}</LteButton><LteButton class="action-button" :disabled="saving || copying || deleting" theme="primary" type="button" @click="save"><span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-floppy" aria-hidden="true" /> {{ t('common.save') }}</LteButton><LteButton class="action-button" :disabled="!selectedId || saving || copying || deleting" theme="info" type="button" @click="editGraph"><i class="bi bi-pencil" aria-hidden="true" /> {{ t('common.edit') }}</LteButton></template>
+        <div class="card mt-3">
+          <header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header>
+          <div class="card-body">
+            <FormField field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
+              <select v-model="form.workflow_event_output_id" class="form-select">
+                <option :value="null">{{ t('common.none') }}</option>
+                <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
+              </select>
+            </FormField>
+            <FormField field-path="description" label-key="workflows.fields.description">
+              <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
+            </FormField>
+            <div class="row g-3" data-ui-control-row>
+              <div class="col-lg-4">
+                <FormField field-path="recursion_limit" label-key="workflows.fields.recursionLimit">
+                  <input v-model.number="form.recursion_limit" class="form-control" min="1" step="1" type="number" required>
+                </FormField>
+              </div>
+              <div class="col-lg-4">
+                <FormField field-path="execution_timeout_seconds" label-key="workflows.fields.executionTimeoutSeconds">
+                  <div class="input-group">
+                    <input v-model.number="form.execution_timeout_seconds" class="form-control" min="1" step="1" type="number" required>
+                    <span class="input-group-text">{{ t('workflows.seconds') }}</span>
+                  </div>
+                </FormField>
+              </div>
+              <div class="col-lg-4">
+                <FormField field-path="max_concurrency" label-key="workflows.fields.maxConcurrency">
+                  <input v-model.number="form.max_concurrency" class="form-control" min="1" step="1" type="number" required>
+                </FormField>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template #aside>
+        <div class="card">
+          <header class="card-header"><h2 class="card-title">{{ t('workflows.statusTitle') }}</h2></header>
+          <div class="card-body">
+            <p class="mb-0">{{ selectedId ? (records.find((item) => item.id === selectedId)?.enabled ? t('workflows.status.published') : t('workflows.status.draft')) : t('workflows.newStatus') }}</p>
+          </div>
+        </div>
+      </template>
+    </ConfigurationEditorLayout>
   </PageShell>
 
-  <ModalHost :open="copyOpen" :title="t('workflows.copy.title')" @close="closeCopy">
-    <form id="workflow-copy-form" novalidate @submit.prevent="copyCurrent">
-      <FormField field-path="name" :hint="t('workflows.copy.nameHint')">
-        <input v-model="copyName" autocomplete="off" class="form-control">
-      </FormField>
-      <LteAlert v-if="copyError" data-testid="workflow-copy-error" theme="danger">
-        {{ copyError }}
-      </LteAlert>
-    </form>
-    <template #footer>
-      <LteButton :disabled="copying" theme="warning" type="button" @click="closeCopy">{{ t('common.cancel') }}</LteButton>
-      <LteButton :disabled="copying" form="workflow-copy-form" theme="primary" type="submit"><span v-if="copying" class="spinner-border spinner-border-sm" aria-hidden="true" />{{ copying ? t('common.copying') : t('common.copy') }}</LteButton>
-    </template>
-  </ModalHost>
+  <CopyNameModal
+    :busy="copying"
+    :busy-label="t('common.copying')"
+    error-test-id="workflow-copy-error"
+    form-id="workflow-copy-form"
+    :hint="t('workflows.copy.nameHint')"
+    :name="copyName"
+    :open="copyOpen"
+    :submit-label="t('common.copy')"
+    :title="t('workflows.copy.title')"
+    :error="copyError"
+    @close="closeCopy"
+    @submit="copyCurrent"
+    @update:name="copyName = $event"
+  />
 </template>

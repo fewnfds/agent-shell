@@ -251,7 +251,8 @@
         "paths": [
           "src/pages/ComponentsPage.vue",
           "src/pages/MainAgentPage.vue",
-          "src/pages/SubagentPage.vue"
+          "src/pages/SubagentPage.vue",
+          "src/components/ConfigurationEditorLayout.vue"
         ],
         "classes": ["component-editor-region", "configuration-loading-surface"]
       },
@@ -283,7 +284,9 @@
           "src/pages/ConfigLibraryPage.vue",
           "src/pages/ConfigurationRepositoriesPage.vue",
           "src/pages/MainAgentPage.vue",
-          "src/pages/SubagentPage.vue"
+          "src/pages/SubagentPage.vue",
+          "src/components/ConfigurationEditorLayout.vue",
+          "src/components/ConfigurationLibraryFrame.vue"
         ],
         "classes": ["validation-sidebar"]
       },
@@ -383,12 +386,8 @@
           "src/components/ConfirmDialog.vue",
           "src/components/AuthGate.vue",
           "src/components/FileWorkspaceDialog.vue",
-          "src/pages/ComponentsPage.vue",
           "src/pages/ConfigLibraryPage.vue",
-          "src/pages/ConfigurationRepositoriesPage.vue",
-          "src/pages/MainAgentPage.vue",
-          "src/pages/SubagentPage.vue",
-          "src/pages/WorkflowsPage.vue"
+          "src/components/CopyNameModal.vue"
         ]
       },
       {
@@ -446,7 +445,52 @@
         "path": "src/components/ConfigurationLibraryNav.vue",
         "kind": "layout-composition",
         "reason": "Owns the shared component and Agent navigation rows across configuration repository pages",
+        "callers": ["src/components/ConfigurationLibraryFrame.vue"]
+      },
+      {
+        "name": "ConfigurationLibraryFrame",
+        "path": "src/components/ConfigurationLibraryFrame.vue",
+        "kind": "layout-composition",
+        "reason": "Owns the shared configuration library navigation, content region and validation sidebar layout",
         "callers": ["src/pages/ConfigLibraryPage.vue", "src/pages/ConfigurationRepositoriesPage.vue"]
+      },
+      {
+        "name": "ConfigurationEditorLayout",
+        "path": "src/components/ConfigurationEditorLayout.vue",
+        "kind": "layout-composition",
+        "reason": "Owns the stable two-column configuration editor and validation region without owning domain fields",
+        "callers": [
+          "src/pages/ComponentsPage.vue",
+          "src/pages/MainAgentPage.vue",
+          "src/pages/SubagentPage.vue",
+          "src/pages/WorkflowsPage.vue"
+        ]
+      },
+      {
+        "name": "ConfigurationCrudActions",
+        "path": "src/components/ConfigurationCrudActions.vue",
+        "kind": "product-behavior",
+        "reason": "Owns the stable copy, delete, new, save and optional edit action dock semantics for configuration editors",
+        "callers": [
+          "src/pages/ComponentsPage.vue",
+          "src/pages/MainAgentPage.vue",
+          "src/pages/SubagentPage.vue",
+          "src/pages/WorkflowsPage.vue"
+        ]
+      },
+      {
+        "name": "CopyNameModal",
+        "path": "src/components/CopyNameModal.vue",
+        "kind": "product-behavior",
+        "reason": "Owns the stable copy-name form, validation feedback and submit/cancel modal surface",
+        "callers": [
+          "src/pages/ComponentsPage.vue",
+          "src/pages/ConfigLibraryPage.vue",
+          "src/pages/ConfigurationRepositoriesPage.vue",
+          "src/pages/MainAgentPage.vue",
+          "src/pages/SubagentPage.vue",
+          "src/pages/WorkflowsPage.vue"
+        ]
       },
       {
         "name": "FormField",
@@ -461,14 +505,10 @@
           "src/editors/ModelEditor.vue",
           "src/editors/PromptCachingEditor.vue",
           "src/editors/SummarizationEditor.vue",
-          "src/pages/ComponentsPage.vue",
-          "src/pages/ConfigLibraryPage.vue",
-          "src/pages/ConfigurationRepositoriesPage.vue",
-          "src/pages/MainAgentPage.vue",
-          "src/pages/SubagentPage.vue",
           "src/pages/StyleLabPage.vue",
           "src/pages/SystemSettingsPage.vue",
-          "src/pages/WorkflowsPage.vue"
+          "src/pages/WorkflowsPage.vue",
+          "src/components/CopyNameModal.vue"
         ]
       },
       {
