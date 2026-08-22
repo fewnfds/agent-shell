@@ -8,7 +8,7 @@ const EventFeedPage = () => import('@/pages/EventFeedPage.vue')
 const FileManagerPage = () => import('@/pages/FileManagerPage.vue')
 const MainAgentPage = () => import('@/pages/MainAgentPage.vue')
 const MessageInterceptionPage = () => import('@/pages/MessageInterceptionPage.vue')
-const StyleLabPage = () => import('@/pages/StyleLabPage.vue')
+const StyleBaselinePage = () => import('@/pages/StyleBaselinePage.vue')
 const SystemSettingsPage = () => import('@/pages/SystemSettingsPage.vue')
 const SubagentPage = () => import('@/pages/SubagentPage.vue')
 const TerminologyPage = () => import('@/pages/TerminologyPage.vue')
@@ -93,7 +93,7 @@ export const router = createRouter({
       meta: { titleKey: 'navigation.system' },
     },
     { path: '/system/events', component: EventFeedPage, meta: { titleKey: 'navigation.system' } },
-    { path: '/style-lab', component: StyleLabPage, meta: { titleKey: 'styleLab.title' } },
+    { path: '/style-baseline', component: StyleBaselinePage, meta: { titleKey: 'styleBaseline.title' } },
     {
       path: '/terminology',
       component: TerminologyPage,

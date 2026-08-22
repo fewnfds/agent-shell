@@ -230,7 +230,7 @@ const eventTableConfig: DataTableConfig<EventFeedItem> = {
       label: (item) => t(item.download_kind === 'diagnostic_detail'
         ? 'eventFeed.downloadDetail'
         : 'eventFeed.downloadEntry'),
-      tone: 'primary',
+      tone: 'secondary',
       icon: 'download',
       visible: (item) => item.download_kind !== null,
       run: (item) => download(item),
@@ -238,8 +238,9 @@ const eventTableConfig: DataTableConfig<EventFeedItem> = {
     },
   ],
   bulkAction: {
-    label: () => t('eventFeed.delete.filtered'),
+    label: () => t('common.delete'),
     busyLabel: () => t('common.deleting'),
+    icon: 'delete',
     enabled: () => true,
     confirm: () => ({
       title: t('eventFeed.delete.title'),
@@ -375,8 +376,9 @@ onMounted(() => { void loadControls() })
 <template>
   <PageShell>
     <template #actions>
-      <LteButton v-if="stale" data-testid="load-new-events" theme="primary" @click="refreshWindow">
-        {{ t('eventFeed.loadNew') }}
+      <LteButton v-if="stale" class="action-button" data-testid="load-new-events" theme="primary" @click="refreshWindow">
+        <i class="bi bi-arrow-clockwise" aria-hidden="true" />
+        {{ t('common.refresh') }}
       </LteButton>
     </template>
 
@@ -412,7 +414,8 @@ onMounted(() => { void loadControls() })
                 step="1"
                 type="number"
               >
-              <LteButton :disabled="savingControl === `${source}-retention`" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="savingControl === `${source}-retention`" theme="primary" type="submit">
+                <i class="bi bi-floppy" aria-hidden="true" />
                 {{ t('common.save') }}
               </LteButton>
             </div>
@@ -430,7 +433,8 @@ onMounted(() => { void loadControls() })
                 type="number"
               >
               <span class="input-group-text">{{ 'MiB' }}</span>
-              <LteButton :disabled="savingControl === 'system-log-settings'" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="savingControl === 'system-log-settings'" theme="primary" type="submit">
+                <i class="bi bi-floppy" aria-hidden="true" />
                 {{ t('common.save') }}
               </LteButton>
             </div>
@@ -445,8 +449,9 @@ onMounted(() => { void loadControls() })
       @query-applied="stale = false"
     >
       <template #filter-actions>
-        <LteButton class="fs-6" :disabled="controlsLoading" theme="primary" type="button" @click="refreshAll">
+        <LteButton class="action-button" :disabled="controlsLoading" theme="secondary" type="button" @click="refreshAll">
           <span v-if="controlsLoading" class="spinner-border spinner-border-sm" aria-hidden="true" />
+          <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
           {{ t('common.refresh') }}
         </LteButton>
       </template>

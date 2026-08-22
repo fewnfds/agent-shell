@@ -25,6 +25,7 @@
   不 patch 或 fork `node_modules`。
 - 详细的信息架构、Card、表单、i18n、布局和可访问性规则只维护在 UI contract，
   不在本文件重复或记录局部页面调整。
+- 管理端操作统一使用 `action-button`（带图标和通用动作词）或 `icon-action-button`（紧凑位置的纯图标方形按钮）；Vue Flow 画布不适用。
 
 ## 验证
 

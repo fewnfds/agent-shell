@@ -70,7 +70,7 @@ function titleKeyForPath(path: string): string {
   if (path.startsWith('/agent-components')) return 'components.title'
   if (path.startsWith('/library/')) return 'library.title'
   if (path === '/terminology') return 'terminology.title'
-  if (path === '/style-lab') return 'styleLab.title'
+  if (path === '/style-baseline') return 'styleBaseline.title'
   return 'apiServer.homeTitle'
 }
 
@@ -91,7 +91,7 @@ async function mountShell(path = '/', api = createShellApi()) {
       '/agent-components',
       '/workflow-components',
       '/library',
-      '/style-lab',
+      '/style-baseline',
       '/agents/main',
       '/agents/subagents',
       '/agent-components/model',
@@ -149,7 +149,7 @@ describe('AppShell', () => {
     expect(shell.find('a[href="/system/files"]').exists()).toBe(false)
     expect(shell.find('a[href="/agents/main"]').exists()).toBe(false)
     expect(shell.find('a[href^="/agent-components/"]').exists()).toBe(false)
-    expect(shell.get('a[href="/style-lab"] .nav-icon').classes()).toContain('bi-sliders')
+    expect(shell.get('a[href="/style-baseline"] .nav-icon').classes()).toContain('bi-sliders')
     expect(shell.findAll('.app-sidebar .nav-link')).toHaveLength(11)
   })
 

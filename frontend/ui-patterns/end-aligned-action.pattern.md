@@ -17,4 +17,4 @@ Correct:
 
 Contract: `ms-auto` 必须位于最终 DOM 的直接 flex item；验收目标是贴近容器末端，不是右侧区域内居中。
 
-Verify: `src/pages/StyleLabPage.vue`。
+Verify: `src/pages/StyleBaselinePage.vue`。

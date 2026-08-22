@@ -67,7 +67,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
         :aria-label="addLabel"
         :title="addLabel"
         size="sm"
-        theme="success"
+        theme="primary"
         type="button"
         @click="addReference"
       >

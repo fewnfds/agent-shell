@@ -112,6 +112,7 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
     {
       key: 'activate',
       label: () => t('configurationRepositories.actions.activate'),
+      icon: 'activate',
       tone: 'primary',
       visible: (repository) => !repository.active,
       run: (repository) => managementApi.activateConfigurationRepository(repository.id),
@@ -122,14 +123,15 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
     {
       key: 'copy',
       label: () => t('common.copy'),
-      tone: 'success',
+      icon: 'copy',
+      tone: 'secondary',
       run: openCopy,
     },
     {
       key: 'download',
       label: () => t('common.download'),
       icon: 'download',
-      tone: 'info',
+      tone: 'secondary',
       run: async (repository) => {
         const download = await managementApi.downloadConfigurationRepository(repository.id)
         triggerBrowserDownload(download.blob, download.filename)
@@ -139,6 +141,7 @@ const tableConfig: DataTableConfig<ConfigurationRepository> = {
     {
       key: 'delete',
       label: () => t('common.delete'),
+      icon: 'delete',
       busyLabel: () => t('common.deleting'),
       tone: 'danger',
       disabled: (repository) => repository.active,

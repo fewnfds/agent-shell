@@ -222,12 +222,14 @@ function setThresholdType(threshold: SummarizationThresholdDraft, event: Event):
         <h3 class="card-title h5 mb-0">{{ t('editors.summarization.generationTitle') }}</h3>
         <div class="ms-auto">
           <LteButton
+            class="action-button"
             data-action="restore-summary-prompt"
             size="sm"
             theme="warning"
             type="button"
             @click="draft.summary_prompt_override = defaults.summary_prompt_default"
           >
+            <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             {{ t('editors.summarization.restoreDefaultPrompt') }}
           </LteButton>
         </div>

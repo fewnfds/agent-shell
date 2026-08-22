@@ -85,14 +85,15 @@ export type DataTableFilter<Row> =
   | DataTableSingleFilter<Row>
   | DataTableMultiFilter<Row>
 
-type DataTableActionTone = 'primary' | 'info' | 'success' | 'warning' | 'danger'
+type DataTableActionTone = 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'danger'
+export type DataTableActionIcon = 'activate' | 'copy' | 'delete' | 'download' | 'edit' | 'view'
 
 export interface DataTableRowAction<Row> {
   key: string
   label: DataTableText | ((row: Row) => string)
   busyLabel?: DataTableText
   tone: DataTableActionTone
-  icon?: 'download'
+  icon: DataTableActionIcon
   visible?: (row: Row) => boolean
   disabled?: (row: Row) => boolean
   confirm?: (row: Row) => ConfirmationRequest
@@ -114,6 +115,7 @@ export interface DataTableBulkContext<Row> {
 interface DataTableBulkAction<Row> {
   label: DataTableText
   busyLabel?: DataTableText
+  icon: DataTableActionIcon
   enabled: (context: DataTableBulkContext<Row>) => boolean
   confirm: (context: DataTableBulkContext<Row>) => ConfirmationRequest
   run: (context: DataTableBulkContext<Row>) => Promise<unknown>

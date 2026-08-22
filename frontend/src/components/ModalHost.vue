@@ -45,15 +45,15 @@ function close(): void {
     <template #header>
       <h5 class="modal-title">{{ title }}</h5>
       <LteButton
-        class="ms-auto"
+        class="icon-action-button ms-auto"
+        :aria-label="t('common.close')"
         data-action="close-modal"
+        :title="t('common.close')"
         size="sm"
-        theme="danger"
+        theme="secondary"
         type="button"
         @click="close"
-      >
-        {{ t('common.close') }}
-      </LteButton>
+      ><i class="bi bi-x-lg" aria-hidden="true" /></LteButton>
     </template>
     <p v-if="description" class="mb-3 text-body-secondary">
       {{ description }}

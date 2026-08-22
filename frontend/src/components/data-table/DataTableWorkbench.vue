@@ -229,11 +229,12 @@ defineExpose<{
               :placeholder="label(config.search.placeholder)"
               type="search"
             >
-            <LteButton class="fs-6" :disabled="loading" theme="primary" type="submit">
+            <LteButton class="action-button" :disabled="loading" theme="primary" type="submit">
               <i class="bi bi-search" aria-hidden="true" />
               {{ t('common.search') }}
             </LteButton>
-            <LteButton class="fs-6" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+            <LteButton class="action-button" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+              <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('common.reset') }}
             </LteButton>
           </div>
@@ -297,23 +298,30 @@ defineExpose<{
           <legend class="collection-filter-legend form-label">{{ t('common.dataTable.operations') }}</legend>
           <div class="collection-filter-options">
             <template v-if="!config.search && filters.length">
-              <LteButton class="fs-6" :disabled="loading" theme="primary" type="submit">
+              <LteButton class="action-button" :disabled="loading" theme="primary" type="submit">
                 <i class="bi bi-search" aria-hidden="true" />
                 {{ t('common.search') }}
               </LteButton>
-              <LteButton class="fs-6" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+              <LteButton class="action-button" :disabled="loading" theme="warning" type="button" @click="clearQuery">
+                <i class="bi bi-arrow-clockwise" aria-hidden="true" />
                 {{ t('common.reset') }}
               </LteButton>
             </template>
             <slot name="filter-actions" />
             <LteButton
               v-if="config.bulkAction"
-              class="fs-6"
+              class="action-button"
               :disabled="loading || runningBulkAction || !bulkEnabled"
               theme="danger"
               type="button"
               @click="runBulkAction"
             >
+              <i v-if="config.bulkAction.icon === 'delete'" class="bi bi-trash" aria-hidden="true" />
+              <i v-else-if="config.bulkAction.icon === 'copy'" class="bi bi-copy" aria-hidden="true" />
+              <i v-else-if="config.bulkAction.icon === 'download'" class="bi bi-download" aria-hidden="true" />
+              <i v-else-if="config.bulkAction.icon === 'edit'" class="bi bi-pencil" aria-hidden="true" />
+              <i v-else-if="config.bulkAction.icon === 'view'" class="bi bi-eye" aria-hidden="true" />
+              <i v-else class="bi bi-check-lg" aria-hidden="true" />
               {{ runningBulkAction && config.bulkAction.busyLabel
                 ? label(config.bulkAction.busyLabel)
                 : label(config.bulkAction.label) }}
@@ -335,7 +343,10 @@ defineExpose<{
     </div>
     <div v-else-if="loadError" data-testid="data-table-error" role="alert">
       <LteAlert :title="label(config.loadErrorTitle)" theme="danger">{{ loadErrorText }}</LteAlert>
-      <LteButton theme="info" type="button" @click="reload">{{ t('common.retry') }}</LteButton>
+      <LteButton class="action-button" theme="secondary" type="button" @click="reload">
+        <i class="bi bi-arrow-clockwise" aria-hidden="true" />
+        {{ t('common.retry') }}
+      </LteButton>
     </div>
     <p v-else-if="rows.length === 0" class="text-center text-body-secondary p-3" role="status">
       {{ label(hasAppliedFilters && config.filteredEmptyMessage
@@ -378,15 +389,23 @@ defineExpose<{
                   <LteButton
                     v-for="action in visibleActions(row)"
                     :key="action.key"
+                    class="icon-action-button"
                     :data-action="action.key"
+                    :aria-label="actionLabel(action, row)"
                     :disabled="Boolean(runningRowAction) || Boolean(action.disabled?.(row))"
                     size="sm"
                     :theme="action.tone"
+                    :title="actionLabel(action, row)"
                     type="button"
                     @click="runRowAction(action, row)"
                   >
-                    <i v-if="action.icon === 'download'" class="bi bi-download" aria-hidden="true" />
-                    {{ actionLabel(action, row) }}
+                    <i v-if="action.icon === 'activate'" class="bi bi-check-lg" aria-hidden="true" />
+                    <i v-else-if="action.icon === 'copy'" class="bi bi-copy" aria-hidden="true" />
+                    <i v-else-if="action.icon === 'delete'" class="bi bi-trash" aria-hidden="true" />
+                    <i v-else-if="action.icon === 'download'" class="bi bi-download" aria-hidden="true" />
+                    <i v-else-if="action.icon === 'edit'" class="bi bi-pencil" aria-hidden="true" />
+                    <i v-else class="bi bi-eye" aria-hidden="true" />
+                    <span class="visually-hidden">{{ actionLabel(action, row) }}</span>
                   </LteButton>
                 </div>
               </td>

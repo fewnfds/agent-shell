@@ -288,17 +288,20 @@ onMounted(() => { void load() })
 <template>
   <PageShell>
     <template #actions>
-      <LteButton :disabled="loading || saving" theme="info" type="button" @click="load">
+      <LteButton class="action-button" :disabled="loading || saving" theme="secondary" type="button" @click="load">
         <span v-if="loading" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="loading || !settings || !apiServerSettings || !runtimePolicy || saving || !settingsValid"
         theme="primary"
         type="button"
         @click="save"
       >
         <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-floppy" aria-hidden="true" />
         {{ t('common.save') }}
       </LteButton>
     </template>
@@ -371,9 +374,10 @@ onMounted(() => { void load() })
                       :type="showManagementPassword ? 'text' : 'password'"
                     >
                     <LteButton
+                      class="icon-action-button"
                       :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
                       :aria-pressed="showManagementPassword"
-                      theme="info"
+                      theme="secondary"
                       type="button"
                       @click="showManagementPassword = !showManagementPassword"
                     >
@@ -396,9 +400,10 @@ onMounted(() => { void load() })
                       @input="apiKeyDirty = true"
                     >
                     <LteButton
+                      class="icon-action-button"
                       :aria-label="showApiKey ? t('common.hide') : t('common.show')"
                       :aria-pressed="showApiKey"
-                      theme="info"
+                      theme="secondary"
                       type="button"
                       @click="showApiKey = !showApiKey"
                     >
@@ -407,8 +412,6 @@ onMounted(() => { void load() })
                     </LteButton>
                   </div>
                 </div>
-              </div>
-              <div class="row g-3 mt-3">
                 <div class="col-lg-3 col-md-6">
                   <div class="form-check form-switch">
                     <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
@@ -497,10 +500,15 @@ onMounted(() => { void load() })
             <div class="card-body">
               <div class="row g-3">
                 <div class="col-lg-3 col-md-6">
-                  <label class="form-label" for="langsmith-endpoint">
-                    {{ fieldLabel('systemSettings.langsmith.endpoint', 'langsmith_endpoint') }}
-                  </label>
-                  <input id="langsmith-endpoint" v-model="langsmithEndpoint" autocomplete="url" class="form-control" required spellcheck="false" type="url">
+                  <LteInput
+                    id="langsmith-endpoint"
+                    v-model="langsmithEndpoint"
+                    autocomplete="url"
+                    required
+                    :label="fieldLabel('systemSettings.langsmith.endpoint', 'langsmith_endpoint')"
+                    spellcheck="false"
+                    type="url"
+                  />
                 </div>
                 <div class="col-lg-3 col-md-6">
                   <label class="form-label" for="langsmith-project">
@@ -545,9 +553,10 @@ onMounted(() => { void load() })
                       @input="langsmithApiKeyDirty = true"
                     >
                     <LteButton
+                      class="icon-action-button"
                       :aria-label="showLangsmithApiKey ? t('common.hide') : t('common.show')"
                       :aria-pressed="showLangsmithApiKey"
-                      theme="info"
+                      theme="secondary"
                       type="button"
                       @click="showLangsmithApiKey = !showLangsmithApiKey"
                     >
@@ -556,8 +565,6 @@ onMounted(() => { void load() })
                     </LteButton>
                   </div>
                 </div>
-              </div>
-              <div class="row g-3 mt-3">
                 <div class="col-lg-3 col-md-6">
                   <div class="form-check form-switch">
                     <input id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-check-input" role="switch" type="checkbox">

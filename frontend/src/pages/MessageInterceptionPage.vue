@@ -97,8 +97,9 @@ onMounted(() => { void load(true) })
 <template>
   <PageShell>
     <template #actions>
-      <LteButton :disabled="loading || saving" theme="info" type="button" @click="load(true)">
+      <LteButton class="action-button" :disabled="loading || saving" theme="secondary" type="button" @click="load(true)">
         <span v-if="loading" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ t('common.refresh') }}
       </LteButton>
     </template>

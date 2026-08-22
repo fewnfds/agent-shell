@@ -51,8 +51,8 @@ const emit = defineEmits<{
     <template v-for="item in items" :key="item.id">
       <LteButton
         v-if="item.id === activeId"
-        aria-current="page"
         class="w-100"
+        aria-current="page"
         theme="primary"
         @click="emit('select', item.id)"
       >

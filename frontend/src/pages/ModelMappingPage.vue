@@ -30,7 +30,7 @@ onMounted(() => { void load() })
 
 <template>
   <PageShell>
-    <template #actions><LteButton theme="info" type="button" @click="load"><i class="bi bi-arrow-clockwise" aria-hidden="true" /> {{ t('editors.common.refresh') }}</LteButton></template>
+    <template #actions><LteButton class="action-button" theme="secondary" type="button" @click="load"><i class="bi bi-arrow-clockwise" aria-hidden="true" /> {{ t('editors.common.refresh') }}</LteButton></template>
     <template #status>
       <LteAlert v-if="error" theme="danger" :title="t('models.mapping.loadFailed')">{{ error }}</LteAlert>
       <LteAlert v-else-if="unboundCount" theme="warning" :title="t('models.mapping.warningTitle')">{{ t('models.mapping.warning', { count: unboundCount }) }}</LteAlert>

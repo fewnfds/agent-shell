@@ -77,7 +77,8 @@ function importFilesystemPaths(): void {
                   <option value="">{{ t('common.chooseConfiguration') }}</option>
                   <option v-for="filesystem in filesystems" :key="filesystem.id" :value="filesystem.id">{{ filesystem.name }}</option>
                 </select>
-                <LteButton :disabled="!importFilesystemId" data-action="import-filesystem-paths" theme="primary" type="button" @click="importFilesystemPaths">
+                <LteButton class="action-button" :disabled="!importFilesystemId" data-action="import-filesystem-paths" theme="primary" type="button" @click="importFilesystemPaths">
+                  <i class="bi bi-arrow-right" aria-hidden="true" />
                   {{ t('editors.filesystemPermissions.importAction') }}
                 </LteButton>
               </div>
@@ -97,15 +98,15 @@ function importFilesystemPaths(): void {
               </select>
             </div>
             <div class="simple-mapping-actions">
-              <LteButton :aria-label="t('editors.common.moveUp')" :disabled="index === 0" :title="t('editors.common.moveUp')" size="sm" theme="secondary" type="button" @click="movePermission(index, -1)"><i class="bi bi-arrow-up" aria-hidden="true" /></LteButton>
-              <LteButton :aria-label="t('editors.common.moveDown')" :disabled="index === draft.permissions.length - 1" :title="t('editors.common.moveDown')" size="sm" theme="secondary" type="button" @click="movePermission(index, 1)"><i class="bi bi-arrow-down" aria-hidden="true" /></LteButton>
-              <LteButton :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" data-action="remove-filesystem-permission" size="sm" theme="danger" type="button" @click="draft.permissions.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.moveUp')" :disabled="index === 0" :title="t('editors.common.moveUp')" size="sm" theme="secondary" type="button" @click="movePermission(index, -1)"><i class="bi bi-arrow-up" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.moveDown')" :disabled="index === draft.permissions.length - 1" :title="t('editors.common.moveDown')" size="sm" theme="secondary" type="button" @click="movePermission(index, 1)"><i class="bi bi-arrow-down" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" data-action="remove-filesystem-permission" size="sm" theme="danger" type="button" @click="draft.permissions.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
             </div>
           </div>
         </div>
         <p v-else class="text-body-secondary mt-3 mb-0">{{ t('editors.filesystemPermissions.emptyPermissions') }}</p>
         <div class="simple-mapping-footer">
-          <LteButton :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-filesystem-permission" size="sm" theme="success" type="button" @click="addPermission">
+          <LteButton class="icon-action-button" :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-filesystem-permission" size="sm" theme="primary" type="button" @click="addPermission">
             <i class="bi bi-plus-lg" aria-hidden="true" />
           </LteButton>
         </div>

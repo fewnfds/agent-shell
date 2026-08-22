@@ -78,13 +78,13 @@ function isVirtualFilePathInvalid(virtualPath: string, sourcePath: string): bool
               <div v-if="isVirtualDirectoryPathInvalid(item.virtual_path, item.local_path)" class="invalid-feedback">{{ t('editors.filesystem.mappingValidation.virtualDirectoryPath') }}</div>
             </div>
             <div class="filesystem-mapping-actions">
-              <LteButton :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.mapped_directories.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.mapped_directories.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
             </div>
           </div>
         </div>
         <p v-else class="text-body-secondary mb-0">{{ t('editors.filesystem.emptyMappedDirectories') }}</p>
         <div class="simple-mapping-footer">
-          <LteButton :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-mapped-directory" size="sm" theme="success" type="button" @click="draft.mapped_directories.push({ virtual_path: '', local_path: '', path_origin: 'absolute', lifecycle_mode: 'fixed' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-mapped-directory" size="sm" theme="primary" type="button" @click="draft.mapped_directories.push({ virtual_path: '', local_path: '', path_origin: 'absolute', lifecycle_mode: 'fixed' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
         </div>
       </div>
     </section>
@@ -110,13 +110,13 @@ function isVirtualFilePathInvalid(virtualPath: string, sourcePath: string): bool
               <div v-if="isVirtualDirectoryPathInvalid(item.virtual_path, item.source_path)" class="invalid-feedback">{{ t('editors.filesystem.mappingValidation.virtualDirectoryPath') }}</div>
             </div>
             <div class="filesystem-mapping-actions">
-              <LteButton :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.virtual_directories.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.virtual_directories.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
             </div>
           </div>
         </div>
         <p v-else class="text-body-secondary mb-0">{{ t('editors.filesystem.emptyVirtualDirectories') }}</p>
         <div class="simple-mapping-footer">
-          <LteButton :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-virtual-directory" size="sm" theme="success" type="button" @click="draft.virtual_directories.push({ virtual_path: '', source_path: '' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-virtual-directory" size="sm" theme="primary" type="button" @click="draft.virtual_directories.push({ virtual_path: '', source_path: '' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
         </div>
       </div>
     </section>
@@ -142,13 +142,13 @@ function isVirtualFilePathInvalid(virtualPath: string, sourcePath: string): bool
               <div v-if="isVirtualFilePathInvalid(item.virtual_path, item.source_path)" class="invalid-feedback">{{ t('editors.filesystem.mappingValidation.virtualFilePath') }}</div>
             </div>
             <div class="filesystem-mapping-actions">
-              <LteButton :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.virtual_files.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.remove')" :title="t('editors.common.remove')" size="sm" theme="danger" type="button" @click="draft.virtual_files.splice(index, 1)"><i class="bi bi-trash" aria-hidden="true" /></LteButton>
             </div>
           </div>
         </div>
         <p v-else class="text-body-secondary mb-0">{{ t('editors.filesystem.emptyVirtualFiles') }}</p>
         <div class="simple-mapping-footer">
-          <LteButton :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-virtual-file" size="sm" theme="success" type="button" @click="draft.virtual_files.push({ virtual_path: '', source_path: '' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
+              <LteButton class="icon-action-button" :aria-label="t('editors.common.add')" :title="t('editors.common.add')" data-action="add-virtual-file" size="sm" theme="primary" type="button" @click="draft.virtual_files.push({ virtual_path: '', source_path: '' })"><i class="bi bi-plus-lg" aria-hidden="true" /></LteButton>
         </div>
       </div>
     </section>
@@ -159,7 +159,7 @@ function isVirtualFilePathInvalid(virtualPath: string, sourcePath: string): bool
       </header>
       <div class="card-body">
         <div class="d-flex justify-content-end mb-3">
-          <LteButton theme="warning" @click="draft.system_prompt_override = defaults.system_prompt">{{ t('editors.common.restoreDefault') }}</LteButton>
+              <LteButton class="action-button" theme="warning" @click="draft.system_prompt_override = defaults.system_prompt"><i class="bi bi-arrow-clockwise" aria-hidden="true" />{{ t('editors.common.restoreDefault') }}</LteButton>
         </div>
         <LteTextarea
           v-model="draft.system_prompt_override"
@@ -231,7 +231,7 @@ function isVirtualFilePathInvalid(virtualPath: string, sourcePath: string): bool
           </header>
           <div class="card-body">
             <div class="d-flex justify-content-end mb-3">
-              <LteButton theme="warning" @click="row.config.description_override = row.tool.default_description">{{ t('editors.common.restoreDefault') }}</LteButton>
+              <LteButton class="action-button" theme="warning" @click="row.config.description_override = row.tool.default_description"><i class="bi bi-arrow-clockwise" aria-hidden="true" />{{ t('editors.common.restoreDefault') }}</LteButton>
             </div>
             <LteTextarea
               v-model="row.config.description_override"

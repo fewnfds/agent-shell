@@ -59,8 +59,9 @@ describe('DataTableWorkbench', () => {
       ...baseConfig(),
       provider: { mode: 'local', rows: () => rows },
       bulkAction: {
-        label: 'Delete matches',
+        label: 'Delete',
         enabled: () => true,
+        icon: 'delete',
         confirm: () => ({
           title: 'Delete?',
           description: 'Delete matching rows',
@@ -84,7 +85,7 @@ describe('DataTableWorkbench', () => {
     expect(wrapper.findAll('[data-testid="data-table-row"]')).toHaveLength(2)
     const filterActions = wrapper.findAll('form[role="search"] button')
     expect(filterActions).toHaveLength(3)
-    expect(filterActions.every((button) => button.classes().includes('fs-6'))).toBe(true)
+    expect(filterActions.every((button) => button.classes().includes('action-button'))).toBe(true)
     const peerLegends = wrapper.findAll('.collection-filter-legend')
     expect(peerLegends.length).toBeGreaterThan(0)
     expect(peerLegends.every((legend) => legend.classes().includes('form-label'))).toBe(true)
@@ -97,7 +98,7 @@ describe('DataTableWorkbench', () => {
     await wrapper.findAll('button').find((button) => button.text() === 'Reset')!.trigger('click')
     expect(wrapper.findAll('[data-testid="data-table-row"]')).toHaveLength(2)
 
-    await wrapper.findAll('button').find((button) => button.text() === 'Delete matches')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === 'Delete')!.trigger('click')
     useConfirmation().accept()
     await flushPromises()
     expect(remove).toHaveBeenCalledWith(expect.objectContaining({
@@ -115,6 +116,7 @@ describe('DataTableWorkbench', () => {
       rowActions: [{
         key: 'inspect',
         label: 'Inspect',
+        icon: 'view',
         tone: 'primary',
         run: inspect,
       }],

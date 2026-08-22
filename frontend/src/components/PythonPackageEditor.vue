@@ -70,11 +70,11 @@ function refresh(): void {
     <header class="card-header d-flex align-items-center gap-2">
       <h3 class="card-title h5 mb-0">{{ t('editors.pythonPackage.title') }}</h3>
       <LteButton
-        class="ms-auto"
+        class="icon-action-button ms-auto"
         :aria-label="t('common.refresh')"
         :disabled="loading"
         size="sm"
-        theme="info"
+        theme="secondary"
         type="button"
         @click="refresh"
       >
@@ -137,7 +137,7 @@ function refresh(): void {
                     :aria-label="t('common.edit')"
                     :title="t('common.edit')"
                     size="sm"
-                    theme="info"
+                    theme="secondary"
                     type="button"
                     @click="openFile(file.file_manager_path)"
                   >

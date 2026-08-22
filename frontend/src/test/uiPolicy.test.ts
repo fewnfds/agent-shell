@@ -57,6 +57,9 @@ const basePolicy = {
       },
     ],
   },
+  layoutRules: {
+    forbidAdjacentRows: true,
+  },
   icons: {
     cssImportPaths: ['src/main.ts'],
     allowed: ['check-lg'],
@@ -248,6 +251,22 @@ describe('ui-policy checker', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('switch column beside labelled controls must include .form-label')
+  })
+
+  it('rejects adjacent Bootstrap rows', () => {
+    const result = runFixture({
+      'src/pages/ExamplePage.vue': `
+        <template>
+          <div>
+            <div class="row"><div class="col-md-6" /></div>
+            <div class="row"><div class="col-md-6" /></div>
+          </div>
+        </template>
+      `,
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('adjacent Bootstrap .row elements are forbidden')
   })
 
   it('does not treat a repeated list row as a labelled form-control row', () => {

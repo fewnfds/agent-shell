@@ -367,26 +367,29 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     {
       key: 'view-configuration',
       label: () => t('common.view'),
-      tone: 'info',
+      icon: 'view',
+      tone: 'secondary',
       run: showDetail,
     },
     {
       key: 'edit-configuration',
       label: () => t('common.edit'),
-      tone: 'warning',
+      icon: 'edit',
+      tone: 'secondary',
       run: editItem,
     },
     {
       key: 'copy-configuration',
       label: () => t('common.copy'),
-      tone: 'success',
+      icon: 'copy',
+      tone: 'secondary',
       run: openCopy,
     },
     {
       key: 'download-configuration',
       label: () => t('library.bundle.download'),
       icon: 'download',
-      tone: 'info',
+      tone: 'secondary',
       run: downloadBundle,
       failureTitle: () => t('library.bundle.exportFailed'),
       visible: () => currentCategory.value !== 'model-connection',
@@ -394,6 +397,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     {
       key: 'delete-configuration',
       label: () => t('common.delete'),
+      icon: 'delete',
       busyLabel: () => t('common.deleting'),
       tone: 'danger',
       confirm: (item) => ({
@@ -420,8 +424,9 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     },
   ],
   bulkAction: {
-    label: () => t('library.deleteFiltered.action'),
+    label: () => t('common.delete'),
     busyLabel: () => t('common.deleting'),
+    icon: 'delete',
     enabled: (context) => currentCategory.value !== 'model-connection' && context.hasAppliedFilters && context.total > 0,
     confirm: (context) => ({
       title: t('library.deleteFiltered.title'),
@@ -464,17 +469,19 @@ onMounted(async () => {
   <PageShell>
     <template #actions>
       <input ref="bundleInput" accept=".zip,application/zip" class="visually-hidden" type="file" @change="selectBundle">
-      <LteButton v-if="currentCategory !== 'model-connection'" :disabled="bundleBusy" theme="success" type="button" @click="openBundlePicker">
+      <LteButton v-if="currentCategory !== 'model-connection'" class="action-button" :disabled="bundleBusy" theme="primary" type="button" @click="openBundlePicker">
         <i class="bi bi-upload" aria-hidden="true" />
         {{ t('library.bundle.upload') }}
       </LteButton>
       <LteButton
+        class="action-button"
         :disabled="refreshing"
-        theme="info"
+        theme="secondary"
         type="button"
         @click="refresh"
       >
         <span v-if="refreshing" class="spinner-border spinner-border-sm" aria-hidden="true" />
+        <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
         {{ refreshing ? t('common.refreshing') : t('common.refresh') }}
       </LteButton>
     </template>
@@ -515,15 +522,17 @@ onMounted(async () => {
         >
           <template #issue-actions="{ issue }">
             <LteButton
+              class="action-button"
               v-if="issue.code === 'storage.unknown_block_type' && issue.owner_id && issue.owner_type"
               :disabled="deletingUnsupportedBlockId === issue.owner_id"
               theme="danger"
               type="button"
               @click="deleteUnsupportedBlock(issue)"
             >
+              <i class="bi bi-trash" aria-hidden="true" />
               {{ deletingUnsupportedBlockId === issue.owner_id
                 ? t('common.deleting')
-                : t('library.unsupportedBlock.action') }}
+                : t('common.delete') }}
             </LteButton>
           </template>
         </ValidationChecklist>
@@ -560,15 +569,18 @@ onMounted(async () => {
       :value="detailValue"
     />
     <template #footer>
-      <LteButton theme="warning" type="button" @click="closeDetail">
+      <LteButton class="action-button" theme="secondary" type="button" @click="closeDetail">
+        <i class="bi bi-x-lg" aria-hidden="true" />
         {{ t('common.close') }}
       </LteButton>
       <LteButton
         v-if="detailItem"
-        theme="primary"
+        class="action-button"
+        theme="secondary"
         type="button"
         @click="editItem(detailItem)"
       >
+        <i class="bi bi-pencil" aria-hidden="true" />
         {{ t('common.edit') }}
       </LteButton>
     </template>
@@ -608,6 +620,6 @@ onMounted(async () => {
       <LteAlert v-if="bundleBlockingErrors.length" :title="t('library.bundle.blockers')" theme="danger"><p v-for="issue in bundleBlockingErrors" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
       <LteAlert v-if="bundlePreview.warnings.length" :title="t('library.bundle.warnings')" theme="warning"><p v-for="issue in bundlePreview.warnings" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
     </template>
-    <template #footer><LteButton :disabled="bundleBusy" theme="warning" type="button" @click="closeBundle">{{ t('common.cancel') }}</LteButton><LteButton :disabled="bundleBusy || !canImport" theme="primary" type="button" @click="importBundle"><span v-if="bundleBusy" class="spinner-border spinner-border-sm" aria-hidden="true" />{{ t('library.bundle.import') }}</LteButton></template>
+    <template #footer><LteButton class="action-button" :disabled="bundleBusy" theme="secondary" type="button" @click="closeBundle"><i class="bi bi-x-lg" aria-hidden="true" />{{ t('common.cancel') }}</LteButton><LteButton class="action-button" :disabled="bundleBusy || !canImport" theme="primary" type="button" @click="importBundle"><span v-if="bundleBusy" class="spinner-border spinner-border-sm" aria-hidden="true" /><i v-else class="bi bi-upload" aria-hidden="true" />{{ t('library.bundle.import') }}</LteButton></template>
   </ModalHost>
 </template>

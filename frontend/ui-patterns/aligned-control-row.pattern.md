@@ -8,6 +8,7 @@ Contract:
 
 - 普通字段使用 `.form-label` + `.form-control` / `.form-select`；需要字段语义、help 或 error 时使用 `FormField`。
 - 单位或同行动作使用 `.input-group`；开关使用 `.form-check.form-switch`。
+- 同一父级下不要直接堆叠多个 Bootstrap `.row`；把可换行的列放进同一个 row，避免 gutter 的负顶部间距与组件自身的 `mb-3` 偶然互相抵消。
 - 真实表单中 switch 与 label-input 并排时使用 `row g-3`、列 class 和 `data-ui-control-row`；每个控制列都使用
   `.form-label`，包括同级 `legend` 和 switch 列标题。
 - switch 列已有 `.form-label` 时，开关内部 label 使用 `.visually-hidden`，禁止把无标题 switch 居中塞进 label-input 行。

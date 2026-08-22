@@ -15,7 +15,7 @@ const messages = {
       messageInterception: 'Message interception',
       eventFeed: 'Log center',
       workflowLifecycles: 'Run history',
-      styleLab: 'Style lab',
+      styleBaseline: 'Style baseline',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
     },

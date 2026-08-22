@@ -120,14 +120,14 @@ watch(() => props.path, () => { void load() }, { immediate: true })
 <template>
   <section>
     <div class="d-flex align-items-center gap-2 mb-3">
-      <LteButton :aria-label="t('common.back')" theme="secondary" type="button" @click="emit('back')">
+      <LteButton class="action-button" :aria-label="t('common.back')" theme="secondary" type="button" @click="emit('back')">
         <i class="bi bi-chevron-left" aria-hidden="true" />
         {{ t('common.back') }}
       </LteButton>
       <code class="font-monospace text-break">{{ path }}</code>
       <LteButton
         v-if="file?.capabilities.write"
-        class="ms-auto"
+        class="action-button ms-auto"
         :disabled="loading || saving"
         theme="primary"
         type="button"
@@ -150,12 +150,13 @@ watch(() => props.path, () => { void load() }, { immediate: true })
     >
       <p class="mb-2">{{ t('fileManager.editor.conflictDescription') }}</p>
       <div class="d-flex flex-wrap gap-2">
-        <LteButton theme="secondary" type="button" @click="load">
+        <LteButton class="action-button" theme="secondary" type="button" @click="load">
           <i class="bi bi-arrow-clockwise" aria-hidden="true" />
           {{ t('fileManager.editor.reloadDisk') }}
         </LteButton>
         <LteButton
           v-if="file?.capabilities.write"
+          class="action-button"
           :disabled="saving"
           theme="danger"
           type="button"
@@ -164,7 +165,8 @@ watch(() => props.path, () => { void load() }, { immediate: true })
           <i class="bi bi-floppy" aria-hidden="true" />
           {{ t('fileManager.editor.overwriteLatest') }}
         </LteButton>
-        <LteButton theme="info" type="button" @click="keepEditing">
+        <LteButton class="action-button" theme="secondary" type="button" @click="keepEditing">
+          <i class="bi bi-pencil" aria-hidden="true" />
           {{ t('fileManager.editor.keepEditing') }}
         </LteButton>
       </div>

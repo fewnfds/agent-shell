@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 纵向字段、label-input、help/error | `form-field.pattern.md`；`localComponents.approved[name=FormField]` | `src/pages/SystemSettingsPage.vue` |
 | 单位输入、毫秒、容量、suffix | `input-with-unit.pattern.md`；`styles.classRecipes[name=forms-and-actions]` | `src/pages/SystemSettingsPage.vue` |
-| 右侧/行尾/Card header 操作 | `end-aligned-action.pattern.md`；`styles.classRecipes[name=approved-utilities]` | `src/pages/StyleLabPage.vue` |
+| 右侧/行尾/Card header 操作 | `end-aligned-action.pattern.md`；`styles.classRecipes[name=approved-utilities]` | `src/pages/StyleBaselinePage.vue` |
 | 并排表单字段、搜索/筛选、switch 与 label-input 同排 | `aligned-control-row.pattern.md`；`forms-and-actions` + `approved-utilities` | `src/components/data-table/DataTableWorkbench.vue`、`src/pages/EventFeedPage.vue` |
 | 配置库导航、列表和校验侧栏 | `ConfigurationLibraryFrame.vue` + `useConfigurationCatalog` | `src/pages/ConfigLibraryPage.vue`、`src/pages/ConfigurationRepositoriesPage.vue` |
 | 配置编辑左右工作区、CRUD action dock、复制流程 | `ConfigurationEditorLayout.vue` + `ConfigurationCrudActions.vue` + `CopyNameModal.vue` | `src/pages/ComponentsPage.vue`、`src/pages/MainAgentPage.vue`、`src/pages/SubagentPage.vue`、`src/pages/WorkflowsPage.vue` |
@@ -18,4 +18,4 @@
 | 高密度实时页 | 无额外 pattern | `src/pages/EventFeedPage.vue` |
 | 复杂配置工作区 | 无额外 pattern | `src/pages/ComponentsPage.vue` 及 `src/editors/` |
 
-`ui-policy.json` 是机器门禁，Style Lab 是真实渲染验收面，UI contract 是长期原则；它们都不另行定义检索流程。
+`ui-policy.json` 是机器门禁，Style Baseline 是真实渲染验收面，UI contract 是长期原则；它们都不另行定义检索流程。

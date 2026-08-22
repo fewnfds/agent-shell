@@ -196,7 +196,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
     {
       key: 'download',
       label: () => t('workflowLifecycles.downloadLifecycle'),
-      tone: 'info',
+      tone: 'secondary',
       icon: 'download',
       run: downloadLifecycle,
       failureTitle: () => t('workflowLifecycles.downloadFailed'),
@@ -204,6 +204,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
     {
       key: 'delete',
       label: () => t('common.delete'),
+      icon: 'delete',
       tone: 'danger',
       confirm: (row) => ({
         title: t('workflowLifecycles.deleteTitle'),
@@ -308,7 +309,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                             :aria-label="t('workflowLifecycles.downloadRun')"
                             :disabled="downloadingRuns[run.run_id]"
                             size="sm"
-                            theme="info"
+                            theme="secondary"
                             :title="t('workflowLifecycles.downloadRun')"
                             type="button"
                             @click="downloadRun(run)"
@@ -412,13 +413,14 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
             </div>
             <LteButton
               v-if="details[row.lifecycle_id]!.event_has_more"
-              class="mt-2"
+              class="action-button mt-2"
               :disabled="loadingMoreEvents[row.lifecycle_id]"
               size="sm"
               theme="secondary"
               type="button"
               @click="loadMoreEvents(details[row.lifecycle_id]!)"
             >
+              <i v-if="!loadingMoreEvents[row.lifecycle_id]" class="bi bi-arrow-down" aria-hidden="true" />
               {{ loadingMoreEvents[row.lifecycle_id]
                 ? t('common.loading')
                 : t('workflowLifecycles.detail.loadMoreEvents') }}

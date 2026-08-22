@@ -32,26 +32,32 @@ const emit = defineEmits<{
     <slot />
     <template #footer>
       <LteButton
+        class="action-button"
         :disabled="busy"
-        theme="warning"
+        theme="secondary"
         @click="emit('cancel')"
       >
+        <i class="bi bi-x-lg" aria-hidden="true" />
         {{ cancelLabel }}
       </LteButton>
       <LteButton
         v-if="dangerous"
+        class="action-button"
         :disabled="busy"
         theme="danger"
         @click="emit('confirm')"
       >
+        <i class="bi bi-trash" aria-hidden="true" />
         {{ confirmLabel }}
       </LteButton>
       <LteButton
         v-else
+        class="action-button"
         :disabled="busy"
         theme="primary"
         @click="emit('confirm')"
       >
+        <i class="bi bi-check-lg" aria-hidden="true" />
         {{ confirmLabel }}
       </LteButton>
     </template>

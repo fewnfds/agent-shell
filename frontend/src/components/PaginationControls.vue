@@ -160,7 +160,10 @@ function jump(): void {
             step="1"
             type="number"
           >
-          <button class="btn btn-info" type="submit">{{ t('common.pagination.jumpAction') }}</button>
+          <button class="btn btn-secondary action-button" type="submit">
+            <i class="bi bi-arrow-right" aria-hidden="true" />
+            {{ t('common.pagination.jumpAction') }}
+          </button>
         </div>
       </form>
     </div>

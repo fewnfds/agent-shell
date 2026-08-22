@@ -144,7 +144,7 @@
     }
   },
   "styles": {
-    "allowedProjectCss": ["src/styles/management-console.css", "src/styles/style-lab.css"],
+    "allowedProjectCss": ["src/styles/management-console.css"],
     "allowedSfcStyleBlocks": [],
     "allowedInlineStylePaths": [],
     "hardcodedColorsAllowed": false,
@@ -160,7 +160,7 @@
         "name": "app-shell",
         "paths": ["src/components/AppShell.vue"],
         "classes": [
-          "active", "app-header", "app-main", "app-sidebar", "app-wrapper", "bg-body",
+          "active", "app-header", "app-main", "app-sidebar", "app-wrapper", "bg-body", "workflow-editor-active",
           "app-page-title",
           "api-status-indicator", "api-status-indicator--intercepting", "api-status-indicator--running", "api-status-indicator--stopped",
           "bg-body-secondary", "border-bottom", "brand-link", "brand-text", "container-fluid",
@@ -186,7 +186,7 @@
           "src/components/ToastHost.vue"
         ],
         "classes": [
-          "end-0", "me-auto", "modal-title", "p-3", "position-fixed", "toast-container", "toast-host"
+          "end-0", "me-auto", "modal-title", "p-3", "position-fixed", "toast-body", "toast-container", "toast-host"
         ]
       },
       {
@@ -202,7 +202,7 @@
         "name": "content-and-data",
         "paths": ["src/components/*.vue", "src/components/data-table/*.vue", "src/components/workflow/*.vue", "src/editors/*.vue", "src/pages/*.vue"],
         "classes": [
-          "accordion", "alert", "alert-danger", "alert-warning", "align-middle", "badge", "border", "breadcrumb", "breadcrumb-item", "card", "card-body", "card-danger", "card-footer",
+          "accordion", "accordion-button", "alert", "alert-danger", "alert-warning", "align-middle", "badge", "border", "breadcrumb", "breadcrumb-item", "card", "card-body", "card-danger", "card-footer",
           "card-primary", "bg-danger", "bg-info", "bg-primary", "bg-success", "bg-warning",
           "card-header", "card-outline", "card-text", "card-title", "dropdown", "dropdown-item", "dropdown-menu", "dropdown-menu-end", "info-box-number", "page-item", "page-link", "pagination", "progress", "rounded", "spinner-border", "spinner-border-sm",
           "list-group", "list-group-flush", "list-group-item", "row", "table", "table-hover", "table-responsive", "table-striped", "text-bg-danger", "text-bg-info",
@@ -242,7 +242,7 @@
           "src/components/PythonPackageEditor.vue",
           "src/pages/WorkflowsPage.vue",
           "src/pages/FileManagerPage.vue",
-          "src/pages/StyleLabPage.vue"
+          "src/pages/StyleBaselinePage.vue"
         ],
         "classes": ["management-table-head"]
       },
@@ -318,22 +318,17 @@
         ]
       },
       {
-        "name": "style-lab-experiment",
-        "paths": ["src/pages/StyleLabPage.vue"],
+        "name": "style-baseline",
+        "paths": ["src/pages/StyleBaselinePage.vue"],
         "classes": [
-          "card-info", "card-primary", "lab-actions", "lab-card", "lab-card--aurora",
-          "lab-card--corner", "lab-card--dense", "lab-card--glass", "lab-card--layered",
-          "lab-card--rail", "lab-card--split", "lab-card--terminal", "lab-card__body",
-          "lab-card__eyebrow", "lab-card__footer", "lab-card__header", "lab-card__icon",
-          "lab-card__index", "lab-control-label", "lab-control-sample", "lab-corner-mark",
-          "lab-definition-list", "lab-dot", "lab-grid", "lab-grid--compact", "lab-intro", "lab-kicker",
-          "lab-kpi-row", "lab-mini-field", "lab-sample", "lab-status-value", "lab-swatch",
-          "lab-swatch-row", "lab-terminal-dots", "lab-terminal-line", "lab-choice-group",
-          "lab-cluster", "lab-feedback-grid", "lab-form-grid", "lab-form-span", "lab-section",
-          "lab-section__header", "lab-section__index", "lab-surface", "lab-table-frame", "style-lab"
+          "style-baseline", "ms-2"
         ]
       }
     ]
+  },
+  "layoutRules": {
+    "forbidAdjacentRows": true,
+    "reason": "Bootstrap gutter rows have a negative top margin; keep sibling rows from overlapping and let one row wrap its columns instead."
   },
   "icons": {
     "cssImportPaths": ["src/main.ts"],
@@ -430,7 +425,7 @@
           "src/pages/FileManagerPage.vue",
           "src/pages/MainAgentPage.vue",
           "src/pages/MessageInterceptionPage.vue",
-          "src/pages/StyleLabPage.vue",
+          "src/pages/StyleBaselinePage.vue",
           "src/pages/SubagentPage.vue",
           "src/pages/SystemSettingsPage.vue",
           "src/pages/TerminologyPage.vue",
@@ -505,7 +500,7 @@
           "src/editors/ModelEditor.vue",
           "src/editors/PromptCachingEditor.vue",
           "src/editors/SummarizationEditor.vue",
-          "src/pages/StyleLabPage.vue",
+          "src/pages/StyleBaselinePage.vue",
           "src/pages/SystemSettingsPage.vue",
           "src/pages/WorkflowsPage.vue",
           "src/components/CopyNameModal.vue"

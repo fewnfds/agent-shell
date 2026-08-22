@@ -224,6 +224,7 @@ function checkWorkspace(root, policyPath) {
     const controlRowAttribute = controlSemantics.controlRowAttribute
     const controlColumnPrefixes = controlSemantics.controlColumnPrefixes ?? []
     const peerLegendClasses = new Set(controlSemantics.peerLegendClasses ?? [])
+    const forbidAdjacentRows = policy.layoutRules?.forbidAdjacentRows === true
 
     function staticClasses(node) {
       if (node.type !== NodeTypes.ELEMENT) return new Set()
@@ -280,6 +281,10 @@ function checkWorkspace(root, policyPath) {
       return columns
     }
 
+    function directElementChildren(node) {
+      return (node.children ?? []).filter((child) => child.type === NodeTypes.ELEMENT)
+    }
+
     function columnHasFieldLabel(column) {
       return ownedElementMatches(column, (node, classes) => (
         (visibleLabelClass && classes.has(visibleLabelClass))
@@ -297,6 +302,16 @@ function checkWorkspace(root, policyPath) {
         const line = node.loc.start.line
         const tag = node.tag
         const classes = staticClasses(node)
+        if (forbidAdjacentRows) {
+          const elementChildren = directElementChildren(node)
+          for (let index = 1; index < elementChildren.length; index += 1) {
+            const previous = staticClasses(elementChildren[index - 1])
+            const current = staticClasses(elementChildren[index])
+            if (previous.has('row') && current.has('row')) {
+              addError(file, 'adjacent Bootstrap .row elements are forbidden; keep columns in one wrapping row', elementChildren[index].loc.start.line)
+            }
+          }
+        }
         if (tag.startsWith('El')) addError(file, `Element Plus component <${tag}> is forbidden`, line)
         if (tag.startsWith('Lte') && !adminImportAllowed(tag, file)) {
           addError(file, `AdminLTE component <${tag}> is not approved for this path`, line)

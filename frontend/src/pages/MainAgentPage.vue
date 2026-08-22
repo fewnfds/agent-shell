@@ -402,9 +402,9 @@ watch(
                 </small>
               </div>
               <LteButton
+                class="icon-action-button ms-auto"
                 :aria-label="t('agents.obsoleteReferences.remove')"
                 :title="t('agents.obsoleteReferences.remove')"
-                class="ms-auto"
                 data-action="remove-obsolete-capability-reference"
                 size="sm"
                 theme="danger"

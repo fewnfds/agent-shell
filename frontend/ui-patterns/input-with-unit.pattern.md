@@ -19,4 +19,4 @@ Correct:
 
 Contract: 单位可见、紧邻输入框，并通过 `aria-describedby` 关联。
 
-Verify: `src/pages/SystemSettingsPage.vue`、`src/pages/StyleLabPage.vue`。
+Verify: `src/pages/SystemSettingsPage.vue`、`src/pages/StyleBaselinePage.vue`。

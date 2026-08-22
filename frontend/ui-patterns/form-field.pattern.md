@@ -20,4 +20,4 @@ Correct:
 
 Contract: `control-id` 生成 `<label for>` 及 help/error ID；调用方仍拥有具体控件、值和校验状态。
 
-Verify: `src/pages/SystemSettingsPage.vue`、`src/pages/StyleLabPage.vue`。
+Verify: `src/pages/SystemSettingsPage.vue`、`src/pages/StyleBaselinePage.vue`。
