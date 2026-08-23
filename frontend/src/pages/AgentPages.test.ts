@@ -151,6 +151,92 @@ describe('agent authoring pages', () => {
     subagentPage.wrapper.unmount()
   })
 
+  it('unlocks Agent editors when a pending route load is replaced by a new draft', async () => {
+    const currentMainAgentId = '00000000-0000-0000-0000-000000000010'
+    const pendingMainAgentId = '00000000-0000-0000-0000-000000000033'
+    const pendingMainAgent = deferred<MainAgentProfile>()
+    const mainAgentApi = service({
+      getMainAgent: vi.fn((id: string) => (
+        id === pendingMainAgentId
+          ? pendingMainAgent.promise
+          : Promise.resolve({
+              id: currentMainAgentId,
+              name: 'Current MainAgent',
+              capability_refs: [],
+              subagents: [],
+            })
+      )),
+    })
+    const mainAgentPage = await mountMainAgentPage(
+      mainAgentApi,
+      `/agents/main?id=${currentMainAgentId}`,
+    )
+
+    await mainAgentPage.router.push({
+      path: '/agents/main',
+      query: { id: pendingMainAgentId },
+    })
+    await flushPromises()
+    const mainAgentSurface = mainAgentPage.wrapper.get('.configuration-loading-surface')
+    expect(mainAgentSurface.attributes('inert')).toBeDefined()
+    await mainAgentPage.router.push({ path: '/agents/main' })
+    await flushPromises()
+    expect(mainAgentSurface.attributes('data-loading')).toBe('false')
+    expect(mainAgentSurface.attributes('inert')).toBeUndefined()
+    pendingMainAgent.resolve({
+      id: pendingMainAgentId,
+      name: 'Late MainAgent',
+      capability_refs: [],
+      subagents: [],
+    })
+    await flushPromises()
+    expect(mainAgentSurface.attributes('data-loading')).toBe('false')
+    mainAgentPage.wrapper.unmount()
+
+    const currentSubagentId = '00000000-0000-0000-0000-000000000020'
+    const pendingSubagentId = '00000000-0000-0000-0000-000000000043'
+    const pendingSubagent = deferred<SubagentProfile>()
+    const subagentApi = service({
+      getSubagent: vi.fn((id: string) => (
+        id === pendingSubagentId
+          ? pendingSubagent.promise
+          : Promise.resolve({
+              id: currentSubagentId,
+              component_name: 'Current Subagent',
+              name: 'current_worker',
+              description: 'Current worker.',
+              settings: { capability_overrides: [] },
+            })
+      )),
+    })
+    const subagentPage = await mountSubagentPage(
+      subagentApi,
+      `/agents/subagents?id=${currentSubagentId}`,
+    )
+
+    await subagentPage.router.push({
+      path: '/agents/subagents',
+      query: { id: pendingSubagentId },
+    })
+    await flushPromises()
+    const subagentSurface = subagentPage.wrapper.get('.configuration-loading-surface')
+    expect(subagentSurface.attributes('inert')).toBeDefined()
+    await subagentPage.router.push({ path: '/agents/subagents' })
+    await flushPromises()
+    expect(subagentSurface.attributes('data-loading')).toBe('false')
+    expect(subagentSurface.attributes('inert')).toBeUndefined()
+    pendingSubagent.resolve({
+      id: pendingSubagentId,
+      component_name: 'Late Subagent',
+      name: 'late_worker',
+      description: 'Late worker.',
+      settings: { capability_overrides: [] },
+    })
+    await flushPromises()
+    expect(subagentSurface.attributes('data-loading')).toBe('false')
+    subagentPage.wrapper.unmount()
+  })
+
   it('keeps the loaded MainAgent identity when selecting another record fails', async () => {
     const currentId = '00000000-0000-0000-0000-000000000010'
     const failedId = '00000000-0000-0000-0000-000000000099'

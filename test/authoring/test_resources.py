@@ -160,6 +160,7 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
 
     removed = client.delete(f"/api/blocks/skill/{owner_id}/skills/outline")
     assert removed.status_code == 200, removed.text
+    assert removed.json()["warnings"] == {}
     added = client.post(
         f"/api/blocks/skill/{owner_id}/skills",
         json={"template_path": "second/outline"},

@@ -36,6 +36,7 @@ class ConfigurationValidationSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     debounce_ms: int = Field(
+        strict=True,
         ge=MIN_VALIDATION_DEBOUNCE_MS,
     )
 

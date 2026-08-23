@@ -148,6 +148,11 @@ export function useDataTable<Row>(config: DataTableConfig<Row>) {
       if (sequence !== requestSequence) return
       remoteRows.value = result.rows
       remoteTotal.value = result.total
+      const boundedPage = Math.min(page.value, totalPages.value)
+      if (boundedPage !== page.value) {
+        page.value = boundedPage
+        await reload()
+      }
     } catch (error) {
       if (sequence === requestSequence) loadError.value = error
     } finally {

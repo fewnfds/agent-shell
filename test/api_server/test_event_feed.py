@@ -63,6 +63,18 @@ def test_event_feed_exposes_only_supported_sources(
     assert rejected.status_code == 422
 
 
+def test_system_log_settings_reject_boolean_size(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        rejected = client.put(
+            "/api/event-feed/system/settings",
+            json={"max_size_mib": True},
+        )
+
+    assert rejected.status_code == 422
+
+
 def test_event_feed_deletes_filtered_runtime_records_across_pages(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -88,6 +88,7 @@ class BlockStore:
         name = data["name"]
         existing: dict | None = None
         def mutate(config: dict) -> None:
+            nonlocal existing
             records = self._records(config, block_type)
             for record in records:
                 if record.get("id") == block_id:

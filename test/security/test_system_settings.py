@@ -9,6 +9,9 @@ import yaml
 from agent_shell.app import create_app
 from agent_shell.settings import get_settings
 from agent_shell.storage.file_config import FileConfigRepository
+from agent_shell.storage.runtime_policy import RuntimePolicyStore
+from agent_shell.storage.system_log_settings import SystemLogSettingsStore
+from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from support import API_KEY, MANAGEMENT_TOKEN, ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -341,3 +344,31 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     invalid = {**update, "content_blocks": 0}
     rejected = client.put("/api/system/runtime-policy", json=invalid)
     assert rejected.status_code == 422
+
+    boolean = {**update, "content_blocks": True}
+    rejected_boolean = client.put("/api/system/runtime-policy", json=boolean)
+    assert rejected_boolean.status_code == 422
+
+
+def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> None:
+    repository = FileConfigRepository.empty(tmp_path)
+    repository.update_system(
+        lambda system: system.setdefault("runtime_policy", {}).__setitem__(
+            "content_blocks", True
+        )
+    )
+    repository.update_system(
+        lambda system: system["configuration_validation"].__setitem__(
+            "debounce_ms", True
+        )
+    )
+    repository.update_system(
+        lambda system: system["system_log"].__setitem__("max_size_mib", True)
+    )
+
+    with pytest.raises(ValueError, match="runtime policy content_blocks"):
+        RuntimePolicyStore(repository).snapshot()
+    with pytest.raises(ValueError, match="validation debounce"):
+        ConfigurationValidationSettingsStore(repository).snapshot()
+    with pytest.raises(ValueError, match="system log maximum size"):
+        SystemLogSettingsStore(repository).snapshot()

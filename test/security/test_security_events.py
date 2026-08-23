@@ -79,6 +79,13 @@ def test_lifecycle_configuration_events_and_model_secrets_are_metadata_only(
             headers={"X-Request-ID": request_id},
         )
         assert configured.status_code == 200
+        prompt_id = configured.json()["id"]
+        updated = client.put(
+            f"/api/blocks/system-prompt/{prompt_id}",
+            json={"name": "Event prompt", "system_prompt": "Be concise."},
+            headers={"X-Request-ID": request_id},
+        )
+        assert updated.status_code == 200
 
     log_path = runtime / "logs" / "security-events.jsonl"
     raw = log_path.read_text(encoding="utf-8")
@@ -100,6 +107,13 @@ def test_lifecycle_configuration_events_and_model_secrets_are_metadata_only(
     ]
     assert request_records
     assert all(record["request_id"] == request_id for record in request_records)
+    prompt_actions = [
+        record["metadata"]["action"]
+        for record in request_records
+        if record["metadata"].get("entity") == "block"
+        and record["metadata"].get("entity_id") == prompt_id
+    ]
+    assert prompt_actions == ["created", "updated"]
     assert all(set(record) == {"timestamp", "event", "request_id", "actor", "metadata"} for record in records)
 
 

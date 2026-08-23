@@ -142,7 +142,8 @@ try {
     }
     $configRoot = Join-Path $dataRoot "config"
     New-Item -ItemType Directory -Path $configRoot -Force | Out-Null
-    @"
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    $systemConfiguration = @"
 config_version: 1
 settings:
   host: 127.0.0.1
@@ -151,9 +152,20 @@ settings:
   langsmith_tracing_enabled: false
   cors_origins: []
   trusted_proxy_cidrs: []
-"@ | Set-Content -LiteralPath (Join-Path $configRoot "system.yaml") -Encoding utf8
-    "AGENT_SHELL_MANAGEMENT_TOKEN=$temporaryManagementPassword" |
-        Set-Content -LiteralPath (Join-Path $configRoot "agent-shell.env") -Encoding utf8
+"@
+    [System.IO.File]::WriteAllText(
+        (Join-Path $configRoot "system.yaml"),
+        ($systemConfiguration.TrimEnd([char[]]"`r`n") + "`n"),
+        $utf8WithoutBom
+    )
+    $managementTokenJson = ConvertTo-Json `
+        -InputObject $temporaryManagementPassword `
+        -Compress
+    [System.IO.File]::WriteAllText(
+        (Join-Path $configRoot "agent-shell.env"),
+        ("AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenJson),
+        $utf8WithoutBom
+    )
     $env:PYTHONHOME = $null
     $env:PYTHONPATH = $source
     $env:PYTHONNOUSERSITE = "1"

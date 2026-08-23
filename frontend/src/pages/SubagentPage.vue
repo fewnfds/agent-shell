@@ -180,6 +180,7 @@ async function loadProfile(id: string): Promise<void> {
     feedbackDetail.value = ''
     notify({ tone: 'info', title: t('agents.feedback.newDraft') })
     markClean()
+    loading.value = false
     return
   }
   if (!service.value) return

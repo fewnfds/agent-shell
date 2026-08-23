@@ -236,7 +236,7 @@ class SkillPackageAuthoringService:
             raise SkillPackageAuthoringError(
                 "skill_not_found", "The selected private Skill does not exist.", status_code=404
             )
-        staging = Path(tempfile.mkdtemp(prefix=f".{owner_id}.", dir=root))
+        staging = Path(tempfile.mkdtemp(prefix=f".{owner_id}.", dir=root.parent))
         staged = staging / target.name
         shutil.move(str(target), str(staged))
 

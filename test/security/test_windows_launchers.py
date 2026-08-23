@@ -267,3 +267,18 @@ def test_explicit_debug_uses_temporary_data_and_dynamic_ports() -> None:
     assert "Remove-Item -LiteralPath $dataRoot -Recurse -Force" in debug_script
     assert "9100" not in debug_script
     assert "19101" not in debug_script
+
+
+def test_explicit_debug_serializes_environment_as_utf8_without_bom() -> None:
+    debug_script = (
+        REPOSITORY_ROOT / "packaging" / "development" / "start_dev.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "ConvertTo-Json" in debug_script
+    assert "-InputObject $temporaryManagementPassword" in debug_script
+    assert '"AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenJson' in debug_script
+    assert "[System.Text.UTF8Encoding]::new($false)" in debug_script
+    assert (
+        'Set-Content -LiteralPath (Join-Path $configRoot "agent-shell.env")'
+        not in debug_script
+    )

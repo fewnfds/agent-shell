@@ -41,13 +41,22 @@ class RuntimePolicyStore:
     def __init__(self, repository: FileConfigRepository) -> None:
         self._repository = repository
 
+    @staticmethod
+    def _validated_value(name: str, value: object) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"runtime policy {name} must be an integer")
+        minimum = getattr(RUNTIME_POLICY_MINIMUMS, name)
+        if value < minimum:
+            raise ValueError(f"runtime policy {name} must be at least {minimum}")
+        return value
+
     def snapshot(self) -> RuntimePolicy:
         values = self._repository.system().get(self._section, {})
         if not isinstance(values, dict):
             values = {}
         defaults = asdict(RUNTIME_POLICY_DEFAULTS)
         normalized = {
-            name: int(values.get(name, default))
+            name: self._validated_value(name, values.get(name, default))
             for name, default in defaults.items()
         }
         return RuntimePolicy(**normalized)
@@ -63,15 +72,12 @@ class RuntimePolicyStore:
 
     def update(self, values: dict[str, Any]) -> dict[str, Any]:
         names = {item.name for item in fields(RuntimePolicy)}
+        current = asdict(self.snapshot())
         candidate: dict[str, int] = {}
         for name in names:
-            value = values.get(name, getattr(self.snapshot(), name))
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ValueError(f"runtime policy {name} must be an integer")
-            minimum = getattr(RUNTIME_POLICY_MINIMUMS, name)
-            if value < minimum:
-                raise ValueError(f"runtime policy {name} must be at least {minimum}")
-            candidate[name] = value
+            candidate[name] = self._validated_value(
+                name, values.get(name, current[name])
+            )
 
         self._repository.update_system(
             lambda system: system.__setitem__(self._section, candidate)

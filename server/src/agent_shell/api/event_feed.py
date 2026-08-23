@@ -30,7 +30,7 @@ class EventFeedDeleteMatching(BaseModel):
 class SystemLogSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_size_mib: int = Field(ge=MIN_SYSTEM_LOG_MAX_SIZE_MIB)
+    max_size_mib: int = Field(strict=True, ge=MIN_SYSTEM_LOG_MAX_SIZE_MIB)
 
 
 def _time_window(started_at: datetime, ended_at: datetime) -> tuple[datetime, datetime]:

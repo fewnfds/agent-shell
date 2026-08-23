@@ -61,15 +61,15 @@ class SystemSettingsUpdate(BaseModel):
 class RuntimePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    chat_completion_body_bytes: int = Field(ge=1)
-    content_blocks: int = Field(ge=1)
-    decoded_block_bytes: int = Field(ge=1)
-    decoded_total_bytes: int = Field(ge=1)
-    media_output_bytes: int = Field(ge=1)
-    text_edit_bytes: int = Field(ge=1)
-    provider_timeout_seconds: int = Field(ge=1)
-    provider_connect_timeout_seconds: int = Field(ge=1)
-    provider_catalog_timeout_seconds: int = Field(ge=1)
+    chat_completion_body_bytes: int = Field(strict=True, ge=1)
+    content_blocks: int = Field(strict=True, ge=1)
+    decoded_block_bytes: int = Field(strict=True, ge=1)
+    decoded_total_bytes: int = Field(strict=True, ge=1)
+    media_output_bytes: int = Field(strict=True, ge=1)
+    text_edit_bytes: int = Field(strict=True, ge=1)
+    provider_timeout_seconds: int = Field(strict=True, ge=1)
+    provider_connect_timeout_seconds: int = Field(strict=True, ge=1)
+    provider_catalog_timeout_seconds: int = Field(strict=True, ge=1)
 
 
 def _raise_settings_error(error: SystemSettingsError) -> NoReturn:

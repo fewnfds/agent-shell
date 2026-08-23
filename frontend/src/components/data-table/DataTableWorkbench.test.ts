@@ -174,6 +174,37 @@ describe('DataTableWorkbench', () => {
     expect(wrapper.text()).not.toContain('Old')
   })
 
+  it('reloads the last valid numbered page when the remote total shrinks', async () => {
+    let total = 5
+    const load = vi.fn(async ({ page }: { page: number }) => ({
+      rows: page === 1
+        ? rows.slice(0, 2)
+        : page === 3 && total === 5 ? rows.slice(2) : [],
+      total,
+    }))
+    const config: DataTableConfig<Row> = {
+      ...baseConfig(),
+      provider: { mode: 'numbered', load },
+    }
+    const wrapper = mount(DataTableWorkbench, {
+      props: { config },
+      global: { plugins: [i18n()] },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '3')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('page 3 of 3')
+
+    total = 2
+    await (wrapper.vm as unknown as { reload: () => Promise<void> }).reload()
+    await flushPromises()
+
+    expect(load.mock.calls.map(([request]) => request.page)).toEqual([1, 3, 3, 1])
+    expect(wrapper.text()).toContain('2 items, 1–2, page 1 of 1')
+    expect(wrapper.text()).toContain('Alpha')
+  })
+
   it('owns datetime validation and merges narrow external filter updates', async () => {
     const load = vi.fn().mockResolvedValue({ rows: [rows[0]], total: 1 })
     const config: DataTableConfig<Row> = {
