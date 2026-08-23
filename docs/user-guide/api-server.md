@@ -54,7 +54,7 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。画布 Start/End 直接�
 - 后台 Agent/Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；Task Dispatcher 在请求内生成动态 worker，多个 normal 出边、一次激活的多个 branch 目标和多个 Send task 按 LangGraph super-step 语义执行；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、诊断包下载和显式删除。列表使用 `page/page_size/query` 后端分页；详情和导出提供结构记录、Checkpoint/Store 摘要与关联诊断。删除在 parent 和后台任务进入终态后执行，并可清理受管动态目录。
+- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断，Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、后台任务、Run/Event、完整 Checkpoint State、Lifecycle Store 记录和诊断附件。删除在 parent 和后台任务进入终态后执行，并可清理受管动态目录。
 
 ## API Key 与状态
 

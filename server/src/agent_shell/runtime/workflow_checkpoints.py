@@ -110,7 +110,11 @@ class WorkflowCheckpointService:
         ]
 
     async def iter_checkpoint_history(
-        self, thread_id: str, *, limit: int | None = None
+        self,
+        thread_id: str,
+        *,
+        limit: int | None = None,
+        include_state: bool = False,
     ) -> AsyncIterator[dict[str, object]]:
         config = {"configurable": {"thread_id": thread_id}}
         async for item in self.checkpointer.alist(config, limit=limit):
@@ -118,7 +122,7 @@ class WorkflowCheckpointService:
             checkpoint = item.checkpoint
             metadata = item.metadata or {}
             channels = checkpoint.get("channel_values", {})
-            yield {
+            record: dict[str, object] = {
                 "checkpoint_id": str(configurable.get("checkpoint_id", "")),
                 "checkpoint_ns": str(configurable.get("checkpoint_ns", "")),
                 "created_at": str(checkpoint.get("ts", "")),
@@ -127,6 +131,9 @@ class WorkflowCheckpointService:
                 "channel_names": sorted(str(key) for key in channels),
                 "pending_write_count": len(item.pending_writes or ()),
             }
+            if include_state:
+                record["state"] = channels
+            yield record
 
     async def checkpoint_count(self, thread_id: str) -> int:
         config = {"configurable": {"thread_id": thread_id}}

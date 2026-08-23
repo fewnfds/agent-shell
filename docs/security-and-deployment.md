@@ -9,6 +9,8 @@
 
 默认监听 `127.0.0.1`，本地模式也始终要求管理密码。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
+Agent Shell 按单实例、单一所有者信任域设计。管理、审计和日常使用由同一个实例所有者承担；业务 Workflow 和 Run 可以并发执行，运行数据仍归同一个所有者。管理鉴权保护实例入口，不建立多租户数据隔离、SaaS 角色分权或管理者、审计者、用户之间的下载可见性分层。
+
 ## CORS 与代理
 
 CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userinfo、path、query 或 fragment。
@@ -65,7 +67,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。
 降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
-运行历史诊断包属于 management-only 敏感出口，但只导出结构记录、Checkpoint/Store 摘要和关联诊断，不复制运行正文。
+运行历史的 Lifecycle ZIP 和单 Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、后台任务、Run/Event、完整 Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。下载不提供敏感度分类或内容开关，也不对这些运行记录另做脱敏；用户写入 prompt、Tool payload、State、Store 或异常链的敏感内容会随对应记录进入 ZIP。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取。最终经过 LangChain middleware 与模型适配后发送到 Provider 的网络层 Model Request，以及成功 Provider HTTP 原始响应，目前没有作为独立运行记录持久化，因此运行详情 ZIP 不提供这两份字节级原文。
 
 ## 系统配置与变量
 

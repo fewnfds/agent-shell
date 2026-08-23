@@ -7,6 +7,7 @@ from pathlib import Path
 import zipfile
 
 from agent_shell.app import create_app
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.errors import AgentRuntimeError
 from support import ScopedAuthTestClient
 
@@ -199,6 +200,16 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
         assert "events" not in run_payload
         assert "checkpoints" not in run_payload
 
+        client.app.state.runtime_diagnostics.observation_error(
+            RuntimeError("run-history-detail-sentinel"),
+            code="run_history_export_test",
+            component="observability",
+            context=RuntimeDiagnosticContext(
+                lifecycle_id=summary["lifecycle_id"],
+                run_id=root_run["run_id"],
+            ),
+        )
+
         downloaded = client.get(
             f"/api/workflow-lifecycles/{summary['lifecycle_id']}/download"
         )
@@ -210,14 +221,46 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "lifecycle.json",
                 "runs.json",
                 "events.jsonl",
+                "input.json",
+                "agent-invocations.jsonl",
+                "background-tasks.jsonl",
                 "store-summary.json",
+                "store-payloads.jsonl",
                 "diagnostics.jsonl",
                 f"checkpoints/{root_run['run_id']}.jsonl",
             } <= set(archive.namelist())
             manifest = json.loads(archive.read("manifest.json"))
             assert manifest["captured_at"]
-            assert manifest["includes"]["runtime_payloads"] is False
-            assert b"private-run-history-sentinel" not in downloaded.content
+            assert manifest["format"] == "agent-shell-run-history-v2"
+            assert manifest["includes"]["lifecycle_input"] is True
+            assert manifest["includes"]["checkpoint_state"] is True
+            assert json.loads(archive.read("input.json"))["messages"] == [
+                {"role": "user", "content": "private-run-history-sentinel"}
+            ]
+            invocations = [
+                json.loads(line)
+                for line in archive.read("agent-invocations.jsonl").splitlines()
+            ]
+            assert invocations
+            assert any(item["artifact"]["messages"] for item in invocations)
+            checkpoints = [
+                json.loads(line)
+                for line in archive.read(
+                    f"checkpoints/{root_run['run_id']}.jsonl"
+                ).splitlines()
+            ]
+            assert checkpoints
+            assert any("state" in item for item in checkpoints)
+            diagnostics = [
+                json.loads(line)
+                for line in archive.read("diagnostics.jsonl").splitlines()
+            ]
+            assert len(diagnostics) == 1
+            diagnostic_path = (
+                f"diagnostics/{diagnostics[0]['diagnostic_id']}.log"
+            )
+            assert diagnostic_path in archive.namelist()
+            assert b"run-history-detail-sentinel" in archive.read(diagnostic_path)
         run_downloaded = client.get(
             f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
             f"/runs/{root_run['run_id']}/download"
@@ -228,10 +271,33 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "manifest.json",
                 "run.json",
                 "events.jsonl",
+                "input.json",
+                "agent-invocations.jsonl",
+                "background-tasks.jsonl",
+                "store-summary.json",
+                "store-payloads.jsonl",
                 "checkpoints.jsonl",
                 "diagnostics.jsonl",
             } <= set(archive.namelist())
-            assert json.loads(archive.read("manifest.json"))["scope"] == "run"
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["scope"] == "run"
+            assert manifest["includes"]["checkpoint_state"] is True
+            checkpoints = [
+                json.loads(line)
+                for line in archive.read("checkpoints.jsonl").splitlines()
+            ]
+            assert checkpoints
+            assert any("state" in item for item in checkpoints)
+            diagnostics = [
+                json.loads(line)
+                for line in archive.read("diagnostics.jsonl").splitlines()
+            ]
+            assert len(diagnostics) == 1
+            diagnostic_path = (
+                f"diagnostics/{diagnostics[0]['diagnostic_id']}.log"
+            )
+            assert diagnostic_path in archive.namelist()
+            assert b"run-history-detail-sentinel" in archive.read(diagnostic_path)
         assert not list(
             (tmp_path / "runtime" / "tmp").glob("workflow-diagnostic-*")
         )

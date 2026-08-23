@@ -378,6 +378,76 @@ class WorkflowLifecycleService:
             raise RuntimeError("the Workflow lifecycle input does not exist")
         return deepcopy(messages)
 
+    async def invocation_artifacts(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        namespace = (
+            lifecycle_invocations_namespace(lifecycle_id, run_id)
+            if run_id is not None
+            else (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "invocations")
+        )
+        items = await self._search_all(namespace)
+        artifacts: list[dict[str, Any]] = []
+        for item in items:
+            value = item.value
+            if not isinstance(value, dict):
+                continue
+            artifacts.append(
+                {
+                    "run_id": str(item.namespace[3])
+                    if len(item.namespace) > 3
+                    else "",
+                    "key": str(item.key),
+                    "artifact": deepcopy(value),
+                }
+            )
+        return artifacts
+
+    async def task_records(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        items = await self._search_all(lifecycle_tasks_namespace(lifecycle_id))
+        records: list[dict[str, Any]] = []
+        for item in items:
+            value = item.value
+            if not isinstance(value, dict):
+                continue
+            if run_id is not None and run_id not in {
+                str(value.get("launcher_run_id", "")),
+                str(value.get("child_run_id", "")),
+            }:
+                continue
+            records.append(deepcopy(value))
+        return records
+
+    async def store_records(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        items = await self._search_all((LIFECYCLE_NAMESPACE_ROOT, lifecycle_id))
+        records: list[dict[str, Any]] = []
+        for item in items:
+            namespace = tuple(str(part) for part in item.namespace)
+            if run_id is not None and len(namespace) >= 4:
+                if namespace[2] == "invocations" and namespace[3] != run_id:
+                    continue
+            records.append(
+                {
+                    "namespace": list(item.namespace),
+                    "key": str(item.key),
+                    "value": deepcopy(item.value),
+                }
+            )
+        return records
+
     async def _search_all(self, namespace: tuple[str, ...]) -> list[Any]:
         items: list[Any] = []
         offset = 0

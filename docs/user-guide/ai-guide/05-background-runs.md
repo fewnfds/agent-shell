@@ -56,8 +56,8 @@ Management API 只提供 Lifecycle/Run 的只读观测与 explicit cleanup，不
 | `GET /api/workflow-lifecycles/{lifecycle_id}` | 获取一个 Lifecycle 摘要 |
 | `GET /api/workflow-lifecycles/{lifecycle_id}/events` | 按 Run、Node invocation 或 event type 分页读取结构事件 |
 | `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}` | 获取单个 Run 的摘要、事件与 checkpoint 计数 |
-| `GET /api/workflow-lifecycles/{lifecycle_id}/download` | 下载 Lifecycle 诊断包 |
-| `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` | 下载单个 Run 诊断包 |
+| `GET /api/workflow-lifecycles/{lifecycle_id}/download` | 下载 Lifecycle 完整运行详情 ZIP |
+| `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` | 下载单个 Run 完整运行详情 ZIP |
 | `DELETE /api/workflow-lifecycles/{lifecycle_id}` | 清理 parent/child Debug thread、Store prefix；存在 active Run/task 时返回 409 |
 
 删除时可选 `?delete_dynamic_directories=true` 清理本 Lifecycle 的 managed dynamic directory。parent Run 到达 End 不会自动取消 background task，

@@ -18,7 +18,7 @@ Custom Tool、Middleware 或普通 Node 可以在自己的 invocation 内调用 
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 `operation_id` 的幂等范围是当前 caller Run；业务重派使用新的 operation ID。Workflow target 只允许已启用子图，后台 Agent 使用自身有效 Filesystem，后台输出由调用方显式读取和编排。
 
-【系统 / 运行历史】页面按一次顶层请求列出 Lifecycle，并展示 root/background Run 父子关系、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及单 Run/Lifecycle 诊断包下载。Event Journal 只保存结构身份、状态、时间和 usage，不复制运行正文。
+【系统 / 运行历史】页面按一次顶层请求列出 Lifecycle，并展示 root/background Run 父子关系、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及单 Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的输入、Agent invocation artifact、后台任务、Run/Event、Checkpoint State、Lifecycle Store 记录和诊断附件。
 Lifecycle 的 messages、task records、resolved mapping records 和 parent/child checkpoint 默认持续保留，直到用户显式删除；删除时同时清理受管的生命周期动态目录。父 Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` 后台任务时，删除返回冲突；
 父 Run 终止且后台任务经 Workflow 代码、Tool/Middleware 或管理操作进入终态后，Lifecycle 可以删除。父图到达 End 后，后台任务与 Lifecycle 按各自生命周期继续保留。
 删除开始后 Lifecycle 进入 `deleting` 并冻结后台 Run 创建；清理失败时保留该状态，可由用户再次执行删除继续清场。

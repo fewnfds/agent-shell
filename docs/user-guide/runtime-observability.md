@@ -30,10 +30,11 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 Run Registry 是 Run 身份与终态的权威记录；append-only Event Journal 保存 Run、Workflow Node、Agent、Model 和 Tool 的结构边界。Workflow Node 每次执行使用独立 `span_id`，其 `node_invocation_id` 与该 `span_id` 相同；Agent、Model 和 Tool 拥有自己的 `span_id/parent_span_id`，并保留所属 `node_invocation_id`。同一 Node 的循环、重试和 fan-out 不会合并。
 Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍开放的 Node、Agent、Model 和 Tool span，Timeline 不保留伪 `running` 子项。
 
-只有 `run_kind=workflow` 的 Run 使用独立 thread，并由 LangGraph `AsyncSqliteSaver` 写入 checkpoint；`run_kind=agent`（当前为 background Agent）标记为 `checkpoint_available=false`，不装配独立 checkpointer。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 Run 父子关系、结构 Timeline，以及 Checkpoint 摘要、结构事件和关联诊断的计数；不包含 Checkpoint State。需要完整条目时下载单 Run 或整个 Lifecycle 的 management-only 诊断包。
+只有 `run_kind=workflow` 的 Run 使用独立 thread，并由 LangGraph `AsyncSqliteSaver` 写入 checkpoint；`run_kind=agent`（当前为 background Agent）标记为 `checkpoint_available=false`，不装配独立 checkpointer。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 Run 父子关系、结构 Timeline，以及 Checkpoint 摘要、结构事件和关联诊断的计数；页面不直接展开 Checkpoint State 和运行消息。
 
-诊断包标注 `captured_at`、当前终态/活动状态、最后事件 sequence 和观测完整性。它不包含 Lifecycle 输入、`messages[]`、
-模型正文、Tool/Script payload、Provider 原始响应或 Checkpoint State，也不承诺字节级重放。运行历史没有自动 retention；
+运行历史直接提供 Lifecycle ZIP 和单 Run ZIP。ZIP 标注 `captured_at`、当前终态/活动状态、最后事件 sequence 和观测完整性，并固定包含下载时可读取的 Run Registry、结构事件、Lifecycle 输入、持久化 Agent invocation artifact、后台任务记录、完整 Checkpoint State、Lifecycle Store 摘要与原始记录、诊断摘要和现存异常详情附件。下载没有敏感度分类或内容开关；写入这些运行记录的消息、模型/工具内容、路径或其他敏感材料会原样进入 ZIP。
+
+运行详情 ZIP 是持久化运行快照，不承诺字节级重放。最终经过 LangChain middleware 与模型适配后发送到 Provider 的网络层 Model Request，以及成功 Provider HTTP 原始响应，目前没有作为独立运行记录持久化，因此 ZIP 中没有这两份字节级原文。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件。运行历史没有自动 retention；
 只有 Lifecycle 显式删除会清理 Run/Event、Store、Checkpoint 和选择的受管动态目录。
 
 下载时事件按页、checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。

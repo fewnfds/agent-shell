@@ -78,6 +78,7 @@ data/
 9 项 runtime-policy 只有正数约束，没有额外产品最大值；默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
 
 系统配置页面按网络、请求与限制策略（含消息上限、校验去抖与 9 项 runtime-policy）、LangSmith 和代理设置分卡展示；管理密码与 API Key 均归入网络卡片，消息上限位于请求与限制策略卡片。
+
 限制策略中的容量字段以 MiB 展示（1 MiB = 1024² bytes），保存时仍按后端要求换算为 bytes。
 
 LangSmith 配置项含义如下：
