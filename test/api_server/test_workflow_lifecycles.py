@@ -223,6 +223,7 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "events.jsonl",
                 "input.json",
                 "agent-invocations.jsonl",
+                "model-requests/index.json",
                 "background-tasks.jsonl",
                 "store-summary.json",
                 "store-payloads.jsonl",
@@ -231,9 +232,10 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             } <= set(archive.namelist())
             manifest = json.loads(archive.read("manifest.json"))
             assert manifest["captured_at"]
-            assert manifest["format"] == "agent-shell-run-history-v2"
+            assert manifest["format"] == "agent-shell-run-history-v3"
             assert manifest["includes"]["lifecycle_input"] is True
             assert manifest["includes"]["checkpoint_state"] is True
+            assert manifest["includes"]["model_requests"] is True
             assert json.loads(archive.read("input.json"))["messages"] == [
                 {"role": "user", "content": "private-run-history-sentinel"}
             ]
@@ -243,6 +245,32 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             ]
             assert invocations
             assert any(item["artifact"]["messages"] for item in invocations)
+            model_request_index = json.loads(
+                archive.read("model-requests/index.json")
+            )
+            assert model_request_index["capture_layer"] == (
+                "langchain.on_chat_model_start"
+            )
+            assert model_request_index["request_count"] >= 1
+            assert len(model_request_index["owners"]) == 1
+            model_request_owner = model_request_index["owners"][0]
+            assert model_request_owner["agent_type"] == "main_agent"
+            assert model_request_owner["agent_id"] == main_agent["id"]
+            model_requests = [
+                json.loads(line)
+                for line in archive.read(
+                    f"model-requests/{model_request_owner['path']}"
+                ).splitlines()
+            ]
+            assert model_requests
+            assert all(item["run_id"] == root_run["run_id"] for item in model_requests)
+            captured_request = model_requests[0]["request"]
+            assert any(
+                message["type"] == "system"
+                for batch in captured_request["message_batches"]
+                for message in batch
+            )
+            assert captured_request["invocation_params"]["tools"]
             checkpoints = [
                 json.loads(line)
                 for line in archive.read(
@@ -273,6 +301,7 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "events.jsonl",
                 "input.json",
                 "agent-invocations.jsonl",
+                "model-requests/index.json",
                 "background-tasks.jsonl",
                 "store-summary.json",
                 "store-payloads.jsonl",
@@ -282,6 +311,17 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             manifest = json.loads(archive.read("manifest.json"))
             assert manifest["scope"] == "run"
             assert manifest["includes"]["checkpoint_state"] is True
+            run_model_request_index = json.loads(
+                archive.read("model-requests/index.json")
+            )
+            assert run_model_request_index["request_count"] == (
+                model_request_index["request_count"]
+            )
+            assert {
+                run_id
+                for owner in run_model_request_index["owners"]
+                for run_id in owner["run_ids"]
+            } == {root_run["run_id"]}
             checkpoints = [
                 json.loads(line)
                 for line in archive.read("checkpoints.jsonl").splitlines()

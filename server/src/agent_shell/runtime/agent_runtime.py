@@ -94,6 +94,8 @@ class RunExecution:
     run_kind: Literal["agent", "workflow"] = "agent"
     journal_node_kinds: dict[str, str] | None = None
     journal_agent_names: dict[str, str] | None = None
+    journal_agent_profile_ids: dict[str, str] | None = None
+    journal_subagent_profile_ids: dict[str, dict[str, str]] | None = None
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
     final_state: dict[str, Any] | None = None
     _started: bool = False
@@ -339,6 +341,10 @@ class RunExecution:
                             self.context,
                             workflow_node_kinds=self.journal_node_kinds or {},
                             agent_names=self.journal_agent_names or {},
+                            agent_profile_ids=self.journal_agent_profile_ids or {},
+                            subagent_profile_ids=(
+                                self.journal_subagent_profile_ids or {}
+                            ),
                         )
                         callbacks.append(journal)
                         config["callbacks"] = callbacks
@@ -604,7 +610,6 @@ class AgentRuntime:
         main_agent_id: str,
         raw_messages: object,
         *,
-        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
         model_response_observer: Callable[[ModelResponse], None] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
@@ -614,7 +619,6 @@ class AgentRuntime:
             return await self._builder.build(
                 main_agent_id,
                 raw_messages,
-                model_request_observer=model_request_observer,
                 model_response_observer=model_response_observer,
                 request_id=request_id,
                 workflow_node_id=workflow_node_id,
@@ -819,6 +823,13 @@ class AgentRuntime:
             journal_agent_names={
                 node_id: agent.agent_name for node_id, agent in workflow_agents
             },
+            journal_agent_profile_ids={
+                node_id: agent.agent_id for node_id, agent in workflow_agents
+            },
+            journal_subagent_profile_ids={
+                node_id: dict(agent.subagent_profile_ids)
+                for node_id, agent in workflow_agents
+            },
             execution_timeout_seconds=execution_timeout_seconds,
         )
 
@@ -906,7 +917,6 @@ class AgentRuntime:
         raw_messages: object,
         *,
         workflow_snapshot: Mapping[str, Any] | None = None,
-        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
         model_response_observer: Callable[[ModelResponse], None] | None = None,
         event_observer: Callable[[OutputEvent], None] | None = None,
         request_id: str = "",
@@ -1289,7 +1299,6 @@ class AgentRuntime:
                 built = await self.build_resolved_agent(
                     assembly,
                     messages,
-                    model_request_observer=model_request_observer,
                     model_response_observer=model_response_observer,
                     request_id=request_id,
                     workflow_node_id=agent_node.id,

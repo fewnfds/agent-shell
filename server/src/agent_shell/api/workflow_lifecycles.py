@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import zipfile
@@ -31,6 +32,7 @@ EXPORT_SECTIONS = frozenset(
         "structural_events",
         "lifecycle_input",
         "agent_invocations",
+        "model_requests",
         "background_tasks",
         "checkpoint_summaries",
         "store_summary",
@@ -84,6 +86,54 @@ def _write_jsonl_file(path: Path, values: Iterable[object]) -> None:
     with path.open("wb") as stream:
         for value in values:
             stream.write(_json_line(value))
+
+
+def _path_segment(value: object) -> str:
+    segment = re.sub(r"[^A-Za-z0-9._-]", "_", str(value or ""))
+    return segment if segment not in {"", ".", ".."} else "unknown"
+
+
+def _write_model_request_files(
+    root: Path,
+    records: list[dict[str, object]],
+) -> None:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for record in records:
+        node_scope = _path_segment(
+            record.get("workflow_node_id") or record.get("parent_agent_id")
+        )
+        agent_id = _path_segment(record.get("agent_id"))
+        if record.get("agent_type") == "subagent":
+            relative_path = f"subagents/{node_scope}/{agent_id}.jsonl"
+        else:
+            relative_path = f"main-agents/{node_scope}--{agent_id}.jsonl"
+        grouped.setdefault(relative_path, []).append(record)
+
+    owners: list[dict[str, object]] = []
+    for relative_path, owner_records in sorted(grouped.items()):
+        first = owner_records[0]
+        _write_jsonl_file(root / relative_path, owner_records)
+        owners.append(
+            {
+                "path": relative_path,
+                "request_count": len(owner_records),
+                "agent_type": first["agent_type"],
+                "agent_id": first["agent_id"],
+                "agent_name": first["agent_name"],
+                "parent_agent_id": first.get("parent_agent_id", ""),
+                "parent_agent_name": first.get("parent_agent_name", ""),
+                "workflow_node_id": first.get("workflow_node_id", ""),
+                "run_ids": sorted({str(item["run_id"]) for item in owner_records}),
+            }
+        )
+    _write_json_file(
+        root / "index.json",
+        {
+            "capture_layer": "langchain.on_chat_model_start",
+            "request_count": len(records),
+            "owners": owners,
+        },
+    )
 
 
 def _write_event_pages(
@@ -358,6 +408,7 @@ def build_workflow_lifecycle_router(
         record = await require_lifecycle(lifecycle_id)
         captured_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
         runs = lifecycle_service.runs(lifecycle_id)
+        model_requests = lifecycle_service.model_requests(lifecycle_id)
         diagnostics = diagnostics_for(lifecycle_id)
         summary_payload = await summary(record)
         store_summary = await lifecycle_service.artifact_summary(lifecycle_id)
@@ -387,7 +438,7 @@ def build_workflow_lifecycle_router(
                     ),
                 )
             manifest = {
-                "format": "agent-shell-run-history-v2",
+                "format": "agent-shell-run-history-v3",
                 "scope": "lifecycle",
                 "captured_at": captured_at,
                 "lifecycle_id": lifecycle_id,
@@ -398,7 +449,8 @@ def build_workflow_lifecycle_router(
                 "diagnostic_details_included": True,
                 "limitations": [
                     "This is a captured runtime snapshot, not a byte-exact replay.",
-                    "Final network-layer Provider requests and raw successful Provider HTTP responses are not separately persisted.",
+                    "LangChain on_chat_model_start messages, tools, and invocation parameters are persisted under model-requests/.",
+                    "Provider-adapter network payloads and raw successful Provider HTTP responses are not separately persisted.",
                     "The archive contains persisted runtime data available to the Run History owner.",
                 ],
             }
@@ -420,6 +472,11 @@ def build_workflow_lifecycle_router(
                 _write_jsonl_file,
                 content_root / "agent-invocations.jsonl",
                 await lifecycle_service.invocation_artifacts(lifecycle_id),
+            )
+            await asyncio.to_thread(
+                _write_model_request_files,
+                content_root / "model-requests",
+                model_requests,
             )
             await asyncio.to_thread(
                 _write_jsonl_file,
@@ -459,6 +516,10 @@ def build_workflow_lifecycle_router(
     ) -> FileResponse:
         await require_lifecycle(lifecycle_id)
         run = require_run(lifecycle_id, run_id)
+        model_requests = lifecycle_service.model_requests(
+            lifecycle_id,
+            run_id=run_id,
+        )
         diagnostics = diagnostics_for(lifecycle_id, run_id=run_id)
         export_temp_root.mkdir(parents=True, exist_ok=True)
         export_root = Path(
@@ -489,7 +550,7 @@ def build_workflow_lifecycle_router(
                 )
                 await asyncio.to_thread(checkpoint_path.write_bytes, b"")
             manifest = {
-                "format": "agent-shell-run-history-v2",
+                "format": "agent-shell-run-history-v3",
                 "scope": "run",
                 "captured_at": datetime.now(timezone.utc).isoformat(
                     timespec="milliseconds"
@@ -504,7 +565,8 @@ def build_workflow_lifecycle_router(
                 "diagnostic_details_included": True,
                 "limitations": [
                     "This is a captured runtime snapshot, not a byte-exact replay.",
-                    "Final network-layer Provider requests and raw successful Provider HTTP responses are not separately persisted.",
+                    "LangChain on_chat_model_start messages, tools, and invocation parameters are persisted under model-requests/.",
+                    "Provider-adapter network payloads and raw successful Provider HTTP responses are not separately persisted.",
                     "The archive contains persisted runtime data available to the Run History owner.",
                 ],
             }
@@ -525,6 +587,11 @@ def build_workflow_lifecycle_router(
                 await lifecycle_service.invocation_artifacts(
                     lifecycle_id, run_id=run_id
                 ),
+            )
+            await asyncio.to_thread(
+                _write_model_request_files,
+                content_root / "model-requests",
+                model_requests,
             )
             await asyncio.to_thread(
                 _write_jsonl_file,

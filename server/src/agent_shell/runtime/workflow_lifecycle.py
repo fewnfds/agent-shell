@@ -282,6 +282,9 @@ class WorkflowLifecycleService:
     def append_run_event(self, event: dict[str, object]) -> int:
         return self._history.append_event(event)
 
+    def append_model_request(self, record: dict[str, object]) -> None:
+        self._history.append_model_request(record)
+
     def mark_run_observation_partial(self, run_id: str) -> None:
         self._history.mark_partial(run_id)
 
@@ -306,6 +309,14 @@ class WorkflowLifecycleService:
             after_sequence=after_sequence,
             limit=limit,
         )
+
+    def model_requests(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self._history.list_model_requests(lifecycle_id, run_id=run_id)
 
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
         return self._history.summary(lifecycle_id)

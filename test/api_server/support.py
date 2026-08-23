@@ -38,8 +38,8 @@ class ToolCompatibleFakeListChatModel(FakeListChatModel):
         params["ls_provider"] = "openai"
         return params
 
-    def bind_tools(self, _tools, **_kwargs):
-        return self
+    def bind_tools(self, tools, **kwargs):
+        return self.bind(tools=tools, **kwargs)
 
 
 @pytest.fixture(autouse=True)

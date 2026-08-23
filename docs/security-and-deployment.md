@@ -27,6 +27,7 @@ Provider credential、API Key、管理密码和 LangSmith API Key 保存在实�
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
+- Run History 为每次 ChatModel 调用保存 LangChain `on_chat_model_start` 看到的消息、Tool schema 和调用参数；
 - 用户创建的组件、文件和 Python 资源。
 
 运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
@@ -67,7 +68,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。
 降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
-运行历史的 Lifecycle ZIP 和单 Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、后台任务、Run/Event、完整 Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。下载不提供敏感度分类或内容开关，也不对这些运行记录另做脱敏；用户写入 prompt、Tool payload、State、Store 或异常链的敏感内容会随对应记录进入 ZIP。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取。最终经过 LangChain middleware 与模型适配后发送到 Provider 的网络层 Model Request，以及成功 Provider HTTP 原始响应，目前没有作为独立运行记录持久化，因此运行详情 ZIP 不提供这两份字节级原文。
+运行历史的 Lifecycle ZIP 和单 Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain ChatModel-start 消息、Tool schema 和调用参数、后台任务、Run/Event、完整 Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。下载不提供敏感度分类或内容开关；用户写入 prompt、消息、Tool payload/schema、State、Store 或异常链的敏感内容会随对应记录进入 ZIP。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取；Model Request 序列化排除 Secret 类型和明确的 credential 字段。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不持久化。
 
 ## 系统配置与变量
 

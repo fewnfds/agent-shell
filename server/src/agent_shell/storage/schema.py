@@ -170,6 +170,37 @@ ON workflow_run_events(run_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_workflow_run_events_node
 ON workflow_run_events(run_id, node_invocation_id, sequence);
 
+CREATE TABLE IF NOT EXISTS workflow_model_requests (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    lifecycle_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    model_run_id TEXT NOT NULL UNIQUE,
+    parent_span_id TEXT,
+    agent_type TEXT NOT NULL CHECK (
+        agent_type IN ('main_agent', 'subagent')
+    ),
+    agent_id TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    parent_agent_id TEXT,
+    parent_agent_name TEXT,
+    workflow_node_id TEXT,
+    payload_json TEXT NOT NULL,
+    FOREIGN KEY (lifecycle_id) REFERENCES workflow_lifecycles(lifecycle_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (run_id) REFERENCES workflow_run_records(run_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_model_requests_lifecycle
+ON workflow_model_requests(lifecycle_id, sequence);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_model_requests_run
+ON workflow_model_requests(run_id, sequence);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_model_requests_agent
+ON workflow_model_requests(lifecycle_id, agent_type, agent_id, sequence);
+
 CREATE TABLE IF NOT EXISTS media_output_assets (
     id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL,

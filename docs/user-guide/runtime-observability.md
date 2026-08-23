@@ -32,10 +32,11 @@ Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍�
 
 只有 `run_kind=workflow` 的 Run 使用独立 thread，并由 LangGraph `AsyncSqliteSaver` 写入 checkpoint；`run_kind=agent`（当前为 background Agent）标记为 `checkpoint_available=false`，不装配独立 checkpointer。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 Run 父子关系、结构 Timeline，以及 Checkpoint 摘要、结构事件和关联诊断的计数；页面不直接展开 Checkpoint State 和运行消息。
 
-运行历史直接提供 Lifecycle ZIP 和单 Run ZIP。ZIP 标注 `captured_at`、当前终态/活动状态、最后事件 sequence 和观测完整性，并固定包含下载时可读取的 Run Registry、结构事件、Lifecycle 输入、持久化 Agent invocation artifact、后台任务记录、完整 Checkpoint State、Lifecycle Store 摘要与原始记录、诊断摘要和现存异常详情附件。下载没有敏感度分类或内容开关；写入这些运行记录的消息、模型/工具内容、路径或其他敏感材料会原样进入 ZIP。
+每次 LangChain ChatModel 调用开始时，Run Journal 通过 `on_chat_model_start` 持久化该调用看到的完整 message batches、已绑定 Tool schemas、`tool_choice`、模型 invocation parameters、options、tags 和 metadata。记录使用 model callback run ID 幂等写入，并关联 Lifecycle/Run、Workflow Node、Main Agent profile；Subagent 记录同时关联自己的 profile 和父 Main Agent profile。记录失败只把 Run observation 标为 `partial` 并生成运行诊断，不中断模型调用。
 
-运行详情 ZIP 是持久化运行快照，不承诺字节级重放。最终经过 LangChain middleware 与模型适配后发送到 Provider 的网络层 Model Request，以及成功 Provider HTTP 原始响应，目前没有作为独立运行记录持久化，因此 ZIP 中没有这两份字节级原文。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件。运行历史没有自动 retention；
-只有 Lifecycle 显式删除会清理 Run/Event、Store、Checkpoint 和选择的受管动态目录。
+运行历史直接提供 Lifecycle ZIP 和单 Run ZIP。ZIP 标注 `captured_at`、当前终态/活动状态、最后事件 sequence 和观测完整性，并固定包含下载时可读取的 Run Registry、结构事件、Lifecycle 输入、持久化 Agent invocation artifact、上述 ChatModel 请求、后台任务记录、完整 Checkpoint State、Lifecycle Store 摘要与原始记录、诊断摘要和现存异常详情附件。模型请求索引位于 `model-requests/index.json`；Main Agent 分别写入 `model-requests/main-agents/*.jsonl`，Subagent 按父 Main Agent scope 写入 `model-requests/subagents/<parent-scope>/*.jsonl`，没有混合所有 Agent 的聚合请求文件。
+
+运行详情 ZIP 是持久化运行快照，不承诺字节级重放。`on_chat_model_start` 位于 LangChain ChatModel 边界，可以稳定观察 middleware 处理后的消息和绑定到模型调用的 Tool/参数，但它不是 Provider adapter 最终序列化出的 HTTP payload；Provider 网络请求原文和成功 Provider HTTP 原始响应不持久化。下载没有敏感度分类或内容开关；写入运行记录的 prompt、用户消息、Tool schema/payload、State、路径和其他敏感材料会进入 ZIP。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件；请求序列化也会排除 Secret 类型和明确的 credential 字段。运行历史没有自动 retention；只有 Lifecycle 显式删除会清理 Run/Event、Model Request、Store、Checkpoint 和选择的受管动态目录。
 
 下载时事件按页、checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。
 

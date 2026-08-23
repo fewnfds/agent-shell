@@ -530,7 +530,6 @@ class AgentBuilder:
         main_agent_id: str,
         raw_messages: object,
         *,
-        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
         model_response_observer: Callable[[ModelResponse], Any] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
@@ -551,7 +550,6 @@ class AgentBuilder:
         return await self.build_resolved(
             assembly,
             messages,
-            model_request_observer=model_request_observer,
             model_response_observer=model_response_observer,
             request_id=request_id,
             workflow_node_id=workflow_node_id,
@@ -566,7 +564,6 @@ class AgentBuilder:
         assembly: StaticAssembly,
         _messages: list[dict[str, Any]],
         *,
-        model_request_observer: Callable[[dict[str, Any]], Any] | None = None,
         model_response_observer: Callable[[ModelResponse], Any] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
@@ -684,21 +681,6 @@ class AgentBuilder:
             constructor["subagents"] = compiled_subagents
 
         middleware.extend(materialized.extra_middleware)
-        if model_request_observer is not None:
-            from agent_shell.runtime.model_request_observer import (
-                make_model_request_observer_middleware,
-            )
-
-            middleware.append(
-                make_model_request_observer_middleware(
-                    model_request_observer,
-                    context={
-                        "agent_type": "main_agent",
-                        "agent_name": main_agent_name,
-                        "tool_call_id": "",
-                    },
-                )
-            )
         exception_retry_runtime = materialized.exception_retry
         middleware.append(ProviderErrorBoundaryMiddleware())
         if exception_retry_runtime is not None:

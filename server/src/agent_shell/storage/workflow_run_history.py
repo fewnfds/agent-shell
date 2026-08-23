@@ -72,6 +72,24 @@ class WorkflowRunHistoryStore:
         }
 
     @staticmethod
+    def _model_request(row: sqlite3.Row) -> dict[str, object]:
+        return {
+            "sequence": int(row["sequence"]),
+            "lifecycle_id": row["lifecycle_id"],
+            "run_id": row["run_id"],
+            "occurred_at": row["occurred_at"],
+            "model_run_id": row["model_run_id"],
+            "parent_span_id": row["parent_span_id"] or "",
+            "agent_type": row["agent_type"],
+            "agent_id": row["agent_id"],
+            "agent_name": row["agent_name"],
+            "parent_agent_id": row["parent_agent_id"] or "",
+            "parent_agent_name": row["parent_agent_name"] or "",
+            "workflow_node_id": row["workflow_node_id"] or "",
+            "request": json.loads(row["payload_json"]),
+        }
+
+    @staticmethod
     def _append_in(
         connection: sqlite3.Connection,
         event: dict[str, object],
@@ -207,6 +225,52 @@ class WorkflowRunHistoryStore:
                 "WHERE run_id = ?",
                 (run_id,),
             )
+
+    def append_model_request(self, record: dict[str, object]) -> None:
+        with self._database.transaction() as connection:
+            connection.execute(
+                "INSERT INTO workflow_model_requests ("
+                "lifecycle_id, run_id, occurred_at, model_run_id, parent_span_id, "
+                "agent_type, agent_id, agent_name, parent_agent_id, "
+                "parent_agent_name, workflow_node_id, payload_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(model_run_id) DO NOTHING",
+                (
+                    record["lifecycle_id"],
+                    record["run_id"],
+                    record["occurred_at"],
+                    record["model_run_id"],
+                    record.get("parent_span_id") or None,
+                    record["agent_type"],
+                    record["agent_id"],
+                    record["agent_name"],
+                    record.get("parent_agent_id") or None,
+                    record.get("parent_agent_name") or None,
+                    record.get("workflow_node_id") or None,
+                    json.dumps(
+                        record["request"],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                ),
+            )
+
+    def list_model_requests(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        query = "SELECT * FROM workflow_model_requests WHERE lifecycle_id = ?"
+        parameters: tuple[object, ...] = (lifecycle_id,)
+        if run_id is not None:
+            query += " AND run_id = ?"
+            parameters += (run_id,)
+        query += " ORDER BY sequence"
+        with self._database.transaction() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return [self._model_request(row) for row in rows]
 
     def get_run(self, run_id: str) -> dict[str, object] | None:
         with self._database.transaction() as connection:

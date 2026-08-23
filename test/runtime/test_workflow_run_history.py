@@ -4,7 +4,7 @@ import asyncio
 import json
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
@@ -21,7 +21,7 @@ class _Diagnostics:
         self.errors.append({"error": exc, **kwargs})
 
 
-def test_run_history_distinguishes_repeated_node_spans_and_omits_payloads(
+def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omit_payloads(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -53,6 +53,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_omits_payloads(
                 context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
+                agent_profile_ids={"agent-node": "main-agent-profile"},
             )
 
             first = uuid4()
@@ -181,6 +182,13 @@ def test_run_history_distinguishes_repeated_node_spans_and_omits_payloads(
                 event for event in events if event["event_type"] == "model"
             ]
             assert "private-journal-sentinel" not in json.dumps(events)
+            model_requests = lifecycle.model_requests(lifecycle_id)
+            assert len(model_requests) == 1
+            assert model_requests[0]["agent_type"] == "main_agent"
+            assert model_requests[0]["agent_id"] == "main-agent-profile"
+            assert "private-journal-sentinel" in json.dumps(
+                model_requests[0]["request"]
+            )
             assert diagnostics.errors == []
 
             original = lifecycle.append_run_event
@@ -193,10 +201,165 @@ def test_run_history_distinguishes_repeated_node_spans_and_omits_payloads(
             monkeypatch.setattr(lifecycle, "append_run_event", original)
             assert lifecycle.history.get_run("root-run")["observation_status"] == "partial"
             assert diagnostics.errors[0]["code"] == "workflow_run_event_record_failed"
+
+            original_model_request = lifecycle.append_model_request
+
+            def fail_model_request(_record):
+                raise OSError("model request journal unavailable")
+
+            monkeypatch.setattr(
+                lifecycle,
+                "append_model_request",
+                fail_model_request,
+            )
+            journal.on_chat_model_start(
+                {"name": "provider-model"},
+                [[HumanMessage(content="ignored")]],
+                run_id=uuid4(),
+                metadata={"lc_agent_name": "Writer Agent"},
+            )
+            monkeypatch.setattr(
+                lifecycle,
+                "append_model_request",
+                original_model_request,
+            )
+            assert diagnostics.errors[-1]["code"] == (
+                "workflow_model_request_record_failed"
+            )
         finally:
             await lifecycle.close()
 
     asyncio.run(scenario())
+
+
+def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> None:
+    async def scenario() -> list[dict[str, object]]:
+        database = SQLiteDatabase(tmp_path / "ownership.sqlite3")
+        lifecycle = WorkflowLifecycleService(database)
+        await lifecycle.start()
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "input"}],
+                request_id="ownership-request",
+                run_id="ownership-run",
+                thread_id="ownership-thread",
+                workflow_id="ownership-workflow",
+                workflow_name="Ownership Workflow",
+            )
+            assert lifecycle.start_run("ownership-run") is True
+            context = WorkflowRuntimeContext.for_run(
+                request_id="ownership-request",
+                lifecycle_id=lifecycle_id,
+                run_id="ownership-run",
+                thread_id="ownership-thread",
+                workflow={"id": "ownership-workflow"},
+            )
+            journal = WorkflowRunJournal(
+                lifecycle,
+                None,
+                context,
+                workflow_node_kinds={"agent-node": "agent"},
+                agent_names={"agent-node": "Writer Agent"},
+                agent_profile_ids={"agent-node": "main-profile-id"},
+                subagent_profile_ids={
+                    "agent-node": {"Researcher": "subagent-profile-id"}
+                },
+            )
+
+            node_run = uuid4()
+            journal.on_chain_start(
+                {},
+                {},
+                run_id=node_run,
+                name="agent-node",
+                metadata={"langgraph_node": "agent-node"},
+            )
+            main_root = uuid4()
+            journal.on_chain_start(
+                {},
+                {},
+                run_id=main_root,
+                parent_run_id=node_run,
+                name="Writer Agent",
+                metadata={
+                    "langgraph_node": "agent-node",
+                    "lc_agent_name": "Writer Agent",
+                },
+            )
+            journal.on_chat_model_start(
+                {"name": "provider-model"},
+                [[
+                    SystemMessage(content="main-system-sentinel"),
+                    HumanMessage(content="main-user-sentinel"),
+                ]],
+                run_id=uuid4(),
+                parent_run_id=main_root,
+                metadata={
+                    "langgraph_node": "agent-node",
+                    "lc_agent_name": "Writer Agent",
+                },
+                invocation_params={
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "task"},
+                        }
+                    ],
+                    "tool_choice": "auto",
+                },
+            )
+            task_run = uuid4()
+            journal.on_tool_start(
+                {"name": "task"},
+                "delegate",
+                run_id=task_run,
+                parent_run_id=main_root,
+            )
+            subagent_root = uuid4()
+            journal.on_chain_start(
+                {},
+                {},
+                run_id=subagent_root,
+                parent_run_id=task_run,
+                name="Researcher",
+                metadata={
+                    "langgraph_node": "agent-node",
+                    "lc_agent_name": "Researcher",
+                },
+            )
+            journal.on_chat_model_start(
+                {"name": "provider-model"},
+                [[SystemMessage(content="subagent-system-sentinel")]],
+                run_id=uuid4(),
+                parent_run_id=subagent_root,
+                metadata={
+                    "langgraph_node": "agent-node",
+                    "lc_agent_name": "Researcher",
+                },
+                invocation_params={"tools": [{"name": "search"}]},
+            )
+            return lifecycle.model_requests(lifecycle_id)
+        finally:
+            await lifecycle.close()
+
+    main_request, subagent_request = asyncio.run(scenario())
+    assert main_request["agent_type"] == "main_agent"
+    assert main_request["agent_id"] == "main-profile-id"
+    assert main_request["workflow_node_id"] == "agent-node"
+    assert main_request["parent_agent_id"] == ""
+    assert main_request["request"]["capture_layer"] == (
+        "langchain.on_chat_model_start"
+    )
+    assert main_request["request"]["invocation_params"]["tools"]
+    assert "main-system-sentinel" in json.dumps(main_request["request"])
+
+    assert subagent_request["agent_type"] == "subagent"
+    assert subagent_request["agent_id"] == "subagent-profile-id"
+    assert subagent_request["agent_name"] == "Researcher"
+    assert subagent_request["parent_agent_id"] == "main-profile-id"
+    assert subagent_request["parent_agent_name"] == "Writer Agent"
+    assert subagent_request["workflow_node_id"] == "agent-node"
+    assert "subagent-system-sentinel" in json.dumps(subagent_request["request"])
 
 
 def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
