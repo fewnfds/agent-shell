@@ -61,8 +61,8 @@
   `local_path` 是宿主绝对路径；`path_origin=data-root-relative` 以当前实例 `data/` 为根解析相对路径；
   `lifecycle_mode=fixed` 直接使用配置目录，`lifecycle_mode=dynamic` 则在该目录下为每个顶层 Workflow
   Lifecycle 创建一次 `lifecycle-{uuid}` 子目录。同一 Lifecycle 的父 Run 和后台 Run 复用同一解析结果；
-- `virtual_directories`：每次请求开始时把现有目录文件复制到内存 workspace，不回写来源；`source_path` 必须是宿主绝对路径，不支持 `data-root-relative`；
-- `virtual_files`：每次请求复制一个现有普通文件，不回写来源；`source_path` 必须是宿主绝对路径，不支持 `data-root-relative`。
+- `virtual_directories`：每次请求开始时把现有目录文件复制到本次请求的内存 workspace，来源目录保持原样；`source_path` 使用宿主绝对路径；
+- `virtual_files`：每次请求把现有普通文件复制到本次请求的内存 workspace，来源文件保持原样；`source_path` 使用宿主绝对路径。
 
 虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。不允许 `..`、重叠 route、
 重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：

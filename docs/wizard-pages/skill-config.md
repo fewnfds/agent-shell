@@ -1,6 +1,6 @@
 # Skill
 
-公共 Skill Template 根为 `data/skills-template/`。扫描允许任意层级；某一层第一次发现 `SKILL.md` 后，该目录就是完整 Skill 边界，合法或不合法都不再递归。只有名称、目录、UTF-8 和 YAML frontmatter 通过当前 contract 的 Template 才能在前端选择，catalog 同时按规范相对路径报告坏项。
+公共 Skill Template 根为 `data/skills-template/`。扫描允许任意层级；某一层第一次发现 `SKILL.md` 后，该目录成为完整 Skill 边界并结束该分支扫描。名称、目录、UTF-8 和 YAML frontmatter 通过当前 contract 的 Template 可在前端选择，catalog 同时按规范相对路径报告坏项。
 
 创建请求使用 Template 路径，服务端复制完整目录到 Component owner UUID 的私有包：
 

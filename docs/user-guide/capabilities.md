@@ -23,7 +23,7 @@
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
 
-Skill Template 允许多层目录；遇到某层的 `SKILL.md` 就把该目录视为完整 Skill 边界，合法或不合法都不再向下递归。合法 Template 以 `GET /api/skills` catalog 返回的规范相对路径显示，坏 Template 只在 catalog 报告且不能被选择。创建 Skill Component 时会复制所选目录到 owner UUID 的私有包，之后 Template 改动不会影响 Component。私有包可由用户或 AI 直接编辑；同名 Add 不覆盖，必须先删除并刷新。私有包问题只在组件页载入或刷新时显示 warning，不阻塞保存或运行。
+Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到 owner UUID 的私有包，Template 与 Component 随后独立维护。私有包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。私有包问题在组件页载入或刷新时显示 warning，组件仍可保存和运行。
 
 详细字段见[组件说明](../wizard-pages/README.md)。Agent 组合方式见[装配 Main Agent 与 Subagent](configuration-workflow.md)。
 
@@ -31,7 +31,7 @@ Skill Template 允许多层目录；遇到某层的 `SKILL.md` 就把该目录�
 
 Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由同步 `create_tool()` 返回一个 LangChain `BaseTool`。Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配多个配置；每个配置对应一个 Tool。完整 contract 见[自定义工具](../wizard-pages/custom-tool-config.md)。
 
-Workflow Input Context 是重要的 Agent 上下文约定，但不是 catalog 组件。当前通过普通 Custom Middleware 实现：从 `内置示例-workflow-input-context` 创建独立配置，再由 Main Agent 或 Subagent 的 `middleware_refs` 选择。完整原理和修改位置见[Workflow Input Context](workflow-input-context.md)。
+Workflow Input Context 是 Agent 上下文约定，通过普通 Custom Middleware 实现：从 `内置示例-workflow-input-context` 创建独立配置，再由 Main Agent 或 Subagent 的 `middleware_refs` 选择。完整原理和修改位置见[Workflow Input Context](workflow-input-context.md)。
 
 每个画布 Agent wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；父 Workflow State 的 `agent_invocations` 只保存身份和 `result_ref`，并按 Node/Dispatcher task 逻辑槽保留最新引用。同步 Subagent 仍由 Deep Agents 官方 Middleware 在 Main Agent 内部调度，不建立隐藏归档 wrapper。
 这条父子 State 输出映射不需要额外的结束 Hook 或 Recorder 组件。

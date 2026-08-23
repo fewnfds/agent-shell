@@ -121,7 +121,7 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     env_text = (tmp_path / "data" / "config" / "agent-shell.env").read_text(
         encoding="utf-8"
     )
-    assert 'LANGSMITH_API_KEY="langsmith-test-key"' in env_text
+    assert "LANGSMITH_API_KEY=langsmith-test-key" in env_text
 
 
 def test_system_and_model_secret_updates_preserve_each_other(

@@ -389,7 +389,7 @@ def test_windows_launcher_initializes_missing_local_management_password(
     env_text = (
         tmp_path / "data" / "config" / "agent-shell.env"
     ).read_text(encoding="utf-8")
-    assert f'AGENT_SHELL_MANAGEMENT_TOKEN="{sentinel}"' in env_text
+    assert f"AGENT_SHELL_MANAGEMENT_TOKEN={sentinel}" in env_text
     assert "# AGENT_SHELL_MANAGEMENT_TOKEN=" not in env_text
     assert get_settings().management_token.get_secret_value() == sentinel
     captured = capsys.readouterr()

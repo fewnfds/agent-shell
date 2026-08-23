@@ -106,7 +106,7 @@ def test_local_settings_writer_secures_environment_file(
 
     assert secured == [environment_path]
     assert environment_path.read_text(encoding="utf-8") == (
-        'AGENT_SHELL_MANAGEMENT_TOKEN="management-secret"\n'
+        "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n"
     )
 
 

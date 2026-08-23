@@ -36,7 +36,7 @@ Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍�
 模型正文、Tool/Script payload、Provider 原始响应或 Checkpoint State，也不承诺字节级重放。运行历史没有自动 retention；
 只有 Lifecycle 显式删除会清理 Run/Event、Store、Checkpoint 和选择的受管动态目录。
 
-下载时事件按页、checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出不再先把全量记录和 ZIP 同时聚合进进程内存。
+下载时事件按页、checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。
 
 ## LangSmith
 

@@ -38,9 +38,9 @@ Skill Component 导出的是该 Component 已拥有的私有 Skill package。
 
 平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
 
-ZIP 只接受当前 format version、canonical `manifest.json`、规范相对 POSIX path 和匹配的 SHA-256 asset tree hash；绝对路径、
+ZIP 接受当前 format version、canonical `manifest.json`、规范相对 POSIX path 和匹配的 SHA-256 asset tree hash；绝对路径、
 `..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field 或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
-Filesystem host content 不进入 Bundle；绝对 mapped path 和全部 virtual source path 必须在目标实例显式重绑。
+Bundle 保存 Filesystem 配置引用，宿主文件内容保留在源实例；绝对 mapped path 和全部 virtual source path 在目标实例显式重绑。
 
 导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用本身不设置 Bundle 大小、文件数或展开字节的硬编码上限。
 
@@ -88,16 +88,16 @@ api_server:
   message_interception_enabled: false
 ```
 
-`data/config/agent-shell.env` 使用 UTF-8 的 canonical `KEY=<JSON string literal>` 行格式保存敏感变量，例如：
+`data/config/agent-shell.env` 使用 UTF-8 的标准 dotenv `KEY=value` 格式保存敏感变量，例如：
 
-```text
-AGENT_SHELL_API_KEY="<FastAPI/OpenAI shell key>"
-AGENT_SHELL_MANAGEMENT_TOKEN="<management password>"
-AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY="<model credential>"
-LANGSMITH_API_KEY="<LangSmith API key>"
+```dotenv
+AGENT_SHELL_API_KEY=<api-key>
+AGENT_SHELL_MANAGEMENT_TOKEN=<management-token>
+AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY=<model-credential>
+LANGSMITH_API_KEY=<langsmith-api-key>
 ```
 
-值按 JSON 字符串解析，因此引号、反斜杠、换行和前后空白可以精确保留。管理页面负责生成该格式；文件必须使用 UTF-8 且无 BOM，不允许空行、重复 key、NUL、未知的 `AGENT_SHELL_*` key 或无效 JSON，否则启动失败。
+管理页面按 key 排序写回；普通单行 token 使用裸值，需要保留空白或换行的值使用 dotenv 双引号。读取遵循 `python-dotenv` 的标准行为，包括空行、注释、引用值、`export` 前缀和重复 key 后值生效。文件必须使用 UTF-8 且无 BOM；NUL 或未知的 `AGENT_SHELL_*` key 会使启动失败。
 
 模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；模型要求与模型连接的绑定关系位于 `data/config/model-bindings.yaml`。
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。

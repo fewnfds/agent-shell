@@ -38,7 +38,7 @@ Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configura
 导入不会按源 UUID 或名称复用、更新或覆盖配置。每条配置使用 preview 给出的新 UUID，声明式引用由后端机械重写；
 名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为 `enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
 
-单根 Bundle 的 manifest 固定保存 `format`、`format_version`、`source_application_version`、`root`、`records` 和 `assets`；`root` 保存 `kind`、`source_id`，Component 根另存 `type`。Workflow `role` 由 root record payload 投影到 preview，不是 manifest root field。preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，不由当前页面分类或文件名推断，因此 Filesystem Bundle 不会被写成 Filesystem Permissions。【配置库 / 全局 / 组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式；当前只提供整仓库下载，不提供整仓库上传恢复。
+单根 Bundle 的 manifest 固定保存 `format`、`format_version`、`source_application_version`、`root`、`records` 和 `assets`；`root` 保存 `kind`、`source_id`，Component 根另存 `type`。Workflow `role` 由 root record payload 投影到 preview。preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，Filesystem Bundle 按其 manifest 恢复为 Filesystem。【配置库 / 全局 / 组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式。
 
 未知或不受信任的配置可能包含以 Agent Shell 权限运行的 Python/Skill 代码、文件系统访问、网络访问或欺骗性引用。导入或分享前必须检查来源、提示词、Skill 文件、Python 源码、requirements、文件系统绑定与权限。preview 的 warning 使用稳定 `message_key/message_args` 本地化显示，不直接把后端英文作为普通界面文案。
 

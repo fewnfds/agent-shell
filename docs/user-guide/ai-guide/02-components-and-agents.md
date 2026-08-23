@@ -25,7 +25,7 @@ Content-Type: application/json
 在【代理组件 -> 模型要求】创建可迁移的模型能力要求，只填写名称和多行 description。导入配置后，在【模型 -> 模型映射】按 description 选择模型连接；未绑定只产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
 
 `credential` 是 management-only 的 write-only input。创建 Model Connection 时在 HTTPS 或本机 loopback 连接中提交真实 Provider Key；
-服务端会把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中只保存 variable reference。响应不会回显 plaintext。不要把 Key 写进 script、普通日志或后续 GET/PUT payload；编辑同一 Provider 与 Base URL 时传 `null` 会保留现有 Key。
+服务端把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中保存 variable reference。GET 响应提供只读的 masked/missing 状态。编辑同一 Provider 与 Base URL 时，PUT 传 `credential: null` 会保留现有 Key，传新 Key 会替换凭据。
 
 ```http
 POST /api/model-connections
@@ -45,7 +45,7 @@ Content-Type: application/json
 }
 ```
 
-Provider 和 Provider-specific field 以【模型 / 模型连接】页及 backend validation 为准。OpenAI Model 的 `provider_settings.use_responses_api` 默认是 `false`，即 OpenAI-compatible Chat Completions；只有直连的 endpoint 支持官方 OpenAI Responses API 时才设为 `true`。示例中的 model ID 不是当前实例可用 Model 的事实来源。
+Provider 和 Provider-specific field 以【模型 / 模型连接】页及 backend validation 为准。OpenAI Model 的 `provider_settings.use_responses_api` 默认是 `false`，对应 OpenAI-compatible Chat Completions；直连 endpoint 支持官方 OpenAI Responses API 时可设为 `true`。当前实例的 Model 事实来自模型连接列表。
 
 ## Skill
 
@@ -115,7 +115,7 @@ GET /api/python-package-templates/middleware
 
 提交到 `POST /api/blocks/custom-middleware`。独占 package folder 由服务端生成，客户端 payload 中的 folder 初始为空。
 
-内置 WIC 给出三项建议起点：Main Agent 读取本次 Lifecycle 的 request `messages[]`、Subagent 保留 delegated messages、Task Dispatcher worker 把自己的 private task 加入 Agent context。它们不是强制的业务策略。当前 Agent 可以在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按职责选择 request messages、private State、parent Graph snapshot、
+内置 WIC 给出三项建议起点：Main Agent 读取本次 Lifecycle 的 request `messages[]`、Subagent 保留 delegated messages、Task Dispatcher worker 把自己的 private task 加入 Agent context。当前 Agent 可以在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按职责选择 request messages、private State、parent Graph snapshot、
 Task Dispatcher task、Runtime Context、Store 或当前 Agent Filesystem 材料；不需要的默认步骤可以删除。详细边界见[Workflow Input Context](../workflow-input-context.md)。
 
 ## Main Agent
@@ -151,7 +151,7 @@ Content-Type: application/json
 
 ## 可选 Subagent
 
-Subagent 用于隔离复杂或长输出 task，不是 canvas Node。先创建 Subagent entity：
+Subagent 用于 Agent 内部的同步委派和复杂任务隔离。先创建 Subagent entity：
 
 ```http
 POST /api/subagents

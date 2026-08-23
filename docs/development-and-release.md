@@ -25,7 +25,7 @@ Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按 `
 .\start_server.bat
 ```
 
-当前 Clone 的 `data/config/` 不存在时，源码启动器先要求确认是否初始化本地 runtime 并启动服务；输入 `y` 继续，其他输入取消启动。该目录存在时直接进入正常启动流程，不再重复询问。
+当前 Clone 的 `data/config/` 首次初始化时，源码启动器要求确认并以输入 `y` 继续；已初始化的 Clone 直接进入启动流程。
 
 更新前停止服务：
 
@@ -37,7 +37,7 @@ git pull --ff-only
 依赖和前端使用输入指纹刷新。普通 Python、文档或配置修改不会无条件重建整个 runtime。
 
 停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
-`runtime/cache` 中的旧下载缓存可按需重建，不是安装位置契约。
+`runtime/cache` 保存可重建的下载缓存；安装位置由启动器根据当前 Clone 解析。
 
 文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。启用 Workflow 可达集包含 Command、Task Dispatcher、Main Agent/Subagent 引用的 Custom Tool、Custom Middleware、Agent Event Output 和 Workflow Event Output 扩展；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层只能增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
 
@@ -60,7 +60,7 @@ git pull --ff-only
 
 第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一锁文件或 runtime lock 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。
 
-截至本基线，`uv lock --dry-run --upgrade` 不再产生可解析的锁变化。`uv tree --outdated` 仍可能显示 `websockets 17`、`protobuf 7`、`pydantic-core 2.48` 或 `pyarrow 25`，但它们分别受 LangGraph/Google 依赖范围或当前 Provider 组合约束；不得为了消除提示而放宽上游边界、删除 Provider 或改业务源码。新的依赖升级应从重新运行上述 dry-run 开始，并按单一影响面批量推进。LangChain 系的版本边界、LangSmith `>=0.11.1,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
+截至本基线，`uv lock --dry-run --upgrade` 保持当前锁。`uv tree --outdated` 可能显示 `websockets 17`、`protobuf 7`、`pydantic-core 2.48` 或 `pyarrow 25`，它们分别受 LangGraph/Google 依赖范围或当前 Provider 组合约束。依赖升级从重新运行上述 dry-run 开始，并按单一影响面批量推进。LangChain 系的版本边界、LangSmith `>=0.11.1,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
 
 ## 前端 Debug
 
@@ -132,7 +132,7 @@ cd server
 .\.venv\Scripts\python.exe -m pytest ..\test -q
 ```
 
-`test/smoke_http.py` 是显式进程 smoke，不在默认 pytest 收集范围；真实 Provider 与 Agent eval 也不进入日常门禁。完整 pytest 门禁默认交给 GitHub Actions；普通局部修改只运行一个最接近的 contract owner，完整门禁不是每次小改的本地流程。本地确需复现完整门禁时使用上面的 `.venv\Scripts\python.exe -m pytest ..\test -q` 命令，避免混用 `uv run`。
+`test/smoke_http.py` 通过显式命令运行。默认 pytest 集合用于确定性测试，真实 Provider 与 Agent eval 使用各自的显式入口。GitHub Actions 执行完整 pytest 门禁；普通局部修改运行最接近的 contract owner。本地复现完整门禁时使用上面的 `.venv\Scripts\python.exe -m pytest ..\test -q` 命令。
 
 ## 源码版本
 

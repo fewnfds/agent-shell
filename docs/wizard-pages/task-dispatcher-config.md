@@ -48,8 +48,8 @@ def create_dispatcher():
 ```
 
 - `state` 是 detached 可变副本；`runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。Lifecycle Store 使用
-  `runtime.store`，后台 Run 命令使用 `runtime.context.background_runs`。不要把 Runtime 或 commands 写入 State/Store/checkpoint。
-- 示例中的 `shared_vars.items` 不是固定来源；可以按当前 Workflow 从完整 State、Runtime Context 或 Store 选择任务材料。
+  `runtime.store`，后台 Run 命令使用 `runtime.context.background_runs`。Runtime 和 commands 保持 request-scoped；State/Store/checkpoint 保存业务所需的序列化字段。
+- 示例从 `shared_vars.items` 读取任务；实际 Workflow 可以从完整 State、Runtime Context 或 Store 选择任务材料。
 - `tasks` 必须至少有 1 项，当前不设置产品数量上限；同一次调用中的 `task_id` 唯一、长 1 至 128 个字符，并应来自稳定业务身份。
 - `dispatch_key` 长 1 至 64 个字符，必须与同源 Dispatch Edge 完全一致；同一 Dispatcher Node 的同一个 key 只能连接一个目标，不同 Dispatcher 可以复用 key。
 - `payload` 必须是严格 JSON 对象，不能包含 Python 对象或 `NaN`、`Infinity` 等非有限数；worker 所需的本批数据都应放在这里。
@@ -71,5 +71,5 @@ worker 完成后，父 Workflow State 的 `agent_invocations` 轻量记录带不
 
 WIC 可以把 payload 编排进当前 worker 的私有 `messages`，但不负责任务认领或共享锁。任务并发由 LangGraph 按当前 Workflow 的可配置 `max_concurrency` 调度，任一 worker 未处理的异常会使本次运行 fail-fast。
 
-这些 Python 代码运行在服务进程的受信任边界内，没有 sandbox。源码在下一次 Workflow 请求重新加载；
+这些 Python 代码以服务进程权限执行。源码在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后需要重启 Agent Shell。

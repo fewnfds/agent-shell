@@ -1,6 +1,6 @@
 # 文件系统权限
 
-文件系统权限是独立、可复用且非必选的 `filesystem-permissions` Agent capability，通过 `capability_refs` 的 UUID 引用装配。配置块不保存 Filesystem ID，因此可以装配到使用任意[文件系统](filesystem-config.md)的 Agent；它只保存权限规则和覆写值，不是全局策略：
+文件系统权限是独立、可复用且非必选的 `filesystem-permissions` Agent capability，通过 `capability_refs` 的 UUID 引用装配。配置块保存权限规则和覆写值，可装配到使用任意[文件系统](filesystem-config.md)的 Agent：
 
 ```json
 {
@@ -40,4 +40,4 @@
 Main Agent 可以选择零或一份文件系统权限。Subagent 默认为 `inherit`，也可 `replace` 为另一配置或以 `disabled` 关闭；关闭后不使用权限配置，回到所选 Filesystem 自身的默认路径规则和工具设置。
 同一请求中的 Agent 仍共享 workspace，但各自的规则、提示词和模型可见文件工具独立生效。
 
-权限只在 `FilesystemMiddleware` 层约束 `ls`、`read_file`、`write_file`、`edit_file`、`delete`、`glob` 和 `grep`，不限制自定义工具、MCP 工具、管理台文件管理或宿主进程代码，也不是操作系统 sandbox。
+权限由 `FilesystemMiddleware` 应用于 `ls`、`read_file`、`write_file`、`edit_file`、`delete`、`glob` 和 `grep`。自定义工具、MCP 工具、管理台文件管理和宿主进程代码使用各自的权限边界。

@@ -20,7 +20,7 @@
 默认 data root 下的 `data/config/agent-shell.env` 通常包含：
 
 ```dotenv
-AGENT_SHELL_MANAGEMENT_TOKEN="<token>"
+AGENT_SHELL_MANAGEMENT_TOKEN=<token>
 ```
 
 `key` 是自动化查找配置项的稳定标识。命令可以只引用它，并保存在当前进程变量中，以 PowerShell 为例：
@@ -32,8 +32,10 @@ $tokenLine = Get-Content -LiteralPath $envFile |
     Where-Object { $_ -match '^AGENT_SHELL_MANAGEMENT_TOKEN=' } |
     Select-Object -First 1
 if (-not $tokenLine) { throw "AGENT_SHELL_MANAGEMENT_TOKEN is missing" }
-$encodedToken = $tokenLine.Substring("AGENT_SHELL_MANAGEMENT_TOKEN=".Length)
-$managementToken = ConvertFrom-Json -InputObject $encodedToken
+$managementToken = $tokenLine.Substring("AGENT_SHELL_MANAGEMENT_TOKEN=".Length)
+if ($managementToken.StartsWith('"') -and $managementToken.EndsWith('"')) {
+    $managementToken = ConvertFrom-Json -InputObject $managementToken
+}
 $managementHeaders = @{ Authorization = "Bearer $managementToken" }
 
 Invoke-RestMethod "$baseUrl/api/health"
@@ -67,7 +69,7 @@ Invoke-RestMethod "$baseUrl/api/readiness" -Headers $managementHeaders
 1. 新建 dependency 时由叶到根：component -> Subagent / Main Agent -> Workflow -> Graph -> Run。
 2. `PUT /api/workflows/{id}/draft` 只做 wire parsing 并保存 `enabled: false` draft；`POST /api/workflows/{id}/validate` 只预检不写入；只有 `PUT /api/workflows/{id}/graph` 通过 Catalog、拓扑和引用的完整 validation 后才设置 `enabled: true`。
 3. 保存每次 POST 返回的 UUID；引用永远使用 UUID，不使用显示名称。
-4. PUT 是完整可写对象更新，不是 PATCH。普通对象可从 GET 结果移除 `id` 后修改；
+4. PUT 提交完整可写对象。普通对象可从 GET 结果移除 `id` 后修改；
     Model Connection PUT 中的 `credential` 接受 `null`（同 Provider/Base URL 时保留旧 Key）或新的 write-only Key，不接受 GET 返回的 masked metadata；
    Python-backed component 的 PUT 只提交 `name` 和原有 `python_package` 引用；源码文件通过 File Manager API 独立修改。
    GET projection 含有 read-only field，因此不能直接原样作为 PUT payload。

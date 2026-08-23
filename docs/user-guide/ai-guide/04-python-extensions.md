@@ -101,7 +101,7 @@ def output(event):
 event 是单向 output，Node 不会收到 projection result。field 说明见[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)。
 
 Workflow Event Output 的内置示例继续使用 HTML `details` 格式，并覆盖 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
-`checkpoints`、`input`、`input.requested`、`debug` 和 `other`。这些类别仍由当前 v3 normalizer 产生；统一 package 只是把原来每类独立的脚本合并到同一个 `output(event)` 分支中。示例默认只把适合阅读的事件投影到公开文本；其余事件仍可由 package 按需返回字符串，
+`checkpoints`、`input`、`input.requested`、`debug` 和 `other`。当前 v3 normalizer 产生这些类别，统一 package 通过一个 `output(event)` 分支处理。示例默认把适合阅读的事件投影到公开文本；其余事件可由 package 按需返回字符串，
 也可以保持空字符串以过滤它们。
 
 ## Runtime capability 与 discovery path
@@ -155,7 +155,7 @@ available library 的可靠 input 包括当前 template 返回的 `python_requir
 | 当前 package 的 local module | 使用 normal relative import，例如 `from .helpers import build_tasks` |
 | 其他 third-party library | 在当前 configuration extension 的 `requirements.txt` 中声明 direct dependency，再 restart 并验证 |
 
-FastAPI、Provider 或其他 core package 带来的 transitive dependency 不是 extension 的 stable dependency declaration。third-party capability 的可用条件包括支持 CPython 3.12、
+Extension 的 stable dependency declaration 来自其 `requirements.txt`。third-party capability 的可用条件包括支持 CPython 3.12、
 提供 Windows x64 wheel、与平台核心约束兼容，并在 `requirements.txt` 中逐行声明普通 PyPI requirement。
 URL、local path、`.pth` 和只有 source distribution 的 dependency 会被拒绝。
 
@@ -164,7 +164,7 @@ URL、local path、`.pth` 和只有 source distribution 的 dependency 会被拒
 - `dependency_status: "ready"`：当前 requirements 已准备完成，或没有额外 dependency；
 - `dependency_status: "restart_required"`：requirements 已变化，需要重启；
 - `dependency_status: "failed"`：dependency resolution 或 preparation 失败，结合 `dependency_error_code` 修正；
-- `requirements_fingerprint`：当前 dependency declaration fingerprint，不是 available library list。
+- `requirements_fingerprint`：当前 dependency declaration fingerprint。
 
 dependency 只从 enabled Workflow 可达的配置扩展收集：Graph 中的 Command、Task Dispatcher 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。最可靠的闭环是：声明 direct dependency -> restart -> GET package inspection 确认 `dependency_status` -> invoke 一次真实 Workflow。library 的 official docs 说明用法，这套实例 evidence 说明它在当前 environment 可用。
 

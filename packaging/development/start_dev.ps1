@@ -158,12 +158,18 @@ settings:
         ($systemConfiguration.TrimEnd([char[]]"`r`n") + "`n"),
         $utf8WithoutBom
     )
-    $managementTokenJson = ConvertTo-Json `
-        -InputObject $temporaryManagementPassword `
-        -Compress
+    $managementTokenValue = $temporaryManagementPassword
+    if (
+        $temporaryManagementPassword.StartsWith('"') -or
+        $temporaryManagementPassword.StartsWith("'")
+    ) {
+        $managementTokenValue = ConvertTo-Json `
+            -InputObject $temporaryManagementPassword `
+            -Compress
+    }
     [System.IO.File]::WriteAllText(
         (Join-Path $configRoot "agent-shell.env"),
-        ("AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenJson),
+        ("AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenValue),
         $utf8WithoutBom
     )
     $env:PYTHONHOME = $null

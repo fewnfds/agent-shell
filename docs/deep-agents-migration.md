@@ -27,7 +27,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选默认 Middleware，必须保留为主动禁用状态，并以官方支持的同名
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
-- `AgentShellState.shared_vars` 是公共 checkpointed 业务变量，Middleware 实例属性不是。
+- `AgentShellState.shared_vars` 保存公共 checkpointed 业务变量；Middleware 实例属性保存当前实例的运行期数据。
 - Agent 事件输出使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event)` 返回公开文本。
 
 ### Middleware 禁用装配查证表（deepagents 0.7.7）
@@ -50,7 +50,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 middleware，但它是按 model/provider profile 生效，无法表达同一模型下每个 Agent 独立的 capability 选择，因此当前运行时没有用它承载上述 per-agent 设置。
 
-当前项目仍支持把 Agent Filesystem 的 mapped directories 接到 Deep Agents `FilesystemBackend`。LangChain 官方文档明确把 `FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend；这是一条官方限制记录，不是 Shell 自己声称的安全保证。
+Agent Filesystem 的 mapped directories 可接入 Deep Agents `FilesystemBackend`。LangChain 官方文档把 `FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend，本项目按该上游限制管理使用场景。
 如果未来要消除该限制，应按官方建议改用 `StateBackend`、`StoreBackend` 或 sandbox backend，并另立需求，不在本次 ctx 迁移中偷偷替换。
 
 Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages[]` 冻结在应用级 LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent 活动消息。只有选择 Workflow Input Context 这类 Custom Middleware 时，已装配的官方 `before_agent` Hook 才会为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取输入；未选择时 Agent 的初始 `messages` 保持空。同步 Subagent 默认从其 delegated private `state.messages` 整理输入，不自动混入根请求。
@@ -58,6 +58,6 @@ Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages
 同步 Subagent 是 Agent 内部的官方 `SubAgentMiddleware` 能力，不与外层 Workflow 竞争调度职责。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方装配入口，并单独处理 `graph_id`、
 Agent Protocol 地址、认证和后台 task state。
 
-外层后台 Workflow 不是 Deep Agents Subagent：Shell 的应用级 Manager 只负责 detached execution handle/status，实际 child 仍由现有 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与 checkpointer 服务，但不共享 Builder 的 Middleware package runtime，也不向 parent stream 转发事件。
+外层后台 Workflow 由 Shell 应用级 Manager 管理 detached execution handle/status，child 由 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与 checkpointer 服务，各自持有 Builder 的 Middleware package runtime，并通过独立查询接口提供事件。
 
 更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent 字段、默认 Middleware、同名 replacement 与 `HarnessProfile.excluded_middleware`、各 provider Prompt Caching 变体、Codex TodoList extra middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 事件 namespace，并只为 Shell 自有转换保留行为测试。

@@ -78,7 +78,7 @@ python_package:
   folder: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
 ```
 
-YAML 不保存源码、requirements、manifest 投影、模板引用、模板目录 revision 或绝对路径。创建时提交的模板 `key/revision` 只用于检测模板目录并发变化，不写入 YAML。复制组件配置时会复制一份新的配置扩展；删除组件配置时会删除其扩展代码目录。
+YAML 保存配置字段和私有包引用；源码、requirements 与 manifest 位于私有包目录。创建时提交的模板 `key/revision` 用于检测模板目录并发变化。复制组件配置时会复制一份新的配置扩展；删除组件配置时会删除其扩展代码目录。
 
 新配置编辑器同时读取对应类别的用户模板和内置示例。选择其中一项后，首次保存复制完整模板并生成配置 UUID 与 `package.json`。需要空白起点时，先在 `data/templates/` 中创建符合对应 adapter 要求的最小模板。
 
@@ -145,7 +145,7 @@ def create_middleware(agent, config, backend):
 ```
 
 `create_middleware` 是同步工厂，Agent Shell 不限制它的参数签名。运行时按参数名提供当前可用的构造数据，包括 `agent`/`owner` 身份字典、`package`、`package_id`、`block`、`assembly`、`backend`、`config`/`blocks`、
-`references`、`scope`、`workflow_node_id`、`request_id`、`model` 和 `tools` 等；工厂也可以使用 `**kwargs` 接收全部可用值。它们不是 LangChain Agent 对象，部分值会随当前装配范围而为空。工厂返回后，Middleware 仍通过 LangChain 官方 hook 的 `state` 和 `runtime` 读取每次运行的动态数据。
+`references`、`scope`、`workflow_node_id`、`request_id`、`model` 和 `tools` 等；工厂也可以使用 `**kwargs` 接收全部可用值。这些参数是 Agent Shell 的装配投影，部分值会随当前装配范围而为空。工厂返回后，Middleware 通过 LangChain 官方 hook 的 `state` 和 `runtime` 读取每次运行的动态数据。
 Main Agent/Subagent 的有序 `middleware_refs` 决定多个实例进入列表的顺序。一个实例可以实现多个官方 hook，但 hook 不作为独立排序项。LangChain 对 `before_*` 正序执行、对 `after_*` 逆序执行，并把 `wrap_*` 按列表嵌套。Agent Shell 不代理官方 hook、state schema、tools 或 stream transformer。运行链使用异步执行；若自定义类覆盖 `before_agent`、`before_model`、`after_model`、`after_agent`、`wrap_model_call` 或 `wrap_tool_call` 中的同步 hook，也必须覆盖对应的 async hook，否则装配会被拒绝。
 
 内置 `workflow-input-context` 示例通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent 委派消息和 Dispatcher task。它没有专用 capability、继承规则或装配槽位；复制示例后在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按当前 Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Workflow Input Context](workflow-input-context.md)。
@@ -162,4 +162,4 @@ Python 名称仍需显式 `import`。本地模块使用正常相对导入，例�
 
 ## 安全
 
-配置扩展是受信任的任意代码，以 Agent Shell 服务进程权限运行，不是 sandbox。不要在模板、配置扩展或 manifest 中保存 secret。请求级模块使用独立命名空间加载，并在请求结束时从模块缓存清理。
+配置扩展是受信任的任意代码，以 Agent Shell 服务进程权限运行。secret 由 Environment/Provider owner 保存。请求级模块使用独立命名空间加载，并在请求结束时从模块缓存清理。

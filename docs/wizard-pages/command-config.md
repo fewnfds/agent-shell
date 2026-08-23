@@ -35,7 +35,7 @@ def create_command():
 - `state` 是完整 Workflow State 的独立可变副本，当前声明 `shared_vars`、`agent_invocations`、`background_tasks` 和 `files`，只包含本次调用实际存在的 channel；可以修改副本，
   也可以通过 `update` 返回局部更新。
 - `runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。本次 Run 的静态身份与配置在 `runtime.context`；Lifecycle
-  Store 在 `runtime.store`；后台 Run 命令在 `runtime.context.background_runs`。它不是 detached dict，也不要使用全局 service locator。
+  Store 在 `runtime.store`；后台 Run 命令在 `runtime.context.background_runs`。脚本通过这些 request-scoped 对象访问运行能力。
 - `activate` 必须是 Branch Edge key 列表，可以同时激活多个不同分支；key 必须与画布中选中 Edge 后在属性栏填写的值完全一致，
   不会显示在线段上。
 - `update` 必须是 Workflow State 的局部映射；对 `state` 副本的 mutation delta 会与返回的 `update` 合并，后者覆盖同名 key，顶层字段和值的完整形状都按当前 `WorkflowState` contract 校验。
@@ -45,5 +45,5 @@ def create_command():
 
 运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态 `add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触画布 Node ID，也不直接构造或返回 `Command`，由 compiler 负责映射。
 
-这些 Python 代码运行在服务进程的受信任边界内，没有 sandbox。源码修改在下一次 Workflow 请求重新加载；
+这些 Python 代码以服务进程权限执行。源码修改在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后必须重启 Agent Shell，依赖状态才会重新准备。

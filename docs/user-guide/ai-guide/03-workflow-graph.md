@@ -33,7 +33,7 @@ POST /api/workflows
 
 可达的普通 Work Node 没有 outgoing Edge 时，该 path 自然结束。一般 Workflow 仍建议包含完成业务所需的 Work Node，并让需要明确 exit condition 的 path 显式连接 End。condition、State update 和 successor selection 全部写在 Command Node 中，Graph 只声明 candidate Edge。
 
-下面是包含 Agent Node 的第三种 topology 的完整 Graph document。它是常见示例，不是正式 Graph 的最低要求：
+下面是包含 Agent Node 的第三种 topology 完整示例；正式 Graph 的最低结构要求见前两种 topology：
 
 ```json
 {
@@ -97,10 +97,10 @@ GET  /api/workflows/{id}/graph     读取当前唯一 Graph document
 【`PUT /graph`】执行完整 static validation：wire、Node type/version/config、role、handle、Edge、topology、Command/Task Dispatcher reference 和 Main Agent assembly，以及 Command/Task Dispatcher 独占 Python package 的 folder、manifest、entry file 和 static adapter contract。正式 Graph 恰有一个 Start 和一个 End，且 Start 至少有一条合法 outgoing Edge；`Start -> End` 合法。editor 通过 `/validate` 预先显示全部 issue，并在存在 error、validation 尚未完成或 validation request 失败时禁用 `PUT /graph`；请求失败会显示独立的 retry validation 操作。backend 在 PUT 时重复相同 validation，
 不存在绕过入口。save 失败不写 candidate Graph，也不改变原 `enabled` state。
 
-`admit_workflow_document()` 和 `validate_workflow_executable()` 都是 static validation；后者不是 dry run，不会 invoke Model、Command、Task Dispatcher 或 Agent，也不 import 或执行 user-owned package。完整的 `/validate` 与 `PUT /graph` 通过 `workflow_executable_report()` 在 admission 和 topology 之上组合 reference、package resource 与 static Agent assembly check。
+`admit_workflow_document()` 和 `validate_workflow_executable()` 执行 static validation。完整的 `/validate` 与 `PUT /graph` 通过 `workflow_executable_report()` 在 admission 和 topology 之上组合 reference、package resource 与 static Agent assembly check；该阶段只读取和扫描配置资源。
 `GET /api/validation/repository` 对整个 configuration repository 执行 validation，也不代替一次真实 Workflow invocation。
 
-AI 通过 management FastAPI 调用 `/validate` 时能直接读取完整 structured issue，不需要打开 Vue Flow。响应包含 `valid`、`stage` 和 `issues[]`；每个 issue 提供 `code`、`scope`、`severity`、`path`、`owner_id`、`owner_name`、`message_key`、`message_args` 和可读 `message`，有具体归属类型时还包含 `owner_type`。响应会一次返回全部 issue；`valid` 只在不存在 `severity=error` 时为 true，warning 不阻止 `PUT /graph`。请求本身失败不是一份 “无 issue” report：保持 candidate Graph 不变，修复 Edge 或 service state 后显式重试 `/validate`。
+AI 通过 management FastAPI 调用 `/validate` 时能直接读取完整 structured issue。响应包含 `valid`、`stage` 和 `issues[]`；每个 issue 提供 `code`、`scope`、`severity`、`path`、`owner_id`、`owner_name`、`message_key`、`message_args` 和可读 `message`，有具体归属类型时还包含 `owner_type`。响应会一次返回全部 issue；`severity=error` 使 `valid=false`，warning 允许继续 `PUT /graph`。请求失败时保持 candidate Graph，修复 Edge 或 service state 后显式重试 `/validate`。
 
 Workflow metadata PUT 只更新 name、role 和 runtime limits，并保留当前 `enabled`；只有正式 Graph PUT 可以 enable，draft PUT 可以 disable。
 
@@ -108,7 +108,7 @@ Workflow metadata PUT 只更新 name、role 和 runtime limits，并保留当前
 
 以 `GET /api/workflow-node-catalog` 为当前事实。现有 Node 如下：
 
-本节代码分成两类信息：function signature、return field、Edge key 和 validation boundary 是固定 contract；读取哪个 State/Runtime source、采用什么 rule、是否 update State、task 如何划分都只是建议示例。具体选择来自当前 Workflow 的真实 data flow，示例 field 不是 platform field。
+本节代码分成两类信息：function signature、return field、Edge key 和 validation boundary 是固定 contract；State/Runtime source、业务 rule、State update 和 task 划分是建议示例。具体选择来自当前 Workflow 的真实 data flow。
 
 | Node | `config` | input -> output | 是否写 script |
 | --- | --- | --- | --- |
@@ -118,7 +118,7 @@ Workflow metadata PUT 只更新 name、role 和 runtime limits，并保留当前
 | `task-dispatcher` | `task_dispatcher_id` | `in` -> `dispatch` | 是；component 提供 `create_dispatcher()` |
 | `end` | `{}` | `in` -> none | 否；直接映射 LangGraph `END` |
 
-`agent.in` 接受 normal、branch 和 dispatch Edge；`command`、`task-dispatcher` 与 `end` 的 `in` 只接受 normal 或 branch，因此 dispatch Edge 只能指向 Agent。同一个 Agent 不能把 dispatch 入边与 normal/branch 入边混用。
+`agent.in` 接受 normal、branch 和 dispatch Edge；`command`、`task-dispatcher` 与 `end` 的 `in` 接受 normal 或 branch。dispatch Edge 的目标是 Agent，且同一个 Agent 的入边统一使用 dispatch 或 normal/branch 语义。
 
 AI 构造 Graph 时可按以下顺序组织；visual layout 不承载 execution semantics：
 
@@ -137,11 +137,11 @@ Node 执行工作并返回 State update；Edge 表达 activation。Command/Task 
 layout 或完整 topology。多个 single-responsibility Node + Edge 可以分别表达业务处理、routing、wait 和 termination semantics。
 
 普通 Agent/Start 使用 static Normal Edge。condition 和 successor selection 全部由 Command Node 完成，其 output 使用 Branch Edge；Graph 只声明 candidate target。Task Dispatcher 专门生成并 dispatch task，其 output 使用 Dispatch Edge。Command/Task Dispatcher 没有 normal output handle，
-其 script 返回 Shell contract，而不是 LangGraph `Command`/`Send`。
+其 script 返回由 Shell 映射到 LangGraph `Command`/`Send` 的领域 contract。
 
 ## Command Node
 
-`GET /api/python-package-templates/command` 返回 `内置示例-rule-based-command` 的当前 revision 和 source，可作为按业务改写的起点；本文代码不是当前 template 的副本。
+`GET /api/python-package-templates/command` 返回 `内置示例-rule-based-command` 的当前 revision 和 source，可作为按业务改写的起点；本文代码展示调用 contract。
 
 Graph Node 只引用 component UUID：
 
@@ -183,11 +183,11 @@ Graph 中对应 candidate Branch Edge 的 wire 为：
 ```
 
 如果 script 可能返回 `continue`，再连接一条 `branch_key: "continue"` candidate Branch Edge。`command` 可以按场景读取完整 `state`、
-`runtime.context` 和 `runtime.store`；示例中的 `shared_vars.requires_review` 不是固定 input。`activate` 可以返回零个、一个或多个不同 key；为空或省略时不激活 successor，只提交 `update`，当前 path 在该 Node 自然结束。Shell 不保留 fallback key，也不检查 script 的 condition 是否穷尽；`if/elif/else`、`match` 和业务 key 全部由 script 负责。非空 key 与同源 Branch Edge 完全匹配，未知 key 使本次 Run 受控失败。`update` 可以更新当前 Workflow State 已声明的任意 top-level channel，不需要 update 时返回 `{}`。script 只返回 Agent Shell contract，不 import 或返回 LangGraph `Command`，不返回 Node ID。
+`runtime.context` 和 `runtime.store`；示例从 `shared_vars.requires_review` 读取业务 input。`activate` 可以返回零个、一个或多个不同 key；为空或省略时只提交 `update`，当前 path 在该 Node 自然结束。`if/elif/else`、`match` 和业务 key 由 script 负责。非空 key 与同源 Branch Edge 完全匹配，未知 key 使本次 Run 受控失败。`update` 可以更新当前 Workflow State 已声明的任意 top-level channel，空更新使用 `{}`。script 返回 Agent Shell contract，由 runtime 映射为 LangGraph `Command` 和目标 Node。
 
 ## Task Dispatcher
 
-`GET /api/python-package-templates/task-dispatcher` 提供 `内置示例-item-list-dispatcher` 的当前 revision 和 source，再按 task source 改写；`items` 只是示例，不是 platform field。
+`GET /api/python-package-templates/task-dispatcher` 提供 `内置示例-item-list-dispatcher` 的当前 revision 和 source，再按实际 task source 改写；示例使用 `items` 字段。
 
 Graph Node 同样只引用 component UUID：
 
@@ -243,8 +243,7 @@ Agent 成功后，完整 reduced messages 写入 Lifecycle Store，parent State 
 
 Start/End 没有 script、configuration 或 business data transformation。Start 不把 client messages 注入 State；End 不负责自动取消 background task、删除 Lifecycle 或拼接最终 Agent content。WIC 负责 input，Main Agent 的 Agent Event Output 和可选 Workflow Event Output 负责 output。
 
-Start 是 Graph entry，正式 Graph 恰有一个 Start 且至少有一条合法 outgoing Edge。End 是 LangGraph `END` 的显式 projection，不是普通 Node，
-也不是全 Graph cancel 或 automatic join operation。End 可以没有任何 incoming Edge。普通 reachable leaf 可以自然结束；有 loop 时让 exit path 连接 End。
+Start 是 Graph entry，正式 Graph 恰有一个 Start 且至少有一条合法 outgoing Edge。End 是 LangGraph `END` 的显式 projection，表示一条路径的逻辑终点。End 可以没有任何 incoming Edge。普通 reachable leaf 可以自然结束；有 loop 时让 exit path 连接 End。
 
 ## Leaf、join 与 super-step
 
@@ -253,7 +252,7 @@ LangGraph 按 super-step 执行。同一 super-step 内所有 scheduled Node 读
 - 可达的普通 Node 可以没有 outgoing Edge。它完成 update 后成为该 path 的 leaf，其他 active branch 继续执行。
 - canvas 保留唯一的 system End，但 End 可以完全没有 incoming Edge。
 - 某条 path 到达 End 只终止该 path，不取消同一 super-step、其他 branch 或 background Run。
-- 整个 Graph 仅在所有 path 都不再产生 task 时结束。
+- 所有 path 的后续 task 集合为空时，整个 Graph 结束。
 - loop 不等于 exit condition。loop 若始终产生 task，会一直执行到业务逻辑退出、Run timeout 或 `recursion_limit`。
 
 normal fan-out 与 fan-in 不同：
@@ -271,7 +270,7 @@ C -> J
 fan-out 表示 A 完成后同时激活 B、C。普通 executable target J 的多条非 START Normal Edge 会编译为 `add_edge([B, C], J)`；只有 B、C 都完成才激活 J。若 B、C 来自 mutually exclusive branch 而本次只激活一边，J 不执行。
 mutually exclusive branch 适合作为独立 leaf 或分别指向 End，不适合 join 到 all-of target。
 
-START 是例外：`Start -> J` 与 `Start -> A -> J` 会让 J 分别在启动时和 A 完成后各执行一次，不是等待 START 与 A 的 join。
+START 使用入口激活语义：`Start -> J` 与 `Start -> A -> J` 会让 J 分别在启动时和 A 完成后各执行一次。
 多条进入 End 的 Edge 也互相独立；End 不等待所有 source。需要 A、B 都完成后再 decision 时，先让两者 join 到一个 executable Node，
 再由该 Node 进入 End。
 

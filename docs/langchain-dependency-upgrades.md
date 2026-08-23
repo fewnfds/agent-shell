@@ -8,7 +8,7 @@
 | --- | ---: | --- |
 | Deep Agents | `0.7.7` | 精确锁定；项目依赖其 middleware 顺序、Filesystem 和 Subagent 行为 |
 | LangChain / Core | `1.3.15` / `1.6.0` | 保持当前 major，升级时先复核消息、工具、middleware 和 stream contract |
-| `langchain-anthropic` / `langchain-openai` | `1.6.0` / `1.6.0` | 这是 LangChain adapter 版本，不是底层 `anthropic`/`openai` SDK；保持当前 major，按 Provider 分组升级 |
+| `langchain-anthropic` / `langchain-openai` | `1.6.0` / `1.6.0` | LangChain adapter 版本；保持当前 major，按 Provider 分组升级 |
 | Google GenAI / Vertex AI | `4.3.4` / `3.2.4` | 各自保持当前 major；model profile 采用上游当前数据 |
 | DeepSeek / xAI | `1.1.0` / `1.3.0` | 各自保持当前 major，并与 OpenAI-compatible 路径一起回归 |
 | LangGraph / SQLite Checkpoint | `1.2.11` / `3.1.1` | LangGraph 保持 `<1.3.0`，Checkpoint-SQLite 保持 `<4.0`；复核 Graph、stream 和 checkpoint 行为 |
@@ -16,7 +16,7 @@
 
 ## LangSmith 约束说明
 
-`langsmith>=0.11.1,<0.12` 是有意设置的预 1.0 minor 复审边界，不表示项目已知与 `0.12` 不兼容，也不是为了维持 `0.11` 内的旧行为：
+`langsmith>=0.11.1,<0.12` 是预 1.0 minor 复审边界；升级到新的 minor 时按以下步骤复核：
 
 - `0.11.1` 是已经阅读 release/source diff 并通过本项目直接验证的最低基线；
 - LangSmith 仍为 `0.x` 包，下一次 minor 可能改变 tracing、上传或 Client contract，

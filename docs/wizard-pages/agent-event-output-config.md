@@ -28,7 +28,7 @@ def output(event):
 ```
 
 函数签名必须恰好是 `def output(event)`：不接受 `async def`、额外参数、默认参数、`*args` 或 `**kwargs`。脚本异常或返回非字符串会以 `event_output.execution_failed`（502）终止本次运行；声明了尚未就绪的 `requirements.txt` 依赖时，请求期返回 `python_package.dependencies_not_ready`（409）。两类错误均不回显 traceback 或事件正文。
-扩展在受信任的服务进程内运行，不是 sandbox。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需完成依赖准备，纯 `main.py` 源码改动在下一次请求重新加载，无需重启。`requirements.txt` 可以不存在或保持为空，表示没有额外依赖；只有 source 实际 import 平台核心之外的 package 时才需要逐行声明 direct dependency。
+扩展以受信任服务进程的权限运行。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需完成依赖准备，纯 `main.py` 源码改动在下一次请求重新加载。缺省或空的 `requirements.txt` 表示只使用平台核心依赖；source import 其他 package 时逐行声明 direct dependency。
 
 ## 公共 dict 字段
 

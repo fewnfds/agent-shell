@@ -126,9 +126,14 @@ def test_model_connection_save_restores_env_when_document_write_fails(
     assert env_path.read_text(encoding="utf-8") == old_env
 
 
-def test_environment_codec_round_trips_model_credential_and_preserves_api_key(
+def test_standard_dotenv_codec_round_trips_model_credential_and_preserves_api_key(
     tmp_path: Path,
 ) -> None:
+    assert parse_environment_text(
+        "# Standard dotenv comments and blank lines are accepted.\n\n"
+        "AGENT_SHELL_API_KEY=old-key\n"
+        "AGENT_SHELL_API_KEY=local-api-key\n"
+    ) == {"AGENT_SHELL_API_KEY": "local-api-key"}
     mutations = ConfigurationMutationCoordinator()
     environment = InstanceEnvironmentStore(
         tmp_path / "config" / "agent-shell.env",
@@ -158,6 +163,9 @@ def test_environment_codec_round_trips_model_credential_and_preserves_api_key(
     )
     assert parsed["AGENT_SHELL_API_KEY"] == "local-api-key"
     assert credential in parsed.values()
+    assert environment.path.read_text(encoding="utf-8").startswith(
+        "AGENT_SHELL_API_KEY=local-api-key\n"
+    )
 
 
 def test_connection_change_without_credential_removes_orphan_secret(

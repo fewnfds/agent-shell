@@ -269,14 +269,13 @@ def test_explicit_debug_uses_temporary_data_and_dynamic_ports() -> None:
     assert "19101" not in debug_script
 
 
-def test_explicit_debug_serializes_environment_as_utf8_without_bom() -> None:
+def test_explicit_debug_writes_standard_dotenv_as_utf8_without_bom() -> None:
     debug_script = (
         REPOSITORY_ROOT / "packaging" / "development" / "start_dev.ps1"
     ).read_text(encoding="utf-8")
 
-    assert "ConvertTo-Json" in debug_script
-    assert "-InputObject $temporaryManagementPassword" in debug_script
-    assert '"AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenJson' in debug_script
+    assert "$managementTokenValue = $temporaryManagementPassword" in debug_script
+    assert '"AGENT_SHELL_MANAGEMENT_TOKEN={0}`n" -f $managementTokenValue' in debug_script
     assert "[System.Text.UTF8Encoding]::new($false)" in debug_script
     assert (
         'Set-Content -LiteralPath (Join-Path $configRoot "agent-shell.env")'

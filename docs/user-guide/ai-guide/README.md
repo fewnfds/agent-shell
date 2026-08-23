@@ -5,7 +5,7 @@ OpenAPI 中的通用 JSON body 不表达各 component 的完整字段；当前�
 
 ## Terminology convention
 
-本目录中的项目 keyword 使用源码、API field 和正式 contract 的英文原名，普通说明仍使用中文。不要翻译 keyword，也不要把一个 keyword 拆成中英混合词组。搜索源码时直接使用英文原名或 identifier，例如 `System Prompt` 和 `system_prompt`。
+本目录中的项目 keyword 保持源码、API field 和正式 contract 的英文原名，普通说明使用中文。搜索源码时直接使用英文原名或 identifier，例如 `System Prompt` 和 `system_prompt`。
 
 固定使用以下 terminology：
 
@@ -70,10 +70,10 @@ Start -> End
 
 Start -> Work Node（Work Node 没有 outgoing Edge，自然结束；End 仍存在但无 incoming Edge）
 
-Start -> Work Node -> End（显式 End，激活 End 代表这条路径结束，而不是 Graph 结束）
+Start -> Work Node -> End（显式 End 表示当前路径的逻辑终点）
 ```
 
-在下一个 Super-step 不再有任何 Node 可以行动，Graph 结束。
+下一个 Super-step 的可执行 Node 集合为空时，Graph 结束。
 普通 Work Node 的多条非 Start normal 入边使用 all-of 汇聚。Start 的多条出边独立激活，`Start -> J` 与其他到 J 的路径不会组成 all-of；多条进入 End 的 Edge 也彼此独立。
 Work Node 可以是当前 Node catalog 允许的任意 Work Node。可达 Work Node 没有 outgoing Edge 时，路径自然结束。
 一般 Workflow 可按业务放入实际需要的 Work Node，condition 和 successor selection 由 Command Node 表达。
@@ -97,7 +97,7 @@ Model Requirement、Agent Event Output、Main Agent 和 Workflow Input Context�
 6. [Validation、enabled 与真实 invocation](06-validation-and-references.md)
 
 修改已有对象时，第一章提供 PUT 和事实发现规则，目标对象所在章节提供 domain field。
-Python extension directory、dependency 与直接维护文件的规则集中在第四章；其他章节的代码片段不是完整 package contract。
+Python extension directory、dependency 与直接维护文件的完整 package contract 集中在第四章；其他章节提供局部调用示例。
 
 本文只描述当前 Happy Path。示例中的 function signature、return structure、Graph wire、business field 和 condition rule 都只是示例。
 `../../../examples/`（仓库根 `examples/`）只展示示例场景，按当前业务修改 code 和 import。示例中的 `model` 占位符必须替换为 `GET /api/workflows?workflow_role=parent` 返回记录中 `enabled=true` 的真实 Workflow name。

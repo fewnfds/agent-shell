@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
 import json
 from pathlib import Path
 import re
 import threading
 from types import MappingProxyType
 from typing import Mapping
+
+from dotenv import dotenv_values
 
 from agent_shell.storage.atomic_files import write_text_atomic
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
@@ -24,7 +27,7 @@ _EXACT_OWNER_BY_NAME = {
 _MODEL_SECRET_ENVIRONMENT = re.compile(
     r"^AGENT_SHELL_MODEL_[0-9A-F]{32}_API_KEY$"
 )
-_ENVIRONMENT_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+_ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ENVIRONMENT_OWNERS = frozenset(
     {
         SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
@@ -72,32 +75,29 @@ def parse_environment_text(text: str) -> dict[str, str]:
     if text.startswith("\ufeff"):
         raise EnvironmentFormatError("environment file must be UTF-8 without BOM")
     values: dict[str, str] = {}
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        if not line:
+    for name, value in dotenv_values(
+        stream=StringIO(text),
+        interpolate=False,
+    ).items():
+        if value is None:
+            continue
+        if _ENVIRONMENT_NAME.fullmatch(name) is None:
+            raise EnvironmentFormatError(f"environment key is invalid: {name}")
+        if "\x00" in value:
             raise EnvironmentFormatError(
-                f"environment line {line_number} must not be empty"
-            )
-        name, separator, encoded = line.partition("=")
-        if (
-            not separator
-            or _ENVIRONMENT_NAME.fullmatch(name) is None
-            or name in values
-        ):
-            raise EnvironmentFormatError(
-                f"environment line {line_number} is invalid"
-            )
-        try:
-            value = json.loads(encoded)
-        except (json.JSONDecodeError, TypeError) as exc:
-            raise EnvironmentFormatError(
-                f"environment line {line_number} has an invalid value"
-            ) from exc
-        if not isinstance(value, str) or "\x00" in value:
-            raise EnvironmentFormatError(
-                f"environment line {line_number} must contain a JSON string"
+                f"environment value is invalid for key: {name}"
             )
         values[name] = value
     return values
+
+
+def _serialize_environment_value(value: str) -> str:
+    if not value or (
+        value[0] not in {"'", '"'}
+        and not any(character.isspace() for character in value)
+    ):
+        return value
+    return json.dumps(value, ensure_ascii=False)
 
 
 def serialize_environment(values: Mapping[str, str]) -> str:
@@ -109,7 +109,7 @@ def serialize_environment(values: Mapping[str, str]) -> str:
             raise EnvironmentFormatError(
                 f"environment value is invalid for key: {name}"
             )
-        lines.append(f"{name}={json.dumps(value, ensure_ascii=False)}")
+        lines.append(f"{name}={_serialize_environment_value(value)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 

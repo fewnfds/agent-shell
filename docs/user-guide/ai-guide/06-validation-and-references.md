@@ -16,7 +16,7 @@
 }
 ```
 
-`api_key.operation` 可为 `keep`、`replace` 或 `clear`；只有 `replace` 接受 `value`，其值必须是非空、无空格的可打印 ASCII。`max_initial_messages` 必须为正整数，`1000` 是默认值而非固定上限。
+`api_key.operation` 可为 `keep`、`replace` 或 `clear`；`replace` 接受非空、无空格的可打印 ASCII `value`。`max_initial_messages` 使用正整数，默认值为 `1000`。
 
 5. `POST /api/api-server/start`，请求不需要 body。
 6. 使用 API Key 调用 `GET /v1/models`，确认 Workflow name 出现。
@@ -37,9 +37,9 @@ Content-Type: application/json
 }
 ```
 
-配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node 的 Workflow 同样可以 invoke；若没有可投影的事件，或绑定的 output extension 对所有事件均返回空字符串，响应是合法空内容，不是运行错误。
+配置保存成功表示 persistence 完成；真实 invocation 会继续验证 Graph reference、Python extension、Provider 和 output script。纯 Command/Task Dispatcher Workflow 同样可以 invoke；可投影事件集合为空时返回合法空内容。
 
-配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；按 preview 完成绝对 mapped path 与 virtual source path 的显式重绑，并只在报告 `filesystem_relative_target_missing` 时修正对应 data-root-relative 目录；审查 trusted-code warning 以及随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对 disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用返回的 target UUID；Workflow Node/Edge ID 始终是 Graph-local key，不参与 Configuration UUID map。
+配置 Bundle import 成功后，新 UUID 配置和资产已原子持久化。后续检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；按 preview 完成绝对 mapped path 与 virtual source path 的显式重绑，并在报告 `filesystem_relative_target_missing` 时修正对应 data-root-relative 目录；审查 trusted-code warning 以及随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对 disabled Workflow 提交 candidate Graph validation 并显式 publish。后续调用使用返回的 target UUID；Workflow Node/Edge ID 始终是 Graph-local key。
 
 ## 详细文档
 

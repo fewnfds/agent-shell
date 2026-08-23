@@ -12,7 +12,7 @@
 | 模型要求 | Configuration Repository 中描述所需模型能力的组件，只保存名称和说明 |
 | 模型映射 | 按 Configuration Repository 将模型要求绑定到模型连接的页面 |
 | Endpoint | Node Catalog 声明的输入/输出控制流端点；当前 Edge 类型为 normal、branch、dispatch |
-| Edge | 从 source endpoint 到 target endpoint 的具体激活连接；不是 Vue Flow renderer 类型 |
+| Edge | 从 source endpoint 到 target endpoint 的具体激活连接；类型由 Graph contract 定义 |
 | Subagent | 具有组件配置名、路由名、说明和 settings，可由父 Agent 通过 `task` 同步调用的实体 |
 | 代理组件 | 可被 Agent 按 UUID 引用的能力配置 |
 | 工作流组件 | 被 Workflow metadata 或画布 Node 引用的固定类型配置 |
