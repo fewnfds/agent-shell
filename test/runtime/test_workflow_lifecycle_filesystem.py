@@ -10,6 +10,21 @@ from agent_shell.runtime.workflow_lifecycle import (
     WorkflowLifecycleService,
     lifecycle_filesystem_namespace,
 )
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+
+
+def _lifecycle_service(
+    database_path: Path,
+    *,
+    data_root: Path | None = None,
+) -> WorkflowLifecycleService:
+    return WorkflowLifecycleService(
+        SQLiteDatabase(database_path),
+        store_database=SQLiteFile(
+            database_path.with_name("workflow-store.sqlite3")
+        ),
+        data_root=data_root,
+    )
 
 
 async def _create_lifecycle(
@@ -36,7 +51,7 @@ def test_lifecycle_resolves_fixed_and_dynamic_mappings_once(
         dynamic_parent.mkdir(parents=True)
         (data_root / "state").mkdir()
         fixed.mkdir()
-        service = WorkflowLifecycleService(
+        service = _lifecycle_service(
             data_root / "state" / "agent-shell.sqlite3",
             data_root=data_root,
         )
@@ -103,7 +118,7 @@ def test_lifecycle_relative_mapping_cannot_escape_data_root(tmp_path: Path) -> N
     async def scenario() -> None:
         data_root = tmp_path / "data"
         (data_root / "state").mkdir(parents=True)
-        service = WorkflowLifecycleService(
+        service = _lifecycle_service(
             data_root / "state" / "agent-shell.sqlite3",
             data_root=data_root,
         )
@@ -135,7 +150,7 @@ def test_lifecycle_relative_mapping_cannot_escape_data_root(tmp_path: Path) -> N
 
 def test_lifecycle_mutation_locks_are_isolated_by_lifecycle(tmp_path: Path) -> None:
     async def scenario() -> None:
-        service = WorkflowLifecycleService(tmp_path / "agent-shell.sqlite3")
+        service = _lifecycle_service(tmp_path / "agent-shell.sqlite3")
         await service.start()
         first_id = await _create_lifecycle(service, "first")
         second_id = await _create_lifecycle(service, "second")
@@ -173,7 +188,7 @@ def test_lifecycle_deletion_tombstone_blocks_new_tasks_and_allows_retry(
         data_root = tmp_path / "data"
         dynamic_parent = data_root / "dynamic"
         dynamic_parent.mkdir(parents=True)
-        service = WorkflowLifecycleService(
+        service = _lifecycle_service(
             data_root / "agent-shell.sqlite3",
             data_root=data_root,
         )

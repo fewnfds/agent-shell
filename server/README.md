@@ -29,7 +29,7 @@ Workflow Lifecycle 保存 Run/Event 结构历史并使用官方 checkpoint，但
 .\start_server.bat
 ```
 
-新实例默认监听 `127.0.0.1:19100`，数据库默认位于 `data/state/agent-shell.sqlite3`。直接运行模块时 `--home <appHome>` 为必填，`--data-dir <dataRoot>` 可选且相对路径按 `--home` 解析，`--port <PORT>` 可覆盖监听端口；`start_server.bat` 会自动推导 `--home` 和默认 data root。
+新实例默认监听 `127.0.0.1:19100`。应用关系数据、官方 LangGraph Checkpointer 和 Store 分别位于 `data/state/agent-shell.sqlite3`、`data/state/workflow-checkpoints.sqlite3` 和 `data/state/workflow-store.sqlite3`。直接运行模块时 `--home <appHome>` 为必填，`--data-dir <dataRoot>` 可选且相对路径按 `--home` 解析，`--port <PORT>` 可覆盖监听端口；`start_server.bat` 会自动推导 `--home` 和默认 data root。
 
 后端开发（主测试集位于仓库根 `test/`）：
 

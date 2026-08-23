@@ -15,6 +15,7 @@ from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.model_response import ModelResponse, finish_reason_category
 from agent_shell.runtime.output_stream import MainAgentMediaBlock, OutputEvent
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 
 @pytest.mark.parametrize(
     ("reason", "category"),
@@ -243,7 +244,10 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
 
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
-        lifecycle = WorkflowLifecycleService(tmp_path / "timeout.sqlite3")
+        lifecycle = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "timeout.sqlite3"),
+            store_database=SQLiteFile(tmp_path / "timeout-workflow-store.sqlite3"),
+        )
         await lifecycle.start()
         try:
             lifecycle_id = await lifecycle.create(

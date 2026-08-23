@@ -12,6 +12,14 @@ from agent_shell.runtime.workflow_lifecycle import (
     WorkflowLifecycleService,
     lifecycle_tasks_namespace,
 )
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+
+
+def _lifecycle_service(root: Path) -> WorkflowLifecycleService:
+    return WorkflowLifecycleService(
+        SQLiteDatabase(root / "agent-shell.sqlite3"),
+        store_database=SQLiteFile(root / "workflow-store.sqlite3"),
+    )
 
 
 class _Execution:
@@ -59,7 +67,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
-        lifecycle = WorkflowLifecycleService(tmp_path / "agent-shell.sqlite3")
+        lifecycle = _lifecycle_service(tmp_path)
         await lifecycle.start()
         lifecycle_id = await lifecycle.create(
             [{"role": "user", "content": "input"}],
@@ -194,7 +202,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
 
 def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None:
     async def scenario() -> None:
-        lifecycle = WorkflowLifecycleService(tmp_path / "agent-shell.sqlite3")
+        lifecycle = _lifecycle_service(tmp_path)
         await lifecycle.start()
         lifecycle_id = await lifecycle.create(
             [{"role": "user", "content": "input"}],
@@ -240,7 +248,7 @@ def test_background_manager_lists_filters_and_cancels_agent_task_idempotently(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
-        lifecycle = WorkflowLifecycleService(tmp_path / "agent-shell.sqlite3")
+        lifecycle = _lifecycle_service(tmp_path)
         await lifecycle.start()
         lifecycle_id = await lifecycle.create(
             [{"role": "user", "content": "input"}],

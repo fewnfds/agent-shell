@@ -16,7 +16,7 @@ from langgraph.store.sqlite import AsyncSqliteStore
 
 from agent_shell.contracts import FilesystemBlock
 from agent_shell.runtime.input_messages import client_messages_sha
-from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 from agent_shell.storage.owned_paths import resolve_data_root_relative_path
 from agent_shell.storage.workflow_lifecycles import WorkflowLifecycleStore
 from agent_shell.storage.workflow_run_history import WorkflowRunHistoryStore
@@ -61,16 +61,19 @@ class WorkflowLifecycleService:
 
     def __init__(
         self,
-        database: SQLiteDatabase | Path,
+        database: SQLiteDatabase,
         *,
+        store_database: SQLiteFile,
         data_root: Path | None = None,
     ) -> None:
-        database_instance = (
-            database if isinstance(database, SQLiteDatabase) else SQLiteDatabase(database)
-        )
-        self._database_path = database_instance.path
-        self._index = WorkflowLifecycleStore(database_instance)
-        self._history = WorkflowRunHistoryStore(database_instance)
+        if database.path.resolve() == store_database.path.resolve():
+            raise ValueError(
+                "the Workflow Store must use a dedicated SQLite database file"
+            )
+        self._database_path = database.path
+        self._store_database_path = store_database.path
+        self._index = WorkflowLifecycleStore(database)
+        self._history = WorkflowRunHistoryStore(database)
         self._data_root = (
             data_root.resolve()
             if data_root is not None
@@ -90,7 +93,7 @@ class WorkflowLifecycleService:
         return self._store
 
     async def start(self) -> None:
-        context = AsyncSqliteStore.from_conn_string(str(self._database_path))
+        context = AsyncSqliteStore.from_conn_string(str(self._store_database_path))
         store: AsyncSqliteStore | None = None
         try:
             store = await context.__aenter__()

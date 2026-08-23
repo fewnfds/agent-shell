@@ -10,7 +10,16 @@ from langchain_core.outputs import ChatGeneration, LLMResult
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
-from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+
+
+def _lifecycle_service(database: SQLiteDatabase) -> WorkflowLifecycleService:
+    return WorkflowLifecycleService(
+        database,
+        store_database=SQLiteFile(
+            database.path.with_name(f"{database.path.stem}-workflow-store.sqlite3")
+        ),
+    )
 
 
 class _Diagnostics:
@@ -27,7 +36,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
 ) -> None:
     async def scenario() -> None:
         database = SQLiteDatabase(tmp_path / "data" / "state" / "agent-shell.sqlite3")
-        lifecycle = WorkflowLifecycleService(database)
+        lifecycle = _lifecycle_service(database)
         await lifecycle.start()
         try:
             lifecycle_id = await lifecycle.create(
@@ -235,7 +244,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
 def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> None:
     async def scenario() -> list[dict[str, object]]:
         database = SQLiteDatabase(tmp_path / "ownership.sqlite3")
-        lifecycle = WorkflowLifecycleService(database)
+        lifecycle = _lifecycle_service(database)
         await lifecycle.start()
         try:
             lifecycle_id = await lifecycle.create(
@@ -365,7 +374,7 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
 def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
     async def scenario() -> list[dict[str, object]]:
         database = SQLiteDatabase(tmp_path / "cancelled.sqlite3")
-        lifecycle = WorkflowLifecycleService(database)
+        lifecycle = _lifecycle_service(database)
         await lifecycle.start()
         try:
             lifecycle_id = await lifecycle.create(

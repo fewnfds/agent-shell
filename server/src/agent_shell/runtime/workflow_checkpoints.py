@@ -3,12 +3,12 @@ from __future__ import annotations
 from contextlib import AbstractAsyncContextManager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from pathlib import Path
 from uuid import UUID, uuid4
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from agent_shell.runtime.limits import GRAPH_RECURSION_LIMIT
+from agent_shell.storage.database import SQLiteFile
 
 
 @dataclass(slots=True)
@@ -43,12 +43,12 @@ class WorkflowCheckpointService:
 
     def __init__(
         self,
-        database_path: Path,
+        database: SQLiteFile,
         *,
         tracing_enabled: bool,
         langsmith_project: str,
     ) -> None:
-        self._database_path = database_path
+        self._database_path = database.path
         self.tracing_enabled = tracing_enabled
         self.langsmith_project = langsmith_project
         self._context: AbstractAsyncContextManager[AsyncSqliteSaver] | None = None

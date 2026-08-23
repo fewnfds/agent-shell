@@ -219,8 +219,14 @@ def test_relative_paths_are_bound_to_explicit_application_home(tmp_path: Path) -
     first = get_settings(application_home=first_home)
     second = get_settings(application_home=second_home)
 
-    assert first.resolved_database_path() == (
+    assert first.resolved_application_database_path() == (
         first_home / "data" / "state" / "agent-shell.sqlite3"
+    ).resolve()
+    assert first.resolved_workflow_checkpoint_database_path() == (
+        first_home / "data" / "state" / "workflow-checkpoints.sqlite3"
+    ).resolve()
+    assert first.resolved_workflow_store_database_path() == (
+        first_home / "data" / "state" / "workflow-store.sqlite3"
     ).resolve()
     assert first.resolved_runtime_dir() == (first_home / "runtime").resolve()
     assert first.resolved_logs_dir() == (first_home / "data" / "logs").resolve()
@@ -228,10 +234,12 @@ def test_relative_paths_are_bound_to_explicit_application_home(tmp_path: Path) -
     assert first.resolved_skill_templates_dir() == (
         first_home / "data" / "skills-template"
     ).resolve()
-    assert second.resolved_database_path() == (
+    assert second.resolved_application_database_path() == (
         second_home / "data" / "state" / "agent-shell.sqlite3"
     ).resolve()
-    assert first.resolved_database_path() != second.resolved_database_path()
+    assert first.resolved_application_database_path() != (
+        second.resolved_application_database_path()
+    )
 
 
 @pytest.mark.parametrize("host", ["127.99.1.2", "::1"])

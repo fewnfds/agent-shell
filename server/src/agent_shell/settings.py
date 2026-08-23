@@ -290,8 +290,14 @@ class Settings(BaseSettings):
     def resolved_logs_dir(self) -> Path:
         return self.data_root / "logs"
 
-    def resolved_database_path(self) -> Path:
+    def resolved_application_database_path(self) -> Path:
         return self.data_root / "state" / "agent-shell.sqlite3"
+
+    def resolved_workflow_checkpoint_database_path(self) -> Path:
+        return self.data_root / "state" / "workflow-checkpoints.sqlite3"
+
+    def resolved_workflow_store_database_path(self) -> Path:
+        return self.data_root / "state" / "workflow-store.sqlite3"
 
     def resolved_files_dir(self) -> Path:
         return self.data_root / "files"

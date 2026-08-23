@@ -9,10 +9,22 @@ from agent_shell.storage.permissions import secure_database_files, secure_direct
 from agent_shell.storage.schema import SCHEMA_SQL
 
 
-class SQLiteDatabase:
+class SQLiteFile:
+    """Prepare one SQLite file for a single higher-level persistence owner."""
+
     def __init__(self, path: Path) -> None:
         self.path = path
         self.directory_permission = secure_directory(self.path.parent)
+        if not self.path.exists():
+            self.path.touch()
+        self.file_permissions = secure_database_files(self.path)
+
+
+class SQLiteDatabase(SQLiteFile):
+    """Own the Agent Shell relational schema and its SQLite transactions."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
         with self.transaction() as connection:
             connection.executescript(SCHEMA_SQL)
         self.file_permissions = secure_database_files(self.path)

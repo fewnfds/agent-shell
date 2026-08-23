@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
@@ -15,7 +16,7 @@ from agent_shell.runtime.workflow_lifecycle import (
     WorkflowLifecycleService,
     lifecycle_input_namespace,
 )
-from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 from agent_shell.workflow import admit_workflow_document, compile_workflow
 
 
@@ -74,13 +75,21 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
     tmp_path,
 ) -> None:
     async def scenario() -> None:
-        database = SQLiteDatabase(tmp_path / "data" / "state" / "agent-shell.sqlite3")
+        state_root = tmp_path / "data" / "state"
+        database = SQLiteDatabase(state_root / "agent-shell.sqlite3")
+        checkpoint_database = SQLiteFile(
+            state_root / "workflow-checkpoints.sqlite3"
+        )
+        store_database = SQLiteFile(state_root / "workflow-store.sqlite3")
         service = WorkflowCheckpointService(
-            database.path,
+            checkpoint_database,
             tracing_enabled=False,
             langsmith_project="workflow-checkpoint-test",
         )
-        lifecycle = WorkflowLifecycleService(database)
+        lifecycle = WorkflowLifecycleService(
+            database,
+            store_database=store_database,
+        )
         raw_messages = [
             {"role": "system", "content": "private-system-attention-sentinel"},
             {"role": "assistant", "content": "private-assistant-data-sentinel"},
@@ -175,5 +184,62 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
         finally:
             await service.close()
             await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        state_root = tmp_path / "data" / "state"
+        application_path = state_root / "agent-shell.sqlite3"
+        checkpoint_path = state_root / "workflow-checkpoints.sqlite3"
+        store_path = state_root / "workflow-store.sqlite3"
+        application_database = SQLiteDatabase(application_path)
+        checkpoints = WorkflowCheckpointService(
+            SQLiteFile(checkpoint_path),
+            tracing_enabled=False,
+            langsmith_project="workflow-database-ownership-test",
+        )
+        lifecycle = WorkflowLifecycleService(
+            application_database,
+            store_database=SQLiteFile(store_path),
+        )
+
+        await lifecycle.start()
+        await checkpoints.start()
+        try:
+            await lifecycle.create(
+                [{"role": "user", "content": "input"}],
+                request_id="ownership-request",
+                run_id="ownership-run",
+                thread_id="ownership-thread",
+                workflow_id="ownership-workflow",
+                workflow_name="Ownership Workflow",
+            )
+        finally:
+            await checkpoints.close()
+            await lifecycle.close()
+
+        def tables(path) -> set[str]:
+            with sqlite3.connect(path) as connection:
+                return {
+                    str(row[0])
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+
+        application_tables = tables(application_path)
+        checkpoint_tables = tables(checkpoint_path)
+        store_tables = tables(store_path)
+        assert "workflow_lifecycles" in application_tables
+        assert "checkpoints" not in application_tables
+        assert "store" not in application_tables
+        assert "checkpoints" in checkpoint_tables
+        assert "workflow_lifecycles" not in checkpoint_tables
+        assert "store" in store_tables
+        assert "workflow_lifecycles" not in store_tables
 
     asyncio.run(scenario())

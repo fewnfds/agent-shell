@@ -191,6 +191,10 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     work.mkdir(parents=True, exist_ok=True)
     data_dir = work / "data"
     database_path = data_dir / "state" / "agent-shell.sqlite3"
+    checkpoint_database_path = (
+        data_dir / "state" / "workflow-checkpoints.sqlite3"
+    )
+    store_database_path = data_dir / "state" / "workflow-store.sqlite3"
     port = _port()
     management_token = secrets.token_urlsafe(32)
     api_key = secrets.token_urlsafe(32)
@@ -564,6 +568,26 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 )
             }
             assert not ({"blocks", "provider_secrets", "workflows"} & tables)
+            assert "checkpoints" not in tables
+            assert "store" not in tables
+        with closing(sqlite3.connect(checkpoint_database_path)) as connection:
+            checkpoint_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            assert "checkpoints" in checkpoint_tables
+            assert "workflow_lifecycles" not in checkpoint_tables
+        with closing(sqlite3.connect(store_database_path)) as connection:
+            store_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            assert "store" in store_tables
+            assert "workflow_lifecycles" not in store_tables
         event_path = data_dir / "logs" / "security-events.jsonl"
         event_text = event_path.read_text(encoding="utf-8")
         assert provider_secret not in event_text

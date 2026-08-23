@@ -57,7 +57,7 @@ from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
-from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 from agent_shell.storage.file_config import (
     ActiveRepositoryChangedError,
     FileConfigRepository,
@@ -126,7 +126,15 @@ def create_app(
             runtime_dir / "home",
         )
     )
-    database = SQLiteDatabase(settings.resolved_database_path())
+    application_database = SQLiteDatabase(
+        settings.resolved_application_database_path()
+    )
+    workflow_checkpoint_database = SQLiteFile(
+        settings.resolved_workflow_checkpoint_database_path()
+    )
+    workflow_store_database = SQLiteFile(
+        settings.resolved_workflow_store_database_path()
+    )
     configuration_mutations = ConfigurationMutationCoordinator()
     environment = InstanceEnvironmentStore(
         settings.environment_file,
@@ -146,7 +154,7 @@ def create_app(
     skill_package_instances_dir = configuration.skill_package_instances_root
     runtime_policy = RuntimePolicyStore(configuration)
     media_outputs = MediaOutputStore(
-        database,
+        application_database,
         settings.resolved_media_outputs_dir(),
         runtime_policy,
     )
@@ -157,13 +165,15 @@ def create_app(
     )
     history_retention = HistoryRetentionStore(configuration)
     workflow_checkpoints = WorkflowCheckpointService(
-        settings.resolved_database_path(),
+        workflow_checkpoint_database,
         tracing_enabled=settings.langsmith_tracing_enabled,
         langsmith_project=settings.langsmith_project,
     )
     runtime_diagnostic_details = RuntimeDiagnosticDetailStore(logs_dir / "diagnostics")
     configuration_validation_settings = ConfigurationValidationSettingsStore(configuration)
-    runtime_diagnostic_store = RuntimeDiagnosticStore(database, history_retention)
+    runtime_diagnostic_store = RuntimeDiagnosticStore(
+        application_database, history_retention
+    )
     block_store = BlockStore(configuration, event_logger)
     config_store = AgentConfigStore(configuration, event_logger)
     workflow_store = WorkflowStore(configuration, event_logger)
@@ -172,7 +182,8 @@ def create_app(
         runtime_root=runtime_dir,
     )
     workflow_lifecycle = WorkflowLifecycleService(
-        database,
+        application_database,
+        store_database=workflow_store_database,
         data_root=settings.data_root,
     )
     python_package_authoring = PythonPackageAuthoringService(
@@ -216,7 +227,7 @@ def create_app(
         )
     )
     api_server_store = ApiServerStore(
-        database,
+        application_database,
         configuration,
         environment,
         configuration_mutations,
@@ -301,8 +312,10 @@ def create_app(
     startup_permission_statuses = (
         *environment_permissions,
         *runtime_permissions,
-        database.directory_permission,
-        *database.file_permissions,
+        application_database.directory_permission,
+        *application_database.file_permissions,
+        *workflow_checkpoint_database.file_permissions,
+        *workflow_store_database.file_permissions,
         media_outputs.directory_permission,
         *event_logger.permission_statuses,
         runtime_diagnostic_details.directory_permission,
