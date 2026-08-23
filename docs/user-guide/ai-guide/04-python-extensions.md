@@ -40,6 +40,16 @@ POST /api/blocks/agent-event-output
 
 Workflow Event Output 使用 `POST /api/blocks/workflow-event-output`。需要从空白源码开始时，先通过 File Manager API 在 `data/templates/` 的对应类别创建合法最小模板，再读取 catalog identity。
 
+```text
+data/templates/
+  workflow/command/<template-key>/
+  workflow/task_dispatcher/<template-key>/
+  workflow/workflow_event_output/<template-key>/
+  agent/custom_tool/<template-key>/
+  agent/custom_middleware/<template-key>/
+  agent/agent_event_output/<template-key>/
+```
+
 首次保存后，系统会把 template 复制到该 configuration 独占的 extension directory：
 
 ```text
@@ -156,7 +166,7 @@ URL、local path、`.pth` 和只有 source distribution 的 dependency 会被拒
 - `dependency_status: "failed"`：dependency resolution 或 preparation 失败，结合 `dependency_error_code` 修正；
 - `requirements_fingerprint`：当前 dependency declaration fingerprint，不是 available library list。
 
-dependency 只从 enabled Workflow 可达的 Command、Task Dispatcher、Main Agent 和 Subagent configuration 收集。最可靠的闭环是：声明 direct dependency -> restart -> GET package inspection 确认 `dependency_status` -> invoke 一次真实 Workflow。library 的 official docs 说明用法，这套实例 evidence 说明它在当前 environment 可用。
+dependency 只从 enabled Workflow 可达的配置扩展收集：Graph 中的 Command、Task Dispatcher 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。最可靠的闭环是：声明 direct dependency -> restart -> GET package inspection 确认 `dependency_status` -> invoke 一次真实 Workflow。library 的 official docs 说明用法，这套实例 evidence 说明它在当前 environment 可用。
 
 因此 AI 编写 Workflow 时可以理解并处理依赖：先根据实际 import 判断是否需要 third-party package；不需要时保持 `requirements.txt` 为空，
 需要时在同一私有包中修改源码与 direct dependency。不能因为某个 package 被核心 runtime 间接安装，就省略自己的依赖声明。

@@ -1,11 +1,11 @@
 # 配置 Agent
 
-只有包含 Agent Node 时，才需要模型要求、Filesystem、Agent Event Output、Workflow Input Context（WIC）Middleware 和 Main Agent；没有 Agent Node 的 Graph 不需要额外创建这些对象。其他装配项均为选配。
+只有包含 Agent Node 时才需要 Main Agent。Main Agent 的必选 capability 仅为 Model Requirement 与 Agent Event Output；Filesystem、Workflow Input Context（WIC）Custom Middleware、Skill、Tool、Subagent 等均按需选择。没有 Agent Node 的 Graph 不需要创建 Agent 装配对象。
 
 ## Filesystem
 
-每个 Main Agent 可选择一个 Filesystem；Subagent 可额外选择继承。
-不创建、不选择 Filesystem 时，Agent 自动使用 empty request-scoped `StateBackend`，并只暴露 `read_file` tool；这就是最小 Filesystem（deepagent 默认最小装配）。
+每个 Main Agent 可选择一个 Filesystem；Subagent 默认继承 Main Agent 的选择，需要差异化时通过 `capability_overrides` 执行 `replace` 或 `disabled`。
+不创建、不选择 Filesystem 时，Agent 自动使用 request-scoped 空 `StateBackend`，并只暴露 `read_file` tool；这就是最小 Filesystem。
 只有需要 mapped route、initial file 或更多 Filesystem Tool 时才创建 component：
 
 ```http
@@ -16,7 +16,7 @@ Content-Type: application/json
 {"name":"AI workflow filesystem"}
 ```
 
-保存响应中的 `id`，并把它作为 Main Agent 或 Subagent 的 `filesystem` capability ref。
+保存响应中的 `id`，并把它作为 Main Agent 或 Subagent 的 `filesystem` capability ref。可选的 `filesystem-permissions` capability 负责路径 allow/deny 与 Filesystem tool 可见性；字段见[Filesystem 权限配置](../../wizard-pages/filesystem-permissions-config.md)。
 
 ## Model Connection 与 Model Requirement
 
@@ -155,6 +155,8 @@ Subagent 用于隔离复杂或长输出 task，不是 canvas Node。先创建 Su
 
 ```http
 POST /api/subagents
+Authorization: Bearer <management token>
+Content-Type: application/json
 
 {
   "component_name": "Research specialist",
@@ -168,8 +170,7 @@ POST /api/subagents
 }
 ```
 
-然后把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。Subagent 默认继承 Main Agent 的 inheritable capability；不同的 Model Requirement、system prompt 或 Filesystem Permissions 通过 `replace`/`disabled` override 表达，Tool 通过自己的 `settings.tool_refs` 独立装配。Main Agent 引用 `subagent` delegation capability component 后，
-`task` Tool description 与 routing prompt 来自当前业务配置。
+然后把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。Subagent 默认继承 Main Agent 的 inheritable capability；不同的 Model Requirement、system prompt 或 Filesystem Permissions 通过 override 表达，但 required 的 `model-requirement` 不能 `disabled`。Custom Tool/Middleware 不走 capability override，分别通过自己的有序 `settings.tool_refs`/`middleware_refs` 装配。Main Agent 引用 `subagent` delegation capability component 后，`task` Tool description 与 routing prompt 来自当前业务配置。
 
 Subagent 的 `name` 是 Model-visible routing name；清楚描述 delegation timing、职责和 return content 有助于 Model routing。当前 contract 只支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
 
@@ -179,8 +180,6 @@ Subagent 的 `name` 是 Model-visible routing name；清楚描述 delegation tim
 
 需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿 `configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source 中的 UUID。preview 为每个 source Configuration UUID 给出固定 target UUID，并返回名称建议、Filesystem bindings、阻塞项、warnings 和 trusted-code warnings。
 
-导入时提交 preview 返回的同一 `bundle_sha256`、`plan_token` 和完整 target map。所有配置 UUID 都改变，Node/Edge ID 等 Workflow-local topology key 保持不变；
-Python package folder/manifest owner UUID 跟随 Component target UUID。Workflow 必须保持 disabled，待 credential、path、Skill、
-Python code 和 dependency 复核完成后再走正常 Graph validation/publish。
+导入时以 multipart 重新上传 preview 使用的同一 ZIP，并提交 `request` JSON；其中包含相同 `bundle_sha256`、`plan_token` 与完整 `resolutions`（target UUID、name 和必要的 Filesystem binding）。`filesystem_binding_required` 等阻塞项未解决时 preview 的 `ready=false`，不能提交。所有配置 UUID 都改变，Node/Edge ID 等 Workflow-local topology key 保持不变；Python package folder/manifest owner UUID 跟随 Component target UUID。Workflow 必须保持 disabled，待 credential、path、Skill、Python code 和 dependency 复核完成后再走正常 Graph validation/publish。
 
 下一步：[创建 Workflow Graph](03-workflow-graph.md)。

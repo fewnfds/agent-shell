@@ -1,5 +1,7 @@
 # 异常重试
 
+`exception-retry` 是 Main Agent 的可选 capability；Subagent 可以继承、替换或关闭它。下面是选择 `model_retry_middleware` 的非默认示例：
+
 ```json
 {
   "name": "瞬时错误重试",
@@ -15,7 +17,10 @@
 - `provider_native`：把 `max_retries` 交给 Provider integration；
 - `model_retry_middleware`：关闭 Provider 原生重试并使用 LangChain `ModelRetryMiddleware`。
 
-`max_retries` 为非负整数，表示首次失败后的额外请求次数；具体 Provider 可能另有自身限制。可选条件为 transport、timeout、rate limit、
-server error 和 authentication error；认证错误默认不选。`force_non_streaming` 同时关闭通用与 Provider streaming，使失败尝试能在正文公开前重试，但会增加首字延迟。
+默认值是 `provider_native`、`max_retries=2`、`force_non_streaming=false`，以及不含认证错误的四项 `retry_on`。`max_retries` 为非负严格整数，表示首次失败后的额外请求次数；具体 Provider 可能另有自身限制。
 
-该组件只处理模型调用异常，不判断回复内容、不实现 fallback model，也不改变 Agent 终止逻辑。
+`retry_on` 只对 `model_retry_middleware` 生效，可选 transport、timeout、rate limit、server error 和 authentication error，且不能重复；`provider_native` 完全使用 Provider integration 的重试判定。认证错误默认不选，只有确认第三方网关会把瞬时故障错误报告为认证失败时才应开启，真实凭据错误不会因重试恢复。
+
+`force_non_streaming` 对两种策略都生效，同时关闭通用与 Provider streaming，使失败尝试能在正文公开前重试，但会增加首字延迟。
+
+该组件只处理模型调用异常，不判断回复内容、不实现 fallback model。达到 `max_retries` 后仍失败时，错误继续交给上层 Agent/Workflow 错误边界，不改变终止语义。

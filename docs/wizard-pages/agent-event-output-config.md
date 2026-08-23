@@ -1,6 +1,6 @@
 # Agent 事件输出
 
-Agent 事件输出是 Main Agent 必选组件。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为 `/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
+Agent 事件输出是 Main Agent 必选组件。Subagent 不能单独配置或覆写该组件，其事件复用所属 Main Agent 的同一个 `output(event)`。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为 `/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
 
 ## 编写 Python 扩展
 
@@ -27,12 +27,12 @@ def output(event):
     return f"<tool>{tool}: {event['output']}</tool>"
 ```
 
-函数签名必须恰好是 `def output(event)`：不接受 `async def`、额外参数、默认参数、`*args` 或 `**kwargs`。脚本异常或返回非字符串会终止本次运行，并经过普通运行错误边界返回；普通 API 和日志摘要不包含脚本 traceback 或事件正文。
-扩展在受信任的服务进程内运行，不是 sandbox。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需重启服务准备，源码在下一次请求重新加载。`requirements.txt` 可以不存在或保持为空，表示没有额外依赖；只有 source 实际 import 平台核心之外的 package 时才需要逐行声明 direct dependency。
+函数签名必须恰好是 `def output(event)`：不接受 `async def`、额外参数、默认参数、`*args` 或 `**kwargs`。脚本异常或返回非字符串会以 `event_output.execution_failed`（502）终止本次运行；声明了尚未就绪的 `requirements.txt` 依赖时，请求期返回 `python_package.dependencies_not_ready`（409）。两类错误均不回显 traceback 或事件正文。
+扩展在受信任的服务进程内运行，不是 sandbox。可在配置目录的 `requirements.txt` 声明受支持的第三方依赖；依赖变更需完成依赖准备，纯 `main.py` 源码改动在下一次请求重新加载，无需重启。`requirements.txt` 可以不存在或保持为空，表示没有额外依赖；只有 source 实际 import 平台核心之外的 package 时才需要逐行声明 direct dependency。
 
 ## 公共 dict 字段
 
-每类 Agent 事件都包含以下字段；没有来源身份时，相关字符串为空。`data` 是 Python 对象，不会为了脚本先转成 JSON。
+每类 Agent 事件都包含以下字段；没有来源身份时，相关字符串为空。`data` 是 Python 值（可能是 `dict`、`list`、`ToolMessage` 或 `Command`），不保证 JSON-compatible，不会为了脚本先转成 JSON；需要显示文本时，优先使用当前事件类型已定义的 `message`、`output`、`arguments` 或 `data_json`。
 
 | key | Python 类型 | 含义 |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ def output(event):
 | `agent_name` | `str` | 事件所属 Agent 显示名 |
 | `node` | `str` | 产生事件的模型、工具或图节点名 |
 | `message` | `str` | 已规范化的主要文本；最常用的默认输出字段 |
-| `data` | `object` | 对应完整语义事件的原始 Python 值，具体类型见下表 |
+| `data` | `object (Python)` | 对应完整语义事件的原始 Python 值，具体类型见下表 |
 | `source_type` | `str` | `agent`、`subagent`、`script` 或 `non_agent` |
 | `workflow_node_id` | `str` | 画布 Workflow Node ID |
 | `agent_profile_id` | `str` | Main Agent 配置 UUID |
@@ -96,5 +96,5 @@ Agent 事件输出没有独立事件过滤配置。需要过滤时直接在 `out
 }
 ```
 
-先从 `GET /api/python-package-templates/agent-event-output` 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致。
-组件页通过共享文件管理工作区编辑复制后的私有包。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent 事件输出读取原始 Agent 内容。
+先从 [`GET /api/python-package-templates/agent-event-output`](../user-guide/ai-guide/01-api-and-discovery.md) 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。新建时 `python_package.folder` 必须为空，`revision` 必须与 catalog 的目录 sha256 一致；首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致且不可变，复制时自动跟随新 UUID。
+保存后源码位于当前 Repository 的 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-event-output/<configuration-uuid>/` 独占目录；组件页通过 `GET /api/blocks/agent-event-output/{id}/python-package` 投影后交给 File Manager 编辑。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent 事件输出读取原始 Agent 内容。另见[Workflow 事件输出](workflow-event-output-config.md)。

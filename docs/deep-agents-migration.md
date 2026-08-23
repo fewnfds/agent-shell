@@ -19,16 +19,12 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - Main Agent 可选择项目 Filesystem 或最小 Filesystem；Subagent 可继承、选择自己的项目 Filesystem 或回到最小 Filesystem，Workflow 不保存 Filesystem ref；
 - Subagent 能力按 inherit/replace/disabled 解析，并投影为官方 `CompiledSubAgent` 字典 spec；
 - 同一次 Workflow 请求共享 Deep Agents StateBackend 文件状态；每个 Main Agent/Subagent 按自己的 Filesystem、
-  `filesystem-permissions` 与 file-tool override 构造 backend 路由视图；
-- Deep Agents 将摘要前的原始消息写入默认 backend 的保留
-  `/conversation_history/{session_uuid}.md`；该 session UUID 只隔离并行 Agent 的内部归档，Shell 不读取、命名或把它映射为
-  Lifecycle/thread 对话历史；
+  `filesystem-permissions` 与 file-tool override 构造 backend 路由视图；选择 Skill 时还会建立独立只读的 `/skills/` 路由，并参与保留命名空间冲突校验；
+- Deep Agents 将摘要前的原始消息写入默认 backend 的保留 `/conversation_history/{session_uuid}.md`；该 session UUID 只隔离并行 Agent 的内部归档，Shell 不读取、命名或把它映射为 Lifecycle/thread 对话历史；
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
-- Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表中，Shell 预设 Middleware 在前；每个
-  `custom-middleware` 配置只产生一个 Middleware，用户有序 `middleware_refs` 的顺序保持不变并统一位于末尾；
-- 上述末尾只属于 Shell 可控的 caller 列表；Deep Agents 仍按固定 stack 合并，同名项在内置位置 replacement，
-  新名称进入官方 caller slot，不能越过 profile、prompt caching、memory 或 HITL 等官方 tail；
+- Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
+- Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选默认 Middleware，必须保留为主动禁用状态，并以官方支持的同名
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
 - `AgentShellState.shared_vars` 是公共 checkpointed 业务变量，Middleware 实例属性不是。
@@ -57,11 +53,11 @@ Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 mi
 当前项目仍支持把 Agent Filesystem 的 mapped directories 接到 Deep Agents `FilesystemBackend`。LangChain 官方文档明确把 `FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend；这是一条官方限制记录，不是 Shell 自己声称的安全保证。
 如果未来要消除该限制，应按官方建议改用 `StateBackend`、`StoreBackend` 或 sandbox backend，并另立需求，不在本次 ctx 迁移中偷偷替换。
 
-Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages[]` 冻结在应用级 LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent 活动消息。已装配的官方 `before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取输入；同步 Subagent 默认从其 delegated private `state.messages` 整理输入，不自动混入根请求。
+Canvas Start/End 只是 LangGraph 官方虚拟 `START/END`。客户端 `messages[]` 冻结在应用级 LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent 活动消息。只有选择 Workflow Input Context 这类 Custom Middleware 时，已装配的官方 `before_agent` Hook 才会为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取输入；未选择时 Agent 的初始 `messages` 保持空。同步 Subagent 默认从其 delegated private `state.messages` 整理输入，不自动混入根请求。
 
 同步 Subagent 是 Agent 内部的官方 `SubAgentMiddleware` 能力，不与外层 Workflow 竞争调度职责。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方装配入口，并单独处理 `graph_id`、
 Agent Protocol 地址、认证和后台 task state。
 
 外层后台 Workflow 不是 Deep Agents Subagent：Shell 的应用级 Manager 只负责 detached execution handle/status，实际 child 仍由现有 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与 checkpointer 服务，但不共享 Builder 的 Middleware package runtime，也不向 parent stream 转发事件。
 
-更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent 字段、默认 Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 事件 namespace，并只为 Shell 自有转换保留行为测试。
+更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent 字段、默认 Middleware、同名 replacement 与 `HarnessProfile.excluded_middleware`、各 provider Prompt Caching 变体、Codex TodoList extra middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 事件 namespace，并只为 Shell 自有转换保留行为测试。

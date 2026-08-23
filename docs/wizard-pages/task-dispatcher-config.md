@@ -25,7 +25,7 @@ state["shared_vars"] = {
 ## Package 与入口
 
 用户模板位于 `data/templates/workflow/task_dispatcher/<template-key>/`；首次保存后复制为 `data/configuration-repositories/<repository-uuid>/python_package_instances/task-dispatcher/<configuration-uuid>/`。manifest 固定使用 `family: workflow-node`、
-`adapter: task-dispatcher`。`main.py` 必须提供同步工厂：
+`adapter: task-dispatcher`。`main.py` 必须提供同步无参工厂；工厂返回 async callable，其签名必须恰为 `(state, runtime)`，两个参数都不能有默认值：
 
 ```python
 def create_dispatcher():
@@ -50,14 +50,14 @@ def create_dispatcher():
 - `state` 是 detached 可变副本；`runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。Lifecycle Store 使用
   `runtime.store`，后台 Run 命令使用 `runtime.context.background_runs`。不要把 Runtime 或 commands 写入 State/Store/checkpoint。
 - 示例中的 `shared_vars.items` 不是固定来源；可以按当前 Workflow 从完整 State、Runtime Context 或 Store 选择任务材料。
-- `tasks` 必须至少有 1 项，当前不设置产品数量上限；同一次调用中的 `task_id` 唯一，并应来自稳定业务身份。
-- `dispatch_key` 必须与同源 Dispatch Edge 完全一致；同一个 key 只能连接一个目标。
+- `tasks` 必须至少有 1 项，当前不设置产品数量上限；同一次调用中的 `task_id` 唯一、长 1 至 128 个字符，并应来自稳定业务身份。
+- `dispatch_key` 长 1 至 64 个字符，必须与同源 Dispatch Edge 完全一致；同一 Dispatcher Node 的同一个 key 只能连接一个目标，不同 Dispatcher 可以复用 key。
 - `payload` 必须是严格 JSON 对象，不能包含 Python 对象或 `NaN`、`Infinity` 等非有限数；worker 所需的本批数据都应放在这里。
-- `update` 可以更新任意已声明 Workflow State channel，但每个值必须符合该 channel 的现有类型；它只更新父 State，
+- Dispatcher 对 detached `state` 的直接修改会先计算为 delta，再与返回的 `update` 合并；两者都只能更新已声明的 Workflow State channel，且每个值必须符合该 channel 的现有类型。最终 update 只更新父 State，
   不隐式改写本批显式 Send State。
 - 包不 import LangGraph，不返回 Node ID、`Send` 或 `Command`。
 
-没有任务时，第一阶段要求由上游 Command Node 绕过 Dispatcher；返回空 `tasks` 会使运行失败。
+没有任务时，第一阶段要求由上游 Command Node 绕过 Dispatcher；空 `tasks`、重复 `task_id`、未知 `dispatch_key` 或非法 payload 都会使运行以 `workflow.task_dispatcher_failed` 失败。
 
 ## Worker 如何读取任务
 
@@ -69,7 +69,7 @@ task_from_state = state["workflow_task"]
 
 worker 完成后，父 Workflow State 的 `agent_invocations` 轻量记录带不含 payload 的 `workflow_task` identity，因此下游启用 `defer=True` 的汇总 Agent 可以等待 pending worker 完成，再按 `(dispatcher_node_id, task_id)` 选择结果；完整 task payload 和 messages 通过 `result_ref` 从 Store 读取。
 
-WIC 可以把 payload 编排进当前 worker 的私有 `messages`，但不负责任务认领或共享锁。任务并发由 LangGraph 调度，当前 Workflow 设置有限的 `max_concurrency`，任一 worker 未处理的异常会使本次运行 fail-fast。
+WIC 可以把 payload 编排进当前 worker 的私有 `messages`，但不负责任务认领或共享锁。任务并发由 LangGraph 按当前 Workflow 的可配置 `max_concurrency` 调度，任一 worker 未处理的异常会使本次运行 fail-fast。
 
 这些 Python 代码运行在服务进程的受信任边界内，没有 sandbox。源码在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后需要重启 Agent Shell。

@@ -15,24 +15,25 @@
 ## Management API authentication
 
 默认 Management API base URL `http://127.0.0.1:19100`，也可以从配置文件确认。
-`/api/*` 使用 management token；`/v1/*` 使用独立的 API Key，两者不能互换。
+除匿名存活探测 `GET /api/health` 外，`/api/*` 使用 management token；`/v1/*` 使用独立的 API Key，两者不能互换。
 实例使用自定义 data root 时，`agent-shell.env` 路径来自用户提供的实例信息，无需从源码中搜索。
 默认 data root 下的 `data/config/agent-shell.env` 通常包含：
 
 ```dotenv
-AGENT_SHELL_MANAGEMENT_TOKEN=<token>
+AGENT_SHELL_MANAGEMENT_TOKEN="<token>"
 ```
 
 `key` 是自动化查找配置项的稳定标识。命令可以只引用它，并保存在当前进程变量中，以 PowerShell 为例：
 
 ```powershell
 $baseUrl = "http://127.0.0.1:19100"
-$envFile = Join-Path (Get-Location) "data/config/agent-shell.env"
+$envFile = Join-Path $PWD.Path "data/config/agent-shell.env"
 $tokenLine = Get-Content -LiteralPath $envFile |
     Where-Object { $_ -match '^AGENT_SHELL_MANAGEMENT_TOKEN=' } |
     Select-Object -First 1
 if (-not $tokenLine) { throw "AGENT_SHELL_MANAGEMENT_TOKEN is missing" }
-$managementToken = $tokenLine.Substring("AGENT_SHELL_MANAGEMENT_TOKEN=".Length)
+$encodedToken = $tokenLine.Substring("AGENT_SHELL_MANAGEMENT_TOKEN=".Length)
+$managementToken = ConvertFrom-Json -InputObject $encodedToken
 $managementHeaders = @{ Authorization = "Bearer $managementToken" }
 
 Invoke-RestMethod "$baseUrl/api/health"
@@ -64,7 +65,7 @@ Invoke-RestMethod "$baseUrl/api/readiness" -Headers $managementHeaders
 写操作通常沿以下数据流进行：
 
 1. 新建 dependency 时由叶到根：component -> Subagent / Main Agent -> Workflow -> Graph -> Run。
-2. Workflow 可保存为 `enabled: false` draft；只有 `PUT /api/workflows/{id}/graph` 通过完整 validation 后才设置 `enabled=true`。
+2. `PUT /api/workflows/{id}/draft` 只做 wire parsing 并保存 `enabled: false` draft；`POST /api/workflows/{id}/validate` 只预检不写入；只有 `PUT /api/workflows/{id}/graph` 通过 Catalog、拓扑和引用的完整 validation 后才设置 `enabled: true`。
 3. 保存每次 POST 返回的 UUID；引用永远使用 UUID，不使用显示名称。
 4. PUT 是完整可写对象更新，不是 PATCH。普通对象可从 GET 结果移除 `id` 后修改；
     Model Connection PUT 中的 `credential` 接受 `null`（同 Provider/Base URL 时保留旧 Key）或新的 write-only Key，不接受 GET 返回的 masked metadata；

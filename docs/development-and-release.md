@@ -39,8 +39,7 @@ git pull --ff-only
 停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
 `runtime/cache` 中的旧下载缓存可按需重建，不是安装位置契约。
 
-文件化 Python 配置扩展的 `requirements.txt` 不进入项目 `pyproject.toml`。Windows 启动器在核心 runtime 准备完成后，
-只按启用 Workflow 可达的 Command、Dispatcher、Main Agent 与 Subagent 配置所引用扩展的需求指纹生成 `runtime/python_packages/site-packages`；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层只能增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
+文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。启用 Workflow 可达集包含 Command、Task Dispatcher、Main Agent/Subagent 引用的 Custom Tool、Custom Middleware、Agent Event Output 和 Workflow Event Output 扩展；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层只能增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
 
 依赖准备开始时终端先显示当前 requirements，随后直接显示 uv 原生的解析、下载、安装进度和错误；完成后才显示服务启动阶段。启动器不为扩展依赖安装设置主动超时，操作者根据终端中的真实进度决定继续等待、换网络或中止重启。
 
@@ -59,6 +58,8 @@ git pull --ff-only
 | LangChain core/graph | `langchain 1.3.15`；`langchain-core 1.6.0`；`langgraph 1.2.11`；LangSmith `0.11.1` |
 | 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
 
+第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一锁文件或 runtime lock 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。
+
 截至本基线，`uv lock --dry-run --upgrade` 不再产生可解析的锁变化。`uv tree --outdated` 仍可能显示 `websockets 17`、`protobuf 7`、`pydantic-core 2.48` 或 `pyarrow 25`，但它们分别受 LangGraph/Google 依赖范围或当前 Provider 组合约束；不得为了消除提示而放宽上游边界、删除 Provider 或改业务源码。新的依赖升级应从重新运行上述 dry-run 开始，并按单一影响面批量推进。LangChain 系的版本边界、LangSmith `>=0.11.1,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
 
 ## 前端 Debug
@@ -76,7 +77,7 @@ pwsh.exe -NoProfile -File .\packaging\development\start_dev.ps1 `
   -ProjectRoot $PWD -PythonExe $python
 ```
 
-自动化 Debug 可以显式传入仓库外的本地凭据文件。第一行必须是无空格的可打印 ASCII，并仅用于隔离 Debug；
+自动化 Debug 可以显式传入仓库外的本地凭据文件。文件必须位于源码树外，第一行必须是非空、无空格的 `0x21-0x7E` 可打印 ASCII，并仅用于隔离 Debug；
 启动器将它同时用作临时 management token 和临时 API key，且不会打印内容。未传参数时仍分别生成随机凭据。
 
 ```powershell
@@ -116,10 +117,11 @@ $python = Join-Path (Join-Path ..\runtime\app $pythonHome) python.exe
 永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/fixtures/` 和 `test/` 的直接支撑模块中。
 用户可观察行为、API 和持久化结果是验收证据。
 
-推送 `dev` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 typecheck、UI policy 与 Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：
+推送 `dev` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 lint、typecheck、UI policy 与 Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：
 
 ```powershell
 cd frontend
+npm run lint
 npm run typecheck
 npm run ui:check
 npm test
@@ -130,7 +132,7 @@ cd server
 .\.venv\Scripts\python.exe -m pytest ..\test -q
 ```
 
-`test/smoke_http.py` 是显式进程 smoke，不在默认 pytest 收集范围；真实 Provider 与 Agent eval 也不进入日常门禁。完整 pytest 门禁默认交给 GitHub Actions；普通局部修改只运行一个最接近的 contract owner，完整门禁不是每次小改的本地流程。本地确需复现完整门禁时才使用上面的 `uv run` 命令。
+`test/smoke_http.py` 是显式进程 smoke，不在默认 pytest 收集范围；真实 Provider 与 Agent eval 也不进入日常门禁。完整 pytest 门禁默认交给 GitHub Actions；普通局部修改只运行一个最接近的 contract owner，完整门禁不是每次小改的本地流程。本地确需复现完整门禁时使用上面的 `.venv\Scripts\python.exe -m pytest ..\test -q` 命令，避免混用 `uv run`。
 
 ## 源码版本
 

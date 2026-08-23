@@ -2,7 +2,7 @@
 
 ## 创建 parent Workflow
 
-parent Workflow 新建后固定处于 draft 状态；请求中的 `enabled` 不会绕过 `PUT /api/workflows/{id}/graph`：
+parent Workflow 创建后固定为 `enabled=false` 的 draft 状态；创建请求中的 `enabled` 会被忽略，只有 `PUT /api/workflows/{id}/graph` 能将它设为 `true`：
 
 ```http
 POST /api/workflows
@@ -23,12 +23,12 @@ POST /api/workflows
 正式 Graph 的固定 system Node 是唯一 Start 和唯一 End，不要求 Agent 或其他 Work Node。以下三种 topology 都合法：
 
 ```text
-Start -> End
+1. Start -> End
 
-Start -> Work Node
-End（没有 incoming Edge）
+2. Start -> Work Node
+   End 是同一 Graph 中没有 incoming Edge 的孤立 system Node
 
-Start -> Work Node -> End
+3. Start -> Work Node -> End
 ```
 
 可达的普通 Work Node 没有 outgoing Edge 时，该 path 自然结束。一般 Workflow 仍建议包含完成业务所需的 Work Node，并让需要明确 exit condition 的 path 显式连接 End。condition、State update 和 successor selection 全部写在 Command Node 中，Graph 只声明 candidate Edge。
@@ -91,16 +91,16 @@ PUT  /api/workflows/{id}/graph     完整 validation 通过后原子写入 Graph
 GET  /api/workflows/{id}/graph     读取当前唯一 Graph document
 ```
 
-【`PUT /draft`】不执行 Node Catalog admission、topology、reference 或 Agent assembly validation。只要请求仍是 Graph document 的基础 `definition + layout` wire 且 storage 可写，就保存当前编辑内容；它也会把已 enabled 的 Workflow 降回 draft，使该 Workflow 立即退出 `/v1/models` 和 child target 集合。Workflow domain 不设置 Node count、Edge count 或 document size quota；基础 HTTP、内存、
+【`PUT /draft`】不执行 Node Catalog admission、topology、reference 或 Agent assembly validation，但仍要求请求通过 `WorkflowGraphDocumentV1` 的基础 wire schema，包括字段类型、ID/handle 格式、`extra=forbid` 和 layout 数值约束；基础 schema 失败仍返回 422。保存成功会原子设置 `enabled=false`，使已 enabled 的 Workflow 立即退出 `/v1/models` 和 child target 集合。Workflow domain 不设置 Node count、Edge count 或 document size quota；基础 HTTP、内存、
 磁盘和 SQLite 仍可能按真实资源情况失败。
 
 【`PUT /graph`】执行完整 static validation：wire、Node type/version/config、role、handle、Edge、topology、Command/Task Dispatcher reference 和 Main Agent assembly，以及 Command/Task Dispatcher 独占 Python package 的 folder、manifest、entry file 和 static adapter contract。正式 Graph 恰有一个 Start 和一个 End，且 Start 至少有一条合法 outgoing Edge；`Start -> End` 合法。editor 通过 `/validate` 预先显示全部 issue，并在存在 error、validation 尚未完成或 validation request 失败时禁用 `PUT /graph`；请求失败会显示独立的 retry validation 操作。backend 在 PUT 时重复相同 validation，
 不存在绕过入口。save 失败不写 candidate Graph，也不改变原 `enabled` state。
 
-`admit_workflow_document()` 和 `validate_workflow_executable()` 都是 static validation；后者不是 dry run，不会 invoke Model、Command、Task Dispatcher 或 Agent，也不 import 或执行 user-owned package。它在 admission 之上增加 topology、reference、package resource 和 static Agent assembly check。
+`admit_workflow_document()` 和 `validate_workflow_executable()` 都是 static validation；后者不是 dry run，不会 invoke Model、Command、Task Dispatcher 或 Agent，也不 import 或执行 user-owned package。完整的 `/validate` 与 `PUT /graph` 通过 `workflow_executable_report()` 在 admission 和 topology 之上组合 reference、package resource 与 static Agent assembly check。
 `GET /api/validation/repository` 对整个 configuration repository 执行 validation，也不代替一次真实 Workflow invocation。
 
-AI 通过 management FastAPI 调用 `/validate` 时能直接读取完整 structured issue，不需要打开 Vue Flow。响应包含 `valid`、`stage` 和 `issues[]`；每个 issue 至少提供 `code`、`severity`、`path`、`owner_id`、`owner_type`、`message_key`、`message_args` 和可读 `message`。响应会一次返回全部 issue；`severity=error` 阻止 `PUT /graph`，warning 保留给操作者。请求本身失败不是一份 “无 issue” report：保持 candidate Graph 不变，修复 Edge 或 service state 后显式重试 `/validate`。
+AI 通过 management FastAPI 调用 `/validate` 时能直接读取完整 structured issue，不需要打开 Vue Flow。响应包含 `valid`、`stage` 和 `issues[]`；每个 issue 提供 `code`、`scope`、`severity`、`path`、`owner_id`、`owner_name`、`message_key`、`message_args` 和可读 `message`，有具体归属类型时还包含 `owner_type`。响应会一次返回全部 issue；`valid` 只在不存在 `severity=error` 时为 true，warning 不阻止 `PUT /graph`。请求本身失败不是一份 “无 issue” report：保持 candidate Graph 不变，修复 Edge 或 service state 后显式重试 `/validate`。
 
 Workflow metadata PUT 只更新 name、role 和 runtime limits，并保留当前 `enabled`；只有正式 Graph PUT 可以 enable，draft PUT 可以 disable。
 
@@ -118,15 +118,17 @@ Workflow metadata PUT 只更新 name、role 和 runtime limits，并保留当前
 | `task-dispatcher` | `task_dispatcher_id` | `in` -> `dispatch` | 是；component 提供 `create_dispatcher()` |
 | `end` | `{}` | `in` -> none | 否；直接映射 LangGraph `END` |
 
+`agent.in` 接受 normal、branch 和 dispatch Edge；`command`、`task-dispatcher` 与 `end` 的 `in` 只接受 normal 或 branch，因此 dispatch Edge 只能指向 Agent。同一个 Agent 不能把 dispatch 入边与 normal/branch 入边混用。
+
 AI 构造 Graph 时可按以下顺序组织；visual layout 不承载 execution semantics：
 
 1. 从 Catalog 选择 Node type/version，并严格按 `config_schema` 填 config。正式 Graph 恰有一个 system `start` 和一个 system `end`；
    不从 component library 添加、复制或删除这两个 system Node。
-2. 给每个业务 Node 分配全图唯一、稳定的 `id`。Node ID 以字母开头，只使用字母、数字、`_`、`-`，最长 64 字符。
+2. 给每个业务 Node 分配全图唯一、稳定的 `id`。Node 与 Edge ID 都以字母开头，只使用字母、数字、`_`、`-`，最长 64 字符；`source_handle` 和 `target_handle` 以小写字母开头，只使用小写字母、数字和 `-`，最长 64 字符。
 3. control flow 决定 execution relationship，layout 只描述位置。Start 至少连接一条合法 outgoing Edge；除 system End 外，每个正式 Node 都从 Start 可达；End 自身允许没有 incoming Edge。
 4. 每条 Edge 从 source Catalog output handle 指向 target 接受该 type 的 input handle。Edge `id` 同样唯一，两端 handle 都是 wire field。
 5. 来源 handle 决定协议：`next` 是 normal，`branch` 是 branch，`dispatch` 是 dispatch；wire 没有额外 `edge_type`。
-6. fan-out、fan-in、Command branch key、Task Dispatcher task key、leaf 和 loop exit 构成 `/validate` 前的 structure check。移动 Node、color 和 Vue Flow
+6. fan-out、fan-in、Command `branch_key`、Task Dispatcher `dispatch_key`、leaf 和 loop exit 构成 `/validate` 前的 structure check。移动 Node、color 和 Vue Flow
    renderer field 都不会改变 execution semantics。
 
 canvas color、class、marker 和 animation 只是 Vue Flow projection，不进入 Graph document，也不改变 LangGraph scheduling。
@@ -275,7 +277,7 @@ START 是例外：`Start -> J` 与 `Start -> A -> J` 会让 J 分别在启动时
 
 Branch 只激活 `activate` 返回的 candidate key；Dispatch 只为返回的 task 创建 worker；未选择的 candidate Edge 不产生 task。
 
-官方语义参考 [LangGraph Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) 和[LangGraph super-steps](https://docs.langchain.com/oss/python/langgraph/checkpointers#super-steps)。
+官方语义参考 [LangGraph Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) 和 [LangGraph super-steps](https://docs.langchain.com/oss/python/langgraph/checkpointers#super-steps)。项目内的唯一映射见 [Workflow Graph 画布契约](../../../.docs/architecture/workflow-graph-canvas-contract.md)。
 
 ## 新 Node type 的边界
 

@@ -2,20 +2,23 @@
 
 配置完成后按有限 checklist 验收：
 
+以下 `/api/*` 请求使用 management token，`/v1/*` 请求使用独立 API Key；两种 credential 不能互换。
+
 1. `GET /api/validation/repository`，确认本次创建的 component 和 Agent 没有 error。
-2. `POST /api/workflows/{id}/validate` 提交 candidate Graph，修正返回的全部 error。
-3. `PUT /api/workflows/{id}/graph` 保存并设置 `enabled=true`；返回成功后再用 GET 核对 UUID、handle、Command branch key、Task Dispatcher task key
-   和 layout Node key。
+2. `POST /api/workflows/{id}/validate` 提交完整 candidate Graph document，检查返回的 `valid`、`stage` 和 `issues[]`，修正全部 `severity=error` 的问题。
+3. `PUT /api/workflows/{id}/graph` 执行完整校验并原子保存 Graph，同时设置 `enabled=true`；校验失败返回 422 且不落盘。成功后用 `GET /api/workflows/{id}` 核对 Workflow metadata 中的 `id`、`enabled` 和 `workflow_role`，再用 `GET /api/workflows/{id}/graph` 核对 `definition.nodes[].id/type/config`、`definition.edges[].source_handle/target_handle`、`branch_key`/`dispatch_key` 与 `layout.nodes` key。
 4. 通过 `PUT /api/api-server` 设置独立 API Key；management token 与 inference API Key 属于两个 credential domain：
 
 ```json
 {
-  "api_key": {"operation": "replace", "value": "<new printable ASCII key>"},
+  "api_key": {"operation": "replace", "value": "REPLACE_WITH_PRINTABLE_ASCII_WITHOUT_SPACES"},
   "max_initial_messages": 1000
 }
 ```
 
-5. `POST /api/api-server/start`。
+`api_key.operation` 可为 `keep`、`replace` 或 `clear`；只有 `replace` 接受 `value`，其值必须是非空、无空格的可打印 ASCII。`max_initial_messages` 必须为正整数，`1000` 是默认值而非固定上限。
+
+5. `POST /api/api-server/start`，请求不需要 body。
 6. 使用 API Key 调用 `GET /v1/models`，确认 Workflow name 出现。
 7. 使用同一 name 发起一次 non-streaming `/v1/chat/completions` invocation，确认 Workflow 执行并返回 expected result。
 
@@ -34,22 +37,22 @@ Content-Type: application/json
 }
 ```
 
-配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node 的 Workflow 同样可以 invoke，但不保证产生 Assistant text。
+配置保存成功只证明 persistence 完成；真实 invocation 才会闭合 Graph reference、Python extension、Provider 和 output script。没有 Agent Node 的 Workflow 同样可以 invoke；若没有可投影的事件，或绑定的 output extension 对所有事件均返回空字符串，响应是合法空内容，不是运行错误。
 
-配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；解决 preview 报告的 data-root-relative missing path；审查随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对 disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用返回的 target UUID；Workflow Node/Edge ID 仍是 Graph-local key，不参与 Configuration UUID map。
+配置 Bundle import 成功只证明一套新 UUID 配置和资产已原子持久化。导入后的检查顺序是：在模型映射页为所有 Model Requirement 绑定模型连接；按 preview 完成绝对 mapped path 与 virtual source path 的显式重绑，并只在报告 `filesystem_relative_target_missing` 时修正对应 data-root-relative 目录；审查 trusted-code warning 以及随新 owner UUID 重建的 Skill 私有包和 Python source/requirements；运行 repository validation；最后对 disabled Workflow 提交 candidate Graph validation 并显式 publish。不要把 preview 中的 source UUID 当作目标调用 ID，后续调用只使用返回的 target UUID；Workflow Node/Edge ID 始终是 Graph-local key，不参与 Configuration UUID map。
 
 ## 详细文档
 
 - 所有代理组件及 required/inheritance policy：[代理组件](../capabilities.md)
 - Main Agent、Subagent、Workflow 语义：[Workflow、Main Agent 与 Subagent](../configuration-workflow.md)
 - WIC 与前序 invocation 读取：[Workflow Input Context](../workflow-input-context.md)
-- Python package、template、dependency 和 loading：[File-based Python extension](../middleware-packages.md)
+- Python package、template、dependency 和 loading：[文件化 Python 扩展](../middleware-packages.md)
 - Command Node 完整 contract：[Command Node](../../wizard-pages/command-config.md)
 - Task Dispatcher 完整 contract：[Task Dispatcher](../../wizard-pages/task-dispatcher-config.md)
 - Agent Event Output 稳定 event field：[Agent Event Output](../../wizard-pages/agent-event-output-config.md)
 - Workflow Event Output field：[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)
 - OpenAI-compatible Run entry point：[API Server](../api-server.md)
-- background Run、Lifecycle cleanup 与 multi-Run semantics：[Workflow、Main Agent 与 Subagent](../configuration-workflow.md)
+- background Run、Lifecycle cleanup 与 multi-Run semantics：[使用 background Run](05-background-runs.md)
 - Debug thread、checkpoint 与 log boundary：[Runtime observability](../runtime-observability.md)
 - secret 与远程访问边界：[安全与部署](../../security-and-deployment.md)
 

@@ -2,17 +2,17 @@
 
 ## 认证
 
-- 管理密码保护 `/api/*`；`/admin` 静态应用壳可以匿名加载，但其数据和操作都通过受保护的 management API；
+- 除 `/api/health` 外，管理密码保护 `/api/*`；`/admin` 静态应用壳可以匿名加载，但其数据和操作都通过受保护的 management API；
 - API Key 保护 `/v1/*`；
 - 两者都必须是无空格的可打印 ASCII，均为 write-only；
-- `/api/health` 用于存活探测，`/api/readiness` 返回分层就绪状态。
+- `/api/health` 免鉴权用于存活探测，`/api/readiness` 需要 management Bearer 并返回分层就绪状态。
 
-默认监听 `127.0.0.1`。监听非 loopback 地址前，必须在系统配置显式允许远程访问，并配置管理密码和 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
+默认监听 `127.0.0.1`，本地模式也始终要求管理密码。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
 ## CORS 与代理
 
 CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userinfo、path、query 或 fragment。
-可信代理使用精确 CIDR，并且只在远程访问模式下启用。不要信任未受控制的代理网段。
+可信代理使用精确 CIDR；配置 `trusted_proxy_cidrs` 本身即进入远程模式，未同时设置 `allow_remote: true` 时启动失败。不要信任未受控制的代理网段。
 
 应用只依据当前安全配置解释转发信息。反向代理必须覆盖客户端可伪造的 forwarded headers，并把管理台和推理 API 的访问策略一并纳入部署设计。
 
@@ -42,7 +42,7 @@ ZIP 只接受当前 format version、canonical `manifest.json`、规范相对 PO
 `..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field 或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
 Filesystem host content 不进入 Bundle；绝对 mapped path 和全部 virtual source path 必须在目标实例显式重绑。
 
-导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用不隐藏另设 Bundle 大小、文件数或展开字节上限。
+导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用本身不设置 Bundle 大小、文件数或展开字节的硬编码上限。
 
 ## 用户代码与文件系统
 
@@ -69,7 +69,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 ## 系统配置与变量
 
-非敏感系统字段位于 `data/config/system.yaml`：
+非敏感系统字段位于 `data/config/system.yaml`。以下为与部署直接相关的节选，文件还包含 retention、validation、log 和 runtime policy 等当前系统设置：
 
 ```yaml
 settings:
@@ -97,9 +97,9 @@ AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY="<model credential>"
 LANGSMITH_API_KEY="<LangSmith API key>"
 ```
 
-值按 JSON 字符串解析，因此引号、反斜杠、换行和前后空白可以精确保留。管理页面负责生成该格式；未知的 `AGENT_SHELL_*` key、重复 key、BOM 或无效 JSON 会使启动失败。
+值按 JSON 字符串解析，因此引号、反斜杠、换行和前后空白可以精确保留。管理页面负责生成该格式；文件必须使用 UTF-8 且无 BOM，不允许空行、重复 key、NUL、未知的 `AGENT_SHELL_*` key 或无效 JSON，否则启动失败。
 
-模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；
+模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；模型要求与模型连接的绑定关系位于 `data/config/model-bindings.yaml`。
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。
 LangSmith 连接在系统配置中管理；启用或修改 Endpoint、API Key、
 Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 可能上传 prompt、模型输出和工具输入/输出，必须按敏感数据策略控制。

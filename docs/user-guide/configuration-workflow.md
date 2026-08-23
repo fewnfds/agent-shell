@@ -16,7 +16,7 @@ Workflow root 不声明 `messages`。每个画布 Agent 节点由 wrapper 以空
 后台 Run 管理不是画布 Node。每个 Run 的官方 Runtime Context 提供 `background_runs` 命令对象，Command Node、Task Dispatcher、
 Custom Tool、Middleware 或普通 Node 可以在自己的 invocation 内调用 `start_agent()`、`start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。
 
-启动参数包含稳定 `operation_id`；同一 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣。
+启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 该保证不跨 caller Run 或尚未实现的 Resume 边界；业务上确实需要重派时使用新的 operation ID。Workflow target 仍只允许已启用子图，后台 Agent 使用自身有效 Filesystem；后台输出不会自动混入 parent 响应。
 
 【系统 / 运行历史】页面按一次顶层请求列出 Lifecycle，并展示 root/background Run 父子关系、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及单 Run/Lifecycle 诊断包下载。Event Journal 只保存结构身份、状态、时间和 usage，不复制运行正文。
@@ -40,10 +40,10 @@ Lifecycle 的 messages、task records、resolved mapping records 和 parent/chil
 Agent 节点引用的 `main_agent_id` 只保存在 Graph definition 中，不是 Workflow metadata 外键。`normal` 是节点端点类型；从 normal 输出端点画到 normal 输入端点的线是一条具体连接，只表达后继节点的激活方向。Node 端点来自后端 Catalog 的 input/output arrays，保存时仍只记录 `source_handle`/`target_handle`。多条 normal 出边按 LangGraph 官方 Graph API 激活多个后继节点；
 父 Workflow State 是后端 contract，不作为画布变量节点或数据端口编辑。
 
-任务分发节点引用一份配置独占的 `workflow-node/task-dispatcher` Python 包。它从当前 Workflow State/Runtime Context 生成运行时数量的任务，并由 compiler 转成 LangGraph `Send`；画布只保存一个 Dispatcher Node 和具名 Dispatch Edge，
+任务分发节点引用一份 `workflow-node` family / `task-dispatcher` adapter 的配置独占 Python 包。它从当前 Workflow State/Runtime Context 生成运行时数量的任务，并由 compiler 转成 LangGraph `Send`；画布只保存一个 Dispatcher Node 和具名 Dispatch Edge，
 不会保存 `n+m` 个临时 worker Node。同一个 Agent Node 可被不同 payload 多次调用，或由不同 `dispatch_key` 路由到不同 Agent Node。每次 worker 调用都在私有 Agent State 的 `workflow_task` 中得到任务，完成记录也保存该 task identity。完整配置与城市/乡镇示例见[任务分发](../wizard-pages/task-dispatcher-config.md)。
 
-## Main Agent 与直接 Subagent
+## Main Agent 与 Subagent
 
 在【代理 / Main Agent】选择模型要求和 Agent 事件输出等 capability。Main Agent 是完整 Agent 装配，由 Workflow 的 Agent node 引用。需要同步委派时，先创建 Subagent 实体，再由 Main Agent 按顺序保存 `subagent_id` 引用并选择委派 capability。
 
@@ -69,11 +69,11 @@ WIC 可以读取 `state["workflow_task"]`，把当前任务材料编排进 worke
 
 ### 事件输出
 
-Workflow 可绑定零或一个事件输出组件。它处理 `values`、`updates`、`custom` 等 Workflow-owned 非 Agent v3 事件；
+Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecycle`、`values`、`updates`、`tasks` 等 Workflow-owned 非 Agent v3 事件；
 每类事件由配置独占 Python package 中的同步 `output(event)` 处理，直接读取稳定 dict 和其中的原始 Python `data` 对象并返回字符串。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent 事件输出。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
 
 ## 校验与生效
 
-Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。Workflow `/draft` PUT 接受当前画布草稿并停用；
-`/validate` POST 返回正式静态问题；`/graph` PUT 重复完整校验并正式启用。真实 Chat 请求从一次文件配置快照读取 Workflow 当前图、
+Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。`PUT /api/workflows/{id}/draft` 只做 wire 解析并停用；
+`POST /api/workflows/{id}/validate` 返回正式静态问题；`PUT /api/workflows/{id}/graph` 重复完整校验并正式启用，metadata PUT 保留既有 enabled。真实 Chat 请求从一次文件配置快照读取 Workflow 当前图、
 Main Agent、Subagent、各自 Filesystem、组件和 Provider secret view，完成 Agent 构造后关闭配置快照。

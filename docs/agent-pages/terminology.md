@@ -1,12 +1,14 @@
-# 词库
+# Agent Shell 领域术语
+
+本页说明 Agent、Workflow 与配置域中的稳定产品术语，不替代管理台全部界面文案。
 
 | 界面名称 | 含义 |
 | --- | --- |
-| Workflow | 保存当前 Graph definition/layout 与运行约束的图实体；父图可映射 `/v1/models`，子图只作为内部目标 |
+| Workflow | 保存 UUID、唯一名称、角色、`enabled`、可选 Workflow Event Output、当前 Graph definition/layout 与运行约束的图实体；只有启用的 parent Workflow 发布到 `/v1/models`，draft 与 child Workflow 不发布 |
 | Main Agent | 完整的 Deep Agents 装配，可被 Workflow 画布的 Agent node 引用 |
 | Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其私有包；写入目标由当前 active Repository 决定 |
 | 配置库 | 使用通用列表查看和管理配置；系统组也列出实例私有、不可下载的模型连接 |
-| 模型连接 | 实例私有的 LangChain Provider、上游地址、具体 model、请求设置和 API Key 配置 |
+| 模型连接 | 实例私有的 LangChain Provider、上游地址、具体 model、请求设置和 write-only API Key 配置；不属于 Configuration Repository，也不进入 Bundle |
 | 模型要求 | Configuration Repository 中描述所需模型能力的组件，只保存名称和说明 |
 | 模型映射 | 按 Configuration Repository 将模型要求绑定到模型连接的页面 |
 | Endpoint | Node Catalog 声明的输入/输出控制流端点；当前 Edge 类型为 normal、branch、dispatch |

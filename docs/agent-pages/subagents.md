@@ -11,6 +11,9 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
     "capability_overrides": [
       {"type": "model-requirement", "mode": "replace", "block_id": "model-requirement-uuid"}
     ],
+    "tool_refs": [
+      {"tool_id": "custom-tool-uuid"}
+    ],
     "middleware_refs": [
       {"middleware_id": "middleware-uuid"}
     ]
@@ -18,8 +21,10 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
 }
 ```
 
-Subagent 对允许的 capability 使用 `inherit`、`replace` 或 `disabled`。未保存的 `inherit` 表示继承 Main Agent 最终选择；必选能力不能关闭。委派 capability 和 output mode 只属于 Main Agent。
+对允许覆写的 capability，未保存 override 表示 `inherit`，即继承 Main Agent 的最终选择；持久化的 `mode` 只有 `replace` 和 `disabled`。required 且可继承的能力（当前为 `model-requirement`）不能关闭。委派能力 `subagent` 和 Agent 事件输出 `agent-event-output` 是 `top-level-only`，只属于 Main Agent。完整策略见[能力配置](../user-guide/capabilities.md)。
 
-Subagent contract 没有 `settings.subagents` 字段，因此不能再引用 child。运行时将每个 direct child 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置；Shell 不编译第二套 child graph，也不提供循环引用。
+`tool_refs` 和 `middleware_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。Filesystem 等 `subagent_policy: inherit` 的能力未覆写时继承，显式替换或关闭时使用该 Subagent 的最终选择。
 
-自定义 Middleware 不继承 Main Agent；Subagent 通过自己的有序 `settings.middleware_refs` 显式装配。每份配置只产生一个官方 `AgentMiddleware`。Subagent 默认看到 Deep Agents delegated state；需要处理消息时在自己的 `before_agent`/`abefore_agent` 中返回 state update。
+`component_name` 是配置显示名；`name` 是模型可见 routing name，必须匹配 `^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一 Main Agent 的 direct children 中按大小写不敏感方式保持唯一。Subagent contract 没有 `settings.subagents` 字段，因此不能再引用 child。运行时将每个 direct child 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置；Shell 不编译第二套 child graph，也不提供循环引用。
+
+每份 Custom Middleware 配置只产生一个官方 `AgentMiddleware`。Subagent 默认看到 Deep Agents delegated state；需要处理消息时在自己的 `before_agent`/`abefore_agent` 中返回 state update。装配基线见[Deep Agents 迁移边界](../deep-agents-migration.md)。

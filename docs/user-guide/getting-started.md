@@ -2,13 +2,15 @@
 
 ## 启动
 
+Windows 源码 Clone 需要 Node.js 22；不需要预装 Python，启动器会准备内置 CPython。
+
 Windows 源码 Clone 从项目根运行：
 
 ```powershell
 .\start_server.bat
 ```
 
-首次启动输入两次管理密码。默认管理台地址是 <http://127.0.0.1:19100/admin>。管理密码用于 `/admin` 与 `/api/*`；首页的 API Key 用于 `/v1/*`。
+首次运行若 `data/config/` 不存在，启动器会先询问是否初始化；确认后输入两次管理密码（不含空格的可打印 ASCII，两次不一致会重试）。默认管理台地址是 <http://127.0.0.1:19100/admin>，监听地址和端口可在【系统 / 系统配置】修改。管理台静态壳可以匿名加载，但其数据和操作通过管理密码保护的 `/api/*`；API Key 在【系统 / 系统配置】的网络卡片设置，用于 `/v1/*`。
 
 ## 管理台入口
 
@@ -20,18 +22,20 @@ Windows 源码 Clone 从项目根运行：
 - 【代理组件】：Main Agent 和 Subagent 使用的能力配置；
 - 【工作流】：父图与子图的装配表单和 Vue Flow 画布；
 - 【工作流组件】：Workflow 事件输出、Command 和任务分发配置；
-- 【配置库】：顶部按全局、工作流、工作流组件、代理和代理组件分组；全局组包含组件配置和模型连接，并通过通用列表查看、复制、编辑、下载、上传和删除配置；
-- 【词库】与【样式基准】：术语查询和 UI 样式基准核对。
+- 【配置库】：顶部按全局、工作流、工作流组件、代理和代理组件分组；Repository-owned 配置支持通用列表操作与 Bundle 导入/导出，模型连接仅支持查看、编辑、复制和删除；
+- 【词库】：术语查询；
+- 【样式基准】：UI 样式基准核对。
 
 ## 第一份可运行 Workflow
 
-首次启动会创建并激活 `Default` Configuration Repository。需要使用另一套配置时，在【配置库 / 全局 / 组件配置】切换或复制 Repository；之后创建的 Component、Agent 和 Workflow 都写入当前 Repository。
+首次启动若无可用仓库，会创建并激活 `Default` Configuration Repository；已有仓库时复用并激活现有仓库。需要使用另一套配置时，在【配置库 / 全局 / 组件配置】切换或复制 Repository；之后创建的 Component、Agent 和 Workflow 都写入当前 Repository。
 
-1. 在【代理组件 / 文件系统】创建共享空间配置。
+1. 可选：在【代理组件 / 文件系统】创建 Filesystem 配置；不创建时使用仅含 `read_file` 的最小文件系统。
 2. 在【模型 / 模型连接】创建本机连接，在【代理组件 / 模型要求】创建名称和说明，再在【代理 / Main Agent】中选择模型要求、
-   Agent 事件输出和其他能力；需要把客户端多轮消息整理到 Agent 初始上下文时，从
-   `内置示例-workflow-input-context` 创建 Custom Middleware 并装配到 Agent。
-3. 在【模型 / 模型映射】为模型要求选择模型连接，在【工作流 / 父图】新建记录；点击【编辑 Flow】进入全屏画布。
-4. 添加 Agent 节点，选择 Main Agent，连接 `Start -> Agent -> End` 并保存。
-5. 启用 Workflow，在首页设置 API Key 并启动 API Server。
-6. 调用 `/v1/models` 确认名称，再使用该名称调用 `/v1/chat/completions`。
+   Agent 事件输出和其他能力；在【代理组件 / 自定义 Middleware】新建并选择
+   `内置示例-workflow-input-context`，需要时在 Main Agent 的 `middleware_refs` 中装配。
+3. 在【模型 / 模型映射】为模型要求选择模型连接；未绑定时页面显示 warning，必须完成绑定后才能运行。然后在【工作流 / 父图】新建记录，点击【编辑】进入 Workflow 画布。
+4. 添加 Agent 节点，选择 Main Agent，连接 `Start -> Agent -> End` 后点击【保存草稿】（草稿保持 disabled）。
+5. 点击【正式保存 Workflow】通过校验后启用 Workflow；只有启用的父图会出现在 `/v1/models`。
+6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认 Workflow 名称后以
+   `{"model":"<workflow-name>","messages":[...]}` 调用 `/v1/chat/completions`。
