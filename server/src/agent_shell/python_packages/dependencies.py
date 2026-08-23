@@ -364,8 +364,8 @@ def prepare_windows_dependencies(
     for workflow in config.get("workflows", []):
         if not isinstance(workflow, dict) or workflow.get("enabled") is not True:
             continue
-        workflow_event_output_id = str(workflow.get("workflow_event_output_id", ""))
-        if workflow_event_output_id:
+        workflow_event_output_id = workflow.get("workflow_event_output_id")
+        if isinstance(workflow_event_output_id, str) and workflow_event_output_id:
             active_workflow_event_output_ids.add(workflow_event_output_id)
         definition = workflow.get("definition", {})
         for node in definition.get("nodes", []) if isinstance(definition, dict) else []:

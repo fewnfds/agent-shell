@@ -232,6 +232,7 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
     prepare_windows_dependencies(data_root=data_root, runtime_root=runtime_root)
     output = capsys.readouterr().out
     assert "resource.error.pythonPackage.syntax" in output
+    assert "workflow-event-output/None" not in output
     assert "Python requirements:" in output
     assert "Pillow==12.0.0" in output
     assert "idna==3.10" in output
