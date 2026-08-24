@@ -1,4 +1,4 @@
-# 待办计划
+# Todo List
 
 选择该组件会构造 LangChain `TodoListMiddleware`：
 
@@ -14,4 +14,4 @@
 
 选择该组件后，Middleware 向模型提供 `write_todos`。每次调用提交包含 `content` 与 `pending|in_progress|completed` 的完整列表并全量替换当前 todos；未选择组件时不提供该工具。
 
-todos 保存在当前请求的 Agent state 中，不写入 `data/` 或 Workflow Lifecycle 持久化，请求结束即消失。Main Agent 未选择该 capability，或 Subagent 显式保存 `disabled` 时，运行时使用同名无行为 middleware 阻止 Deep Agents 默认 Todo 回填；Subagent 也可以继承或替换配置。
+todos 保存在 current request 的 Agent State 中，不写入 `data/` 或 Workflow Lifecycle 持久化，请求结束即消失。Main Agent 未选择该 capability，或 Subagent 显式保存 `disabled` 时，runtime 使用同名无行为 Middleware 阻止 Deep Agents 默认 Todo 回填；Subagent 也可以继承或替换配置。

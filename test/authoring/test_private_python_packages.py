@@ -73,7 +73,7 @@ def test_repository_examples_are_separate_template_catalog_entries(tmp_path: Pat
     tools = service.template_catalog("custom-tool")
 
     assert middleware["errors"] == {}
-    assert middleware["catalog"][0]["key"] == "内置示例-workflow-input-context"
+    assert middleware["catalog"][0]["key"] == "内置示例-agent-additional-prompt"
     assert {file["path"] for file in middleware["catalog"][0]["files"]} == {
         "main.py",
         "requirements.txt",

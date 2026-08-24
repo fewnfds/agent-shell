@@ -21,7 +21,7 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
 }
 ```
 
-对允许覆写的 capability，未保存 override 表示 `inherit`，即继承 Main Agent 的最终选择；持久化的 `mode` 只有 `replace` 和 `disabled`。required 且可继承的能力（当前为 `model-requirement`）不能关闭。委派能力 `subagent` 和 Agent 事件输出 `agent-event-output` 是 `top-level-only`，只属于 Main Agent。完整策略见[能力配置](../user-guide/capabilities.md)。
+对允许覆写的 capability，未保存 override 表示 `inherit`，即继承 Main Agent 的最终选择；持久化的 `mode` 只有 `replace` 和 `disabled`。required 且可继承的能力（当前为 `model-requirement`）不能关闭。委派能力 `subagent` 和 Agent Event Output `agent-event-output` 是 `top-level-only`，只属于 Main Agent。完整策略见[能力配置](../user-guide/capabilities.md)。
 
 `tool_refs` 和 `middleware_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。Filesystem 等 `subagent_policy: inherit` 的能力未覆写时继承，显式替换或关闭时使用该 Subagent 的最终选择。
 

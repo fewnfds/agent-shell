@@ -21,17 +21,17 @@ def _load_example() -> ModuleType:
         / "examples"
         / "agent-components"
         / "custom-middleware"
-        / "workflow-input-context"
+        / "agent-additional-prompt"
         / "main.py"
     )
-    spec = importlib.util.spec_from_file_location("workflow_input_context_example", source)
+    spec = importlib.util.spec_from_file_location("agent_additional_prompt_example", source)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_workflow_input_context_example_adds_private_dispatch_task() -> None:
+def test_agent_additional_prompt_example_adds_private_dispatch_task() -> None:
     module = _load_example()
     middleware = module.create_middleware(
         backend=object(),
@@ -69,7 +69,7 @@ def test_workflow_input_context_example_adds_private_dispatch_task() -> None:
         )
     )
 
-    assert middleware.name == "WorkflowInputContextMiddleware_example-id"
+    assert middleware.name == "AgentAdditionalPromptMiddleware_example-id"
     prepared = update["messages"].value
     assert [(message.type, message.content) for message in prepared[:2]] == [
         ("system", "leading"),

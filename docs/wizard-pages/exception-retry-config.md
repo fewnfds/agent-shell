@@ -1,4 +1,4 @@
-# 异常重试
+# Exception Retry
 
 `exception-retry` 是 Main Agent 的可选 capability；Subagent 可以继承、替换或关闭它。下面是选择 `model_retry_middleware` 的非默认示例：
 

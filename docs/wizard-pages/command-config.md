@@ -1,6 +1,6 @@
-# Command 节点
+# Command Node
 
-Command 节点是 Workflow 画布上可同时更新 State 和动态选择后继目标的可编程节点。组件配置保存一个独占的 Python 扩展目录引用；
+Command Node 是 Workflow canvas 上可同时更新 State 和动态选择 successor Node 的 programmable Node。组件配置保存一个独占的 Python 扩展目录引用；
 分支不在组件页重复配置，而由画布上从该节点发出的具名 Branch Edge 定义。
 
 ## Package 与入口
@@ -34,16 +34,16 @@ def create_command():
 
 - `state` 是完整 Workflow State 的独立可变副本，当前声明 `shared_vars`、`agent_invocations`、`background_tasks` 和 `files`，只包含本次调用实际存在的 channel；可以修改副本，
   也可以通过 `update` 返回局部更新。
-- `runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。本次 Run 的静态身份与配置在 `runtime.context`；Lifecycle
-  Store 在 `runtime.store`；后台 Run 命令在 `runtime.context.background_runs`。脚本通过这些 request-scoped 对象访问运行能力。
+- `runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。current Run 的 static identity 与 configuration 在 `runtime.context`；Lifecycle
+  Store 在 `runtime.store`；background Run 命令在 `runtime.context.background_runs`。脚本通过这些 request-scoped 对象访问运行能力。
 - `activate` 必须是 Branch Edge key 列表，可以同时激活多个不同分支；key 必须与画布中选中 Edge 后在属性栏填写的值完全一致，
   不会显示在线段上。
 - `update` 必须是 Workflow State 的局部映射；对 `state` 副本的 mutation delta 会与返回的 `update` 合并，后者覆盖同名 key，顶层字段和值的完整形状都按当前 `WorkflowState` contract 校验。
 - `activate` 为空或省略时不激活后继目标，只提交 `update`，当前路径在该节点自然结束。
 - Shell 不保留兜底 key。条件是否覆盖完整、使用 `if/elif/else` 还是 `match`，由脚本自己负责。
-- Branch key 去除首尾空白后必须为 1 至 64 个字符且大小写敏感；返回未知或未连接的 key、重复 key、非法 State 字段/值、无效入口或异常都会使本次 Workflow 运行失败。
+- Branch key 去除首尾空白后必须为 1 至 64 个字符且大小写敏感；返回未知或未连接的 key、重复 key、非法 State field/value、无效 entry 或 exception 都会使 current Workflow Run 失败。
 
-运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态 `add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触画布 Node ID，也不直接构造或返回 `Command`，由 compiler 负责映射。
+运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态 `add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触 canvas Node ID，也不直接构造或返回 `Command`，由 compiler 负责映射。
 
 这些 Python 代码以服务进程权限执行。源码修改在下一次 Workflow 请求重新加载；
 `requirements.txt` 修改后必须重启 Agent Shell，依赖状态才会重新准备。

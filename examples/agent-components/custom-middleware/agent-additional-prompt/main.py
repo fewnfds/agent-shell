@@ -1,10 +1,10 @@
-"""Workflow Input Context Middleware example.
+"""Agent Additional Prompt (AAP) Middleware example.
 
-The default policy gives a Main Agent the current Lifecycle request messages,
+The suggested policy gives a Main Agent the current Lifecycle request messages,
 keeps a Subagent's privately delegated messages, and appends a Task Dispatcher
 worker's ``workflow_task`` as a user message. Customize
-``build_workflow_input_messages`` to select, trim, reorder, or extend that
-Agent's private context.
+``build_agent_additional_prompt_messages`` to select, trim, reorder, or extend
+that Agent's private initial messages.
 
 For upstream results, select records by explicit node or task identity from
 ``state["workflow_state_snapshot"]["agent_invocations"]`` and pass the chosen
@@ -56,13 +56,13 @@ async def load_invocation_artifact(
     return deepcopy(value)
 
 
-async def build_workflow_input_messages(
+async def build_agent_additional_prompt_messages(
     state: dict[str, Any],
     runtime: Runtime[Any],
     request_messages: list[dict[str, Any]],
     backend: Any,
 ) -> list[dict[str, Any]]:
-    """Build the private message list for one Workflow Agent invocation."""
+    """Build the private initial messages for one Agent invocation."""
 
     messages = mutable_request_messages(request_messages)
 
@@ -92,7 +92,7 @@ async def build_workflow_input_messages(
     return messages
 
 
-async def _initial_messages(
+async def _initial_prompt_messages(
     state: dict[str, Any],
     runtime: Runtime[Any],
     *,
@@ -116,7 +116,7 @@ async def _initial_messages(
     request_messages = value.get("messages") if isinstance(value, dict) else None
     if not isinstance(request_messages, list):
         raise RuntimeError("workflow lifecycle input is unavailable")
-    return await build_workflow_input_messages(
+    return await build_agent_additional_prompt_messages(
         state,
         runtime,
         request_messages,
@@ -124,12 +124,12 @@ async def _initial_messages(
     )
 
 
-class WorkflowInputContextMiddleware(AgentMiddleware):
+class AgentAdditionalPromptMiddleware(AgentMiddleware):
     def __init__(self, *, backend: Any, scope: str, package_id: str) -> None:
         super().__init__()
         self._backend = backend
         self._scope = scope
-        self._name = f"WorkflowInputContextMiddleware_{package_id}"
+        self._name = f"AgentAdditionalPromptMiddleware_{package_id}"
 
     @property
     def name(self) -> str:
@@ -140,7 +140,7 @@ class WorkflowInputContextMiddleware(AgentMiddleware):
         state: dict[str, Any],
         runtime: Runtime[Any],
     ) -> dict[str, Any]:
-        messages = await _initial_messages(
+        messages = await _initial_prompt_messages(
             state,
             runtime,
             scope=self._scope,
@@ -155,7 +155,7 @@ def create_middleware(
     package_id: str,
     **_available: Any,
 ) -> AgentMiddleware:
-    return WorkflowInputContextMiddleware(
+    return AgentAdditionalPromptMiddleware(
         backend=backend,
         scope=scope,
         package_id=package_id,

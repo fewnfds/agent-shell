@@ -1,4 +1,4 @@
-# 委派能力 (`subagent`)
+# Subagent Delegation (`subagent`)
 
 该组件的类型为 `subagent`，由 `/api/blocks/subagent` 管理。它控制 Main Agent 的 Deep Agents 同步 `task` 委派提示；它与被委派的 [Subagent 实体](../agent-pages/subagents.md) 是两层独立配置：
 

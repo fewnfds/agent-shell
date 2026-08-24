@@ -7,7 +7,7 @@ dispatch key, and ``{"item": item}`` as its JSON payload. The dispatcher also
 writes ``shared_vars.dispatched_count``. These input fields, IDs, payload shape,
 and dispatch key are example policy; change them for the Workflow and provide
 matching Dispatch Edges. The target Agent consumes private ``workflow_task``
-according to its own Workflow Input Context.
+according to its own Agent Additional Prompt.
 
 The stable package contract is a synchronous no-argument
 ``create_dispatcher()`` factory returning an async ``dispatch(state, runtime)``.

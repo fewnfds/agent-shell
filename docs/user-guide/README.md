@@ -1,6 +1,6 @@
 # Agent Shell 用户指南
 
-Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与组件配置（基于 Deep Agents 运行时），并把启用的父图 Workflow 暴露为 OpenAI-compatible model。
+Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration（基于 Deep Agents runtime），并把 enabled parent Workflow 暴露为 OpenAI-compatible model。
 
 [AI Workflow 编写指南](ai-guide/README.md)是 AI 或自动化程序的索引，下面的详细页面按任务领域展开。
 
@@ -10,7 +10,7 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与组件配置
 2. [创建组件（代理组件与工作流组件）](capabilities.md)
 3. [管理模型连接与模型映射](models.md)
 4. [装配 Workflow、Main Agent 与 Subagent](configuration-workflow.md)
-5. [理解 Workflow Input Context](workflow-input-context.md)
+5. [使用 Agent Additional Prompt](agent-additional-prompt.md)
 6. [使用文件化 Python 扩展（Custom Middleware / Command / Task Dispatcher）](middleware-packages.md)
 7. [管理配置库](configuration-library.md)
 8. [调用 API Server](api-server.md)
@@ -19,7 +19,7 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与组件配置
 
 三个基础边界是：
 
-- Main Agent 必选且仅需模型要求与 Agent 事件输出；Subagent 仅模型要求必选；
+- Main Agent 必选且仅需模型要求与 Agent Event Output；Subagent 仅模型要求必选；
 - 客户端在每次请求中提交完整消息；
 - `data/` 是需要备份和迁移的完整实例数据根，`runtime/` 可重建，不进入备份，外部 mapped path 需另行迁移。
 

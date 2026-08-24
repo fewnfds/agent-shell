@@ -1,11 +1,11 @@
-# Workflow 事件输出
+# Workflow Event Output
 
-Workflow 事件输出是可复用的 Workflow 组件，不属于 Agent capability。每个 Workflow 通过 `workflow_event_output_id` 可绑定零或一个；不绑定时，Workflow-owned 的非 Agent 事件不会写入 OpenAI 响应。画布 Agent Node 产生的事件仍使用各 Main Agent 的[Agent 事件输出](agent-event-output-config.md)。
+Workflow Event Output 是可复用的 Workflow 组件，不属于 Agent capability。每个 Workflow 通过 `workflow_event_output_id` 可绑定零或一个；不绑定时，Workflow-owned 的 non-Agent 事件不会写入 OpenAI 响应。canvas Agent Node 产生的事件仍使用各 Main Agent 的[Agent Event Output](agent-event-output-config.md)。
 
-它与 Agent 事件输出使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 必须只提供恰好一个同步单参 `def output(event)`，不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
+它与 Agent Event Output 使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 必须只提供恰好一个同步单参 `def output(event)`，不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
 可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。
 
-内置示例使用与 Agent 事件输出相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
+内置示例使用与 Agent Event Output 相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
 `checkpoints`、`input`、`input.requested`、`debug` 和 `other` 分别保留分支。各分支都在同一个 `output(event)` 中按需处理；
 返回空字符串只过滤 OpenAI 响应投影，不改变已经产生的 LangGraph v3 event；该 event 是否出现在运行历史或 checkpoint 取决于独立观测与持久化边界。
 
@@ -23,7 +23,7 @@ def output(event):
 
 ## 公共字段
 
-所有 Workflow 事件都含有 Agent 事件输出文档列出的公共字段：`event_type`、`phase`、`sequence`、`timestamp`、
+所有 Workflow 事件都含有 Agent Event Output 文档列出的公共字段：`event_type`、`phase`、`sequence`、`timestamp`、
 `namespace`、`agent_name`、`node`、`message`、`data`、`source_type`、`workflow_node_id`、`agent_profile_id`、
 `subagent_profile_id`。`event_type` 使用下表中的 Workflow v3 method 分类。
 

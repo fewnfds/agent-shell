@@ -1,4 +1,4 @@
-# 自定义工具
+# Custom Tool
 
 每个 Custom Tool 配置拥有一个独立 Python extension，并通过 `main.py` 的同步无参工厂导出一个 LangChain Tool：
 

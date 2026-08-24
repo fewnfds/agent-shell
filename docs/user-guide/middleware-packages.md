@@ -130,7 +130,7 @@ def create_dispatcher():
 ```
 
 `tasks` 至少包含 1 项，当前不设置产品数量上限；同批 `task_id` 唯一且长 1 至 128 个字符，`dispatch_key` 长 1 至 64 个字符并与画布同源 Dispatch Edge 完全匹配，`payload` 是严格 JSON 对象。
-compiler 为每项构造 Shell-owned `WorkflowTaskContext`，再映射为 LangGraph `Send`。包不接触 Node ID，也不直接返回 `Send`/`Command`。worker 子图通过私有 State 的 `workflow_task` 读取任务。完整规则与内置示例见[任务分发](../wizard-pages/task-dispatcher-config.md)。payload 拒绝 Python 对象和非有限数；`update` 仍可写任意已声明 Workflow State channel，值仍经过该 channel 的现有类型校验。
+compiler 为每项构造 Shell-owned `WorkflowTaskContext`，再映射为 LangGraph `Send`。package 不接触 Node ID，也不直接返回 `Send`/`Command`。worker Agent subgraph 通过 private State 的 `workflow_task` 读取任务。完整规则与内置示例见[Task Dispatcher](../wizard-pages/task-dispatcher-config.md)。payload 拒绝 Python 对象和非有限数；`update` 仍可写任意已声明 Workflow State channel，值仍经过该 channel 的现有类型校验。
 
 ## Custom Middleware
 
@@ -148,7 +148,7 @@ def create_middleware(agent, config, backend):
 `references`、`scope`、`workflow_node_id`、`request_id`、`model` 和 `tools` 等；工厂也可以使用 `**kwargs` 接收全部可用值。这些参数是 Agent Shell 的装配投影，部分值会随当前装配范围而为空。工厂返回后，Middleware 通过 LangChain 官方 hook 的 `state` 和 `runtime` 读取每次运行的动态数据。
 Main Agent/Subagent 的有序 `middleware_refs` 决定多个实例进入列表的顺序。一个实例可以实现多个官方 hook，但 hook 不作为独立排序项。LangChain 对 `before_*` 正序执行、对 `after_*` 逆序执行，并把 `wrap_*` 按列表嵌套。Agent Shell 不代理官方 hook、state schema、tools 或 stream transformer。运行链使用异步执行；若自定义类覆盖 `before_agent`、`before_model`、`after_model`、`after_agent`、`wrap_model_call` 或 `wrap_tool_call` 中的同步 hook，也必须覆盖对应的 async hook，否则装配会被拒绝。
 
-内置 `workflow-input-context` 示例通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent 委派消息和 Dispatcher task。它没有专用 capability、继承规则或装配槽位；复制示例后在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按当前 Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Workflow Input Context](workflow-input-context.md)。
+内置 `agent-additional-prompt` template 通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent delegated messages 和 Dispatcher task。复制 template 后，在 `build_agent_additional_prompt_messages(state, runtime, request_messages, backend)` 中按 current Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
 ## Imports 与依赖
 

@@ -1,4 +1,4 @@
-# 文件系统权限
+# Filesystem Permissions
 
 文件系统权限是独立、可复用且非必选的 `filesystem-permissions` Agent capability，通过 `capability_refs` 的 UUID 引用装配。配置块保存权限规则和覆写值，可装配到使用任意[文件系统](filesystem-config.md)的 Agent：
 
@@ -27,7 +27,7 @@
 
 ## 编辑器快捷载入
 
-编辑器可以从任意已保存文件系统快捷追加其虚拟目录和文件路径。快捷载入为目录补 `/**`、为文件使用精确路径，并以 `read-write` 追加；手动新增规则默认 `read-only`。可重复载入不同文件系统，重复路径会跳过；它不会保存来源 Filesystem ID，也不会建立后续绑定。
+编辑器可以从任意已保存的 Filesystem 快捷追加虚拟目录和文件路径。快捷载入为目录补 `/**`、为文件使用精确路径，并以 `read-write` 追加；手动新增规则默认 `read-only`。可重复载入不同 Filesystem，重复路径会跳过；它不会保存 source Filesystem ID，也不会建立后续绑定。
 
 ## 原子覆写
 
@@ -40,4 +40,4 @@
 Main Agent 可以选择零或一份文件系统权限。Subagent 默认为 `inherit`，也可 `replace` 为另一配置或以 `disabled` 关闭；关闭后不使用权限配置，回到所选 Filesystem 自身的默认路径规则和工具设置。
 同一请求中的 Agent 仍共享 workspace，但各自的规则、提示词和模型可见文件工具独立生效。
 
-权限由 `FilesystemMiddleware` 应用于 `ls`、`read_file`、`write_file`、`edit_file`、`delete`、`glob` 和 `grep`。自定义工具、MCP 工具、管理台文件管理和宿主进程代码使用各自的权限边界。
+权限由 `FilesystemMiddleware` 应用于 `ls`、`read_file`、`write_file`、`edit_file`、`delete`、`glob` 和 `grep`。Custom Tool、MCP 工具、管理台文件管理和宿主进程代码使用各自的权限边界。

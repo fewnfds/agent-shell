@@ -1,72 +1,82 @@
 # 配置 Agent
 
-只有包含 Agent Node 时才需要 Main Agent。Main Agent 的必选 capability 仅为 Model Requirement 与 Agent Event Output；Filesystem、Workflow Input Context（WIC）Custom Middleware、Skill、Tool、Subagent 等均按需选择。没有 Agent Node 的 Graph 不需要创建 Agent 装配对象。
+Graph 没有 Agent Node 时跳过本章。Command、Task Dispatcher、Start 和 End 不需要 Main Agent、Model Requirement 或模型。
 
-## Filesystem
+Graph 含 Agent Node 时，先完成一个最小 Main Agent，再按业务增加可选能力。Main Agent 的 required capability 只有 Model Requirement 和 Agent Event Output。
 
-每个 Main Agent 可选择一个 Filesystem；Subagent 默认继承 Main Agent 的选择，需要差异化时通过 `capability_overrides` 执行 `replace` 或 `disabled`。
-不创建、不选择 Filesystem 时，Agent 自动使用 request-scoped 空 `StateBackend`，并只暴露 `read_file` tool；这就是最小 Filesystem。
-只有需要 mapped route、initial file 或更多 Filesystem Tool 时才创建 component：
+## 1. 最小依赖链
 
-```http
-POST /api/blocks/filesystem
-Authorization: Bearer <management token>
-Content-Type: application/json
+```text
+Model Requirement ----+
+                      +-> Main Agent -> Agent Node
+Agent Event Output ---+
 
-{"name":"AI workflow filesystem"}
+Model Connection（用户在当前实例建立）
+        |
+        +-> Model Mapping -> Model Requirement
 ```
 
-保存响应中的 `id`，并把它作为 Main Agent 或 Subagent 的 `filesystem` capability ref。可选的 `filesystem-permissions` capability 负责路径 allow/deny 与 Filesystem tool 可见性；字段见[Filesystem 权限配置](../../wizard-pages/filesystem-permissions-config.md)。
+建议按以下顺序创建：
 
-## Model Connection 与 Model Requirement
+1. 创建 Model Requirement；
+2. 从 template 创建 Agent Event Output；
+3. 创建最小 Main Agent；
+4. 让用户建立 Model Connection；
+5. 把 Model Requirement 绑定到 Model Connection；
+6. 把 Main Agent UUID 写入 Agent Node config；
+7. 真实 invocation 成功后，再增加 System Prompt、AAP、Filesystem、Tool、Skill 或 Subagent。
 
-在【模型 -> 模型连接】创建实例私有 Model Connection，按 LangChain Provider contract 填写 endpoint、具体 model、请求参数和凭据。配置库与系统中的【模型连接】复用通用列表，只提供查看、编辑、复制和删除，不提供下载。连接不属于 Configuration Repository，也不会进入 Bundle；凭据实际值只写入实例 env，普通响应仅返回 masked/missing 状态。
+## 2. Model Requirement、Model Connection 与 Model Mapping
 
-在【代理组件 -> 模型要求】创建可迁移的模型能力要求，只填写名称和多行 description。导入配置后，在【模型 -> 模型映射】按 description 选择模型连接；未绑定只产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
-
-`credential` 是 management-only 的 write-only input。创建 Model Connection 时在 HTTPS 或本机 loopback 连接中提交真实 Provider Key；
-服务端把它写入 `agent-shell.env` 的独立 environment variable，并在 Model Connection YAML 中保存 variable reference。GET 响应提供只读的 masked/missing 状态。编辑同一 Provider 与 Base URL 时，PUT 传 `credential: null` 会保留现有 Key，传新 Key 会替换凭据。
+Model Requirement 是可迁移的能力描述。它说明 Agent 需要怎样的模型，不保存 Provider credential 或实例私有 model ID。
 
 ```http
-POST /api/model-connections
+POST /api/blocks/model-requirement
 Authorization: Bearer <management token>
 Content-Type: application/json
 
 {
-  "name": "Primary local connection",
-  "provider": "openai",
-  "base_url": "https://api.openai.com/v1",
-  "credential": "<write-only Provider API Key>",
-  "model": "<current-model-id>",
-  "provider_settings": {"use_responses_api": false},
-  "tool_choice": null,
-  "response_format": null,
-  "model_settings": {}
+  "name": "Tool-capable language model",
+  "description": "A language model with reliable tool calling support. Prefer a moderate or larger context window."
 }
 ```
 
-Provider 和 Provider-specific field 以【模型 / 模型连接】页及 backend validation 为准。OpenAI Model 的 `provider_settings.use_responses_api` 默认是 `false`，对应 OpenAI-compatible Chat Completions；直连 endpoint 支持官方 OpenAI Responses API 时可设为 `true`。当前实例的 Model 事实来自模型连接列表。
+description 应描述真实能力要求，例如 tool calling、structured output、multimodal input、context window、速度或成本倾向。多个 Agent 的要求相同时可以复用一个 Model Requirement。
 
-## Skill
+Model Connection 是当前实例私有配置。用户在【模型 -> 模型连接】中按 LangChain Provider contract 填写 Provider、Base URL、具体 model、请求参数和 credential。AI 可以明确说明所需能力和兼容条件；不要虚构 Provider Key、替用户选择未知的收费模型，或把 credential 写进可迁移配置。
 
-`GET /api/skills` 扫描 `data/skills-template/`，只返回可选择的 Skill Template。Template 可以位于多层目录中；扫描遇到第一份 `SKILL.md` 就把该目录作为完整边界，并使用返回的 `template_path` 区分不同路径下的同名 Skill。
+Model Connection 不属于 Configuration Repository，也不进入 Bundle。credential 是 management-only write-only input，实际值进入实例 env；普通 GET response 只返回 masked/missing 状态。
 
-创建 Skill Component 时向 `POST /api/blocks/skill` 提交名称和所选路径，例如：
+用户创建连接后，把 Requirement 绑定到 Connection：
 
-```json
-{
-  "name": "Writing skills",
-  "skill_template_paths": ["writing/outline", "review/continuity-check"]
-}
+```http
+PUT /api/model-requirements/<requirement UUID>/binding
+Authorization: Bearer <management token>
+Content-Type: application/json
+
+{"connection_id":"<model connection UUID>"}
 ```
 
-后端把所选 Template 复制到该 Component UUID 拥有的私有 Skill package，之后两者独立。`GET /api/blocks/skill/{block_id}/skills` 读取私有包；`POST` 同一路径并提交 `{"template_path":"..."}` 可增加 Skill，`DELETE /api/blocks/skill/{block_id}/skills/{folder_name}` 可删除。私有包内的 Skill 名称必须唯一，同名新增返回冲突，需要先删除再添加。私有包内容问题只在组件页载入或显式刷新时作为 warning 展示，不阻塞保存、Repository 切换、Bundle 或 Agent 装配。字段和页面行为见[Skill 配置](../../wizard-pages/skill-config.md)。
+提交 `{"connection_id": null}` 可以清除 binding。未绑定会在 validation 中产生 warning，运行装配时返回结构化 `model_requirement_unbound`。
 
-## Agent Event Output
+Provider-specific field 以【模型 / 模型连接】和 backend validation 为准。OpenAI Model 的 `provider_settings.use_responses_api` 默认是 `false`，对应 OpenAI-compatible Chat Completions；直连 endpoint 支持 OpenAI Responses API 时可以设为 `true`。
 
-Main Agent 的 required reference 包含一个 `agent-event-output` package。先从 template catalog 选择一个合法模板：
+## 3. Agent Event Output
 
-```json
+每个 Main Agent 引用一个 `agent-event-output` component。先读取 current Template catalog：
+
+```http
+GET /api/python-package-templates/agent-event-output
+Authorization: Bearer <management token>
+```
+
+从 response 选择 template 的 `key` 和 `revision`，再创建 component：
+
+```http
+POST /api/blocks/agent-event-output
+Authorization: Bearer <management token>
+Content-Type: application/json
+
 {
   "name": "Primary agent output",
   "python_package": {"folder": ""},
@@ -77,10 +87,7 @@ Main Agent 的 required reference 包含一个 `agent-event-output` package。�
 }
 ```
 
-提交到 `POST /api/blocks/agent-event-output`。推荐先读取 `GET /api/python-package-templates/agent-event-output`，使用返回的 `key` 和 `revision`，保存后配置拥有独占 package 目录。
-
-
-若只需要最终 Assistant text，可以在同一个入口中过滤其他 event：
+服务端为该 component 生成独占 package directory。只需要最终 Assistant text 时，`main.py` 可以按以下方式过滤 event：
 
 ```python
 def output(event):
@@ -89,38 +96,11 @@ def output(event):
     return ""
 ```
 
-`main.py` 只定义一个同步 `def output(event)`。在函数内按 `event["event_type"]` 处理全部事件，return type 为 `str`，
-返回 `""` 表示过滤。完整 Agent event 及 field 见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
+package 只定义一个同步 `def output(event)`。它负责 event filtering 和 string rendering；State update、routing 和业务异常处理放在各自 owner 中。完整 field 见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
 
-## Workflow Input Context（WIC）Custom Middleware
+## 4. 创建最小 Main Agent
 
-Middleware template catalog 来自：
-
-```http
-GET /api/python-package-templates/middleware
-```
-
-在 `catalog` 中按精确 `key == "内置示例-workflow-input-context"` 选择 template。使用该项返回的 `key` 和 `revision` 创建 Custom Middleware。catalog 返回当前模板身份、文件投影和 revision，文档不复制整份 WIC source：
-
-```json
-{
-  "name": "Default workflow input context",
-  "python_package": {"folder": ""},
-  "python_package_template": {
-    "key": "内置示例-workflow-input-context",
-    "revision": "<catalog revision>"
-  }
-}
-```
-
-提交到 `POST /api/blocks/custom-middleware`。独占 package folder 由服务端生成，客户端 payload 中的 folder 初始为空。
-
-内置 WIC 给出三项建议起点：Main Agent 读取本次 Lifecycle 的 request `messages[]`、Subagent 保留 delegated messages、Task Dispatcher worker 把自己的 private task 加入 Agent context。当前 Agent 可以在 `build_workflow_input_messages(state, runtime, request_messages, backend)` 中按职责选择 request messages、private State、parent Graph snapshot、
-Task Dispatcher task、Runtime Context、Store 或当前 Agent Filesystem 材料；不需要的默认步骤可以删除。详细边界见[Workflow Input Context](../workflow-input-context.md)。
-
-## Main Agent
-
-最小 Main Agent 引用 Model Requirement、Agent Event Output 和 WIC：
+保存 Model Requirement 和 Agent Event Output 的 UUID，然后创建 Main Agent：
 
 ```http
 POST /api/main-agents
@@ -133,25 +113,118 @@ Content-Type: application/json
     {"type": "model-requirement", "block_id": "<model requirement UUID>"},
     {"type": "agent-event-output", "block_id": "<agent-event-output UUID>"}
   ],
-  "tool_refs": [
-    {"tool_id": "<custom-tool UUID>"}
-  ],
-  "middleware_refs": [
-    {"middleware_id": "<WIC UUID>"}
-  ],
+  "tool_refs": [],
+  "middleware_refs": [],
   "subagents": []
 }
 ```
 
-`middleware_refs` 有顺序：LangChain 的 `before_*` hook 正序执行，`after_*` 逆序执行，`wrap_*` 按列表嵌套。
-多个 Middleware 改写 `messages` 时，list order 决定组合方式。
+`middleware_refs: []` 是合法的最小配置。`tool_refs`、`middleware_refs` 和 `subagents` 只有当前任务需要时才增加。
 
-`tool_refs` 也有顺序；每个引用对应一个独立 Custom Tool Python extension。Main Agent 与 Subagent 分别维护自己的 Tool 列表，
-不会通过 capability override 继承、替换或关闭。扩展的 `create_tool()` 返回一个 LangChain `BaseTool`，最后按这个列表传给 `create_deep_agent(tools=...)`。
+## 5. System Prompt 与动态 Agent 初始提示词
 
-## 可选 Subagent
+两类提示材料适合不同生命周期：
 
-Subagent 用于 Agent 内部的同步委派和复杂任务隔离。先创建 Subagent entity：
+| 材料 | 推荐位置 | 示例 |
+| --- | --- | --- |
+| 稳定角色、长期约束、固定输出约定 | System Prompt component | “负责审核数据并返回 JSON” |
+| 本次 request、当前 task、上游结果、运行时 context | AAP 或其他 Custom Middleware | client `messages[]`、`workflow_task.payload`、前序 `result_ref` |
+
+创建 System Prompt component：
+
+```http
+POST /api/blocks/system-prompt
+Authorization: Bearer <management token>
+Content-Type: application/json
+
+{
+  "name": "Review agent role",
+  "system_prompt": "Review the supplied material and return a concise evidence-based result."
+}
+```
+
+保存 response UUID，再把 `{"type":"system-prompt","block_id":"<system prompt UUID>"}` 加入 Main Agent 的 `capability_refs`。没有选择 System Prompt 时，Agent assembly 使用框架默认行为。
+
+客户端 `messages[]` 保存在 current Lifecycle Store，不会自动成为 Workflow root State。需要让 Agent 使用本次 request 或动态运行材料时，建议采用 Agent Additional Prompt（AAP）范式，在 Agent invocation 开始前选择材料并构造该 Agent 的 private `messages`。
+
+AAP 是可选的 Custom Middleware template。读取 catalog：
+
+```http
+GET /api/python-package-templates/middleware
+```
+
+按精确 `key == "内置示例-agent-additional-prompt"` 选择当前 revision，再创建 Custom Middleware：
+
+```json
+{
+  "name": "Primary agent additional prompt",
+  "python_package": {"folder": ""},
+  "python_package_template": {
+    "key": "内置示例-agent-additional-prompt",
+    "revision": "<catalog revision>"
+  }
+}
+```
+
+提交到 `POST /api/blocks/custom-middleware`，再把 `{"middleware_id":"<AAP UUID>"}` 加入 Main Agent 的 `middleware_refs`。AAP 可以从 request `messages[]`、`workflow_task`、`workflow_state_snapshot`、upstream invocation、Runtime Store 或 Filesystem 中选择 current Agent 真正需要的材料。详细 contract 见 [Agent Additional Prompt](../agent-additional-prompt.md)。
+
+多个 Middleware 的顺序具有运行意义：LangChain `before_*` hook 正序执行，`after_*` 逆序执行，`wrap_*` 按列表嵌套。多个 Middleware 修改 `messages` 时，先设计组合顺序，再按该顺序保存 `middleware_refs`。
+
+## 6. 可选能力选择
+
+| 需求 | 选择 | 判断规则 |
+| --- | --- | --- |
+| 固定角色说明 | System Prompt | 内容对该 Agent 的每次 invocation 都适用 |
+| 动态初始提示词 | AAP / Custom Middleware | 每次需要从 request、task、State snapshot 或 Store 选择材料 |
+| 调用外部或确定性能力 | Custom Tool | 能力应由模型在 Agent loop 中选择和调用 |
+| 加载成组操作说明 | Skill | Agent 需要按需读取领域知识或操作流程 |
+| 读写工作文件 | Filesystem | 需要持久于 Agent loop 的文件、mapped route 或更多 Filesystem Tool |
+| 限制路径和 Filesystem Tool | Filesystem Permissions | 需要显式 allow/deny 或 tool visibility |
+| 维护 Agent 内部任务计划 | Todo List | 任务足够复杂，需要 `write_todos` 管理计划 |
+| 同步委派给专门角色 | Subagent | Main Agent 需要等待 specialist 返回结果后继续 current Agent loop |
+| 模型调用或 Tool lifecycle hook | Custom Middleware | 行为属于 LangChain Agent Middleware lifecycle |
+| 统一处理可重试异常 | Exception Retry | 需要 Provider-native 或 Middleware retry policy |
+| 控制长 Agent context | Summarization | 长对话或 Tool loop 需要按策略摘要 |
+| 使用 Provider prompt cache | Prompt Caching | 所选 Provider/model 支持并需要显式 caching 配置 |
+
+完整 component type、required flag、inheritance 和 override policy 以 `GET /api/catalog` 为准，字段说明见[代理组件](../capabilities.md)。
+
+### 6.1 Filesystem
+
+不创建、不选择 Filesystem 时，Agent 使用 request-scoped empty `StateBackend`，并只暴露 `read_file` Tool。这是合法的 minimal Filesystem。
+
+需要 mapped route、initial file 或更多 Filesystem Tool 时创建 component：
+
+```http
+POST /api/blocks/filesystem
+Authorization: Bearer <management token>
+Content-Type: application/json
+
+{"name":"AI workflow filesystem"}
+```
+
+保存 response `id`，并作为 Main Agent 或 Subagent 的 `filesystem` capability reference。Subagent 默认继承 Main Agent 的选择，需要差异化时通过 `capability_overrides` 执行 `replace` 或 `disabled`。路径和权限见[Filesystem 权限配置](../../wizard-pages/filesystem-permissions-config.md)。
+
+### 6.2 Custom Tool
+
+每个 `tool_refs` item 引用一个独立 Custom Tool package。Main Agent 与 Subagent 分别维护 ordered Tool 列表，不通过 capability override 继承、替换或关闭。扩展的同步 `create_tool()` 返回一个 LangChain `BaseTool`，最后按引用顺序传给 Agent assembly。
+
+### 6.3 Skill
+
+`GET /api/skills` 返回可选择的 Skill Template。创建 Skill component 时向 `POST /api/blocks/skill` 提交名称和 template path：
+
+```json
+{
+  "name": "Writing skills",
+  "skill_template_paths": ["writing/outline", "review/continuity-check"]
+}
+```
+
+后端把所选 Template 复制到该 component UUID 拥有的私有 package，之后两者独立。私有包内的 Skill 名称必须唯一。详细操作见[Skill 配置](../../wizard-pages/skill-config.md)。
+
+## 7. 可选 Subagent
+
+Subagent 用于 Agent 内部的一层同步 delegation。先创建 Subagent：
 
 ```http
 POST /api/subagents
@@ -170,16 +243,29 @@ Content-Type: application/json
 }
 ```
 
-然后把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。Subagent 默认继承 Main Agent 的 inheritable capability；不同的 Model Requirement、system prompt 或 Filesystem Permissions 通过 override 表达，但 required 的 `model-requirement` 不能 `disabled`。Custom Tool/Middleware 不走 capability override，分别通过自己的有序 `settings.tool_refs`/`middleware_refs` 装配。Main Agent 引用 `subagent` delegation capability component 后，`task` Tool description 与 routing prompt 来自当前业务配置。
+再把 `{"subagent_id":"<UUID>"}` 加入 Main Agent 的 `subagents`。
 
-Subagent 的 `name` 是 Model-visible routing name；清楚描述 delegation timing、职责和 return content 有助于 Model routing。当前 contract 只支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent 树。
+Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem 或 Filesystem Permissions 时使用 override；required `model-requirement` 不能 `disabled`。Custom Tool 和 Custom Middleware 分别由 Subagent 自己的有序 `settings.tool_refs`、`settings.middleware_refs` 装配。
 
-## 可移植配置 Bundle
+`name` 是 Model-visible routing name。`description` 应说明何时委派、负责什么、返回什么。当前 contract 支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent tree。
 
-管理台的【配置库】是单根 Bundle 下载和上传入口；Repository 切换、复制、整仓库下载和删除位于【配置库 / 全局 / 组件配置】。Management API 使用 `POST /api/configuration-bundles/export` 导出，使用 `POST /api/configuration-bundles/preview` 上传预检，再使用 `POST /api/configuration-bundles/import` 提交同一文件和预检计划；完整 multipart 字段见[管理配置库](../configuration-library.md)。这些操作以 active Configuration Repository 为读取或写入目标。
+## 8. Configuration Bundle
 
-需要跨实例分享时，以一个 Component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。后端沿 `configuration.dependencies` 的 typed references 计算 transitive closure；不要按名称猜依赖，也不要扫描或替换 Python source 中的 UUID。preview 为每个 source Configuration UUID 给出固定 target UUID，并返回名称建议、Filesystem bindings、阻塞项、warnings 和 trusted-code warnings。
+跨实例分享时，以一个 component、Subagent、Main Agent 或 Workflow UUID 作为 Bundle root。系统沿 typed reference 计算完整 dependency closure。导入后的 configuration UUID 会改变，Workflow-local Node/Edge ID 保持不变；Model Connection 和 credential 需要在目标实例重新建立和映射。
 
-导入时以 multipart 重新上传 preview 使用的同一 ZIP，并提交 `request` JSON；其中包含相同 `bundle_sha256`、`plan_token` 与完整 `resolutions`（target UUID、name 和必要的 Filesystem binding）。`filesystem_binding_required` 等阻塞项未解决时 preview 的 `ready=false`，不能提交。所有配置 UUID 都改变，Node/Edge ID 等 Workflow-local topology key 保持不变；Python package folder/manifest owner UUID 跟随 Component target UUID。Workflow 必须保持 disabled，待 credential、path、Skill、Python code 和 dependency 复核完成后再走正常 Graph validation/publish。
+导出、preview、resolution、trusted-code review 和 import 流程见[管理配置库](../configuration-library.md)。导入后的 Workflow 保持 disabled，完成模型映射、Filesystem binding、Python dependency 和 validation 后再 publish。最终验收顺序见[Validation、publish 与真实 invocation](06-validation-and-references.md)。
+
+## 9. Agent 装配完成检查
+
+- Graph 确实需要 Agent Node；
+- Model Requirement description 表达能力，不含实例 credential；
+- Agent Event Output 来自 current Template `key + revision`；
+- Main Agent 同时引用 Model Requirement 和 Agent Event Output；
+- 用户建立的 Model Connection 已记录；
+- Model Requirement binding 已完成，或明确列为用户待办；
+- System Prompt 只保存稳定角色说明；
+- 动态 request/task/upstream material 有明确入口，需要时采用 AAP；
+- Tool、Skill、Filesystem、Middleware 和 Subagent 都有当前业务调用方；
+- 所有 reference 使用 API 返回的 UUID。
 
 下一步：[创建 Workflow Graph](03-workflow-graph.md)。

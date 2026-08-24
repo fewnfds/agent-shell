@@ -1,4 +1,4 @@
-# 文件系统
+# Filesystem
 
 文件系统组件配置请求级 workspace、宿主目录映射、初始虚拟文件和模型可见文件工具。
 
@@ -45,22 +45,22 @@
 
 ## 两档运行模式
 
-- 未选择项目 Filesystem：使用请求级默认 StateBackend 和“最小功能”，普通 workspace 初始为空；Deep Agents
+- 未选择 configured Filesystem：使用请求级默认 StateBackend 和“最小功能”，普通 workspace 初始为空；Deep Agents
   的 FilesystemMiddleware 要求 `read_file` 始终存在，因此模型只获得 `read_file`。选择 Skill 后，该工具也用于
   读取 Agent 独立的只读 `/skills/` 视图。
-- 选择项目 Filesystem：使用配置的共享 workspace，并按 `tool_configs` 开放 `ls`、`read_file`、
+- 选择 configured Filesystem：使用配置的共享 workspace，并按 `tool_configs` 开放 `ls`、`read_file`、
   `write_file`、`edit_file`、`delete`、`glob`、`grep`。`read_file` 固定可见；`execute` 固定不可见；
   `delete` 默认关闭。`glob` 未以 `/` 开头的模式递归匹配整个虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录。
 
-同一个 Workflow Run 中的 Main Agent 与同步 Subagent 按 Deep Agents 官方行为共享普通 StateBackend 文件状态；每个 Agent 按自己的有效 Filesystem 构造初始文件和 mapped route 视图，Subagent 可继承、选择自己的项目 Filesystem 或回到最小 Filesystem。
-独立后台 Run 各自拥有私有 StateBackend，不复制或合并其中的临时文件；同一 Lifecycle 的父 Run 和后台 Run 通过相同的 resolved mapped route 共享已落盘文件。每个 Agent 的 `/skills/` 仍按最终 Skill 选择建立只读视图。需要让不同 Agent 对共享 workspace 使用不同路径权限、文件工具或文件系统提示词时，另行选择[文件系统权限](filesystem-permissions-config.md)。
+同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 按 Deep Agents 官方行为共享 StateBackend 文件状态；每个 Agent 按自己的 effective Filesystem 构造初始文件和 mapped route view，Subagent 可继承、选择自己的 configured Filesystem 或回到 minimal Filesystem。
+独立 background Run 各自拥有私有 StateBackend，不复制或合并其中的临时文件；同一 Lifecycle 的 parent Run 和 background Run 通过相同的 resolved mapped route 共享已落盘文件。每个 Agent 的 `/skills/` 仍按最终 Skill 选择建立只读视图。需要让不同 Agent 对共享 workspace 使用不同路径权限、文件工具或文件系统提示词时，另行选择[文件系统权限](filesystem-permissions-config.md)。
 
 ## 来源类型
 
 - `mapped_directories`：把虚拟目录实时映射到宿主目录；写入直接落盘。`path_origin=absolute` 要求
   `local_path` 是宿主绝对路径；`path_origin=data-root-relative` 以当前实例 `data/` 为根解析相对路径；
-  `lifecycle_mode=fixed` 直接使用配置目录，`lifecycle_mode=dynamic` 则在该目录下为每个顶层 Workflow
-  Lifecycle 创建一次 `lifecycle-{uuid}` 子目录。同一 Lifecycle 的父 Run 和后台 Run 复用同一解析结果；
+  `lifecycle_mode=fixed` 直接使用配置目录，`lifecycle_mode=dynamic` 则在该目录下为每个 top-level Workflow
+  Lifecycle 创建一次 `lifecycle-{uuid}` 子目录。同一 Lifecycle 的 parent Run 和 background Run 复用同一解析结果；
 - `virtual_directories`：每次请求开始时把现有目录文件复制到本次请求的内存 workspace，来源目录保持原样；`source_path` 使用宿主绝对路径；
 - `virtual_files`：每次请求把现有普通文件复制到本次请求的内存 workspace，来源文件保持原样；`source_path` 使用宿主绝对路径。
 

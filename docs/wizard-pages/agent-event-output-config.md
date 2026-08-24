@@ -1,6 +1,6 @@
-# Agent 事件输出
+# Agent Event Output
 
-Agent 事件输出是 Main Agent 必选组件。Subagent 不能单独配置或覆写该组件，其事件复用所属 Main Agent 的同一个 `output(event)`。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为 `/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
+Agent Event Output 是 Main Agent 必选组件。Subagent 不能单独配置或覆写该组件，其事件复用所属 Main Agent 的同一个 `output(event)`。它把规范化后的 LangChain v3 Agent 事件交给配置独占的 Python 扩展，函数返回值成为 `/v1/chat/completions` 的文本输出。它不修改 Agent State、提示词或工具。
 
 ## 编写 Python 扩展
 
@@ -46,7 +46,7 @@ def output(event):
 | `message` | `str` | 已规范化的主要文本；最常用的默认输出字段 |
 | `data` | `object (Python)` | 对应完整语义事件的原始 Python 值，具体类型见下表 |
 | `source_type` | `str` | `agent`、`subagent`、`script` 或 `non_agent` |
-| `workflow_node_id` | `str` | 画布 Workflow Node ID |
+| `workflow_node_id` | `str` | canvas Workflow Node ID |
 | `agent_profile_id` | `str` | Main Agent 配置 UUID |
 | `subagent_profile_id` | `str` | Subagent 配置 UUID；非 Subagent 事件为空 |
 
@@ -83,7 +83,7 @@ def output(event):
 
 ## 过滤与保存结构
 
-Agent 事件输出没有独立事件过滤配置。需要过滤时直接在 `output(event)` 中判断并返回空字符串；非空返回值才进入响应。
+Agent Event Output 没有独立事件过滤配置。需要过滤时直接在 `output(event)` 中判断并返回空字符串；非空返回值才进入响应。
 
 ```json
 {
@@ -97,4 +97,4 @@ Agent 事件输出没有独立事件过滤配置。需要过滤时直接在 `out
 ```
 
 先从 [`GET /api/python-package-templates/agent-event-output`](../user-guide/ai-guide/01-api-and-discovery.md) 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。新建时 `python_package.folder` 必须为空，`revision` 必须与 catalog 的目录 sha256 一致；首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致且不可变，复制时自动跟随新 UUID。
-保存后源码位于当前 Repository 的 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-event-output/<configuration-uuid>/` 独占目录；组件页通过 `GET /api/blocks/agent-event-output/{id}/python-package` 投影后交给 File Manager 编辑。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent 事件输出读取原始 Agent 内容。另见[Workflow 事件输出](workflow-event-output-config.md)。
+保存后源码位于 current Configuration Repository 的 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-event-output/<configuration-uuid>/` 独占目录；组件页通过 `GET /api/blocks/agent-event-output/{id}/python-package` 投影后交给 File Manager 编辑。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent Event Output 读取原始 Agent 内容。另见[Workflow Event Output](workflow-event-output-config.md)。

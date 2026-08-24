@@ -23,7 +23,7 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 Provider credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接 YAML 只保存 credential 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
 不要提交 Git 或公开分享。
 
-普通 API、普通 DOM、系统日志和运行诊断摘要不回显 credential、Bearer token、宿主敏感路径、traceback 或 Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
+普通 API response、DOM、system log 和 runtime diagnostic summary 不回显 credential、Bearer token、宿主敏感路径、traceback 或 Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
@@ -49,7 +49,7 @@ Bundle 保存 Filesystem 配置引用，宿主文件内容保留在源实例；�
 
 ## 用户代码与文件系统
 
-自定义工具和自定义 Middleware 包是受信任的本地代码，真实请求会 import 或执行。只有实例维护者可以管理这些资源，并应预先审查依赖、网络、文件和进程权限。
+Custom Tool 和 Custom Middleware 包是受信任的本地代码，真实请求会 import 或执行。只有实例维护者可以管理这些资源，并应预先审查依赖、网络、文件和进程权限。
 
 Windows Middleware 包可以声明公开 PyPI 的二进制 wheel 依赖。第三方 wheel 与包代码具有相同的服务进程权限；
 包名仿冒、恶意更新和依赖接管都属于供应链风险。平台固定公开 PyPI、拒绝 requirements 中的 URL/索引配置，
@@ -68,7 +68,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。
 降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
-运行历史的 Lifecycle ZIP 和单 Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain ChatModel-start 消息、Tool schema 和调用参数、后台任务、Run/Event、完整 Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。下载不提供敏感度分类或内容开关；用户写入 prompt、消息、Tool payload/schema、State、Store 或异常链的敏感内容会随对应记录进入 ZIP。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取；Model Request 序列化排除 Secret 类型和明确的 credential 字段。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不持久化。
+运行历史的 Lifecycle ZIP 和 single Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain ChatModel-start 消息、Tool schema 和调用参数、background task、Run/Event、complete Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。下载不提供敏感度分类或内容开关；用户写入 prompt、消息、Tool payload/schema、State、Store 或异常链的敏感内容会随对应记录进入 ZIP。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取；Model Request 序列化排除 Secret 类型和明确的 credential 字段。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不持久化。
 
 ## 系统配置与变量
 

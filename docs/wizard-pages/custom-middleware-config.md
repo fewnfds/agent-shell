@@ -1,6 +1,6 @@
-# 自定义 Middleware
+# Custom Middleware
 
-每份自定义 Middleware 配置拥有一个独占的 `agent-middleware` Python 扩展：
+每份 Custom Middleware 配置拥有一个独占的 `agent-middleware` Python 扩展：
 
 ```yaml
 name: Request Middleware
@@ -23,4 +23,4 @@ python_package:
 排序遵循 LangChain 官方 middleware 列表语义：`before_*` 按列表从前到后执行，`after_*` 按列表从后到前执行，
 `wrap_*` 按列表形成嵌套调用。管理台调整的是 Middleware 实例顺序，不对同一实例内部的多个 hook 分别排序。
 
-Workflow Input Context 作为内置 Custom Middleware 示例提供。从 `内置示例-workflow-input-context` 创建配置后，直接编辑 `main.py` 中的集中配置和变换函数，并通过 Agent 的 `middleware_refs` 排序。概念与运行边界见[Workflow Input Context](../user-guide/workflow-input-context.md)。模板选择器的 `内置示例-` 是展示前缀，实际目录名为 `<example-key>`。
+Agent Additional Prompt（AAP）作为内置 Custom Middleware template 提供。从 `内置示例-agent-additional-prompt` 创建配置后，直接编辑 `main.py` 中的集中配置和变换函数，并通过需要它的 Agent 的 `middleware_refs` 装配和排序。概念与运行边界见 [Agent Additional Prompt](../user-guide/agent-additional-prompt.md)。模板选择器的 `内置示例-` 是展示前缀，实际目录名为 `<example-key>`。
