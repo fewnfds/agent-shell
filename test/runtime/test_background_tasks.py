@@ -112,6 +112,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                         target_name="Child One",
                         target_graph_sha="graph-sha-1",
                         checkpoint_thread_id=None,
+                        cancel_on_upstream_termination=True,
                         execution_factory=first_factory,
                     )
                     for _ in range(2)
@@ -130,6 +131,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                 target_name="Child Two",
                 target_graph_sha="graph-sha-2",
                 checkpoint_thread_id=None,
+                cancel_on_upstream_termination=True,
                 execution_factory=second_factory,
             )
 
@@ -178,6 +180,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                 target_id="child-old",
                 target_name="Old Child",
                 target_graph_sha="graph-sha-old",
+                cancel_on_upstream_termination=True,
                 child_run_id="old-run",
                 checkpoint_thread_id="old-thread",
                 run_depth=1,
@@ -232,6 +235,7 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
             target_name="Child",
             target_graph_sha="graph-sha",
             checkpoint_thread_id=None,
+            cancel_on_upstream_termination=True,
             execution_factory=factory,
         )
         await manager.close()
@@ -247,7 +251,86 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
     asyncio.run(scenario())
 
 
-def test_background_manager_lists_filters_and_cancels_agent_task_idempotently(
+def test_parent_termination_cancels_only_children_with_propagation_enabled(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        lifecycle = _lifecycle_service(tmp_path)
+        await lifecycle.start()
+        lifecycle_id = await lifecycle.create(
+            [{"role": "user", "content": "input"}],
+            request_id="request-1",
+            run_id="parent-run",
+            checkpoint_thread_id=None,
+            workflow_id="parent-workflow",
+            workflow_name="Parent",
+        )
+        manager = BackgroundTaskManager(lifecycle)
+        await manager.start()
+        cascading_release = asyncio.Event()
+        independent_release = asyncio.Event()
+
+        async def cascading_factory(_identity):
+            return _Execution(cascading_release)
+
+        async def independent_factory(_identity):
+            return _Execution(independent_release)
+
+        try:
+            cascading = await manager.start_workflow(
+                lifecycle_id=lifecycle_id,
+                request_id="request-1",
+                launcher_run_id="parent-run",
+                launcher_id="launcher",
+                operation_id="cascading-child",
+                caller_run_depth=0,
+                target_id="child-cascading",
+                target_name="Cascading Child",
+                target_graph_sha="graph-sha-cascading",
+                checkpoint_thread_id=None,
+                cancel_on_upstream_termination=True,
+                execution_factory=cascading_factory,
+            )
+            independent = await manager.start_workflow(
+                lifecycle_id=lifecycle_id,
+                request_id="request-1",
+                launcher_run_id="parent-run",
+                launcher_id="launcher",
+                operation_id="independent-child",
+                caller_run_depth=0,
+                target_id="child-independent",
+                target_name="Independent Child",
+                target_graph_sha="graph-sha-independent",
+                checkpoint_thread_id=None,
+                cancel_on_upstream_termination=False,
+                execution_factory=independent_factory,
+            )
+            await _wait_for_status(manager, lifecycle_id, cascading.task_id, "running")
+            await _wait_for_status(manager, lifecycle_id, independent.task_id, "running")
+
+            await manager.cancel_children_on_parent_termination(
+                lifecycle_id,
+                "parent-run",
+            )
+
+            await _wait_for_status(manager, lifecycle_id, cascading.task_id, "cancelled")
+            still_running = (
+                await manager.check(lifecycle_id, [independent.task_id])
+            )[0]
+            assert still_running.runtime_status == "running"
+            assert cascading.cancel_on_upstream_termination is True
+            assert independent.cancel_on_upstream_termination is False
+
+            independent_release.set()
+            await _wait_for_status(manager, lifecycle_id, independent.task_id, "succeeded")
+        finally:
+            await manager.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_background_manager_lists_filters_and_cancels_workflow_task_idempotently(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -269,21 +352,24 @@ def test_background_manager_lists_filters_and_cancels_agent_task_idempotently(
             return _Execution(release)
 
         try:
-            handle = await manager.start_agent(
+            handle = await manager.start_workflow(
                 lifecycle_id=lifecycle_id,
                 request_id="request-1",
                 launcher_run_id="parent-run",
                 launcher_id="agent-launcher",
-                operation_id="cancel-agent",
+                operation_id="cancel-workflow",
                 caller_run_depth=0,
-                target_id="agent-1",
-                target_name="Agent One",
+                target_id="workflow-1",
+                target_name="Workflow One",
+                target_graph_sha="graph-sha",
+                checkpoint_thread_id=None,
+                cancel_on_upstream_termination=True,
                 execution_factory=factory,
             )
-            assert handle.target_kind == "agent"
+            assert handle.target_kind == "workflow"
             listed = await manager.list(lifecycle_id)
             assert [item.task_id for item in listed] == [handle.task_id]
-            assert listed[0].target_kind == "agent"
+            assert listed[0].target_kind == "workflow"
             running = await manager.list(
                 lifecycle_id,
                 statuses=frozenset({"running"}),

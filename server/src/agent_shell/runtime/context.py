@@ -122,26 +122,4 @@ class WorkflowRuntimeContext:
             agent_id=agent_id,
         )
 
-    def for_background_agent(
-        self,
-        *,
-        agent_id: str,
-        invocation_id: str,
-    ) -> "WorkflowRuntimeContext":
-        """Bind an Agent Run that is not owned by a canvas Agent Node."""
-
-        background_runs = (
-            self.background_runs.for_caller(invocation_id)
-            if self.background_runs is not None
-            else None
-        )
-        return replace(
-            self,
-            workflow_node_id="",
-            agent_id=agent_id,
-            invocation_id=invocation_id,
-            background_runs=background_runs,
-        )
-
-
 __all__ = ["WorkflowRuntimeContext"]

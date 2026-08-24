@@ -15,12 +15,14 @@ def test_workflow_runtime_boundaries_are_managed(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Managed boundaries")
+        assert workflow["cancel_on_upstream_termination"] is True
         updated = client.put(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "workflow_role": workflow["workflow_role"],
                 "description": workflow["description"],
+                "cancel_on_upstream_termination": False,
                 "recursion_limit": 250,
                 "execution_timeout_seconds": 900,
                 "max_concurrency": 32,
@@ -28,6 +30,7 @@ def test_workflow_runtime_boundaries_are_managed(
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["max_concurrency"] == 32
+        assert updated.json()["cancel_on_upstream_termination"] is False
 
 
 def test_workflow_copy_preserves_graph_layout_and_role_as_a_draft(

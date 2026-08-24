@@ -72,6 +72,16 @@ export const zhCN = {
       published: '正式',
     },
     metadataTitle: '装配选项',
+    termination: {
+      parent: {
+        label: '客户端断开时终止运行',
+        hint: 'OpenAI 流式连接在父图完成前断开时终止当前运行。关闭后运行继续，但不再向已断开的连接发送输出。',
+      },
+      child: {
+        label: '随父运行终止',
+        hint: '启动该子图的父运行被取消或失败时一并终止。父图正常到达 End 不触发；关闭后子图继续独立运行。',
+      },
+    },
     statusTitle: 'Workflow 状态',
     newStatus: '尚未保存',
     parentTableAriaLabel: '父图列表',
@@ -193,6 +203,7 @@ export const zhCN = {
       filesystem: '共享文件系统',
       checkpointer: '检查点保存器',
       eventOutput: 'Workflow 事件输出',
+      cancelOnUpstreamTermination: '随上游终止',
       recursionLimit: 'Super-step 上限',
       executionTimeoutSeconds: 'Run 总执行超时',
       maxConcurrency: '最大并发数',
@@ -234,7 +245,7 @@ export const zhCN = {
       cancelled: '已取消',
       interrupted: '已中断',
     },
-    runKinds: { workflow: 'Workflow', agent: 'Agent' },
+    runKinds: { workflow: 'Workflow' },
     observationStatuses: {
       available: '可用',
       partial: '部分可用',

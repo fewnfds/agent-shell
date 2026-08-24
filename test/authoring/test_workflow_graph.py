@@ -572,7 +572,6 @@ def test_executable_validation_allows_agent_free_script_graph() -> None:
         ),
         include_tool_call_transformer=False,
         public_output=False,
-        run_kind="workflow",
     )
 
     lifecycle_event = execution.normalizer.lifecycle("start", status="running")

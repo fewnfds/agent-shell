@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 import warnings
 from copy import deepcopy
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID, uuid4
 
 from agent_shell.contracts import (
@@ -130,15 +130,14 @@ class RunExecution:
     runtime_diagnostics: RuntimeDiagnostics | None = None
     request_id: str = ""
     public_model: str = ""
-    agent_name: str = ""
     include_tool_call_transformer: bool = True
     public_output: bool = True
-    run_kind: Literal["agent", "workflow"] = "agent"
     journal_node_kinds: dict[str, str] | None = None
     journal_agent_names: dict[str, str] | None = None
     journal_agent_profile_ids: dict[str, str] | None = None
     journal_subagent_profile_ids: dict[str, dict[str, str]] | None = None
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
+    cancel_background_children: Callable[[], Awaitable[None]] | None = None
     final_state: dict[str, Any] | None = None
     _started: bool = False
     _lifecycle_finished: bool = False
@@ -149,48 +148,37 @@ class RunExecution:
 
     @property
     def finish_reason(self) -> str:
-        if self.run_kind == "workflow":
-            return "stop"
-        return self.normalizer.finish_reason
+        return "stop"
 
     @property
     def finish_reason_source(self) -> str | None:
-        if self.run_kind == "workflow":
-            return None
-        return self.normalizer.finish_reason_source
+        return None
 
     def diagnostic_context(self) -> RuntimeDiagnosticContext:
         context = self.context
         if context is None:
             return RuntimeDiagnosticContext(
                 request_id=self.request_id,
-                subject_kind="workflow" if self.run_kind == "workflow" else "agent",
-                subject_name=self.public_model or self.agent_name,
+                subject_kind="workflow",
+                subject_name=self.public_model,
             )
         workflow_id = str(context.workflow.get("id", ""))
         workflow_name = str(
             context.workflow.get(
                 "name",
-                self.public_model if self.run_kind == "workflow" else "",
+                self.public_model,
             )
         )
-        is_workflow = self.run_kind == "workflow"
         return RuntimeDiagnosticContext(
             request_id=context.request_id or self.request_id,
             lifecycle_id=context.lifecycle_id,
             run_id=context.run_id,
             thread_id=context.checkpoint_thread_id,
-            parent_workflow_id=(
-                workflow_id if self.owns_lifecycle or not is_workflow else ""
-            ),
-            parent_workflow_name=(
-                workflow_name if self.owns_lifecycle or not is_workflow else ""
-            ),
-            subject_kind="workflow" if is_workflow else "agent",
-            subject_id=workflow_id if is_workflow else context.agent_id,
-            subject_name=(
-                workflow_name if is_workflow else self.agent_name or self.public_model
-            ),
+            parent_workflow_id=workflow_id if self.owns_lifecycle else "",
+            parent_workflow_name=workflow_name if self.owns_lifecycle else "",
+            subject_kind="workflow",
+            subject_id=workflow_id,
+            subject_name=workflow_name,
             workflow_node_id=context.workflow_node_id,
             node_invocation_id=context.invocation_id,
         )
@@ -241,6 +229,14 @@ class RunExecution:
                     component="observability",
                     context=self.diagnostic_context(),
                 )
+
+        async def cancel_background_children() -> None:
+            if self.cancel_background_children is None:
+                return
+            try:
+                await self.cancel_background_children()
+            except Exception as exc:
+                observation_error(exc, "background_child_cancellation_failed")
 
         def start_run() -> None:
             if self.lifecycle_service is None or self.context is None:
@@ -482,6 +478,7 @@ class RunExecution:
                 )
             self.normalizer.abort_main_agent_messages()
             self.rectifier.discard()
+            await cancel_background_children()
             finish_run("cancelled", error_code="request_cancelled")
             await finish_lifecycle("cancelled")
             raise
@@ -496,6 +493,7 @@ class RunExecution:
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
+            await cancel_background_children()
             finish_run("failed", error_code=error.code)
             await finish_lifecycle("failed")
             raise error from exc
@@ -511,6 +509,7 @@ class RunExecution:
                     exc.__cause__ if isinstance(exc, EventOutputError) else None
                 ),
             )
+            await cancel_background_children()
             finish_run("failed", error_code=exc.code)
             await finish_lifecycle("failed")
             raise
@@ -532,6 +531,7 @@ class RunExecution:
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
+            await cancel_background_children()
             finish_run("failed", error_code=error.code)
             await finish_lifecycle("failed")
             raise error from exc
@@ -749,12 +749,12 @@ class AgentRuntime:
         include_tool_call_transformer: bool = True,
         public_output: bool = True,
         execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
-        run_kind: Literal["agent", "workflow"] = "agent",
+        cancel_background_children: Callable[[], Awaitable[None]] | None = None,
     ) -> RunExecution:
         if built is None:
-            if graph is None or input_state is None or run_kind != "workflow":
+            if graph is None or input_state is None:
                 raise ValueError(
-                    "an Agent-free execution requires a Workflow graph and input state"
+                    "a Workflow execution requires a graph and input state"
                 )
             effective_graph = graph
             effective_input_state = input_state
@@ -769,22 +769,17 @@ class AgentRuntime:
         workflow_agents = workflow_built or (
             ((workflow_node_id, built),) if built is not None else ()
         )
-        if run_kind == "workflow":
-            from agent_shell.workflow.events import WorkflowEventSourceV1
+        from agent_shell.workflow.events import WorkflowEventSourceV1
 
-            workflow_sources = {
-                node_id: WorkflowEventSourceV1(
-                    source_type="agent",
-                    workflow_node_id=node_id,
-                    agent_profile_id=agent.agent_id,
-                )
-                for node_id, agent in workflow_agents
-            }
-        else:
-            workflow_sources = None
+        workflow_sources = {
+            node_id: WorkflowEventSourceV1(
+                source_type="agent",
+                workflow_node_id=node_id,
+                agent_profile_id=agent.agent_id,
+            )
+            for node_id, agent in workflow_agents
+        }
         if public_output:
-            if run_kind != "workflow":
-                raise ValueError("public output requires a Workflow execution")
             projector = WorkflowOutputProjector(
                 agent_event_outputs or {},
                 workflow_output=workflow_event_output,
@@ -817,7 +812,7 @@ class AgentRuntime:
                 model_response_observers=(model_response_observer,)
                 if model_response_observer is not None
                 else (),
-                workflow_mode=run_kind == "workflow",
+                workflow_mode=True,
                 workflow_sources=workflow_sources,
                 subagent_profile_ids=(
                     built.subagent_profile_ids if built is not None else {}
@@ -826,11 +821,11 @@ class AgentRuntime:
                 workflow_subagent_profile_ids={
                     node_id: agent.subagent_profile_ids
                     for node_id, agent in workflow_agents
-                } if run_kind == "workflow" else None,
+                },
                 workflow_agent_names={
                     node_id: agent.agent_name
                     for node_id, agent in workflow_agents
-                } if run_kind == "workflow" else None,
+                },
             ),
             event_observers=tuple(observers),
             middleware_runtimes=tuple(
@@ -853,14 +848,8 @@ class AgentRuntime:
             runtime_diagnostics=self._runtime_diagnostics,
             request_id=request_id,
             public_model=public_model,
-            agent_name=(
-                built.agent_name
-                if run_kind == "agent" and built is not None
-                else ""
-            ),
             include_tool_call_transformer=include_tool_call_transformer,
             public_output=public_output,
-            run_kind=run_kind,
             journal_node_kinds=journal_node_kinds,
             journal_agent_names={
                 node_id: agent.agent_name for node_id, agent in workflow_agents
@@ -873,83 +862,7 @@ class AgentRuntime:
                 for node_id, agent in workflow_agents
             },
             execution_timeout_seconds=execution_timeout_seconds,
-        )
-
-    async def start_background_agent(
-        self,
-        assembly: StaticAssembly,
-        raw_messages: object,
-        *,
-        workflow_snapshot: Mapping[str, Any],
-        launcher_id: str,
-        request_id: str,
-        lifecycle_id: str,
-        run_id: str,
-        parent_run_id: str,
-        background_task_id: str,
-        run_depth: int,
-        initial_shared_vars: Mapping[str, Any] | None = None,
-        initial_workflow_task: Mapping[str, Any] | None = None,
-        background_runtime: Any | None = None,
-    ) -> RunExecution:
-        messages = validate_client_messages(raw_messages, self._input_policy())
-        mapped_directory_paths_by_filesystem = (
-            await self._resolved_mapped_directory_paths_by_filesystem(
-                lifecycle_id,
-                assembly,
-            )
-        )
-        built = await self.build_resolved_agent(
-            assembly,
-            messages,
-            request_id=request_id,
-            workflow_node_id=None,
-            mapped_directory_paths_by_filesystem=(
-                mapped_directory_paths_by_filesystem
-            ),
-        )
-        context = WorkflowRuntimeContext.for_run(
-            request_id=request_id,
-            lifecycle_id=lifecycle_id,
-            run_id=run_id,
-            checkpoint_thread_id=None,
-            parent_run_id=parent_run_id,
-            background_task_id=background_task_id,
-            launcher_id=launcher_id,
-            run_depth=run_depth,
-            workflow=workflow_snapshot,
-            background_runtime=background_runtime,
-        ).for_background_agent(
-            agent_id=built.agent_id,
-            invocation_id=background_task_id,
-        )
-        input_state = deepcopy(dict(built.input_state))
-        input_state["messages"] = []
-        input_state["shared_vars"] = deepcopy(dict(initial_shared_vars or {}))
-        if initial_workflow_task is not None:
-            input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
-        return self._execution(
-            built,
-            input_state=input_state,
-            request_id=request_id,
-            public_model=built.agent_name,
-            context=context,
-            run_config={
-                "recursion_limit": int(
-                    workflow_snapshot.get("recursion_limit", GRAPH_RECURSION_LIMIT)
-                ),
-                "max_concurrency": int(
-                    workflow_snapshot.get("max_concurrency", WORKFLOW_MAX_CONCURRENCY)
-                ),
-            },
-            execution_timeout_seconds=int(
-                workflow_snapshot.get(
-                    "execution_timeout_seconds",
-                    EXECUTION_TIMEOUT_SECONDS,
-                )
-            ),
-            include_tool_call_transformer=False,
-            public_output=False,
+            cancel_background_children=cancel_background_children,
         )
 
     async def start_workflow(
@@ -1469,6 +1382,14 @@ class AgentRuntime:
             input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
         if workflow_initial_files:
             input_state["files"] = workflow_initial_files
+
+        async def cancel_background_children() -> None:
+            if background_runtime is not None:
+                await background_runtime.cancel_children_on_parent_termination(
+                    resolved_lifecycle_id,
+                    resolved_run_id,
+                )
+
         return self._execution(
             built,
             graph=graph,
@@ -1514,6 +1435,9 @@ class AgentRuntime:
                     EXECUTION_TIMEOUT_SECONDS,
                 )
             ),
+            cancel_background_children=(
+                cancel_background_children if background_runtime is not None else None
+            ),
             durability=(
                 checkpoint_binding.durability
                 if checkpoint_binding is not None
@@ -1521,7 +1445,6 @@ class AgentRuntime:
             ),
             owns_lifecycle=owns_lifecycle,
             public_output=public_output,
-            run_kind="workflow",
             command_runtime=command_runtime,
             task_dispatcher_runtime=task_dispatcher_runtime,
         )

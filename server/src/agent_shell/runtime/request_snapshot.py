@@ -29,21 +29,9 @@ from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelRe
 from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
-from agent_shell.validation.assembly import StaticAssembly
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.workflow import workflow_document_sha256
 from agent_shell.runtime.errors import AgentRuntimeError
-
-
-def _detached_context_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {
-            str(key): _detached_context_value(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, tuple):
-        return [_detached_context_value(item) for item in value]
-    return deepcopy(value)
 
 
 @dataclass(slots=True)
@@ -51,7 +39,6 @@ class RequestRuntimeSnapshot:
     """Build Workflow and background Runs from one immutable config catalog."""
 
     _workflows: WorkflowStore
-    _validation: ConfigurationValidationService
     _runtime: AgentRuntime
     _runtime_factory: Callable[[], AgentRuntime]
     _workflow_lifecycle: WorkflowLifecycleService
@@ -149,66 +136,20 @@ class RequestRuntimeSnapshot:
             checkpoint_thread_id=(
                 str(uuid4()) if target.get("checkpointer_id") is not None else None
             ),
+            cancel_on_upstream_termination=bool(
+                target["cancel_on_upstream_termination"]
+            ),
             execution_factory=build_execution,
         )
 
-    async def start_background_agent(
+    async def cancel_children_on_parent_termination(
         self,
-        target_agent_id: str,
-        *,
-        operation_id: str,
-        caller: BackgroundRunCaller,
-        shared_vars: Mapping[str, Any],
-        workflow_task: Mapping[str, Any] | None = None,
-    ) -> BackgroundTaskHandle:
-        report, assembly = self._validation.resolve_main_agent(target_agent_id)
-        if assembly is None:
-            issue = report.issues[0]
-            raise AgentRuntimeError(
-                issue.code,
-                issue.message,
-                status_code=422,
-                validation_report=report,
-            )
-        frozen_assembly = deepcopy(assembly)
-        frozen_shared_vars = deepcopy(dict(shared_vars))
-        frozen_workflow_task = (
-            deepcopy(dict(workflow_task)) if workflow_task is not None else None
-        )
-        workflow_snapshot = _detached_context_value(caller.workflow)
-        target_name = str(frozen_assembly.main_agent["name"])
-
-        async def build_execution(identity):
-            messages = await self._workflow_lifecycle.messages(
-                caller.lifecycle_id
-            )
-            child_runtime = self._runtime_factory()
-            return await child_runtime.start_background_agent(
-                frozen_assembly,
-                messages,
-                workflow_snapshot=workflow_snapshot,
-                launcher_id=caller.caller_id or operation_id,
-                request_id=caller.request_id,
-                lifecycle_id=caller.lifecycle_id,
-                run_id=identity.child_run_id,
-                parent_run_id=caller.run_id,
-                background_task_id=identity.task_id,
-                run_depth=identity.run_depth,
-                initial_shared_vars=frozen_shared_vars,
-                initial_workflow_task=frozen_workflow_task,
-                background_runtime=self,
-            )
-
-        return await self._background_tasks.start_agent(
-            lifecycle_id=caller.lifecycle_id,
-            request_id=caller.request_id,
-            launcher_run_id=caller.run_id,
-            launcher_id=caller.caller_id or operation_id,
-            operation_id=operation_id,
-            caller_run_depth=caller.run_depth,
-            target_id=target_agent_id,
-            target_name=target_name,
-            execution_factory=build_execution,
+        lifecycle_id: str,
+        parent_run_id: str,
+    ) -> None:
+        await self._background_tasks.cancel_children_on_parent_termination(
+            lifecycle_id,
+            parent_run_id,
         )
 
     async def check_background_tasks(
@@ -321,7 +262,6 @@ class RequestSnapshotRuntime:
         runtime = runtime_factory()
         return RequestRuntimeSnapshot(
             _workflows=workflows,
-            _validation=validation,
             _runtime=runtime,
             _runtime_factory=runtime_factory,
             _workflow_lifecycle=self._workflow_lifecycle,

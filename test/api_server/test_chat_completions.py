@@ -32,6 +32,64 @@ class InspectingFakeChatModel(ToolCompatibleFakeListChatModel):
             yield chunk
 
 
+@pytest.mark.parametrize("cancel_on_disconnect", (True, False))
+def test_completion_stream_applies_workflow_disconnect_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cancel_on_disconnect: bool,
+) -> None:
+    class Execution:
+        context = None
+        finish_reason = "stop"
+        usage: dict[str, int] = {}
+
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.cancelled = asyncio.Event()
+            self.completed = asyncio.Event()
+
+        async def stream_text(self):
+            self.started.set()
+            try:
+                await self.release.wait()
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+            self.completed.set()
+            yield "unobserved output"
+
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def scenario() -> tuple[bool, bool]:
+            execution = Execution()
+            stream = api_server._completion_stream(
+                execution,
+                "Workflow",
+                background_tasks=client.app.state.background_tasks,
+                cancel_on_disconnect=cancel_on_disconnect,
+            )
+            first = await anext(stream)
+            assert '"role":"assistant"' in first
+            pending = asyncio.create_task(anext(stream))
+            await execution.started.wait()
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+            if cancel_on_disconnect:
+                await asyncio.wait_for(execution.cancelled.wait(), timeout=1)
+            else:
+                execution.release.set()
+                await asyncio.wait_for(execution.completed.wait(), timeout=1)
+            return execution.cancelled.is_set(), execution.completed.is_set()
+
+        cancelled, completed = portal.call(scenario)
+
+    assert cancelled is cancel_on_disconnect
+    assert completed is (not cancel_on_disconnect)
+
 def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

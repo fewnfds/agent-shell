@@ -26,11 +26,11 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 ## 运行历史
 
-【系统 / 运行历史】以一次顶层请求的 Lifecycle 聚合 root Workflow、background Workflow 和 background Agent Run（management-only，需要管理鉴权；导出接口见[使用 background Run](ai-guide/05-background-runs.md)）。
+【系统 / 运行历史】以一次顶层请求的 Lifecycle 聚合 root Workflow 和 background Workflow Run（management-only，需要管理鉴权；导出接口见[使用 background Run](ai-guide/05-background-runs.md)）。
 Run Registry 是 Run 身份与终态的权威记录；append-only Event Journal 保存 Run、Workflow Node、Agent、Model 和 Tool 的结构边界。Workflow Node 每次执行使用独立 `span_id`，其 `node_invocation_id` 与该 `span_id` 相同；Agent、Model 和 Tool 拥有自己的 `span_id/parent_span_id`，并保留所属 `node_invocation_id`。同一 Node 的循环、重试和 fan-out 不会合并。
 Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍开放的 Node、Agent、Model 和 Tool span，Timeline 不保留伪 `running` 子项。
 
-所有 root/background Run 都使用独立 `run_id`。Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才额外拥有 `checkpoint_thread_id`，并由共享的 LangGraph `AsyncSqliteSaver` 写入 Checkpoint；background Agent 不装配 Checkpointer。parent Workflow 与 background child Workflow 独立读取配置，互不继承。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 parent/child Run relationship、结构 Timeline、可空 Checkpoint Thread，以及 Checkpoint 摘要、结构事件和关联诊断计数；未启用时 thread 为空、计数为 0，页面不直接展开 Checkpoint State 和运行消息。
+所有 root/background Run 都使用独立 `run_id`。Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才额外拥有 `checkpoint_thread_id`，并由共享的 LangGraph `AsyncSqliteSaver` 写入 Checkpoint；parent Workflow 与 background child Workflow 独立读取配置，互不继承。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 parent/child Run relationship、结构 Timeline、可空 Checkpoint Thread，以及 Checkpoint 摘要、结构事件和关联诊断计数；未启用时 thread 为空、计数为 0，页面不直接展开 Checkpoint State 和运行消息。
 
 每次 LangChain ChatModel 调用开始时，Run Journal 通过 `on_chat_model_start` 持久化该调用看到的完整 message batches、已绑定 Tool schemas、`tool_choice`、model invocation parameters、options、tags 和 metadata。记录使用 model callback run ID 幂等写入，并关联 Lifecycle/Run、Workflow Node、Main Agent profile；Subagent 记录同时关联自己的 profile 和 parent Main Agent profile。记录失败只把 Run observation 标为 `partial` 并生成运行诊断，不中断模型调用。
 

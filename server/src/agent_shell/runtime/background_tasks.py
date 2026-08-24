@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, Protocol
@@ -20,7 +20,7 @@ from agent_shell.runtime.workflow_lifecycle import (
 )
 
 
-BackgroundTargetKind = Literal["agent", "workflow"]
+BackgroundTargetKind = Literal["workflow"]
 BackgroundTaskStatus = Literal[
     "pending",
     "running",
@@ -56,6 +56,7 @@ class BackgroundTaskRecord(BaseModel):
     target_id: str
     target_name: str
     target_graph_sha: str = ""
+    cancel_on_upstream_termination: bool
     child_run_id: str
     checkpoint_thread_id: str | None = None
     run_depth: int = Field(ge=0)
@@ -78,6 +79,7 @@ class BackgroundTaskHandle(BaseModel):
     target_id: str
     child_run_id: str
     checkpoint_thread_id: str | None = None
+    cancel_on_upstream_termination: bool
     run_depth: int
     status: BackgroundTaskStatus
 
@@ -96,6 +98,7 @@ class BackgroundTaskSnapshot(BaseModel):
     target_name: str = ""
     child_run_id: str = ""
     checkpoint_thread_id: str | None = None
+    cancel_on_upstream_termination: bool | None = None
     run_depth: int | None = None
     created_at: str = ""
     started_at: str = ""
@@ -140,19 +143,36 @@ class BackgroundTaskManager:
         self._runtime_diagnostics = runtime_diagnostics
         self.runtime_instance_id = str(uuid4())
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._detached_tasks: set[asyncio.Task[None]] = set()
         self._started = False
 
     async def start(self) -> None:
         self._started = True
 
     async def close(self) -> None:
-        tasks = tuple(self._tasks.values())
+        tasks = tuple({*self._tasks.values(), *self._detached_tasks})
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
+        self._detached_tasks.clear()
         self._started = False
+
+    def create_detached_task(
+        self,
+        coroutine: Coroutine[Any, Any, None],
+        *,
+        name: str,
+    ) -> asyncio.Task[None]:
+        """Own an in-process continuation that has no background Run record."""
+
+        if not self._started:
+            raise RuntimeError("the Background Task Manager is not started")
+        task = asyncio.create_task(coroutine, name=name)
+        self._detached_tasks.add(task)
+        task.add_done_callback(self._detached_tasks.discard)
+        return task
 
     async def start_workflow(
         self,
@@ -167,6 +187,7 @@ class BackgroundTaskManager:
         target_name: str,
         target_graph_sha: str,
         checkpoint_thread_id: str | None,
+        cancel_on_upstream_termination: bool,
         execution_factory: BackgroundExecutionFactory,
     ) -> BackgroundTaskHandle:
         return await self._start(
@@ -176,39 +197,11 @@ class BackgroundTaskManager:
             launcher_id=launcher_id,
             operation_id=operation_id,
             caller_run_depth=caller_run_depth,
-            target_kind="workflow",
             target_id=target_id,
             target_name=target_name,
             target_graph_sha=target_graph_sha,
             checkpoint_thread_id=checkpoint_thread_id,
-            execution_factory=execution_factory,
-        )
-
-    async def start_agent(
-        self,
-        *,
-        lifecycle_id: str,
-        request_id: str,
-        launcher_run_id: str,
-        launcher_id: str,
-        operation_id: str,
-        caller_run_depth: int,
-        target_id: str,
-        target_name: str,
-        execution_factory: BackgroundExecutionFactory,
-    ) -> BackgroundTaskHandle:
-        return await self._start(
-            lifecycle_id=lifecycle_id,
-            request_id=request_id,
-            launcher_run_id=launcher_run_id,
-            launcher_id=launcher_id,
-            operation_id=operation_id,
-            caller_run_depth=caller_run_depth,
-            target_kind="agent",
-            target_id=target_id,
-            target_name=target_name,
-            target_graph_sha="",
-            checkpoint_thread_id=None,
+            cancel_on_upstream_termination=cancel_on_upstream_termination,
             execution_factory=execution_factory,
         )
 
@@ -221,11 +214,11 @@ class BackgroundTaskManager:
         launcher_id: str,
         operation_id: str,
         caller_run_depth: int,
-        target_kind: BackgroundTargetKind,
         target_id: str,
         target_name: str,
         target_graph_sha: str,
         checkpoint_thread_id: str | None,
+        cancel_on_upstream_termination: bool,
         execution_factory: BackgroundExecutionFactory,
     ) -> BackgroundTaskHandle:
         if not self._started:
@@ -261,7 +254,6 @@ class BackgroundTaskManager:
             if existing is not None:
                 if (
                     existing.operation_id != normalized_operation_id
-                    or existing.target_kind != target_kind
                     or existing.target_id != target_id
                 ):
                     raise AgentRuntimeError(
@@ -289,10 +281,11 @@ class BackgroundTaskManager:
                 launcher_run_id=launcher_run_id,
                 launcher_id=launcher_id,
                 operation_id=normalized_operation_id,
-                target_kind=target_kind,
+                target_kind="workflow",
                 target_id=target_id,
                 target_name=target_name,
                 target_graph_sha=target_graph_sha,
+                cancel_on_upstream_termination=cancel_on_upstream_termination,
                 child_run_id=identity.child_run_id,
                 checkpoint_thread_id=identity.checkpoint_thread_id,
                 run_depth=identity.run_depth,
@@ -321,7 +314,7 @@ class BackgroundTaskManager:
                 self._report_run_history_error(exc, record)
             task = asyncio.create_task(
                 self._run(record, identity, execution_factory),
-                name=f"background-{target_kind}:{task_id}",
+                name=f"background-workflow:{task_id}",
             )
             self._tasks[task_id] = task
         await asyncio.sleep(0)
@@ -383,6 +376,19 @@ class BackgroundTaskManager:
         statuses: frozenset[BackgroundTaskStatus] | None = None,
     ) -> list[BackgroundTaskSnapshot]:
         checked_at = _now()
+        records = await self._records_locked(lifecycle_id)
+
+        snapshots = []
+        for record in sorted(records, key=lambda item: (item.created_at, item.task_id)):
+            record = await self._normalize_active(record, checked_at=checked_at)
+            if statuses is None or record.status in statuses:
+                snapshots.append(self._snapshot(record, checked_at=checked_at))
+        return snapshots
+
+    async def _records_locked(
+        self,
+        lifecycle_id: str,
+    ) -> list[BackgroundTaskRecord]:
         records: list[BackgroundTaskRecord] = []
         offset = 0
         while True:
@@ -397,13 +403,32 @@ class BackgroundTaskManager:
             if len(items) < 100:
                 break
             offset += len(items)
+        return records
 
-        snapshots = []
-        for record in sorted(records, key=lambda item: (item.created_at, item.task_id)):
-            record = await self._normalize_active(record, checked_at=checked_at)
-            if statuses is None or record.status in statuses:
-                snapshots.append(self._snapshot(record, checked_at=checked_at))
-        return snapshots
+    async def cancel_children_on_parent_termination(
+        self,
+        lifecycle_id: str,
+        parent_run_id: str,
+    ) -> None:
+        async with self._lifecycle.exclusive_mutation(lifecycle_id):
+            checked_at = _now()
+            records = await self._records_locked(lifecycle_id)
+            for record in records:
+                if (
+                    record.launcher_run_id != parent_run_id
+                    or not record.cancel_on_upstream_termination
+                ):
+                    continue
+                record = await self._normalize_active(record, checked_at=checked_at)
+                if record.status not in ACTIVE_BACKGROUND_STATUSES:
+                    continue
+                live = self._tasks.get(record.task_id)
+                if live is None or live.done():
+                    continue
+                if record.status != "cancel_requested":
+                    record = record.model_copy(update={"status": "cancel_requested"})
+                    await self._put(record)
+                live.cancel()
 
     async def cancel(
         self,
@@ -589,6 +614,7 @@ class BackgroundTaskManager:
             target_id=record.target_id,
             child_run_id=record.child_run_id,
             checkpoint_thread_id=record.checkpoint_thread_id,
+            cancel_on_upstream_termination=record.cancel_on_upstream_termination,
             run_depth=record.run_depth,
             status=record.status,
         )
@@ -610,6 +636,7 @@ class BackgroundTaskManager:
             target_name=record.target_name,
             child_run_id=record.child_run_id,
             checkpoint_thread_id=record.checkpoint_thread_id,
+            cancel_on_upstream_termination=record.cancel_on_upstream_termination,
             run_depth=record.run_depth,
             created_at=record.created_at,
             started_at=record.started_at,

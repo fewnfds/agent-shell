@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from agent_shell.runtime.agent_runtime import AgentRuntime
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError
 
@@ -58,6 +57,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                         "max_concurrency",
                     )
                 },
+                "cancel_on_upstream_termination": False,
                 "workflow_event_output_id": output_response.json()["id"],
                 "checkpointer_id": (
                     checkpointer.json()["id"]
@@ -162,6 +162,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
 
     assert handle.status == "pending"
     assert handle.run_depth == 1
+    assert handle.cancel_on_upstream_termination is False
     assert terminal is not None
     assert terminal.runtime_status == "succeeded"
     assert isinstance(terminal.result["finish_reason"], str)
@@ -173,101 +174,3 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
     assert run["run_kind"] == "workflow"
     assert run["status"] == "completed"
     assert (checkpoint_count > 0) is child_checkpointer_enabled
-
-
-def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoint(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured_context = None
-    original_start_background_agent = AgentRuntime.start_background_agent
-
-    async def observe_start_background_agent(self, *args, **kwargs):
-        nonlocal captured_context
-        execution = await original_start_background_agent(self, *args, **kwargs)
-        assert execution.context is not None
-        captured_context = execution.context
-        return execution
-
-    monkeypatch.setattr(
-        AgentRuntime,
-        "start_background_agent",
-        observe_start_background_agent,
-    )
-    with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
-        parent = create_workflow(client, name="Agent Launcher")
-        snapshot = client.app.state.agent_runtime.capture()
-        portal = client.portal
-        assert portal is not None
-
-        async def scenario():
-            lifecycle_id = await client.app.state.workflow_lifecycle.create(
-                [{"role": "user", "content": "background agent input"}],
-                request_id="request-background-agent",
-                run_id="parent-run",
-                checkpoint_thread_id=None,
-                workflow_id=parent["id"],
-                workflow_name=parent["name"],
-            )
-            context = WorkflowRuntimeContext.for_run(
-                request_id="request-background-agent",
-                lifecycle_id=lifecycle_id,
-                run_id="parent-run",
-                checkpoint_thread_id=None,
-                run_depth=0,
-                workflow=parent,
-                background_runtime=snapshot,
-            ).for_workflow_node(
-                workflow_node_id="router-launcher",
-                invocation_id="launcher-invocation",
-            )
-            assert context.background_runs is not None
-            handle = await context.background_runs.start_agent(
-                main_agent["id"],
-                operation_id="agent-task-1",
-                shared_vars={"input": {"value": 9}},
-                workflow_task={
-                    "dispatcher_node_id": "dispatcher",
-                    "dispatcher_invocation_id": "dispatch-run",
-                    "task_id": "agent-task-1",
-                    "dispatch_key": "agent",
-                    "payload": {"value": 9},
-                },
-            )
-            terminal = None
-            for _ in range(200):
-                terminal = (
-                    await context.background_runs.check([handle.task_id])
-                )[0]
-                if terminal.runtime_status not in {"pending", "running"}:
-                    break
-                await asyncio.sleep(0.01)
-            run = client.app.state.workflow_lifecycle.history.get_run(
-                handle.child_run_id
-            )
-            events = client.app.state.workflow_lifecycle.events(
-                lifecycle_id,
-                run_id=handle.child_run_id,
-            )
-            return handle, terminal, run, events
-
-        handle, terminal, run, events = portal.call(scenario)
-
-    assert handle.target_kind == "agent"
-    assert handle.run_depth == 1
-    assert terminal is not None
-    assert terminal.runtime_status == "succeeded"
-    assert run is not None
-    assert run["run_kind"] == "agent"
-    assert run["status"] == "completed"
-    assert run["checkpoint_thread_id"] is None
-    assert handle.checkpoint_thread_id is None
-    assert {event["subject_kind"] for event in events} >= {"run", "agent", "model"}
-    assert captured_context is not None
-    assert captured_context.launcher_id == "router-launcher"
-    assert captured_context.workflow_node_id == ""
-    assert captured_context.agent_id == main_agent["id"]
-    assert captured_context.background_task_id == handle.task_id
-    assert captured_context.invocation_id == handle.task_id
-    assert captured_context.checkpoint_thread_id is None

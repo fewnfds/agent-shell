@@ -326,7 +326,8 @@ describe('ConfigLibraryPage', () => {
     const workflow = {
       id: 'workflow-uuid', name: 'Parent flow', workflow_role: 'parent' as const,
       description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 100,
-      execution_timeout_seconds: 120, max_concurrency: 4, enabled: false,
+      execution_timeout_seconds: 120, max_concurrency: 4,
+      cancel_on_upstream_termination: true, enabled: false,
     }
     vi.mocked(api.service.listWorkflows).mockResolvedValue([workflow])
     const { wrapper } = await mountPage(api.service, '/library/parent-workflow')

@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS workflow_run_records (
     lifecycle_id TEXT NOT NULL,
     request_id TEXT NOT NULL,
     checkpoint_thread_id TEXT UNIQUE,
-    run_kind TEXT NOT NULL CHECK (run_kind IN ('workflow', 'agent')),
+    run_kind TEXT NOT NULL CHECK (run_kind = 'workflow'),
     target_id TEXT NOT NULL,
     target_name TEXT NOT NULL,
     parent_run_id TEXT,

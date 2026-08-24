@@ -225,15 +225,18 @@ def test_lifecycle_deletion_tombstone_blocks_new_tasks_and_allows_retry(
 
         try:
             try:
-                await manager.start_agent(
+                await manager.start_workflow(
                     lifecycle_id=lifecycle_id,
                     request_id="request-deleting",
                     launcher_run_id="run-deleting",
                     launcher_id="launcher",
                     operation_id="blocked-start",
                     caller_run_depth=0,
-                    target_id="agent",
-                    target_name="Agent",
+                    target_id="workflow",
+                    target_name="Workflow",
+                    target_graph_sha="graph-sha",
+                    checkpoint_thread_id=None,
+                    cancel_on_upstream_termination=True,
                     execution_factory=execution_factory,
                 )
                 raise AssertionError("background start should be rejected")

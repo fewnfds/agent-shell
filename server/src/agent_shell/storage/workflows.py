@@ -26,6 +26,9 @@ class WorkflowStore:
             "description": str(record["description"]),
             "checkpointer_id": record.get("checkpointer_id"),
             "workflow_event_output_id": record.get("workflow_event_output_id"),
+            "cancel_on_upstream_termination": bool(
+                record.get("cancel_on_upstream_termination", True)
+            ),
             "recursion_limit": int(record["recursion_limit"]),
             "execution_timeout_seconds": int(record["execution_timeout_seconds"]),
             "max_concurrency": int(record.get("max_concurrency", 100)),

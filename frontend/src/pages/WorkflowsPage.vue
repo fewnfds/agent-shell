@@ -46,10 +46,10 @@ function sortWorkflows(items: Workflow[]): Workflow[] {
   ))
 }
 function blankWorkflow(): WorkflowPayload {
-  return { name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100 }
+  return { name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, cancel_on_upstream_termination: true, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100 }
 }
 function toPayload(workflow: Workflow): WorkflowPayload {
-  return { name: workflow.name, workflow_role: workflow.workflow_role, description: workflow.description, checkpointer_id: workflow.checkpointer_id, workflow_event_output_id: workflow.workflow_event_output_id, recursion_limit: workflow.recursion_limit, execution_timeout_seconds: workflow.execution_timeout_seconds, max_concurrency: workflow.max_concurrency }
+  return { name: workflow.name, workflow_role: workflow.workflow_role, description: workflow.description, checkpointer_id: workflow.checkpointer_id, workflow_event_output_id: workflow.workflow_event_output_id, cancel_on_upstream_termination: workflow.cancel_on_upstream_termination, recursion_limit: workflow.recursion_limit, execution_timeout_seconds: workflow.execution_timeout_seconds, max_concurrency: workflow.max_concurrency }
 }
 async function load(): Promise<void> {
   loading.value = true
@@ -223,6 +223,27 @@ onMounted(() => { void load() })
             </FormField>
             <FormField field-path="description" label-key="workflows.fields.description">
               <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
+            </FormField>
+            <FormField
+              control-id="workflow-cancel-on-upstream-termination"
+              field-path="cancel_on_upstream_termination"
+              :hint="t(`workflows.termination.${props.workflowRole}.hint`)"
+              :label-key="`workflows.termination.${props.workflowRole}.label`"
+            >
+              <template #default="{ describedBy }">
+                <div class="form-check form-switch">
+                  <input
+                    id="workflow-cancel-on-upstream-termination"
+                    v-model="form.cancel_on_upstream_termination"
+                    :aria-describedby="describedBy"
+                    class="form-check-input"
+                    type="checkbox"
+                  >
+                  <label class="form-check-label visually-hidden" for="workflow-cancel-on-upstream-termination">
+                    {{ t(`workflows.termination.${props.workflowRole}.label`) }}
+                  </label>
+                </div>
+              </template>
             </FormField>
             <div class="row g-3" data-ui-control-row>
               <div class="col-lg-4">

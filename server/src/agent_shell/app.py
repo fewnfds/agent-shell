@@ -656,6 +656,7 @@ def create_app(
             api_server_events,
             message_interception,
             runtime_policy,
+            background_tasks,
         )
     )
 

@@ -3,7 +3,7 @@
 ## Workflow
 
 【Workflow】通过【父图】（parent Workflow）和【子图】（child Workflow）两个子页面管理同一种实体。装配页选择已有 Workflow，或新建并保存名称、角色、说明、
-可选事件输出组件引用、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`execution_timeout_seconds`（单个 Run 的实际执行超时，不包含把已生成 SSE 文本交给慢速调用方的等待；默认 `1,200` 秒）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。这些运行值只有正数约束，没有额外的产品上限；实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
+可选事件输出组件引用、默认开启的 `cancel_on_upstream_termination`、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`execution_timeout_seconds`（单个 Run 的实际执行超时，不包含把已生成 SSE 文本交给慢速调用方的等待；默认 `1,200` 秒）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。父图中该开关显示为【客户端断开时终止运行】；关闭后 OpenAI 流式连接提前断开时 Run 继续执行，只是不再向该连接发送输出。子图中显示为【随父运行终止】；父 Run 取消或失败时默认一并取消 child，关闭后 child 独立继续。父图正常到达 End 不触发 child 取消。这些运行值只有正数约束，没有额外的产品上限；实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
 只有 enabled parent Workflow 出现在 `/v1/models`；child Workflow 不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
 编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
@@ -13,14 +13,14 @@
 并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，worker invocation 按 Dispatcher Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此启用 Checkpointer 时，旧 Checkpoint State 的旧引用仍可读取。
 
 background Run 由应用级 Manager 管理。每个 Run 的官方 Runtime Context 提供 `background_runs` 命令对象，Command Node、Task Dispatcher、
-Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_agent()`、`start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。
+Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。只允许启动 enabled child Workflow；需要让一个 Agent 在后台执行时创建 `Start -> Agent -> End` 子图，使该 Run 继续使用标准 Workflow checkpoint、事件和运行配置。
 
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
-`operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow，background Agent 使用自身 effective Filesystem，background output 由调用方显式读取和编排。
+`operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow，background output 由调用方显式读取和编排。
 
 【系统 / 运行历史】页面按一次 top-level request 列出 Lifecycle，并展示 root/background Run parent/child relationship、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及 single Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的 input、Agent invocation artifact、background task、Run/Event、Lifecycle Store 记录和诊断附件，并只为 `checkpoint_thread_id` 非空的 Run 汇总 Checkpoint State。
 Lifecycle 的 messages、task records、resolved mapping records，以及已启用 Run 的 checkpoint 默认持续保留，直到用户显式删除；删除时清理全部非空 Checkpoint Thread 和受管的生命周期动态目录。parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，删除返回冲突；
-parent Run 终止且 background task 经 Workflow 代码、Tool/Middleware 或管理操作进入终态后，Lifecycle 可以删除。parent Workflow Graph 到达 End 后，background task 与 Lifecycle 按各自 lifecycle 继续保留。
+parent Run 终止且 background task 经传播、Workflow 代码、Tool/Middleware 或管理操作进入终态后，Lifecycle 可以删除。parent Workflow Graph 正常到达 End 后，background task 与 Lifecycle 按各自 lifecycle 继续保留；parent 取消或失败时，默认取消仍启用【随父运行终止】的直接 child。
 删除开始后 Lifecycle 进入 `deleting` 并冻结 background Run 创建；清理失败时保留该状态，可由用户再次执行删除继续清场。
 
 【编辑 Flow】进入独立全屏 Vue Flow 页面。左右各有一条始终保留的工具图标轨；点击 active 图标只收起功能 panel，图标轨不会消失。左侧提供组件库、元素追踪和问题：组件库提供当前角色允许的 Agent、Command 和 Task Dispatcher，可以点击或拖到画布；元素追踪列出当前全部 Node，

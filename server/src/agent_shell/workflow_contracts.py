@@ -17,6 +17,7 @@ class WorkflowDefinition(BaseModel):
     description: Annotated[str, Field(max_length=2_000)] = ""
     checkpointer_id: RequiredReference | None = None
     workflow_event_output_id: RequiredReference | None = None
+    cancel_on_upstream_termination: bool = True
     recursion_limit: Annotated[int, Field(ge=1)] = 1_000_000
     execution_timeout_seconds: Annotated[int, Field(ge=1)] = 1_200
     max_concurrency: Annotated[int, Field(ge=1)] = 100

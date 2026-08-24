@@ -524,15 +524,18 @@ def test_lifecycle_delete_rejects_active_background_task(
             async def factory(_identity):
                 return Execution()
 
-            handle = await client.app.state.background_tasks.start_agent(
+            handle = await client.app.state.background_tasks.start_workflow(
                 lifecycle_id=lifecycle_id,
                 request_id="active-request",
                 launcher_run_id="parent-run",
                 launcher_id="launcher",
-                operation_id="active-agent",
+                operation_id="active-workflow",
                 caller_run_depth=0,
-                target_id="agent",
-                target_name="Agent",
+                target_id="workflow",
+                target_name="Workflow",
+                target_graph_sha="graph-sha",
+                checkpoint_thread_id=None,
+                cancel_on_upstream_termination=True,
                 execution_factory=factory,
             )
             return lifecycle_id, handle.task_id
@@ -561,7 +564,11 @@ def test_lifecycle_delete_rejects_active_background_task(
         assert detail.status_code == 200, detail.text
         runs = detail.json()["runs"]
         assert len(runs) == 2
-        child = next(run for run in runs if run["run_kind"] == "agent")
+        child = next(
+            run
+            for run in runs
+            if run["run_kind"] == "workflow" and run["run_depth"] == 1
+        )
         assert child["parent_run_id"] == "parent-run"
         assert child["launcher_id"] == "launcher"
         assert child["background_task_id"] == task_id
@@ -583,15 +590,18 @@ def test_lifecycle_delete_rejects_active_background_task(
             async def factory(_identity):
                 return Execution()
 
-            return await client.app.state.background_tasks.start_agent(
+            return await client.app.state.background_tasks.start_workflow(
                 lifecycle_id=lifecycle_id,
                 request_id="active-request",
                 launcher_run_id="parent-run",
                 launcher_id="launcher",
                 operation_id="after-delete",
                 caller_run_depth=0,
-                target_id="agent",
-                target_name="Agent",
+                target_id="workflow",
+                target_name="Workflow",
+                target_graph_sha="graph-sha",
+                checkpoint_thread_id=None,
+                cancel_on_upstream_termination=True,
                 execution_factory=factory,
             )
 

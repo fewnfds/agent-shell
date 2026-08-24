@@ -22,6 +22,7 @@ const workflow: Workflow = {
   description: 'Runs the research agent.',
   checkpointer_id: null,
   workflow_event_output_id: null,
+  cancel_on_upstream_termination: true,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,

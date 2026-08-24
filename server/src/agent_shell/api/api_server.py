@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from agent_shell.api.errors import management_error
 from agent_shell.runtime.agent_runtime import RunExecution
+from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
@@ -275,6 +276,9 @@ async def _intercepted_completion_stream(model: str) -> AsyncIterator[str]:
 async def _completion_stream(
     execution: RunExecution,
     model: str,
+    *,
+    background_tasks: BackgroundTaskManager,
+    cancel_on_disconnect: bool,
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
     created = int(time.time())
@@ -286,25 +290,62 @@ async def _completion_stream(
             separators=(",", ":"),
         ) + "\n\n"
 
-    yield encode(
-        {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"role": "assistant"},
-                    "finish_reason": None,
-                }
-            ],
-        }
+    queue: asyncio.Queue[tuple[Literal["text", "error", "done"], object]] = (
+        asyncio.Queue(maxsize=1)
+    )
+    detached = asyncio.Event()
+
+    async def deliver(
+        kind: Literal["text", "error", "done"],
+        value: object,
+    ) -> None:
+        if not detached.is_set():
+            await queue.put((kind, value))
+
+    async def consume_execution() -> None:
+        cancelled = False
+        try:
+            async for text in execution.stream_text():
+                if text:
+                    await deliver("text", text)
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        except Exception as exc:
+            await deliver("error", exc)
+        finally:
+            if not cancelled:
+                await deliver("done", None)
+
+    run_id = execution.context.run_id if execution.context is not None else "unbound"
+    producer = background_tasks.create_detached_task(
+        consume_execution(),
+        name=f"request-workflow:{run_id}",
     )
     try:
-        async for text in execution.stream_text():
-            if not text:
-                continue
+        yield encode(
+            {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+        while True:
+            kind, value = await queue.get()
+            if kind == "done":
+                break
+            if kind == "error":
+                if isinstance(value, BaseException):
+                    raise value
+                raise RuntimeError("the Workflow execution failed without an exception")
             yield encode(
                 {
                     "id": completion_id,
@@ -314,7 +355,7 @@ async def _completion_stream(
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {"content": text},
+                            "delta": {"content": str(value)},
                             "finish_reason": None,
                         }
                     ],
@@ -358,24 +399,34 @@ async def _completion_stream(
         )
         yield "data: [DONE]\n\n"
         return
-
-    yield encode(
-        {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": execution.finish_reason,
-                }
-            ],
-            "usage": _usage_payload(execution.usage),
-        }
-    )
-    yield "data: [DONE]\n\n"
+    else:
+        yield encode(
+            {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": execution.finish_reason,
+                    }
+                ],
+                "usage": _usage_payload(execution.usage),
+            }
+        )
+        yield "data: [DONE]\n\n"
+    finally:
+        detached.set()
+        try:
+            while True:
+                queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        if cancel_on_disconnect and not producer.done():
+            producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
 
 
 def build_api_server_router(
@@ -386,6 +437,7 @@ def build_api_server_router(
     events: ApiServerEventHub,
     message_interception: MessageInterceptionState,
     runtime_policy: RuntimePolicyStore,
+    background_tasks: BackgroundTaskManager,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -609,10 +661,17 @@ def build_api_server_router(
                 500,
                 "internal_error",
                 "An internal operation failed.",
-            )
+        )
         if stream:
             return StreamingResponse(
-                _completion_stream(execution, model),
+                _completion_stream(
+                    execution,
+                    model,
+                    background_tasks=background_tasks,
+                    cancel_on_disconnect=bool(
+                        workflow["cancel_on_upstream_termination"]
+                    ),
+                ),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",

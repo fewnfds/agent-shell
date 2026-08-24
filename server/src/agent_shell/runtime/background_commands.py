@@ -25,16 +25,6 @@ class BackgroundRunCaller:
 
 
 class BackgroundRunRuntime(Protocol):
-    async def start_background_agent(
-        self,
-        target_agent_id: str,
-        *,
-        operation_id: str,
-        caller: BackgroundRunCaller,
-        shared_vars: Mapping[str, Any],
-        workflow_task: Mapping[str, Any] | None = None,
-    ) -> BackgroundTaskHandle: ...
-
     async def start_background_workflow(
         self,
         target_workflow_id: str,
@@ -84,22 +74,6 @@ class BackgroundRunCommands:
         return BackgroundRunCommands(
             self._runtime,
             replace(self._caller, caller_id=caller_id),
-        )
-
-    async def start_agent(
-        self,
-        target_agent_id: str,
-        *,
-        operation_id: str,
-        shared_vars: Mapping[str, Any] | None = None,
-        workflow_task: Mapping[str, Any] | None = None,
-    ) -> BackgroundTaskHandle:
-        return await self._runtime.start_background_agent(
-            target_agent_id,
-            operation_id=operation_id,
-            caller=self._caller,
-            shared_vars=shared_vars or {},
-            workflow_task=workflow_task,
         )
 
     async def start_workflow(

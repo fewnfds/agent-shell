@@ -32,12 +32,11 @@ class _CommandRuntime:
         self.calls.append(("cancel", caller))
         return []
 
-    async def start_background_agent(self, target_agent_id, **kwargs):
-        self.starts.append((target_agent_id, kwargs["operation_id"], kwargs["caller"]))
-        return object()
-
     async def start_background_workflow(self, target_workflow_id, **kwargs):
-        raise AssertionError("not used by this access test")
+        self.starts.append(
+            (target_workflow_id, kwargs["operation_id"], kwargs["caller"])
+        )
+        return object()
 
 
 def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
@@ -98,15 +97,15 @@ def test_command_and_dispatcher_receive_the_official_runtime_commands() -> None:
     asyncio.run(scenario())
 
 
-def test_command_can_start_background_agent_and_end_without_a_target() -> None:
+def test_command_can_start_background_workflow_and_end_without_a_target() -> None:
     async def scenario() -> None:
         service = _CommandRuntime()
         official_runtime = Runtime(context=_context(service))
 
         async def command(state, runtime):
             assert runtime.context.background_runs is not None
-            await runtime.context.background_runs.start_agent(
-                "agent-1",
+            await runtime.context.background_runs.start_workflow(
+                "workflow-1",
                 operation_id="publish-review",
                 shared_vars={"task_id": "task-1"},
             )
@@ -121,7 +120,7 @@ def test_command_can_start_background_agent_and_end_without_a_target() -> None:
 
         assert result.activate == []
         assert result.update == {"shared_vars": {"published": True}}
-        assert service.starts[0][:2] == ("agent-1", "publish-review")
+        assert service.starts[0][:2] == ("workflow-1", "publish-review")
         assert service.starts[0][2].run_id == "run-1"
 
     asyncio.run(scenario())
@@ -181,7 +180,7 @@ def test_tool_and_middleware_access_commands_through_official_runtime() -> None:
     asyncio.run(scenario())
 
 
-def test_background_agent_has_its_own_identity_and_command_caller() -> None:
+def test_background_workflow_has_its_own_identity_and_command_caller() -> None:
     async def scenario() -> None:
         service = _CommandRuntime()
         context = WorkflowRuntimeContext.for_run(
@@ -195,16 +194,16 @@ def test_background_agent_has_its_own_identity_and_command_caller() -> None:
             run_depth=1,
             workflow={"id": "workflow-1"},
             background_runtime=service,
-        ).for_background_agent(
-            agent_id="agent-1",
-            invocation_id="task-1",
+        ).for_workflow_node(
+            workflow_node_id="command-1",
+            invocation_id="command-invocation-1",
         )
 
         assert context.launcher_id == "router-1"
         assert context.background_task_id == "task-1"
-        assert context.agent_id == "agent-1"
-        assert context.workflow_node_id == ""
-        assert context.invocation_id == "task-1"
+        assert context.agent_id == ""
+        assert context.workflow_node_id == "command-1"
+        assert context.invocation_id == "command-invocation-1"
         assert context.background_runs is not None
 
         await context.background_runs.list()
@@ -212,6 +211,6 @@ def test_background_agent_has_its_own_identity_and_command_caller() -> None:
         assert service.calls == [("list", service.calls[0][1])]
         caller = service.calls[0][1]
         assert caller.run_id == "child-run-1"
-        assert caller.caller_id == "task-1"
+        assert caller.caller_id == "command-1"
 
     asyncio.run(scenario())

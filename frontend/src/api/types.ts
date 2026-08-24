@@ -403,6 +403,7 @@ export interface WorkflowPayload {
   description: string
   checkpointer_id: string | null
   workflow_event_output_id: string | null
+  cancel_on_upstream_termination: boolean
   recursion_limit: number
   execution_timeout_seconds: number
   max_concurrency: number
@@ -447,7 +448,7 @@ export interface WorkflowRunRecord {
   lifecycle_id: string
   request_id: string
   checkpoint_thread_id: string | null
-  run_kind: 'workflow' | 'agent'
+  run_kind: 'workflow'
   target_id: string
   target_name: string
   parent_run_id: string | null

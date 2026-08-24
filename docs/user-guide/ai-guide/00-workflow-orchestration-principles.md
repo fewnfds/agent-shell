@@ -163,7 +163,7 @@ parallel branch 可以分别使用独立 key：
 }
 ```
 
-调用 `start_agent()`、`start_workflow()`、`check()` 或 `cancel()` 后，先对 handle/snapshot 调用 `model_dump(mode="json")`，再写入 State。
+调用 `start_workflow()`、`check()` 或 `cancel()` 后，先对 handle/snapshot 调用 `model_dump(mode="json")`，再写入 State。
 
 业务上的 winner、待检查 task ID 和聚合进度可以放在 `shared_vars`；background task 的运行事实放在 `background_tasks`。
 
@@ -469,7 +469,7 @@ Dispatcher
 
 ### 5.5 Background Run
 
-background Run 适合 detached child execution。它拥有独立 `run_id` 和 State；background child Workflow 根据自己的 `checkpointer_id` 决定是否拥有 `checkpoint_thread_id` 和 checkpoint，background Agent 始终不装配 Checkpointer。
+background Run 适合 detached child execution。它拥有独立 `run_id` 和 State；background child Workflow 根据自己的 `checkpointer_id` 决定是否拥有 `checkpoint_thread_id` 和 checkpoint，并根据 `cancel_on_upstream_termination` 决定 parent 取消或失败时是否继续独立运行。
 
 parent 和 child 通过明确的 handle、Store reference 或 mapped Filesystem artifact 交换信息。parent 是否等待、轮询、取消或忽略 child，由业务决定。
 

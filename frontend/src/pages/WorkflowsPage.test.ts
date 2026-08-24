@@ -30,6 +30,7 @@ const workflow: Workflow = {
   description: 'Runs the research agent.',
   checkpointer_id: null,
   workflow_event_output_id: null,
+  cancel_on_upstream_termination: true,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,
@@ -101,6 +102,9 @@ describe('WorkflowsPage', () => {
     await wrapper.get('textarea').setValue('New description')
     await wrapper.get('#workflow-checkpointer').setValue(checkpointer.id)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
+    const terminateWithUpstream = wrapper.get('#workflow-cancel-on-upstream-termination')
+    expect((terminateWithUpstream.element as HTMLInputElement).checked).toBe(true)
+    await terminateWithUpstream.setValue(false)
     const runtimeLimits = wrapper.findAll('input[type="number"]')
     await runtimeLimits[0]!.setValue(250)
     await runtimeLimits[1]!.setValue(90_000)
@@ -114,6 +118,7 @@ describe('WorkflowsPage', () => {
       description: 'New description',
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
+      cancel_on_upstream_termination: false,
       recursion_limit: 250,
       execution_timeout_seconds: 90_000,
       max_concurrency: 300,
@@ -203,6 +208,7 @@ describe('WorkflowsPage', () => {
       description: '',
       checkpointer_id: null,
       workflow_event_output_id: null,
+      cancel_on_upstream_termination: true,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,
@@ -215,6 +221,7 @@ describe('WorkflowsPage', () => {
       ...workflow,
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
+      cancel_on_upstream_termination: true,
     }
     vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([configured])
     mockComponentLists()
@@ -241,6 +248,7 @@ describe('WorkflowsPage', () => {
       description: workflow.description,
       checkpointer_id: null,
       workflow_event_output_id: eventOutput.id,
+      cancel_on_upstream_termination: true,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,

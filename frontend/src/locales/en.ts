@@ -74,6 +74,16 @@ export const en: MessageSchema = {
       published: 'Published',
     },
     metadataTitle: 'Assembly options',
+    termination: {
+      parent: {
+        label: 'Terminate when the client disconnects',
+        hint: 'Terminate this Run when its OpenAI streaming connection closes before the parent Workflow finishes. When disabled, the Run continues without sending more output to that connection.',
+      },
+      child: {
+        label: 'Terminate with the parent Run',
+        hint: 'Terminate this child when the parent Run that launched it is cancelled or fails. A parent that reaches End normally does not trigger this. When disabled, the child continues independently.',
+      },
+    },
     statusTitle: 'Workflow status',
     newStatus: 'Not saved',
     parentTableAriaLabel: 'Parent Workflow list',
@@ -195,6 +205,7 @@ export const en: MessageSchema = {
       filesystem: 'Shared filesystem',
       checkpointer: 'Checkpointer',
       eventOutput: 'Workflow event output',
+      cancelOnUpstreamTermination: 'Terminate with upstream',
       recursionLimit: 'Super-step limit',
       executionTimeoutSeconds: 'Total Run timeout',
       maxConcurrency: 'Maximum concurrency',
@@ -236,7 +247,7 @@ export const en: MessageSchema = {
       cancelled: 'Cancelled',
       interrupted: 'Interrupted',
     },
-    runKinds: { workflow: 'Workflow', agent: 'Agent' },
+    runKinds: { workflow: 'Workflow' },
     observationStatuses: {
       available: 'Available',
       partial: 'Partial',

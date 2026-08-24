@@ -11,7 +11,6 @@ from agent_shell.model_provider_contracts import _SETTINGS_BY_PROVIDER
 from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.model_response import ModelResponse, finish_reason_category
 from agent_shell.runtime.output_stream import MainAgentMediaBlock, OutputEvent
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
@@ -47,69 +46,13 @@ def test_workflow_run_completion_does_not_inherit_an_agent_finish_reason() -> No
         normalizer=normalizer,
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
-        run_kind="workflow",
     )
-    agent = RunExecution(
-        graph=None,
-        input_state={},
-        rectifier=None,
-        normalizer=normalizer,
-        middleware_runtime=noop_middleware_runtime(),
-        media_response=noop_media_response(),
-        run_kind="agent",
-    )
-
     assert workflow.finish_reason == "stop"
     assert workflow.finish_reason_source is None
-    assert agent.finish_reason == "length"
-    assert agent.finish_reason_source == "response_metadata.finish_reason"
 
 
-def test_runtime_diagnostic_context_keeps_parent_workflow_and_agent_subject() -> None:
-    normalizer = SimpleNamespace(
-        usage={},
-        finish_reason="stop",
-        finish_reason_source=None,
-    )
-    context = WorkflowRuntimeContext.for_run(
-        request_id="request-one",
-        lifecycle_id="lifecycle-one",
-        run_id="run-one",
-        checkpoint_thread_id="thread-one",
-        workflow={"id": "workflow-parent", "name": "Parent Workflow"},
-    ).for_background_agent(
-        agent_id="agent-one",
-        invocation_id="invocation-one",
-    )
-    execution = RunExecution(
-        graph=None,
-        input_state={},
-        rectifier=None,
-        normalizer=normalizer,
-        middleware_runtime=noop_middleware_runtime(),
-        media_response=noop_media_response(),
-        context=context,
-        public_model="Agent One",
-        agent_name="Agent One",
-        run_kind="agent",
-    )
-
-    assert execution.diagnostic_context() == RuntimeDiagnosticContext(
-        request_id="request-one",
-        lifecycle_id="lifecycle-one",
-        run_id="run-one",
-        thread_id="thread-one",
-        parent_workflow_id="workflow-parent",
-        parent_workflow_name="Parent Workflow",
-        subject_kind="agent",
-        subject_id="agent-one",
-        subject_name="Agent One",
-        node_invocation_id="invocation-one",
-    )
-
-
-def test_agent_execution_closes_v3_stream_when_consumer_is_cancelled() -> None:
-    async def scenario() -> bool:
+def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled() -> None:
+    async def scenario() -> tuple[bool, bool]:
         class BlockingRun:
             def __init__(self) -> None:
                 self.pulling = asyncio.Event()
@@ -146,6 +89,12 @@ def test_agent_execution_closes_v3_stream_when_consumer_is_cancelled() -> None:
 
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
+        children_cancelled = False
+
+        async def cancel_children() -> None:
+            nonlocal children_cancelled
+            children_cancelled = True
+
         execution = RunExecution(
             graph=Graph(run),
             input_state={"messages": [{"role": "user", "content": "cancel me"}]},
@@ -153,6 +102,7 @@ def test_agent_execution_closes_v3_stream_when_consumer_is_cancelled() -> None:
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
+            cancel_background_children=cancel_children,
         )
         stream = execution.stream_text()
         assert await anext(stream) == "running"
@@ -163,9 +113,9 @@ def test_agent_execution_closes_v3_stream_when_consumer_is_cancelled() -> None:
             await pending
         except asyncio.CancelledError:
             pass
-        return run.exited
+        return run.exited, children_cancelled
 
-    assert asyncio.run(scenario()) is True
+    assert asyncio.run(scenario()) == (True, True)
 
 
 def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
