@@ -103,6 +103,8 @@ describe('WorkflowsPage', () => {
     await wrapper.get('#workflow-checkpointer').setValue(checkpointer.id)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
     const terminateWithUpstream = wrapper.get('#workflow-cancel-on-upstream-termination')
+    expect(wrapper.text()).toContain('Terminate when the client disconnects')
+    expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
     expect((terminateWithUpstream.element as HTMLInputElement).checked).toBe(true)
     await terminateWithUpstream.setValue(false)
     const runtimeLimits = wrapper.findAll('input[type="number"]')
@@ -197,6 +199,8 @@ describe('WorkflowsPage', () => {
     await flushPromises()
 
     expect(list).toHaveBeenCalledWith('child')
+    expect(wrapper.text()).toContain('Terminate when the parent Run is cancelled or fails')
+    expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await wrapper.get('[data-field="record-name"]').setValue('Child Workflow')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')

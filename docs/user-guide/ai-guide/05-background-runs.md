@@ -55,7 +55,7 @@ snapshot = snapshots[0]
 
 可用命令只有 `start_workflow()`、`check()`、`list()` 和 `cancel()`。target 范围是已 enabled child Workflow；需要执行一个 Main Agent 时，创建 `Start -> Agent -> End` child Workflow。`start_workflow()` 立即返回 handle，caller 自行决定如何 poll、wait、retry、aggregate 或结束。`check()` 和 `cancel()` 都返回 snapshot 列表，其中未知 task ID 的状态为 `not_found`；`list(statuses=...)` 可按状态过滤。
 
-child Workflow 的【随父运行终止】默认开启。launcher Run 被取消或失败时，仍 active 的 child 会被取消，并继续向它自己的 children 传播；launcher 正常到达 End 不触发。关闭后 child 保持 independent Run，直到自己完成、失败、被显式 `cancel()` 或应用关闭。
+child Workflow 的【父运行取消或失败时终止】默认开启。launcher Run 被取消或失败时，仍 active 的 child 会被取消，并继续向它自己的 children 传播；launcher 正常到达 End 不触发。关闭后 child 保持 independent Run，直到自己完成、失败、被显式 `cancel()` 或应用关闭。
 
 当前 background command API 没有 wait、wakeup、update 或 delay command。轮询间隔、回边、重试和唤醒条件由用户 Graph 逻辑表达。需要放缓短轮询时，可以在 async Node callable 中使用 `await asyncio.sleep(...)`；等待会占用 current Node invocation 时间，并受 parent Workflow 的 `execution_timeout_seconds` 约束。
 
@@ -97,7 +97,7 @@ Management API 只提供 Lifecycle/Run 的只读观测与 explicit cleanup，不
 | `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` | 下载单个 Run 完整运行详情 ZIP |
 | `DELETE /api/workflow-lifecycles/{lifecycle_id}` | 清理全部非空 Checkpoint Thread 和 Store prefix；存在 active Run/task 时返回 409 |
 
-删除时可选 `?delete_dynamic_directories=true` 清理本 Lifecycle 的 managed dynamic directory。parent Run 正常到达 End 不会自动取消 background task；parent 取消或失败时按 child 的【随父运行终止】配置传播。Lifecycle 保留到显式删除；parent 和所有 background task 进入终态后，Lifecycle 接受 explicit delete。Lifecycle 进入 `deleting` status 后冻结 background Run 创建，cleanup 失败时保留该 status，以便继续 cleanup。Lifecycle summary 不返回 messages、Provider secret 或 host path。
+删除时可选 `?delete_dynamic_directories=true` 清理本 Lifecycle 的 managed dynamic directory。parent Run 正常到达 End 不会自动取消 background task；parent 取消或失败时按 child 的【父运行取消或失败时终止】配置传播。Lifecycle 保留到显式删除；parent 和所有 background task 进入终态后，Lifecycle 接受 explicit delete。Lifecycle 进入 `deleting` status 后冻结 background Run 创建，cleanup 失败时保留该 status，以便继续 cleanup。Lifecycle summary 不返回 messages、Provider secret 或 host path。
 
 ## 7. Background Run 完成检查
 
@@ -109,7 +109,7 @@ Management API 只提供 Lifecycle/Run 的只读观测与 explicit cleanup，不
 - polling、retry、sleep 和 exit condition 已在 Graph 中显式表达；
 - parent 已通过 `check()` / `list()` 获取需要的 child 事实；
 - child output 默认静默这一点已纳入 result handoff；
-- child 的【随父运行终止】是否符合独立运行需求；
+- child 的【父运行取消或失败时终止】是否符合独立运行需求；
 - 需要收尾时，finalizer 只处理 current Workflow 启动并记录的 task ID；
 - 完成 parent 时没有意外遗留的 active task。
 

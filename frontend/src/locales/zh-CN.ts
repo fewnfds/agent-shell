@@ -75,11 +75,9 @@ export const zhCN = {
     termination: {
       parent: {
         label: '客户端断开时终止运行',
-        hint: 'OpenAI 流式连接在父图完成前断开时终止当前运行。关闭后运行继续，但不再向已断开的连接发送输出。',
       },
       child: {
-        label: '随父运行终止',
-        hint: '启动该子图的父运行被取消或失败时一并终止。父图正常到达 End 不触发；关闭后子图继续独立运行。',
+        label: '父运行取消或失败时终止',
       },
     },
     statusTitle: 'Workflow 状态',

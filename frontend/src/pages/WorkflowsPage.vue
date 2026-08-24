@@ -227,15 +227,13 @@ onMounted(() => { void load() })
             <FormField
               control-id="workflow-cancel-on-upstream-termination"
               field-path="cancel_on_upstream_termination"
-              :hint="t(`workflows.termination.${props.workflowRole}.hint`)"
               :label-key="`workflows.termination.${props.workflowRole}.label`"
             >
-              <template #default="{ describedBy }">
+              <template #default>
                 <div class="form-check form-switch">
                   <input
                     id="workflow-cancel-on-upstream-termination"
                     v-model="form.cancel_on_upstream_termination"
-                    :aria-describedby="describedBy"
                     class="form-check-input"
                     type="checkbox"
                   >
