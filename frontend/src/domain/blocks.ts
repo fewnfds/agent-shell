@@ -14,6 +14,7 @@ import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
 import { taskDispatcherAdapter } from './blocks/taskDispatcher'
+import { checkpointerAdapter } from './blocks/checkpointer'
 
 export type {
   CustomMiddlewareCatalogItem,
@@ -78,6 +79,10 @@ export type {
   TaskDispatcherDefaults,
   TaskDispatcherDraft,
 } from './blocks/taskDispatcher'
+export type {
+  CheckpointDurability,
+  CheckpointerDraft,
+} from './blocks/checkpointer'
 
 export {
   customMiddlewareAdapter,
@@ -96,6 +101,7 @@ export {
   workflowEventOutputAdapter,
   commandAdapter,
   taskDispatcherAdapter,
+  checkpointerAdapter,
 }
 
 export const blockTypes = [
@@ -116,6 +122,7 @@ export const blockTypes = [
 
 export const managedComponentTypes = [
   ...blockTypes,
+  'checkpointer',
   'workflow-event-output',
   'command',
   'task-dispatcher',
@@ -135,6 +142,7 @@ export const blockAdapters = {
   'todo-list': todoListAdapter,
   summarization: summarizationAdapter,
   'prompt-caching': promptCachingAdapter,
+  checkpointer: checkpointerAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'command': commandAdapter,
   'task-dispatcher': taskDispatcherAdapter,

@@ -130,7 +130,8 @@ def create_app(
         settings.resolved_application_database_path()
     )
     workflow_checkpoint_database = SQLiteFile(
-        settings.resolved_workflow_checkpoint_database_path()
+        settings.resolved_workflow_checkpoint_database_path(),
+        create=False,
     )
     workflow_store_database = SQLiteFile(
         settings.resolved_workflow_store_database_path()
@@ -164,11 +165,7 @@ def create_app(
         max_bytes=system_log_settings.snapshot()["max_size_mib"] * MIB_BYTES,
     )
     history_retention = HistoryRetentionStore(configuration)
-    workflow_checkpoints = WorkflowCheckpointService(
-        workflow_checkpoint_database,
-        tracing_enabled=settings.langsmith_tracing_enabled,
-        langsmith_project=settings.langsmith_project,
-    )
+    workflow_checkpoints = WorkflowCheckpointService(workflow_checkpoint_database)
     runtime_diagnostic_details = RuntimeDiagnosticDetailStore(logs_dir / "diagnostics")
     configuration_validation_settings = ConfigurationValidationSettingsStore(configuration)
     runtime_diagnostic_store = RuntimeDiagnosticStore(
@@ -328,11 +325,6 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         await workflow_lifecycle.start()
-        try:
-            await workflow_checkpoints.start()
-        except BaseException:
-            await workflow_lifecycle.close()
-            raise
         await background_tasks.start()
         try:
             event_logger.emit(

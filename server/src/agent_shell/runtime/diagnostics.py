@@ -33,7 +33,7 @@ class RuntimeDiagnosticContext:
     request_id: str = ""
     lifecycle_id: str = ""
     run_id: str = ""
-    thread_id: str = ""
+    thread_id: str | None = None
     parent_workflow_id: str = ""
     parent_workflow_name: str = ""
     subject_kind: str = ""

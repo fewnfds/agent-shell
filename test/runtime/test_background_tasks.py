@@ -73,7 +73,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
             [{"role": "user", "content": "input"}],
             request_id="request-1",
             run_id="parent-run",
-            thread_id="parent-thread",
+            checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
         )
@@ -111,6 +111,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                         target_id="child-1",
                         target_name="Child One",
                         target_graph_sha="graph-sha-1",
+                        checkpoint_thread_id=None,
                         execution_factory=first_factory,
                     )
                     for _ in range(2)
@@ -128,6 +129,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                 target_id="child-2",
                 target_name="Child Two",
                 target_graph_sha="graph-sha-2",
+                checkpoint_thread_id=None,
                 execution_factory=second_factory,
             )
 
@@ -177,7 +179,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                 target_name="Old Child",
                 target_graph_sha="graph-sha-old",
                 child_run_id="old-run",
-                child_thread_id="old-thread",
+                checkpoint_thread_id="old-thread",
                 run_depth=1,
                 status="running",
                 created_at="2026-01-01T00:00:00+00:00",
@@ -208,7 +210,7 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
             [{"role": "user", "content": "input"}],
             request_id="request-1",
             run_id="parent-run",
-            thread_id="parent-thread",
+            checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
         )
@@ -229,6 +231,7 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
             target_id="child",
             target_name="Child",
             target_graph_sha="graph-sha",
+            checkpoint_thread_id=None,
             execution_factory=factory,
         )
         await manager.close()
@@ -254,7 +257,7 @@ def test_background_manager_lists_filters_and_cancels_agent_task_idempotently(
             [{"role": "user", "content": "input"}],
             request_id="request-1",
             run_id="parent-run",
-            thread_id="parent-thread",
+            checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
         )

@@ -270,6 +270,7 @@ describe('ComponentsPage', () => {
     expect(api.listCommandTemplates).toHaveBeenCalledOnce()
 
     expect(wrapper.findAll('[data-testid="section-nav"] button').map((item) => item.text())).toEqual([
+      'navigation.sections.checkpointer',
       'navigation.sections.workflowEventOutput',
       'navigation.sections.command',
       'navigation.sections.taskDispatcher',

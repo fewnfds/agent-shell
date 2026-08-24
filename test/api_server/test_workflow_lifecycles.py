@@ -28,7 +28,7 @@ def test_lifecycle_list_pages_newest_records_before_building_summaries(
                     [{"role": "user", "content": str(index)}],
                     request_id=f"request-{index:02d}",
                     run_id=f"run-{index:02d}",
-                    thread_id=f"thread-{index:02d}",
+                    checkpoint_thread_id=None,
                     workflow_id=f"workflow-{index:02d}",
                     workflow_name=f"Workflow {index:02d}",
                 )
@@ -66,7 +66,7 @@ def test_lifecycle_list_orders_by_creation_not_later_status_updates(
                         [{"role": "user", "content": str(index)}],
                         request_id=f"request-{index}",
                         run_id=f"run-{index}",
-                        thread_id=f"thread-{index}",
+                        checkpoint_thread_id=None,
                         workflow_id=f"workflow-{index}",
                         workflow_name=f"Workflow {index}",
                     )
@@ -116,6 +116,31 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             client,
             name="Managed lifecycle",
         )
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Managed lifecycle checkpoints"},
+        )
+        assert checkpointer.status_code == 200, checkpointer.text
+        configured_workflow = client.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                **{
+                    key: workflow[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "workflow_event_output_id",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                    )
+                },
+                "checkpointer_id": checkpointer.json()["id"],
+            },
+        )
+        assert configured_workflow.status_code == 200, configured_workflow.text
+        workflow = configured_workflow.json()
         save_linear_workflow_graph(client, workflow, main_agent)
 
         reply = client.post(
@@ -159,7 +184,9 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
         assert root_run["run_id"] == summary["parent_run_id"]
         assert root_run["run_kind"] == "workflow"
         assert root_run["status"] == "completed"
-        assert root_run["checkpoint_available"] is True
+        assert root_run["checkpoint_thread_id"]
+        assert "thread_id" not in root_run
+        assert "checkpoint_available" not in root_run
         assert {event["subject_kind"] for event in payload["events"]} >= {
             "run",
             "workflow_node",
@@ -310,6 +337,9 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             } <= set(archive.namelist())
             manifest = json.loads(archive.read("manifest.json"))
             assert manifest["scope"] == "run"
+            assert manifest["checkpoint_thread_id"] == root_run[
+                "checkpoint_thread_id"
+            ]
             assert manifest["includes"]["checkpoint_state"] is True
             run_model_request_index = json.loads(
                 archive.read("model-requests/index.json")
@@ -351,6 +381,7 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
         )
         assert deleted.status_code == 200, deleted.text
         assert deleted.json()["deleted_dynamic_directories"] is True
+        assert deleted.json()["deleted_checkpoint_thread_count"] == 1
         assert list(dynamic_parent.iterdir()) == []
         assert client.get("/api/workflow-lifecycles").json()["items"] == []
         assert client.app.state.workflow_lifecycle.history.get_run(
@@ -366,18 +397,12 @@ def test_lifecycle_restart_cancels_interrupted_parent_and_allows_cleanup(
     with first_client as client:
         portal = client.portal
         assert portal is not None
-        checkpoint_context = client.app.state.workflow_checkpoints.create_context(
-            request_id="interrupted-request",
-            workflow_id="interrupted-workflow",
-            workflow_name="Interrupted Workflow",
-            messages_sha="a" * 64,
-        )
         async def create_lifecycle() -> str:
             return await client.app.state.workflow_lifecycle.create(
                 [{"role": "user", "content": "input"}],
                 request_id="interrupted-request",
-                run_id=str(checkpoint_context.run_id),
-                thread_id=checkpoint_context.thread_id,
+                run_id="interrupted-run",
+                checkpoint_thread_id=None,
                 workflow_id="interrupted-workflow",
                 workflow_name="Interrupted Workflow",
             )
@@ -399,6 +424,69 @@ def test_lifecycle_restart_cancels_interrupted_parent_and_allows_cleanup(
 
         deleted = client.delete(f"/api/workflow-lifecycles/{lifecycle_id}")
         assert deleted.status_code == 200, deleted.text
+
+
+def test_lifecycle_without_checkpointer_never_accesses_saver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        workflow = create_workflow(client, name="No checkpoint history")
+        save_linear_workflow_graph(client, workflow, main_agent)
+        reply = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": workflow["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        )
+        assert reply.status_code == 200, reply.text
+        assert client.app.state.workflow_checkpoints.started is False
+
+        summary = client.get("/api/workflow-lifecycles").json()["items"][0]
+        assert summary["checkpoint_count"] == 0
+        detail = client.get(
+            f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
+        )
+        assert detail.status_code == 200, detail.text
+        root_run = detail.json()["runs"][0]
+        assert root_run["checkpoint_thread_id"] is None
+        assert detail.json()["checkpoints"] == {}
+        run_detail = client.get(
+            f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
+            f"/runs/{root_run['run_id']}"
+        )
+        assert run_detail.status_code == 200, run_detail.text
+        assert run_detail.json()["checkpoint_count"] == 0
+        assert client.app.state.workflow_checkpoints.started is False
+
+        lifecycle_download = client.get(
+            f"/api/workflow-lifecycles/{summary['lifecycle_id']}/download"
+        )
+        assert lifecycle_download.status_code == 200, lifecycle_download.text
+        with zipfile.ZipFile(BytesIO(lifecycle_download.content)) as archive:
+            assert not any(
+                name.startswith("checkpoints/") for name in archive.namelist()
+            )
+
+        run_download = client.get(
+            f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
+            f"/runs/{root_run['run_id']}/download"
+        )
+        assert run_download.status_code == 200, run_download.text
+        with zipfile.ZipFile(BytesIO(run_download.content)) as archive:
+            assert archive.read("checkpoints.jsonl") == b""
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["checkpoint_thread_id"] is None
+        assert client.app.state.workflow_checkpoints.started is False
+
+        deleted = client.delete(
+            f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["deleted_checkpoint_thread_count"] == 0
+        assert client.app.state.workflow_checkpoints.started is False
 
 
 def test_lifecycle_delete_rejects_active_background_task(
@@ -428,7 +516,7 @@ def test_lifecycle_delete_rejects_active_background_task(
                 [{"role": "user", "content": "input"}],
                 request_id="active-request",
                 run_id="parent-run",
-                thread_id="parent-thread",
+                checkpoint_thread_id=None,
                 workflow_id="parent-workflow",
                 workflow_name="Parent Workflow",
             )
@@ -479,7 +567,7 @@ def test_lifecycle_delete_rejects_active_background_task(
         assert child["background_task_id"] == task_id
         assert child["run_depth"] == 1
         assert child["status"] == "completed"
-        assert child["checkpoint_available"] is False
+        assert child["checkpoint_thread_id"] is None
         still_active = client.delete(f"/api/workflow-lifecycles/{lifecycle_id}")
         assert still_active.status_code == 409, still_active.text
 
@@ -510,3 +598,47 @@ def test_lifecycle_delete_rejects_active_background_task(
         with pytest.raises(AgentRuntimeError) as captured:
             portal.call(start_after_delete)
         assert captured.value.code == "workflow_lifecycle_not_found"
+
+
+def test_checkpoint_query_failure_is_not_reported_as_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def create_lifecycle() -> str:
+            return await client.app.state.workflow_lifecycle.create(
+                [{"role": "user", "content": "input"}],
+                request_id="checkpoint-query-failure",
+                run_id="checkpoint-query-run",
+                checkpoint_thread_id="checkpoint-query-thread",
+                workflow_id="checkpoint-query-workflow",
+                workflow_name="Checkpoint Query Workflow",
+            )
+
+        lifecycle_id = portal.call(create_lifecycle)
+
+        async def fail_count(_checkpoint_thread_id: str) -> int:
+            raise OSError("checkpoint read failed")
+
+        monkeypatch.setattr(
+            client.app.state.workflow_checkpoints,
+            "checkpoint_count",
+            fail_count,
+        )
+        response = client.get(
+            f"/api/workflow-lifecycles/{lifecycle_id}"
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == (
+            "workflow_checkpointer_unavailable"
+        )
+        entries = client.app.state.runtime_diagnostics.snapshot()["entries"]
+        assert any(
+            entry["code"] == "workflow_checkpoint_query_failed"
+            and entry["lifecycle_id"] == lifecycle_id
+            for entry in entries
+        )

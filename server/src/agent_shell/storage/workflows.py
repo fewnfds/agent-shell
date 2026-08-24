@@ -24,6 +24,7 @@ class WorkflowStore:
             "name": str(record["name"]),
             "workflow_role": str(record["workflow_role"]),
             "description": str(record["description"]),
+            "checkpointer_id": record.get("checkpointer_id"),
             "workflow_event_output_id": record.get("workflow_event_output_id"),
             "recursion_limit": int(record["recursion_limit"]),
             "execution_timeout_seconds": int(record["execution_timeout_seconds"]),

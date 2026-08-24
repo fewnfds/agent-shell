@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.provider_http import ProviderHttpClients
@@ -124,7 +125,7 @@ class RequestRuntimeSnapshot:
                 public_model=str(target["name"]),
                 lifecycle_id=caller.lifecycle_id,
                 run_id=identity.child_run_id,
-                thread_id=identity.child_thread_id,
+                checkpoint_thread_id=identity.checkpoint_thread_id,
                 parent_run_id=caller.run_id,
                 background_task_id=identity.task_id,
                 launcher_id=caller.caller_id or operation_id,
@@ -145,6 +146,9 @@ class RequestRuntimeSnapshot:
             target_id=target_workflow_id,
             target_name=str(target["name"]),
             target_graph_sha=workflow_document_sha256(document),
+            checkpoint_thread_id=(
+                str(uuid4()) if target.get("checkpointer_id") is not None else None
+            ),
             execution_factory=build_execution,
         )
 
@@ -187,7 +191,6 @@ class RequestRuntimeSnapshot:
                 request_id=caller.request_id,
                 lifecycle_id=caller.lifecycle_id,
                 run_id=identity.child_run_id,
-                thread_id=identity.child_thread_id,
                 parent_run_id=caller.run_id,
                 background_task_id=identity.task_id,
                 run_depth=identity.run_depth,

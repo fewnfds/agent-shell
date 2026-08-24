@@ -69,7 +69,8 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (category === 'child-workflow') return { path: '/workflows/children', query: { id } }
   if (category === 'model-connection') return { path: '/models/connections', query: { id } }
   if (
-    category === 'workflow-event-output'
+    category === 'checkpointer'
+    || category === 'workflow-event-output'
     || category === 'command'
     || category === 'task-dispatcher'
   ) {

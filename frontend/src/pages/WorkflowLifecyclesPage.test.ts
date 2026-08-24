@@ -20,7 +20,6 @@ const lifecycle: WorkflowLifecycleSummary = {
   lifecycle_status: 'active',
   request_id: 'request-1',
   parent_run_id: 'run-1',
-  parent_thread_id: 'thread-1',
   parent_status: 'running',
   workflow_id: 'workflow-1',
   workflow_name: 'Research Workflow',
@@ -93,7 +92,7 @@ describe('WorkflowLifecyclesPage', () => {
         run_id: 'run-1',
         lifecycle_id: lifecycle.lifecycle_id,
         request_id: lifecycle.request_id,
-        thread_id: 'thread-1',
+        checkpoint_thread_id: 'thread-1',
         run_kind: 'workflow',
         target_id: lifecycle.workflow_id,
         target_name: lifecycle.workflow_name,
@@ -108,7 +107,26 @@ describe('WorkflowLifecyclesPage', () => {
         finish_reason: 'stop',
         error_code: '',
         usage: lifecycle.usage,
-        checkpoint_available: true,
+        observation_status: 'available',
+      }, {
+        run_id: 'run-2',
+        lifecycle_id: lifecycle.lifecycle_id,
+        request_id: lifecycle.request_id,
+        checkpoint_thread_id: null,
+        run_kind: 'agent',
+        target_id: 'agent-1',
+        target_name: 'Background Agent',
+        parent_run_id: 'run-1',
+        launcher_id: 'launcher-1',
+        background_task_id: 'task-1',
+        run_depth: 1,
+        status: 'completed',
+        created_at: lifecycle.created_at,
+        started_at: lifecycle.created_at,
+        finished_at: lifecycle.created_at,
+        finish_reason: 'stop',
+        error_code: '',
+        usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
         observation_status: 'available',
       }],
       events: [{
@@ -144,13 +162,14 @@ describe('WorkflowLifecyclesPage', () => {
       total_pages: 1,
     })
     const getDetail = vi.spyOn(managementApi, 'getWorkflowLifecycle').mockResolvedValue(detail)
-    const runDetail: WorkflowRunDetail = {
-      ...detail.runs[0]!,
-      event_count: 1,
-      checkpoint_count: 7,
-      diagnostic_count: 0,
-    }
-    const getRun = vi.spyOn(managementApi, 'getWorkflowRun').mockResolvedValue(runDetail)
+    const getRun = vi.spyOn(managementApi, 'getWorkflowRun').mockImplementation(
+      async (_lifecycleId, runId): Promise<WorkflowRunDetail> => ({
+        ...detail.runs.find((run) => run.run_id === runId)!,
+        event_count: 1,
+        checkpoint_count: runId === 'run-1' ? 7 : 0,
+        diagnostic_count: 0,
+      }),
+    )
     const downloadLifecycle = vi.spyOn(managementApi, 'downloadWorkflowLifecycle')
       .mockResolvedValue(new Blob(['lifecycle']))
     const downloadRun = vi.spyOn(managementApi, 'downloadWorkflowRun')
@@ -179,20 +198,26 @@ describe('WorkflowLifecyclesPage', () => {
     await wrapper.get('[title="View Run details"]').trigger('click')
     await flushPromises()
     expect(getRun).toHaveBeenCalledWith(lifecycle.lifecycle_id, 'run-1')
-    expect(wrapper.text()).toContain('Thread ID')
+    expect(wrapper.text()).toContain('Checkpoint Thread ID')
     expect(wrapper.text()).toContain('thread-1')
     expect(wrapper.text()).toContain('7')
+
+    await wrapper.findAll('[title="View Run details"]')[1]!.trigger('click')
+    await flushPromises()
+    expect(getRun).toHaveBeenCalledWith(lifecycle.lifecycle_id, 'run-2')
+    expect(wrapper.text()).toContain('Checkpointer not enabled')
+    expect(wrapper.text()).toContain('0')
 
     await wrapper.get('button[data-action="download"]').trigger('click')
     await flushPromises()
     expect(downloadLifecycle).toHaveBeenCalledWith(lifecycle.lifecycle_id)
 
-    await wrapper.get('[title="Download Run diagnostics"]').trigger('click')
+    await wrapper.findAll('[title="Download Run diagnostics"]')[0]!.trigger('click')
     await flushPromises()
     expect(downloadRun).toHaveBeenCalledWith(lifecycle.lifecycle_id, 'run-1')
 
     downloadRun.mockRejectedValueOnce(new Error('run diagnostics unavailable'))
-    await wrapper.get('[title="Download Run diagnostics"]').trigger('click')
+    await wrapper.findAll('[title="Download Run diagnostics"]')[0]!.trigger('click')
     await flushPromises()
     expect(useToasts().items.value.some(
       (toast) => toast.title === 'Could not download run diagnostics',

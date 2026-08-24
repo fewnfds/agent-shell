@@ -75,7 +75,7 @@ def test_runtime_diagnostic_context_keeps_parent_workflow_and_agent_subject() ->
         request_id="request-one",
         lifecycle_id="lifecycle-one",
         run_id="run-one",
-        thread_id="thread-one",
+        checkpoint_thread_id="thread-one",
         workflow={"id": "workflow-parent", "name": "Parent Workflow"},
     ).for_background_agent(
         agent_id="agent-one",
@@ -254,7 +254,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 [{"role": "user", "content": "wait"}],
                 request_id="timeout-request",
                 run_id="timeout-run",
-                thread_id="timeout-thread",
+                checkpoint_thread_id="timeout-thread",
                 workflow_id="timeout-workflow",
                 workflow_name="Timeout Workflow",
             )
@@ -262,7 +262,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 request_id="timeout-request",
                 lifecycle_id=lifecycle_id,
                 run_id="timeout-run",
-                thread_id="timeout-thread",
+                checkpoint_thread_id="timeout-thread",
                 workflow={"id": "timeout-workflow", "name": "Timeout Workflow"},
             )
             execution = RunExecution(

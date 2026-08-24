@@ -32,7 +32,7 @@ class WorkflowRuntimeContext:
     request_id: str = ""
     lifecycle_id: str = ""
     run_id: str = ""
-    thread_id: str = ""
+    checkpoint_thread_id: str | None = None
     parent_run_id: str = ""
     background_task_id: str = ""
     launcher_id: str = ""
@@ -50,7 +50,7 @@ class WorkflowRuntimeContext:
         request_id: str,
         lifecycle_id: str,
         run_id: str,
-        thread_id: str,
+        checkpoint_thread_id: str | None = None,
         parent_run_id: str = "",
         background_task_id: str = "",
         launcher_id: str = "",
@@ -62,7 +62,7 @@ class WorkflowRuntimeContext:
             request_id=request_id,
             lifecycle_id=lifecycle_id,
             run_id=run_id,
-            thread_id=thread_id,
+            checkpoint_thread_id=checkpoint_thread_id,
             parent_run_id=parent_run_id,
             background_task_id=background_task_id,
             launcher_id=launcher_id,

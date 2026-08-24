@@ -9,7 +9,7 @@ Agent Shell 保留 Main Agent、组件、直接 Subagent 和 Provider secret 的
 Deep Agents/LangGraph 负责模型循环、工具执行、同步委派、summarization、tool-call repair、prompt caching、
 state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
-用户 Python 扩展只返回官方 `AgentMiddleware`。Shell 不执行 prepare、fixed-delay lifecycle 或 complete，不建立第二套 model/tool/agent Hook。需要 checkpoint 的业务数据通过官方 state update 写入 `AgentShellState`。
+用户 Python 扩展只返回官方 `AgentMiddleware`。Shell 不执行 prepare、fixed-delay lifecycle 或 complete，不建立第二套 model/tool/agent Hook。Workflow State 业务数据通过官方 state update 写入 `AgentShellState`；Workflow 装配 Checkpointer 时，这些 State update 才进入官方 checkpoint。
 
 ## 装配
 
@@ -27,7 +27,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
-- `AgentShellState.shared_vars` 保存公共 checkpointed 业务变量；Middleware 实例属性保存当前实例的运行期数据。
+- `AgentShellState.shared_vars` 保存公共 Workflow State 业务变量；Workflow 装配 Checkpointer 时它参与官方 checkpoint，Middleware 实例属性只保存当前实例的运行期数据。
 - Agent Event Output 使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event)` 返回公开文本。
 
 ### Middleware 禁用装配查证表（deepagents 0.7.7）
@@ -58,6 +58,6 @@ Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。client `messages[
 synchronous Subagent 是 Agent 内部的官方 `SubAgentMiddleware` capability，不与 outer Workflow 竞争 scheduling responsibility。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方 assembly entry，并单独处理 `graph_id`、
 Agent Protocol 地址、认证和 background task state。
 
-外层 background Workflow 由 Shell 应用级 Manager 管理 detached execution handle/status，child 由 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 与 checkpointer 服务，各自持有 Builder 的 Middleware package runtime，并通过独立查询接口提供事件。
+外层 background Workflow 由 Shell 应用级 Manager 管理 detached execution handle/status，child 由 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 和惰性 Checkpointer service，但独立读取自己冻结的 Workflow `checkpointer_id`：只在引用存在时生成 checkpoint thread。Canvas Agent/Deep Agent subgraph 不覆写 saver，按 LangGraph 默认继承所在 Workflow root 的 Checkpointer；background Agent 不装配 Checkpointer。每个 child 持有 Builder 的 Middleware package runtime，并通过独立查询接口提供事件。
 
 更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent field、default Middleware、same-name replacement 与 `HarnessProfile.excluded_middleware`、各 Provider Prompt Caching 变体、Codex TodoList extra Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 event namespace，并只为 Shell 自有转换保留行为测试。

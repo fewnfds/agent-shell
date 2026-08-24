@@ -321,8 +321,11 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                       <td colspan="8">
                         <dl class="row g-3 mb-0 p-3">
                           <div class="col-12 col-lg-4">
-                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.threadId') }}</dt>
-                            <dd class="mb-0"><code>{{ run.thread_id }}</code></dd>
+                            <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.checkpointThreadId') }}</dt>
+                            <dd class="mb-0">
+                              <code v-if="run.checkpoint_thread_id">{{ run.checkpoint_thread_id }}</code>
+                              <span v-else>{{ t('workflowLifecycles.run.checkpointerDisabled') }}</span>
+                            </dd>
                           </div>
                           <div class="col-12 col-lg-4">
                             <dt class="small text-body-secondary">{{ t('workflowLifecycles.run.launcher') }}</dt>
@@ -343,9 +346,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
                           <div class="col-12 col-md-6 col-lg-3">
                             <dt class="small text-body-secondary">{{ t('workflowLifecycles.detail.checkpoints') }}</dt>
                             <dd class="mb-0">
-                              {{ run.checkpoint_available
-                                ? (runDetails[run.run_id]?.checkpoint_count ?? t('common.loading'))
-                                : t('workflowLifecycles.run.notAvailable') }}
+                              {{ runDetails[run.run_id]?.checkpoint_count ?? t('common.loading') }}
                             </dd>
                           </div>
                           <div class="col-12 col-md-6 col-lg-3">

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from uuid import uuid4
 
+import pytest
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -10,6 +12,7 @@ from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.input_messages import client_messages_sha
 from agent_shell.runtime.state import AgentShellState
+from agent_shell.runtime import workflow_checkpoints as workflow_checkpoints_module
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import (
     LIFECYCLE_INPUT_KEY,
@@ -78,14 +81,11 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
         state_root = tmp_path / "data" / "state"
         database = SQLiteDatabase(state_root / "agent-shell.sqlite3")
         checkpoint_database = SQLiteFile(
-            state_root / "workflow-checkpoints.sqlite3"
+            state_root / "workflow-checkpoints.sqlite3",
+            create=False,
         )
         store_database = SQLiteFile(state_root / "workflow-store.sqlite3")
-        service = WorkflowCheckpointService(
-            checkpoint_database,
-            tracing_enabled=False,
-            langsmith_project="workflow-checkpoint-test",
-        )
+        service = WorkflowCheckpointService(checkpoint_database)
         lifecycle = WorkflowLifecycleService(
             database,
             store_database=store_database,
@@ -117,29 +117,25 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
         assert document is not None
 
         await lifecycle.start()
-        await service.start()
         try:
-            run = service.create_context(
-                request_id="request-1",
-                workflow_id="workflow-1",
-                workflow_name="Checkpoint Workflow",
-                messages_sha=messages_sha,
-            )
+            run_id = str(uuid4())
+            checkpoint_thread_id = str(uuid4())
             lifecycle_id = await lifecycle.create(
                 raw_messages,
                 request_id="request-1",
-                run_id=str(run.run_id),
-                thread_id=run.thread_id,
+                run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id,
                 workflow_id="workflow-1",
                 workflow_name="Checkpoint Workflow",
             )
             context = WorkflowRuntimeContext.for_run(
                 request_id="request-1",
                 lifecycle_id=lifecycle_id,
-                run_id=str(run.run_id),
-                thread_id=run.thread_id,
+                run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id,
                 workflow={"id": "workflow-1", "name": "Checkpoint Workflow"},
             )
+            checkpointer = await service.require_checkpointer()
             graph = compile_workflow(
                 document,
                 node_agents={
@@ -154,20 +150,20 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
                         middleware_runtime=_MiddlewareRuntime(),  # type: ignore[arg-type]
                     )
                 },
-                checkpointer=service.checkpointer,
+                checkpointer=checkpointer,
                 store=lifecycle.store,
             )
 
             result = await graph.ainvoke(
                 {"shared_vars": {}, "agent_invocations": {}},
-                config=run.config(),
+                config={"configurable": {"thread_id": checkpoint_thread_id}},
                 context=context,
                 durability="sync",
             )
 
             assert result["shared_vars"] == {"result": "complete"}
             assert observed_root_messages == []
-            checkpoints = await service.checkpoint_history(run.thread_id)
+            checkpoints = await service.checkpoint_history(checkpoint_thread_id)
             assert checkpoints
             assert all(checkpoint["checkpoint_id"] for checkpoint in checkpoints)
 
@@ -179,8 +175,8 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
             assert lifecycle_input.value["messages"] == raw_messages
             assert lifecycle_input.value["messages_sha"] == messages_sha
 
-            assert await service.purge_thread(run.thread_id) is True
-            assert await service.checkpoint_count(run.thread_id) == 0
+            assert await service.purge_thread(checkpoint_thread_id) is True
+            assert await service.checkpoint_count(checkpoint_thread_id) == 0
         finally:
             await service.close()
             await lifecycle.close()
@@ -198,9 +194,7 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
         store_path = state_root / "workflow-store.sqlite3"
         application_database = SQLiteDatabase(application_path)
         checkpoints = WorkflowCheckpointService(
-            SQLiteFile(checkpoint_path),
-            tracing_enabled=False,
-            langsmith_project="workflow-database-ownership-test",
+            SQLiteFile(checkpoint_path, create=False),
         )
         lifecycle = WorkflowLifecycleService(
             application_database,
@@ -208,13 +202,14 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
         )
 
         await lifecycle.start()
-        await checkpoints.start()
         try:
+            assert checkpoint_path.exists() is False
+            await checkpoints.require_checkpointer()
             await lifecycle.create(
                 [{"role": "user", "content": "input"}],
                 request_id="ownership-request",
                 run_id="ownership-run",
-                thread_id="ownership-thread",
+                checkpoint_thread_id="ownership-thread",
                 workflow_id="ownership-workflow",
                 workflow_name="Ownership Workflow",
             )
@@ -241,5 +236,71 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
         assert "workflow_lifecycles" not in checkpoint_tables
         assert "store" in store_tables
         assert "workflow_lifecycles" not in store_tables
+
+    asyncio.run(scenario())
+
+
+def test_checkpointer_lazy_start_is_concurrent_and_retries_after_failure(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSaver:
+        def __init__(self, *, fail: bool) -> None:
+            self.fail = fail
+
+        async def setup(self) -> None:
+            if self.fail:
+                raise RuntimeError("setup failed")
+
+    class FakeContext:
+        def __init__(self, saver: FakeSaver) -> None:
+            self.saver = saver
+            self.exit_count = 0
+
+        async def __aenter__(self) -> FakeSaver:
+            return self.saver
+
+        async def __aexit__(self, *_args) -> None:
+            self.exit_count += 1
+
+    failed = FakeContext(FakeSaver(fail=True))
+    healthy = FakeContext(FakeSaver(fail=False))
+    contexts = [failed, healthy]
+    factory_calls = 0
+
+    def context_factory(_connection_string: str):
+        nonlocal factory_calls
+        factory_calls += 1
+        return contexts.pop(0)
+
+    monkeypatch.setattr(
+        workflow_checkpoints_module.AsyncSqliteSaver,
+        "from_conn_string",
+        staticmethod(context_factory),
+    )
+
+    async def scenario() -> None:
+        checkpoint_path = tmp_path / "state" / "workflow-checkpoints.sqlite3"
+        service = WorkflowCheckpointService(
+            SQLiteFile(checkpoint_path, create=False)
+        )
+        assert checkpoint_path.exists() is False
+        assert service.started is False
+        with pytest.raises(RuntimeError, match="setup failed"):
+            await service.require_checkpointer()
+        assert failed.exit_count == 1
+        assert service.started is False
+
+        resolved = await asyncio.gather(
+            service.require_checkpointer(),
+            service.require_checkpointer(),
+            service.require_checkpointer(),
+        )
+        assert resolved == [healthy.saver, healthy.saver, healthy.saver]
+        assert factory_calls == 2
+        assert service.started is True
+        await service.close()
+        assert healthy.exit_count == 1
+        assert service.started is False
 
     asyncio.run(scenario())

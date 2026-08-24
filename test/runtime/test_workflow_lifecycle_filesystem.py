@@ -35,7 +35,7 @@ async def _create_lifecycle(
         [{"role": "user", "content": f"input-{suffix}"}],
         request_id=f"request-{suffix}",
         run_id=f"run-{suffix}",
-        thread_id=f"thread-{suffix}",
+        checkpoint_thread_id=None,
         workflow_id="workflow",
         workflow_name="Workflow",
     )

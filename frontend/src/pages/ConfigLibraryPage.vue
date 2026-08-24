@@ -328,7 +328,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     },
   ],
   bulkAction: {
-    label: () => t('common.delete'),
+    label: () => t('library.deleteFiltered.action'),
     busyLabel: () => t('common.deleting'),
     icon: 'delete',
     enabled: (context) => currentCategory.value !== 'model-connection' && context.hasAppliedFilters && context.total > 0,

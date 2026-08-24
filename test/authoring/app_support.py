@@ -108,6 +108,12 @@ def block_cases(client: TestClient, tmp_path: Path) -> list[tuple[str, dict]]:
     write_skill_template(tmp_path)
     return [
         (
+            "checkpointer",
+            {
+                "name": "Debug checkpoints",
+            },
+        ),
+        (
             "model-requirement",
             {
                 "name": "Local model requirement",

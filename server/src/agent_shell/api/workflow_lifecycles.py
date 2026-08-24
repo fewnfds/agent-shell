@@ -22,6 +22,7 @@ from agent_shell.runtime.background_tasks import (
     BackgroundTaskManager,
 )
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 
@@ -238,6 +239,105 @@ def build_workflow_lifecycle_router(
             and (run_id is None or entry.get("run_id") == run_id)
         ]
 
+    def checkpoint_error(
+        exc: BaseException,
+        *,
+        lifecycle_id: str,
+        run_id: str = "",
+        checkpoint_thread_id: str = "",
+    ):
+        runtime_diagnostics.observation_error(
+            exc,
+            code="workflow_checkpoint_query_failed",
+            component="persistence",
+            context=RuntimeDiagnosticContext(
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                thread_id=checkpoint_thread_id or None,
+                subject_kind="persistence",
+                subject_name="Workflow Checkpointer",
+            ),
+        )
+        return management_error(
+            503,
+            code="workflow_checkpointer_unavailable",
+            message_key="errors.workflowCheckpointerUnavailable",
+            message="Workflow checkpoint data is unavailable.",
+        )
+
+    async def checkpoint_count(
+        checkpoint_thread_id: str,
+        *,
+        lifecycle_id: str,
+        run_id: str,
+    ) -> int:
+        try:
+            return await workflow_checkpoints.checkpoint_count(
+                checkpoint_thread_id
+            )
+        except Exception as exc:
+            raise checkpoint_error(
+                exc,
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id,
+            ) from exc
+
+    async def checkpoint_history(
+        checkpoint_thread_id: str,
+        *,
+        lifecycle_id: str,
+        run_id: str,
+        limit: int | None,
+    ) -> list[dict[str, object]]:
+        try:
+            return await workflow_checkpoints.checkpoint_history(
+                checkpoint_thread_id,
+                limit=limit,
+            )
+        except Exception as exc:
+            raise checkpoint_error(
+                exc,
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id,
+            ) from exc
+
+    async def iter_checkpoint_history(
+        checkpoint_thread_id: str,
+        *,
+        lifecycle_id: str,
+        run_id: str,
+        include_state: bool,
+    ) -> AsyncIterator[dict[str, object]]:
+        try:
+            async for item in workflow_checkpoints.iter_checkpoint_history(
+                checkpoint_thread_id,
+                include_state=include_state,
+            ):
+                yield item
+        except Exception as exc:
+            raise checkpoint_error(
+                exc,
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id,
+            ) from exc
+
+    async def purge_checkpoint_thread(
+        checkpoint_thread_id: str,
+        *,
+        lifecycle_id: str,
+    ) -> None:
+        try:
+            await workflow_checkpoints.purge_thread(checkpoint_thread_id)
+        except Exception as exc:
+            raise checkpoint_error(
+                exc,
+                lifecycle_id=lifecycle_id,
+                checkpoint_thread_id=checkpoint_thread_id,
+            ) from exc
+
     async def checkpoint_summaries(
         runs: list[dict[str, object]],
         *,
@@ -245,10 +345,14 @@ def build_workflow_lifecycle_router(
     ) -> dict[str, list[dict[str, object]]]:
         result: dict[str, list[dict[str, object]]] = {}
         for run in runs:
-            if not run["checkpoint_available"]:
+            checkpoint_thread_id = run.get("checkpoint_thread_id")
+            if checkpoint_thread_id is None:
                 continue
-            result[str(run["run_id"])] = await workflow_checkpoints.checkpoint_history(
-                str(run["thread_id"]),
+            run_id = str(run["run_id"])
+            result[run_id] = await checkpoint_history(
+                str(checkpoint_thread_id),
+                lifecycle_id=str(run["lifecycle_id"]),
+                run_id=run_id,
                 limit=limit,
             )
         return result
@@ -263,11 +367,14 @@ def build_workflow_lifecycle_router(
             run_summary["observation_status"] = (
                 "unavailable" if not runs else "partial"
             )
-        checkpoint_count = 0
+        total_checkpoint_count = 0
         for run in runs:
-            if run["checkpoint_available"]:
-                checkpoint_count += await workflow_checkpoints.checkpoint_count(
-                    str(run["thread_id"])
+            checkpoint_thread_id = run.get("checkpoint_thread_id")
+            if checkpoint_thread_id is not None:
+                total_checkpoint_count += await checkpoint_count(
+                    str(checkpoint_thread_id),
+                    lifecycle_id=lifecycle_id,
+                    run_id=str(run["run_id"]),
                 )
         filesystem = await lifecycle_service.filesystem_summary(lifecycle_id)
         return {
@@ -278,7 +385,7 @@ def build_workflow_lifecycle_router(
                 task_counts.get(status, 0) for status in ACTIVE_BACKGROUND_STATUSES
             ),
             "task_status_counts": dict(sorted(task_counts.items())),
-            "checkpoint_count": checkpoint_count,
+            "checkpoint_count": total_checkpoint_count,
             "store_item_count": await lifecycle_service.store_item_count(lifecycle_id),
             **run_summary,
             **filesystem,
@@ -394,8 +501,12 @@ def build_workflow_lifecycle_router(
                 run_id=run_id,
             ),
             "checkpoint_count": (
-                await workflow_checkpoints.checkpoint_count(str(run["thread_id"]))
-                if run["checkpoint_available"]
+                await checkpoint_count(
+                    str(run["checkpoint_thread_id"]),
+                    lifecycle_id=lifecycle_id,
+                    run_id=run_id,
+                )
+                if run.get("checkpoint_thread_id") is not None
                 else 0
             ),
             "diagnostic_count": len(diagnostics),
@@ -427,13 +538,16 @@ def build_workflow_lifecycle_router(
                 None,
             )
             for run in runs:
-                if not run["checkpoint_available"]:
+                checkpoint_thread_id = run.get("checkpoint_thread_id")
+                if checkpoint_thread_id is None:
                     continue
                 run_id = str(run["run_id"])
                 await _write_async_jsonl_file(
                     content_root / "checkpoints" / f"{run_id}.jsonl",
-                    workflow_checkpoints.iter_checkpoint_history(
-                        str(run["thread_id"]),
+                    iter_checkpoint_history(
+                        str(checkpoint_thread_id),
+                        lifecycle_id=lifecycle_id,
+                        run_id=run_id,
                         include_state=True,
                     ),
                 )
@@ -536,11 +650,14 @@ def build_workflow_lifecycle_router(
                 run_id,
             )
             checkpoint_path = content_root / "checkpoints.jsonl"
-            if run["checkpoint_available"]:
+            checkpoint_thread_id = run.get("checkpoint_thread_id")
+            if checkpoint_thread_id is not None:
                 await _write_async_jsonl_file(
                     checkpoint_path,
-                    workflow_checkpoints.iter_checkpoint_history(
-                        str(run["thread_id"]),
+                    iter_checkpoint_history(
+                        str(checkpoint_thread_id),
+                        lifecycle_id=lifecycle_id,
+                        run_id=run_id,
                         include_state=True,
                     ),
                 )
@@ -560,7 +677,7 @@ def build_workflow_lifecycle_router(
                 "run_status": run["status"],
                 "observation_status": run["observation_status"],
                 "last_event_sequence": last_event_sequence,
-                "checkpoint_available": run["checkpoint_available"],
+                "checkpoint_thread_id": checkpoint_thread_id,
                 "includes": {key: True for key in sorted(EXPORT_SECTIONS)},
                 "diagnostic_details_included": True,
                 "limitations": [
@@ -645,22 +762,23 @@ def build_workflow_lifecycle_router(
                     message="A Workflow lifecycle with an active run cannot be deleted.",
                 )
             await lifecycle_service.mark_deleting(lifecycle_id)
-            thread_ids = {
-                str(run["thread_id"])
+            checkpoint_thread_ids = {
+                str(run["checkpoint_thread_id"])
                 for run in runs
-                if run["checkpoint_available"]
+                if run.get("checkpoint_thread_id") is not None
             }
-            thread_ids.add(str(record.get("parent_thread_id", "")))
-            thread_ids.discard("")
-            for thread_id in thread_ids:
-                await workflow_checkpoints.purge_thread(thread_id)
+            for checkpoint_thread_id in checkpoint_thread_ids:
+                await purge_checkpoint_thread(
+                    checkpoint_thread_id,
+                    lifecycle_id=lifecycle_id,
+                )
             await lifecycle_service.delete(
                 lifecycle_id,
                 delete_dynamic_directories=delete_dynamic_directories,
             )
         return {
             "ok": True,
-            "deleted_thread_count": len(thread_ids),
+            "deleted_checkpoint_thread_count": len(checkpoint_thread_ids),
             "deleted_dynamic_directories": delete_dynamic_directories,
         }
 

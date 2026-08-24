@@ -14,6 +14,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义，并继续作为公开 model ID；
 - 详情显示保存的完整 payload，包括当前版本无法识别或无法运行的记录；
 - 删除可选组件或 Subagent 实体时，服务端会在一次配置更新中从所有 Agent 配置摘除对应引用；
+- 删除检查点保存器时，服务端会在同一次配置更新中把所有引用它的 Workflow `checkpointer_id` 设为 `null`；
 - Main Agent 必选的模型要求和 Agent Event Output 在仍被引用时删除会返回冲突，替代配置解除引用后即可删除；
 - Main Agent 被任一 Workflow Graph 的 Agent Node 引用时，单项或批量删除都会返回冲突；批量删除是原子操作，任一记录冲突时全部不删；
 - 批量删除与引用摘除由文件配置仓库在一次配置 mutation 中原子提交；每条记录保存为独立 YAML 文件；
@@ -23,7 +24,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 
 Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看和编辑，复制与运行会重新校验；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
-Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configuration-repositories/<repository-uuid>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python/Skill private package 位于同一 Repository 的 `python_package_instances/` 与 `skill_package_instances/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 只保存运行记录、checkpoint、诊断和媒体元数据。
+Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configuration-repositories/<repository-uuid>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python/Skill private package 位于同一 Repository 的 `python_package_instances/` 与 `skill_package_instances/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
 
 ## 原子配置 Bundle API
 

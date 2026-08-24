@@ -90,7 +90,8 @@ AI 应在自己的工作记忆中维护一张简短 ledger。它用于后续 pay
   "components": {
     "model_requirement": "<UUID>",
     "agent_event_output": "<UUID>",
-    "command": "<UUID>"
+    "command": "<UUID>",
+    "checkpointer": "<UUID-or-null>"
   },
   "agents": {
     "main": "<UUID>"
@@ -122,11 +123,12 @@ component -> Subagent / Main Agent -> Workflow -> Graph -> Run
 2. 按需创建 System Prompt、AAP、Tool、Skill、Filesystem 等 optional component；
 3. 按需创建 Subagent；
 4. 创建 Main Agent，并引用 component/Subagent UUID；
-5. 创建 parent Workflow；
-6. 创建 Graph document，并引用 Main Agent、Command 或 Task Dispatcher UUID；
-7. 保存 draft、validate、publish；
-8. 完成 Model Mapping；
-9. 通过 `/v1` 发起真实 invocation。
+5. 需要 Debug 检查点时创建 Checkpointer Component；
+6. 创建 parent Workflow，并用可空 `checkpointer_id` 明确选择【无】或已有 Checkpointer；
+7. 创建 Graph document，并引用 Main Agent、Command 或 Task Dispatcher UUID；
+8. 保存 draft、validate、publish；
+9. 完成 Model Mapping；
+10. 通过 `/v1` 发起真实 invocation。
 
 确定性 Graph 没有 Agent Node 时，可以直接从 Command/Task Dispatcher component 和 Workflow 开始。
 
@@ -148,6 +150,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 
 - Model Connection PUT 中的 `credential` 接受 `null`，在 Provider 和 Base URL 相同时保留旧 Key；也可以提交新的 write-only Key；GET 返回的 masked metadata 不能作为 credential 回写；
 - Python-backed component 的 PUT 只提交 `name` 和原有 `python_package` reference；源码文件通过 File Manager API 独立修改；
+- Checkpointer Component 的可写字段是 `name` 和 `durability=exit|async|sync`，默认 `async`；Workflow metadata 使用可空 `checkpointer_id` 引用它，默认 `null`；
 - Workflow Graph 使用专用 draft、validate 和 publish endpoint，不通过 Workflow metadata PUT 替代。
 
 Graph 的三步写入语义是：

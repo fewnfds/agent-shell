@@ -5,6 +5,7 @@ import type { Component } from 'vue'
 
 import {
   agentEventOutputAdapter,
+  checkpointerAdapter,
   customToolAdapter,
   exceptionRetryAdapter,
   filesystemAdapter,
@@ -27,6 +28,7 @@ import { zhCN } from '@/locales/zh-CN'
 import {
   CustomToolEditor,
   AgentEventOutputEditor,
+  CheckpointerEditor,
   ExceptionRetryEditor,
   FilesystemEditor,
   FilesystemPermissionsEditor,
@@ -111,6 +113,23 @@ function mountEditor(component: Component, props: Record<string, unknown>): VueW
 }
 
 describe('dedicated block editors', () => {
+  it('shows all LangGraph durability choices and emits the selected value', async () => {
+    const editor = mount(CheckpointerEditor, {
+      props: { modelValue: checkpointerAdapter.blank() },
+      global: { plugins: [localizedI18n] },
+    })
+
+    expect(editor.get('[data-editor="checkpointer"] select').findAll('option').map(
+      (option) => option.attributes('value'),
+    )).toEqual(['exit', 'async', 'sync'])
+    expect(editor.text()).toContain('异步写入（推荐）')
+    await editor.get('select').setValue('sync')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      durability: 'sync',
+    })
+    expect(editor.text()).toContain('写入延迟也最高')
+  })
+
   it('renders exception retry as two unnested responsive strategy cards', () => {
     const editor = mount(ExceptionRetryEditor, {
       props: {

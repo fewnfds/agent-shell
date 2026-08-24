@@ -20,6 +20,7 @@ const workflow: Workflow = {
   name: 'Research Workflow',
   workflow_role: 'parent',
   description: 'Runs the research agent.',
+  checkpointer_id: null,
   workflow_event_output_id: null,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,

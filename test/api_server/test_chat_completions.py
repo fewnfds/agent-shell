@@ -99,6 +99,8 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
 
     def observe_execution(self, *args, **kwargs):
         captured["run_config"] = kwargs.get("run_config")
+        captured["durability"] = kwargs.get("durability")
+        captured["context"] = kwargs.get("context")
         captured["execution_timeout_seconds"] = kwargs.get(
             "execution_timeout_seconds"
         )
@@ -132,10 +134,168 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
             },
         )
         assert reply.status_code == 200, reply.text
+        assert client.app.state.workflow_checkpoints.started is False
+        assert (
+            tmp_path / "data" / "state" / "workflow-checkpoints.sqlite3"
+        ).exists() is False
 
     assert captured["execution_timeout_seconds"] == 42
     assert captured["run_config"]["recursion_limit"] == 321
     assert captured["run_config"]["max_concurrency"] == 7
+    assert "configurable" not in captured["run_config"]
+    assert captured["durability"] is None
+    assert captured["context"].checkpoint_thread_id is None
+
+
+def test_workflow_checkpointer_durability_is_passed_mechanically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_shell.runtime.agent_runtime import AgentRuntime
+
+    captured: list[dict[str, object]] = []
+    original_execution = AgentRuntime._execution
+
+    def observe_execution(self, *args, **kwargs):
+        captured.append(
+            {
+                "run_config": kwargs.get("run_config"),
+                "durability": kwargs.get("durability"),
+                "context": kwargs.get("context"),
+            }
+        )
+        return original_execution(self, *args, **kwargs)
+
+    monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        for durability in ("exit", "async", "sync"):
+            checkpointer = client.post(
+                "/api/blocks/checkpointer",
+                json={
+                    "name": f"{durability} checkpoints",
+                    "durability": durability,
+                },
+            )
+            assert checkpointer.status_code == 200, checkpointer.text
+            workflow = create_workflow(
+                client,
+                name=f"{durability} Checkpoint Workflow",
+            )
+            configured = client.put(
+                f"/api/workflows/{workflow['id']}",
+                json={
+                    **{
+                        key: workflow[key]
+                        for key in (
+                            "name",
+                            "workflow_role",
+                            "description",
+                            "workflow_event_output_id",
+                            "recursion_limit",
+                            "execution_timeout_seconds",
+                            "max_concurrency",
+                        )
+                    },
+                    "checkpointer_id": checkpointer.json()["id"],
+                },
+            )
+            assert configured.status_code == 200, configured.text
+            save_linear_workflow_graph(client, configured.json(), main_agent)
+            reply = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": workflow["name"],
+                    "messages": [{"role": "user", "content": "run"}],
+                },
+            )
+            assert reply.status_code == 200, reply.text
+
+            observed = captured[-1]
+            context = observed["context"]
+            assert observed["durability"] == durability
+            assert context.checkpoint_thread_id
+            assert observed["run_config"]["configurable"] == {
+                "thread_id": context.checkpoint_thread_id,
+            }
+            run = client.app.state.workflow_lifecycle.history.get_run(
+                context.run_id
+            )
+            assert run is not None
+            assert run["checkpoint_thread_id"] == context.checkpoint_thread_id
+            portal = client.portal
+            assert portal is not None
+            assert portal.call(
+                client.app.state.workflow_checkpoints.checkpoint_count,
+                context.checkpoint_thread_id,
+            ) > 0
+
+        assert client.app.state.workflow_checkpoints.started is True
+
+
+def test_checkpointer_initialization_failure_isolated_to_configured_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Unavailable checkpoints"},
+        )
+        assert checkpointer.status_code == 200, checkpointer.text
+        configured = create_workflow(client, name="Checkpoint failure")
+        configured_response = client.put(
+            f"/api/workflows/{configured['id']}",
+            json={
+                **{
+                    key: configured[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "workflow_event_output_id",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                    )
+                },
+                "checkpointer_id": checkpointer.json()["id"],
+            },
+        )
+        assert configured_response.status_code == 200, configured_response.text
+        save_linear_workflow_graph(client, configured_response.json(), main_agent)
+
+        plain = create_workflow(client, name="No checkpoint dependency")
+        save_linear_workflow_graph(client, plain, main_agent)
+
+        async def fail_initialization():
+            raise OSError("checkpoint database unavailable")
+
+        monkeypatch.setattr(
+            client.app.state.workflow_checkpoints,
+            "require_checkpointer",
+            fail_initialization,
+        )
+        failed = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": configured["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        )
+        succeeded = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": plain["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        )
+
+    assert failed.status_code == 500
+    assert failed.json()["error"]["code"] == "workflow_checkpointer_unavailable"
+    assert succeeded.status_code == 200, succeeded.text
+    assert succeeded.json()["choices"][0]["message"]["content"] == "runtime reply"
 
 
 def test_incomplete_saved_workflow_draft_is_not_a_public_model(

@@ -16,6 +16,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "filesystem": "66666666-6666-4666-8666-666666666666",
         "workflow": "77777777-7777-4777-8777-777777777777",
         "workflow_output": "88888888-8888-4888-8888-888888888888",
+        "checkpointer": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         "command": "99999999-9999-4999-8999-999999999999",
         "dispatcher": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     }
@@ -67,6 +68,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             {
                 "id": ids["workflow"],
                 "name": "Workflow",
+                "checkpointer_id": ids["checkpointer"],
                 "workflow_event_output_id": ids["workflow_output"],
                 "definition": {
                     "nodes": [
@@ -136,6 +138,13 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             "component",
             "custom-middleware",
             ids["middleware"],
+        ),
+        (
+            "workflow",
+            "checkpointer_id",
+            "component",
+            "checkpointer",
+            ids["checkpointer"],
         ),
         (
             "workflow",

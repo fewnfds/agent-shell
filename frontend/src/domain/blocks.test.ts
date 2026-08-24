@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   blockAdapters,
   managedComponentTypes,
+  checkpointerAdapter,
   agentEventOutputAdapter,
   customMiddlewareAdapter,
   customToolAdapter,
@@ -77,6 +78,27 @@ describe('block adapters', () => {
         title: 'Result', description: 'Structured result', type: 'object',
       },
       model_settings: { parallel_tool_calls: false },
+    })
+  })
+
+  it('maps Checkpointer durability with async as the repairable default', () => {
+    expect(checkpointerAdapter.blank()).toEqual({
+      id: '', name: '', durability: 'async',
+    })
+    expect(checkpointerAdapter.fromApi({
+      id: 'checkpointer-id', name: 'Saved checkpoints', durability: 'sync',
+    })).toEqual({
+      id: 'checkpointer-id', name: 'Saved checkpoints', durability: 'sync',
+    })
+    expect(checkpointerAdapter.fromApi({
+      id: 'checkpointer-id', name: 'Saved checkpoints', durability: 'invalid',
+    }).durability).toBe('async')
+
+    const draft = checkpointerAdapter.blank()
+    draft.name = '  Debug checkpoints  '
+    draft.durability = 'exit'
+    expect(checkpointerAdapter.toPayload(draft)).toEqual({
+      name: 'Debug checkpoints', durability: 'exit',
     })
   })
 

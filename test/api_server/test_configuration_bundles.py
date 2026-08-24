@@ -74,6 +74,31 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             )
             assert root_export.status_code == 200, root_export.text
         workflow = create_workflow(source, name="Portable Workflow")
+        checkpointer_response = source.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Portable checkpoints", "durability": "sync"},
+        )
+        assert checkpointer_response.status_code == 200, checkpointer_response.text
+        configured_workflow = source.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                **{
+                    key: workflow[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "workflow_event_output_id",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                    )
+                },
+                "checkpointer_id": checkpointer_response.json()["id"],
+            },
+        )
+        assert configured_workflow.status_code == 200, configured_workflow.text
+        workflow = configured_workflow.json()
         save_linear_workflow_graph(source, workflow, main_agent)
         exported = source.post(
             "/api/configuration-bundles/export",
@@ -186,6 +211,10 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
         if item["id"] == imported["root"]["target_id"]
     )
     assert imported_workflow["enabled"] is False
+    assert imported_workflow["checkpointer_id"] in target_ids
+    imported_checkpointer = target_config["components"]["checkpointer"][0]
+    assert imported_workflow["checkpointer_id"] == imported_checkpointer["id"]
+    assert imported_checkpointer["durability"] == "sync"
     imported_main_id = next(
         node["config"]["main_agent_id"]
         for node in imported_workflow["definition"]["nodes"]

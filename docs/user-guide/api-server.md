@@ -36,6 +36,10 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 
 每个 Workflow 显式配置 `recursion_limit`、`execution_timeout_seconds` 和 `max_concurrency`。默认值分别是 `1,000,000`、`1,200` 秒和 `100`；这些运行值只有正数约束，没有额外的产品上限。`recursion_limit` 与 `max_concurrency` 传给 LangGraph Runnable config；`execution_timeout_seconds` 限制单个 parent 或 child Run 的实际执行时间，不包含生成器停在 `yield` 等待慢速调用方消费已生成 SSE 文本的时间。background Agent 继承启动它的 parent Workflow 配置，background Workflow 使用自己的配置。
 
+Workflow 通过可空 `checkpointer_id` 选择一个【检查点保存器】（Checkpointer）组件，默认选择【无】。未选择时 Graph 使用 `checkpointer=None` 编译，不生成 `checkpoint_thread_id`、不传 durability，也不会因本次 Run 建立或访问 checkpoint SQLite；最终 State、Lifecycle、Run/Event/Model Request History、Store、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 仍按各自 owner 工作。选择后，每个 Workflow Run 生成独立的检查点线程，并把组件的 `durability=exit|async|sync` 传给 LangGraph；Canvas Agent/Deep Agent subgraph 使用官方默认继承该 saver。parent Workflow 与 background child Workflow 分别读取自己的 `checkpointer_id`，background Agent 始终不装配 Checkpointer。
+
+Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
+
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。两种模式都消费同一次 LangGraph v3 事件流，并按 Workflow Node 对应 Main Agent 的 `agent-event-output` Python 扩展中的同步 `output(event)` 渲染；扩展可自行返回空字符串过滤事件。Workflow-owned 事件由 Workflow 可选绑定的 `workflow-event-output` 扩展处理。两类扩展都接收稳定 dict 并返回公开响应文本。
 
 ## 拦截消息
@@ -50,11 +54,11 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
-- 每次请求执行一次完整运行；每个 Workflow Run 建立独立 thread 并使用官方持久 checkpointer；
+- 每次请求执行一次完整运行；`run_id` 是所有 Run 的执行身份，只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
 - background Agent/Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；Task Dispatcher 在请求内生成动态 worker，多个 normal 出边、一次激活的多个 branch 目标和多个 Send task 按 LangGraph Super-step 语义执行；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、complete Checkpoint State、Lifecycle Store 记录和诊断附件。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。
+- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。
 
 ## API Key 与状态
 

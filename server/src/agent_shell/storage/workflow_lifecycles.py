@@ -17,7 +17,6 @@ class WorkflowLifecycleStore:
             "lifecycle_id": row["lifecycle_id"],
             "request_id": row["request_id"],
             "parent_run_id": row["parent_run_id"],
-            "parent_thread_id": row["parent_thread_id"],
             "workflow_id": row["workflow_id"],
             "workflow_name": row["workflow_name"],
             "created_at": row["created_at"],
@@ -36,16 +35,15 @@ class WorkflowLifecycleStore:
         with self._database.transaction() as connection:
             connection.execute(
                 "INSERT INTO workflow_lifecycles "
-                "(lifecycle_id, request_id, parent_run_id, parent_thread_id, "
-                "workflow_id, workflow_name, created_at, lifecycle_status, "
+                "(lifecycle_id, request_id, parent_run_id, workflow_id, "
+                "workflow_name, created_at, lifecycle_status, "
                 "parent_status, parent_finished_at, deletion_started_at, "
                 "messages_sha, message_count) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)",
                 (
                     record["lifecycle_id"],
                     record["request_id"],
                     record["parent_run_id"],
-                    record["parent_thread_id"],
                     record["workflow_id"],
                     record["workflow_name"],
                     record["created_at"],

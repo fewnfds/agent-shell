@@ -29,6 +29,7 @@ export const zhCN = {
       parentWorkflows: '父图',
       childWorkflows: '子图',
       workflowLifecycles: '运行历史',
+      checkpointer: '检查点保存器',
       workflowEventOutput: 'Workflow 事件输出',
       command: 'Command 节点',
       taskDispatcher: '任务分发',
@@ -190,6 +191,7 @@ export const zhCN = {
       name: '名称',
       description: '说明',
       filesystem: '共享文件系统',
+      checkpointer: '检查点保存器',
       eventOutput: 'Workflow 事件输出',
       recursionLimit: 'Super-step 上限',
       executionTimeoutSeconds: 'Run 总执行超时',
@@ -255,7 +257,7 @@ export const zhCN = {
     detail: {
       runs: 'Runs',
       timeline: '结构事件',
-      checkpoints: 'Checkpoints',
+      checkpoints: '检查点',
       storeItems: 'Store 条目',
       diagnostics: '关联诊断',
       noEvents: '没有已采集的结构事件。',
@@ -270,12 +272,12 @@ export const zhCN = {
       parent: 'Parent Run',
       depth: '层级',
       tokens: 'Tokens',
-      threadId: 'Thread ID',
+      checkpointThreadId: '检查点线程 ID',
+      checkpointerDisabled: '未启用检查点保存器',
       launcher: 'Launcher',
       task: 'Background Task',
       started: '开始时间',
       finished: '结束时间',
-      notAvailable: '不适用',
       detailLoadFailed: '无法载入 Run 详情',
     },
     event: {
@@ -583,6 +585,10 @@ export const zhCN = {
       label: 'Workflow 事件输出',
       description: '用配置独占的 Python 扩展筛选并格式化 Workflow 事件',
     },
+    checkpointer: {
+      label: '检查点保存器',
+      description: '为所选 Workflow 持久化 LangGraph 执行检查点',
+    },
     'command': {
       label: 'Command 节点',
       description: '运行用户编写的 Python，更新 State 并通过 LangGraph Command 动态激活后继',
@@ -701,6 +707,9 @@ export const zhCN = {
     field: '字段',
     value: '值',
     workflow_event_output_id: 'Workflow 事件输出组件 UUID',
+    checkpointer_id: '检查点保存器组件 UUID',
+    checkpoint_thread_id: '检查点线程 ID',
+    durability: '持久化时机',
     marker: '文字标志位',
     tool_description: '工具说明',
     capability_refs: '能力引用',
@@ -735,6 +744,22 @@ export const zhCN = {
       restoreDefault: '还原默认文本',
       true: 'true',
       useDefault: '沿用默认',
+    },
+    checkpointer: {
+      durability: {
+        exit: {
+          label: '退出时写入',
+          hint: 'Graph 正常结束、报错或触发 interrupt 时写入检查点，写入开销最低；进程崩溃时可能丢失运行中的中间状态。',
+        },
+        async: {
+          label: '异步写入（推荐）',
+          hint: '下一步运行时异步写入当前检查点，在延迟与持久化之间取得推荐平衡。',
+        },
+        sync: {
+          label: '同步写入',
+          hint: '每个检查点写完后再开始下一步，持久性最强，写入延迟也最高。',
+        },
+      },
     },
     model: {
       providerTitle: 'Provider',
@@ -1238,6 +1263,8 @@ export const zhCN = {
   },
   errors: {
     workflowInvalid: 'Workflow 配置无效。',
+    workflowCheckpointerNotFound: '所选检查点保存器组件不存在。',
+    workflowCheckpointerUnavailable: 'Workflow 检查点数据当前不可用。',
     workflowEventOutputNotFound: '所选 Workflow 事件输出组件不存在。',
     workflowNameConflict: '已有同名 Workflow。',
     workflowNotFound: 'Workflow 不存在。',

@@ -453,7 +453,7 @@ function technologyTerm(
   term('shortMemory', 'thread-identifier', 'Thread Identifier', '线程标识符', '用于区分和恢复不同有状态会话的唯一标识。', 'A unique identifier used to distinguish and resume stateful sessions.');
   term('persistence', 'persistence', 'Persistence', '持久化', '使状态或记忆在进程、步骤或会话之后仍可保存的能力。', 'The ability to preserve state or memory beyond a process, step, or session.');
   term('persistence', 'checkpoint', 'Checkpoint', '检查点', '在特定执行时刻保存的状态快照。', 'A snapshot of state saved at a particular point in execution.');
-  term('persistence', 'checkpointer', 'Checkpointer', '检查点管理器', '负责保存和读取执行状态检查点的组件概念。', 'A component concept responsible for saving and reading execution-state checkpoints.');
+  term('persistence', 'checkpointer', 'Checkpointer', '检查点保存器', '负责保存和读取执行状态检查点的组件。', 'A component responsible for saving and reading execution-state checkpoints.');
   term('persistence', 'checkpoint-identifier', 'Checkpoint Identifier', '检查点标识符', '唯一指代某个已保存状态快照的标识。', 'An identifier uniquely referring to a saved state snapshot.');
   term('persistence', 'durable-execution', 'Durable Execution', '持久执行', '在中断或故障后能够从已保存状态继续的执行方式。', 'An execution mode that can continue from saved state after interruption or failure.');
   term('persistence', 'fault-tolerance', 'Fault Tolerance', '容错性', '系统在部分故障发生时继续运行或恢复的能力。', 'The ability of a system to continue operating or recover when partial failures occur.');

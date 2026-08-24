@@ -23,6 +23,7 @@ const managementError = useManagementError()
 const { notify } = useToasts()
 const { confirm } = useConfirmation()
 const records = ref<Workflow[]>([])
+const checkpointers = ref<SavedBlock[]>([])
 const workflowEventOutputs = ref<SavedBlock[]>([])
 const selectedId = ref('')
 const form = ref<WorkflowPayload>(blankWorkflow())
@@ -45,17 +46,22 @@ function sortWorkflows(items: Workflow[]): Workflow[] {
   ))
 }
 function blankWorkflow(): WorkflowPayload {
-  return { name: '', workflow_role: props.workflowRole, description: '', workflow_event_output_id: null, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100 }
+  return { name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100 }
 }
 function toPayload(workflow: Workflow): WorkflowPayload {
-  return { name: workflow.name, workflow_role: workflow.workflow_role, description: workflow.description, workflow_event_output_id: workflow.workflow_event_output_id, recursion_limit: workflow.recursion_limit, execution_timeout_seconds: workflow.execution_timeout_seconds, max_concurrency: workflow.max_concurrency }
+  return { name: workflow.name, workflow_role: workflow.workflow_role, description: workflow.description, checkpointer_id: workflow.checkpointer_id, workflow_event_output_id: workflow.workflow_event_output_id, recursion_limit: workflow.recursion_limit, execution_timeout_seconds: workflow.execution_timeout_seconds, max_concurrency: workflow.max_concurrency }
 }
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const [listed, outputs] = await Promise.all([managementApi.listWorkflows(props.workflowRole), managementApi.listBlocks('workflow-event-output')])
+    const [listed, configuredCheckpointers, outputs] = await Promise.all([
+      managementApi.listWorkflows(props.workflowRole),
+      managementApi.listBlocks('checkpointer'),
+      managementApi.listBlocks('workflow-event-output'),
+    ])
     records.value = sortWorkflows(listed)
+    checkpointers.value = configuredCheckpointers
     workflowEventOutputs.value = outputs
     const requested = typeof route.query.id === 'string' ? route.query.id : ''
     const selected = records.value.find((item) => item.id === requested) ?? records.value[0]
@@ -155,7 +161,7 @@ async function save(): Promise<void> {
   saving.value = true
   error.value = ''
   try {
-    const payload: WorkflowPayload = { ...form.value, name: form.value.name.trim(), workflow_role: props.workflowRole, description: form.value.description.trim(), workflow_event_output_id: form.value.workflow_event_output_id || null, recursion_limit: Number(form.value.recursion_limit), execution_timeout_seconds: Number(form.value.execution_timeout_seconds), max_concurrency: Number(form.value.max_concurrency) }
+    const payload: WorkflowPayload = { ...form.value, name: form.value.name.trim(), workflow_role: props.workflowRole, description: form.value.description.trim(), checkpointer_id: form.value.checkpointer_id || null, workflow_event_output_id: form.value.workflow_event_output_id || null, recursion_limit: Number(form.value.recursion_limit), execution_timeout_seconds: Number(form.value.execution_timeout_seconds), max_concurrency: Number(form.value.max_concurrency) }
     const saved = selectedId.value ? await managementApi.updateWorkflow(selectedId.value, payload) : await managementApi.createWorkflow(payload)
     records.value = sortWorkflows(
       selectedId.value
@@ -203,8 +209,14 @@ onMounted(() => { void load() })
         <div class="card mt-3">
           <header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header>
           <div class="card-body">
-            <FormField field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
-              <select v-model="form.workflow_event_output_id" class="form-select">
+            <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
+              <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
+                <option :value="null">{{ t('common.none') }}</option>
+                <option v-for="checkpointer in checkpointers" :key="checkpointer.id" :value="checkpointer.id">{{ checkpointer.name }}</option>
+              </select>
+            </FormField>
+            <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
+              <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
                 <option :value="null">{{ t('common.none') }}</option>
                 <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
               </select>

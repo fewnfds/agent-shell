@@ -22,6 +22,7 @@ export type BlockType =
   | 'prompt-caching'
 
 export type WorkflowComponentType =
+  | 'checkpointer'
   | 'workflow-event-output'
   | 'command'
   | 'task-dispatcher'
@@ -400,6 +401,7 @@ export interface WorkflowPayload {
   name: string
   workflow_role: WorkflowRole
   description: string
+  checkpointer_id: string | null
   workflow_event_output_id: string | null
   recursion_limit: number
   execution_timeout_seconds: number
@@ -416,7 +418,6 @@ export interface WorkflowLifecycleSummary {
   lifecycle_status: 'active' | 'deleting'
   request_id: string
   parent_run_id: string
-  parent_thread_id: string
   parent_status: 'running' | 'completed' | 'failed' | 'cancelled'
   workflow_id: string
   workflow_name: string
@@ -445,7 +446,7 @@ export interface WorkflowRunRecord {
   run_id: string
   lifecycle_id: string
   request_id: string
-  thread_id: string
+  checkpoint_thread_id: string | null
   run_kind: 'workflow' | 'agent'
   target_id: string
   target_name: string
@@ -460,7 +461,6 @@ export interface WorkflowRunRecord {
   finish_reason: string
   error_code: string
   usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  checkpoint_available: boolean
   observation_status: 'available' | 'partial'
 }
 

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 
-def detach_agent_block_references(
+def detach_component_references(
     config: dict,
     block_type: str,
     block_ids: set[str],
 ) -> None:
+    if block_type == "checkpointer":
+        for workflow in config.get("workflows", []):
+            if (
+                isinstance(workflow, dict)
+                and workflow.get("checkpointer_id") in block_ids
+            ):
+                workflow["checkpointer_id"] = None
     for key in ("main_agents", "subagents"):
         records = config.get(key, [])
         if not isinstance(records, list):
@@ -103,4 +110,4 @@ def detach_subagent_references(config: dict, target_ids: set[str]) -> None:
             ]
 
 
-__all__ = ["detach_agent_block_references", "detach_subagent_references"]
+__all__ = ["detach_component_references", "detach_subagent_references"]

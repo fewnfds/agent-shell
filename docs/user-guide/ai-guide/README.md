@@ -35,7 +35,7 @@ Agent Shell 是 Workflow-first 的 LangGraph/Deep Agents 配置与运行外壳�
 ```text
 OpenAI-compatible messages[]
   -> 按 parent Workflow name 捕获 configuration snapshot
-  -> 创建 Lifecycle、parent Run 和 thread identity
+  -> 创建 Lifecycle 与 parent Run；仅在 Workflow 已选 Checkpointer 时创建 checkpoint thread
   -> 把原始 messages[] 冻结到 Lifecycle Store
   -> 物化 Graph、Agent、Middleware 和 Python extension
   -> 执行 Workflow StateGraph
@@ -55,7 +55,7 @@ OpenAI-compatible messages[]
 - Filesystem、Filesystem Permissions、Skill；
 - Custom Tool、Custom Middleware、Agent Additional Prompt（AAP）；
 - Main Agent、Subagent、Command、Task Dispatcher；
-- Lifecycle、Run、thread、invocation、checkpoint；
+- Lifecycle、Run、invocation、可选 Checkpoint Thread、checkpoint；
 - Graph、Node、Edge、handle、State、Runtime、Context、Store；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 

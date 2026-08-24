@@ -12,7 +12,7 @@
 | 语言理解、推理、Tool loop | Agent | 引用一个完整 Main Agent |
 | 运行时数量才确定的同类 Agent task | Task Dispatcher | script 动态生成 task、payload 和 Dispatch Edge key |
 | 设计时已知的多个 Agent | 多个 Agent + Edge | 直接串联或 fan-out，无需 Task Dispatcher |
-| independent child Run | background Run command | child 需要 independent Run/thread/State/Checkpoint |
+| independent child Run | background Run command | child 需要 independent Run/State；child Workflow 可按自身配置拥有 Checkpoint |
 
 选择完成后，写出一张最小 design record：
 

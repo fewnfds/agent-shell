@@ -45,7 +45,7 @@ def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
         request_id="request-1",
         lifecycle_id="lifecycle-1",
         run_id="run-1",
-        thread_id="thread-1",
+        checkpoint_thread_id=None,
         workflow={"id": "workflow-1"},
         background_runtime=service,
     )
@@ -188,7 +188,7 @@ def test_background_agent_has_its_own_identity_and_command_caller() -> None:
             request_id="request-1",
             lifecycle_id="lifecycle-1",
             run_id="child-run-1",
-            thread_id="child-thread-1",
+            checkpoint_thread_id=None,
             parent_run_id="parent-run-1",
             background_task_id="task-1",
             launcher_id="router-1",

@@ -34,7 +34,7 @@ current Agent 的 Deep Agents Filesystem backend ──┘
 - Main Agent：用 `runtime.context.lifecycle_id` 定位 `runtime.store` 中 `lifecycle_input_namespace(lifecycle_id)` / `LIFECYCLE_INPUT_KEY` 的冻结 OpenAI `system/user/assistant` 请求快照；
 - Subagent：读取 `state["messages"]` 中由 Deep Agents `task` delegation 产生的私有消息；Shell 按 owner 类型把 `scope` 注入为 `main_agent` 或 `subagent`；
 - parent Workflow：读取 `state["workflow_state_snapshot"]` 中的 `agent_invocations[invocation_id]` 轻量 reference，再通过 `runtime.store` 和 `result_ref` 加载完整 invocation artifact；
-- 当前身份：读取 `runtime.context.lifecycle_id`、`run_id`、`thread_id`、`launcher_id`、`background_task_id`、`workflow_node_id`、`agent_id` 与 `invocation_id`；
+- 当前身份：读取 `runtime.context.lifecycle_id`、`run_id`、可空 `checkpoint_thread_id`、`launcher_id`、`background_task_id`、`workflow_node_id`、`agent_id` 与 `invocation_id`；
 - 当前动态任务：读取 Task Dispatcher worker 的 `state["workflow_task"]`；
 - 共享文件：使用工厂收到的 current Agent Deep Agents `backend`，按虚拟绝对路径读取；
 - current Agent State：使用 hook 的 `state` 参数以及其他 Middleware 声明的 State channel。
@@ -89,7 +89,7 @@ Main Agent 和 Subagent 分别通过自己的 `middleware_refs` 决定 Custom Mi
 ## 运行边界
 
 - AAP 构造 current Agent invocation 的私有初始提示词，客户端请求快照保持不可变；
-- Store 保存 Lifecycle 内跨 Run 公共事实，Runtime Context 保存 current Run/Invocation 的不可变身份，Graph State 保存参与 routing、reducer 与 checkpoint 的运行数据；
+- Store 保存 Lifecycle 内跨 Run 公共事实，Runtime Context 保存 current Run/Invocation 的不可变身份，Graph State 保存参与 routing 与 reducer 的运行数据；Workflow 启用 Checkpointer 时，Graph State 同时进入 checkpoint；
 - upstream Agent 输出通过 `agent_invocations` 中因果可见的 reference 从 Store 读取 artifact，mapping 插入顺序不承载因果语义；
 - 同一 canvas Node 再次执行会产生新的 invocation ID，选择 upstream result 时使用明确的 Node、task 或 invocation identity；
 - Subagent template 默认保留 delegated messages，是否加入 root request 由该 Subagent 的 AAP 配置决定；

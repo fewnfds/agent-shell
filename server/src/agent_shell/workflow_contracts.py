@@ -15,6 +15,7 @@ class WorkflowDefinition(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=120)]
     workflow_role: WorkflowRole
     description: Annotated[str, Field(max_length=2_000)] = ""
+    checkpointer_id: RequiredReference | None = None
     workflow_event_output_id: RequiredReference | None = None
     recursion_limit: Annotated[int, Field(ge=1)] = 1_000_000
     execution_timeout_seconds: Annotated[int, Field(ge=1)] = 1_200

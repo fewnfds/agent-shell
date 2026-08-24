@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS workflow_lifecycles (
     lifecycle_id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL,
     parent_run_id TEXT NOT NULL,
-    parent_thread_id TEXT NOT NULL,
     workflow_id TEXT NOT NULL,
     workflow_name TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -90,7 +89,7 @@ CREATE TABLE IF NOT EXISTS workflow_run_records (
     run_id TEXT PRIMARY KEY,
     lifecycle_id TEXT NOT NULL,
     request_id TEXT NOT NULL,
-    thread_id TEXT NOT NULL UNIQUE,
+    checkpoint_thread_id TEXT UNIQUE,
     run_kind TEXT NOT NULL CHECK (run_kind IN ('workflow', 'agent')),
     target_id TEXT NOT NULL,
     target_name TEXT NOT NULL,
@@ -112,7 +111,6 @@ CREATE TABLE IF NOT EXISTS workflow_run_records (
     input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
     output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
     total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
-    checkpoint_available INTEGER NOT NULL CHECK (checkpoint_available IN (0, 1)),
     observation_status TEXT NOT NULL CHECK (
         observation_status IN ('available', 'partial')
     ),

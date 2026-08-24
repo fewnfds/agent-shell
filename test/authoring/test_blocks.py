@@ -39,6 +39,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "editor_defaults",
     }
     assert set(catalog["editor_defaults"]) == {
+        "checkpointer",
         "filesystem",
         "filesystem_permissions",
         "skill",
@@ -55,10 +56,14 @@ def test_health_catalog_and_readiness_are_small_and_current(
     assert [item["type"] for item in catalog["block_types"]] == list(PUBLIC_TYPES)
     assert [item["order"] for item in catalog["block_types"]] == list(range(1, 14))
     assert [item["type"] for item in catalog["workflow_component_types"]] == [
+        "checkpointer",
         "workflow-event-output",
         "command",
         "task-dispatcher",
     ]
+    assert catalog["editor_defaults"]["checkpointer"] == {
+        "durability": "async",
+    }
     by_type = {item["type"]: item for item in catalog["block_types"]}
     assert set(by_type["model-requirement"]) == {
         "type",
@@ -249,6 +254,8 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
         created = created_response.json()
         assert created["id"]
         assert created["name"] == payload["name"]
+        if block_type == "checkpointer":
+            assert created["durability"] == "async"
         if block_type == "filesystem":
             assert created["system_prompt_override"] == payload["system_prompt_override"]
             assert created["tool_token_limit_before_evict"] == 4096
@@ -308,6 +315,20 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
             "ok": True
         }
         assert client.get(f"/api/blocks/{block_type}/{created['id']}").status_code == 404
+
+
+def test_checkpointer_rejects_unknown_durability(tmp_path: Path, monkeypatch) -> None:
+    client = make_client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/api/blocks/checkpointer",
+        json={"name": "Invalid durability", "durability": "eventually"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["validation"]["issues"][0]["path"] == (
+        "durability"
+    )
 
 
 @pytest.mark.parametrize(

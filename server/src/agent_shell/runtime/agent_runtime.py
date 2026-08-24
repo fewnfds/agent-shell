@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from agent_shell.contracts import FilesystemBlock
+from agent_shell.contracts import (
+    CheckpointerBlock,
+    CheckpointDurability,
+    FilesystemBlock,
+)
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.context import WorkflowRuntimeContext
@@ -62,6 +66,44 @@ from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import ToolCallTransformer
 
 EXECUTION_TIMEOUT_SECONDS = 1_200
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowCheckpointBinding:
+    checkpointer: Any
+    checkpoint_thread_id: str
+    durability: CheckpointDurability
+
+
+def _workflow_run_config(
+    *,
+    run_id: str,
+    request_id: str,
+    workflow_id: str,
+    workflow_name: str,
+    messages_sha: str,
+    recursion_limit: int,
+    max_concurrency: int,
+    checkpoint_thread_id: str | None,
+) -> dict[str, Any]:
+    metadata = {
+        "request_id": request_id,
+        "workflow_id": workflow_id,
+        "workflow_name": workflow_name,
+        "messages_sha": messages_sha,
+    }
+    config: dict[str, Any] = {
+        "recursion_limit": recursion_limit,
+        "max_concurrency": max_concurrency,
+        "run_id": UUID(run_id),
+        "run_name": f"workflow:{workflow_name}",
+        "tags": ["agent-shell", "workflow"],
+        "metadata": metadata,
+    }
+    if checkpoint_thread_id is not None:
+        config["configurable"] = {"thread_id": checkpoint_thread_id}
+        metadata["thread_id"] = checkpoint_thread_id
+    return config
 
 
 @dataclass(slots=True)
@@ -137,7 +179,7 @@ class RunExecution:
             request_id=context.request_id or self.request_id,
             lifecycle_id=context.lifecycle_id,
             run_id=context.run_id,
-            thread_id=context.thread_id,
+            thread_id=context.checkpoint_thread_id,
             parent_workflow_id=(
                 workflow_id if self.owns_lifecycle or not is_workflow else ""
             ),
@@ -843,7 +885,6 @@ class AgentRuntime:
         request_id: str,
         lifecycle_id: str,
         run_id: str,
-        thread_id: str,
         parent_run_id: str,
         background_task_id: str,
         run_depth: int,
@@ -871,7 +912,7 @@ class AgentRuntime:
             request_id=request_id,
             lifecycle_id=lifecycle_id,
             run_id=run_id,
-            thread_id=thread_id,
+            checkpoint_thread_id=None,
             parent_run_id=parent_run_id,
             background_task_id=background_task_id,
             launcher_id=launcher_id,
@@ -923,7 +964,7 @@ class AgentRuntime:
         public_model: str = "",
         lifecycle_id: str | None = None,
         run_id: str | None = None,
-        thread_id: str | None = None,
+        checkpoint_thread_id: str | None = None,
         parent_run_id: str = "",
         background_task_id: str = "",
         launcher_id: str = "",
@@ -1062,44 +1103,58 @@ class AgentRuntime:
             **dict(workflow_snapshot or {}),
             "graph": document.model_dump(mode="json"),
         }
-        workflow_checkpoints = getattr(self, "_workflow_checkpoints", None)
+        workflow_checkpoints = self._workflow_checkpoints
         runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
         workflow_identity = dict(workflow_snapshot or {})
-        checkpoint_context = (
-            workflow_checkpoints.create_context(
-                request_id=request_id,
-                workflow_id=str(workflow_identity.get("id", "")),
-                workflow_name=str(
-                    workflow_identity.get("name", public_model or "workflow")
-                ),
-                messages_sha=messages_sha,
-                run_id=UUID(run_id) if run_id else None,
-                thread_id=thread_id,
+        resolved_run_id = run_id or str(uuid4())
+        workflow_id = str(workflow_identity.get("id", ""))
+        workflow_name = str(
+            workflow_identity.get("name", public_model or "workflow")
+        )
+        checkpointer_id = workflow_identity.get("checkpointer_id")
+        checkpointer_component: CheckpointerBlock | None = None
+        if checkpointer_id is not None:
+            stored_checkpointer = (
+                self._blocks.get_block_internal("checkpointer", str(checkpointer_id))
+                if self._blocks is not None
+                else None
             )
-            if workflow_checkpoints is not None
-            else None
-        )
-        resolved_run_id = (
-            str(checkpoint_context.run_id)
-            if checkpoint_context is not None
-            else run_id or str(uuid4())
-        )
-        resolved_thread_id = (
-            checkpoint_context.thread_id
-            if checkpoint_context is not None
-            else thread_id or str(uuid4())
-        )
+            if stored_checkpointer is None:
+                raise AgentRuntimeError(
+                    "workflow_checkpointer_not_found",
+                    "The selected Checkpointer component does not exist.",
+                    status_code=422,
+                )
+            try:
+                checkpointer_component = CheckpointerBlock.model_validate(
+                    {
+                        key: value
+                        for key, value in stored_checkpointer.items()
+                        if key != "id"
+                    }
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow_checkpointer_invalid",
+                    "The selected Checkpointer configuration is invalid.",
+                    status_code=422,
+                ) from exc
+            checkpoint_thread_id = checkpoint_thread_id or str(uuid4())
+        elif checkpoint_thread_id is not None:
+            raise AgentRuntimeError(
+                "workflow_checkpoint_thread_unexpected",
+                "A checkpoint thread cannot be supplied when the Workflow has no Checkpointer.",
+                status_code=422,
+            )
         owns_lifecycle = lifecycle_id is None
         if owns_lifecycle:
             resolved_lifecycle_id = await self._workflow_lifecycle.create(
                 messages,
                 request_id=request_id,
                 run_id=resolved_run_id,
-                thread_id=resolved_thread_id,
-                workflow_id=str(workflow_identity.get("id", "")),
-                workflow_name=str(
-                    workflow_identity.get("name", public_model or "workflow")
-                ),
+                checkpoint_thread_id=checkpoint_thread_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
             )
         else:
             if await self._workflow_lifecycle.input_record(lifecycle_id) is None:
@@ -1113,37 +1168,30 @@ class AgentRuntime:
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
             run_id=resolved_run_id,
-            thread_id=resolved_thread_id,
+            thread_id=checkpoint_thread_id,
             parent_workflow_id=(
-                str(workflow_identity.get("id", "")) if owns_lifecycle else ""
+                workflow_id if owns_lifecycle else ""
             ),
             parent_workflow_name=(
-                str(workflow_identity.get("name", public_model or "workflow"))
-                if owns_lifecycle
-                else ""
+                workflow_name if owns_lifecycle else ""
             ),
             subject_kind="workflow",
-            subject_id=str(workflow_identity.get("id", "")),
-            subject_name=str(
-                workflow_identity.get("name", public_model or "workflow")
-            ),
+            subject_id=workflow_id,
+            subject_name=workflow_name,
         )
         self._register_run_observation(
             {
                 "run_id": resolved_run_id,
                 "lifecycle_id": resolved_lifecycle_id,
                 "request_id": request_id,
-                "thread_id": resolved_thread_id,
+                "checkpoint_thread_id": checkpoint_thread_id,
                 "run_kind": "workflow",
-                "target_id": str(workflow_identity.get("id", "")),
-                "target_name": str(
-                    workflow_identity.get("name", public_model or "workflow")
-                ),
+                "target_id": workflow_id,
+                "target_name": workflow_name,
                 "parent_run_id": parent_run_id,
                 "launcher_id": launcher_id,
                 "background_task_id": background_task_id,
                 "run_depth": run_depth,
-                "checkpoint_available": True,
             },
             context=assembly_diagnostic_context,
         )
@@ -1158,6 +1206,7 @@ class AgentRuntime:
         commands: dict[str, Any] = {}
         task_dispatchers: dict[str, Any] = {}
         workspace = None
+        checkpoint_binding: WorkflowCheckpointBinding | None = None
 
         async def close_workflow_package_runtimes() -> None:
             if command_runtime is not None:
@@ -1170,6 +1219,27 @@ class AgentRuntime:
                 await workflow_event_output_runtime.close()
 
         try:
+            if checkpointer_component is not None:
+                if workflow_checkpoints is None:
+                    raise AgentRuntimeError(
+                        "workflow_checkpointer_unavailable",
+                        "The Workflow Checkpointer service is unavailable.",
+                        status_code=500,
+                    )
+                try:
+                    checkpointer = await workflow_checkpoints.require_checkpointer()
+                except Exception as exc:
+                    raise AgentRuntimeError(
+                        "workflow_checkpointer_unavailable",
+                        "The Workflow Checkpointer could not be initialized.",
+                        status_code=500,
+                    ) from exc
+                assert checkpoint_thread_id is not None
+                checkpoint_binding = WorkflowCheckpointBinding(
+                    checkpointer=checkpointer,
+                    checkpoint_thread_id=checkpoint_thread_id,
+                    durability=checkpointer_component.durability,
+                )
             resolved_agents: list[tuple[Any, StaticAssembly]] = []
             for agent_node in agent_nodes:
                 main_agent_id = str(
@@ -1185,7 +1255,7 @@ class AgentRuntime:
                 request_id=request_id,
                 lifecycle_id=resolved_lifecycle_id,
                 run_id=resolved_run_id,
-                thread_id=resolved_thread_id,
+                checkpoint_thread_id=checkpoint_thread_id,
                 parent_run_id=parent_run_id,
                 background_task_id=background_task_id,
                 launcher_id=launcher_id,
@@ -1334,8 +1404,8 @@ class AgentRuntime:
                 task_dispatchers=task_dispatchers,
                 workflow_role=(workflow_snapshot or {}).get("workflow_role"),
                 checkpointer=(
-                    workflow_checkpoints.checkpointer
-                    if workflow_checkpoints is not None
+                    checkpoint_binding.checkpointer
+                    if checkpoint_binding is not None
                     else None
                 ),
                 store=self._workflow_lifecycle.store,
@@ -1420,27 +1490,35 @@ class AgentRuntime:
                 if runtime is not None
             ),
             context=context,
-            run_config={
-                **(checkpoint_context.config() if checkpoint_context is not None else {}),
-                "recursion_limit": int(
+            run_config=_workflow_run_config(
+                run_id=resolved_run_id,
+                request_id=request_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+                messages_sha=messages_sha,
+                recursion_limit=int(
                     (workflow_snapshot or {}).get(
-                        "recursion_limit",
-                        GRAPH_RECURSION_LIMIT,
+                        "recursion_limit", GRAPH_RECURSION_LIMIT
                     )
                 ),
-                "max_concurrency": int(
+                max_concurrency=int(
                     (workflow_snapshot or {}).get(
                         "max_concurrency", WORKFLOW_MAX_CONCURRENCY
                     )
                 ),
-            },
+                checkpoint_thread_id=checkpoint_thread_id,
+            ),
             execution_timeout_seconds=int(
                 (workflow_snapshot or {}).get(
                     "execution_timeout_seconds",
                     EXECUTION_TIMEOUT_SECONDS,
                 )
             ),
-            durability="sync" if checkpoint_context is not None else None,
+            durability=(
+                checkpoint_binding.durability
+                if checkpoint_binding is not None
+                else None
+            ),
             owns_lifecycle=owns_lifecycle,
             public_output=public_output,
             run_kind="workflow",

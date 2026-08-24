@@ -30,6 +30,24 @@ class _Diagnostics:
         self.errors.append({"error": exc, **kwargs})
 
 
+def test_run_history_schema_uses_nullable_checkpoint_identity(tmp_path) -> None:
+    database = SQLiteDatabase(tmp_path / "schema.sqlite3")
+    with database.transaction() as connection:
+        lifecycle_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(workflow_lifecycles)")
+        }
+        run_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(workflow_run_records)")
+        }
+
+    assert "parent_thread_id" not in lifecycle_columns
+    assert "checkpoint_thread_id" in run_columns
+    assert "thread_id" not in run_columns
+    assert "checkpoint_available" not in run_columns
+
+
 def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omit_payloads(
     tmp_path,
     monkeypatch,
@@ -43,7 +61,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
                 [{"role": "user", "content": "private-journal-sentinel"}],
                 request_id="request-1",
                 run_id="root-run",
-                thread_id="root-thread",
+                checkpoint_thread_id="root-thread",
                 workflow_id="workflow-1",
                 workflow_name="Parent Workflow",
             )
@@ -52,7 +70,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
                 request_id="request-1",
                 lifecycle_id=lifecycle_id,
                 run_id="root-run",
-                thread_id="root-thread",
+                checkpoint_thread_id="root-thread",
                 workflow={"id": "workflow-1", "name": "Parent Workflow"},
             )
             diagnostics = _Diagnostics()
@@ -251,7 +269,7 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
                 [{"role": "user", "content": "input"}],
                 request_id="ownership-request",
                 run_id="ownership-run",
-                thread_id="ownership-thread",
+                checkpoint_thread_id="ownership-thread",
                 workflow_id="ownership-workflow",
                 workflow_name="Ownership Workflow",
             )
@@ -260,7 +278,7 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
                 request_id="ownership-request",
                 lifecycle_id=lifecycle_id,
                 run_id="ownership-run",
-                thread_id="ownership-thread",
+                checkpoint_thread_id="ownership-thread",
                 workflow={"id": "ownership-workflow"},
             )
             journal = WorkflowRunJournal(
@@ -381,7 +399,7 @@ def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
                 [{"role": "user", "content": "cancel"}],
                 request_id="cancel-request",
                 run_id="cancel-run",
-                thread_id="cancel-thread",
+                checkpoint_thread_id="cancel-thread",
                 workflow_id="cancel-workflow",
                 workflow_name="Cancelled Workflow",
             )
@@ -390,7 +408,7 @@ def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
                 request_id="cancel-request",
                 lifecycle_id=lifecycle_id,
                 run_id="cancel-run",
-                thread_id="cancel-thread",
+                checkpoint_thread_id="cancel-thread",
                 workflow={
                     "id": "cancel-workflow",
                     "name": "Cancelled Workflow",

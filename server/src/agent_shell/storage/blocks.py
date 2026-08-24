@@ -5,7 +5,7 @@ from copy import deepcopy
 from agent_shell.configuration.identity import name_collision_key
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
 from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.reference_mutations import detach_agent_block_references
+from agent_shell.storage.reference_mutations import detach_component_references
 
 
 class BlockStore:
@@ -183,7 +183,7 @@ class BlockStore:
                     retained.append(record)
             config.setdefault("components", {})[block_type] = retained
             if detach_references:
-                detach_agent_block_references(config, block_type, set(unique_ids))
+                detach_component_references(config, block_type, set(unique_ids))
 
         self._repository.update_config(
             mutate, expected_repository_id=expected_repository_id

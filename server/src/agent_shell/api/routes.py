@@ -49,10 +49,18 @@ from agent_shell.skills.authoring import (
 
 WORKFLOW_COMPONENT_CATALOG = (
     {
+        "type": "checkpointer",
+        "terminology_key": "checkpointer",
+        "label": "Checkpointer",
+        "order": 1,
+        "icon_key": "floppy",
+        "editor_key": "checkpointer",
+    },
+    {
         "type": "workflow-event-output",
         "terminology_key": "workflow-event-output",
         "label": "Workflow Event Output",
-        "order": 1,
+        "order": 2,
         "icon_key": "braces",
         "editor_key": "workflow_event_output",
     },
@@ -60,7 +68,7 @@ WORKFLOW_COMPONENT_CATALOG = (
         "type": "command",
         "terminology_key": "command",
         "label": "Command Node",
-        "order": 2,
+        "order": 3,
         "icon_key": "circle-half",
         "editor_key": "command",
     },
@@ -68,7 +76,7 @@ WORKFLOW_COMPONENT_CATALOG = (
         "type": "task-dispatcher",
         "terminology_key": "task-dispatcher",
         "label": "Task Dispatcher",
-        "order": 3,
+        "order": 4,
         "icon_key": "boxes",
         "editor_key": "task_dispatcher",
     },

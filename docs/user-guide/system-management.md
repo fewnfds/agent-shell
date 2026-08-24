@@ -20,7 +20,7 @@ data/
       journals/<transaction-uuid>.json
       staging/<transaction-uuid>/
   state/agent-shell.sqlite3*
-  state/workflow-checkpoints.sqlite3*
+  state/workflow-checkpoints.sqlite3*   首次运行启用 Checkpointer 的 Workflow 时建立
   state/workflow-store.sqlite3*
   files/
   media/outputs/                 最终响应媒体私有资产（不在文件管理中开放）
@@ -36,7 +36,7 @@ data/
   logs/diagnostics/*.log
 ```
 
-它包含管理密码、API Key、Provider credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和历史，应作为敏感数据整体备份。可装配配置文件位于 `data/configuration-repositories/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型连接和模型映射。`agent-shell.sqlite3` 保存 Lifecycle Run Registry/Event Journal、结构化 runtime 失败诊断和媒体元数据，`workflow-checkpoints.sqlite3` 保存官方 LangGraph Debug checkpoint，`workflow-store.sqlite3` 保存 Lifecycle 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括三个 SQLite 文件及其 WAL/SHM。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和历史，应作为敏感数据整体备份。可装配配置文件位于 `data/configuration-repositories/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型连接和模型映射。`agent-shell.sqlite3` 保存 Lifecycle Run Registry/Event Journal、结构化 runtime 失败诊断和媒体元数据，`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph Debug checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/configuration-repositories/<repository-uuid>/python_package_instances/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 

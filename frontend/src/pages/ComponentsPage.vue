@@ -69,6 +69,7 @@ import {
   WorkflowEventOutputEditor,
   CommandEditor,
   TaskDispatcherEditor,
+  CheckpointerEditor,
 } from '@/editors'
 
 type EditorType = ManagedComponentType | 'model-connection'
@@ -93,6 +94,7 @@ const props = withDefaults(defineProps<{
 })
 
 const editorComponents: Record<EditorType, Component> = {
+  checkpointer: CheckpointerEditor,
   'model-requirement': ModelRequirementEditor,
   'system-prompt': SystemPromptEditor,
   filesystem: FilesystemEditor,

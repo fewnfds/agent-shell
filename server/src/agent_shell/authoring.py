@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from agent_shell.capability_manifest import CAPABILITY_BY_TYPE
 from agent_shell.contracts import (
+    CheckpointerBlock,
     DEFAULT_EXCEPTION_RETRY_CONDITIONS,
     EXCEPTION_RETRY_CONDITIONS,
     EXCEPTION_RETRY_STRATEGIES,
@@ -322,6 +323,10 @@ def _filesystem_tools() -> list[dict[str, object]]:
 
 
 _EDITOR_DEFAULTS = {
+    "checkpointer": CheckpointerBlock(name="Checkpointer").model_dump(
+        mode="json",
+        exclude={"name"},
+    ),
     "filesystem": {
         "system_prompt": FILESYSTEM_EDITOR_SYSTEM_PROMPT,
         "tool_token_limit_before_evict": FilesystemBlock.model_fields[

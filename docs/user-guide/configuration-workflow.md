@@ -8,9 +8,9 @@
 只有 enabled parent Workflow 出现在 `/v1/models`；child Workflow 不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
 编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
-每个 canvas Agent Node 使用私有 `messages` 运行自己的 Agent graph。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入 Lifecycle/Run Store；parent State 的 `agent_invocations` 保存 `invocation_id`、Workflow/Node/Agent identity、`invoked_at` 和 `result_ref`。Task Dispatcher worker 的 State reference 携带 task identity。Agent Additional Prompt 可以从 parent State 选择 current Checkpoint 可见的 reference，再通过 `runtime.store` 读取、校验和转换完整 artifact。
+每个 canvas Agent Node 使用私有 `messages` 运行自己的 Agent graph。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入 Lifecycle/Run Store；parent State 的 `agent_invocations` 保存 `invocation_id`、Workflow/Node/Agent identity、`invoked_at` 和 `result_ref`。Task Dispatcher worker 的 State reference 携带 task identity。Agent Additional Prompt 可以从 parent State 选择当前因果可见的 reference，再通过 `runtime.store` 读取、校验和转换完整 artifact；Workflow 启用 Checkpointer 时，历史 Checkpoint State 也保留当时可见的 reference。
 
-并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，worker invocation 按 Dispatcher Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此旧 checkpoint 的旧引用仍可读取。
+并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，worker invocation 按 Dispatcher Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此启用 Checkpointer 时，旧 Checkpoint State 的旧引用仍可读取。
 
 background Run 由应用级 Manager 管理。每个 Run 的官方 Runtime Context 提供 `background_runs` 命令对象，Command Node、Task Dispatcher、
 Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_agent()`、`start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。
@@ -18,8 +18,8 @@ Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内�
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 `operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow，background Agent 使用自身 effective Filesystem，background output 由调用方显式读取和编排。
 
-【系统 / 运行历史】页面按一次 top-level request 列出 Lifecycle，并展示 root/background Run parent/child relationship、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及 single Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的 input、Agent invocation artifact、background task、Run/Event、Checkpoint State、Lifecycle Store 记录和诊断附件。
-Lifecycle 的 messages、task records、resolved mapping records 和 parent/child checkpoint 默认持续保留，直到用户显式删除；删除时同时清理受管的生命周期动态目录。parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，删除返回冲突；
+【系统 / 运行历史】页面按一次 top-level request 列出 Lifecycle，并展示 root/background Run parent/child relationship、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及 single Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的 input、Agent invocation artifact、background task、Run/Event、Lifecycle Store 记录和诊断附件，并只为 `checkpoint_thread_id` 非空的 Run 汇总 Checkpoint State。
+Lifecycle 的 messages、task records、resolved mapping records，以及已启用 Run 的 checkpoint 默认持续保留，直到用户显式删除；删除时清理全部非空 Checkpoint Thread 和受管的生命周期动态目录。parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，删除返回冲突；
 parent Run 终止且 background task 经 Workflow 代码、Tool/Middleware 或管理操作进入终态后，Lifecycle 可以删除。parent Workflow Graph 到达 End 后，background task 与 Lifecycle 按各自 lifecycle 继续保留。
 删除开始后 Lifecycle 进入 `deleting` 并冻结 background Run 创建；清理失败时保留该状态，可由用户再次执行删除继续清场。
 

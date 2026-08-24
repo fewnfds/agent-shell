@@ -28,6 +28,7 @@ const workflow: Workflow = {
   name: 'Research Workflow',
   workflow_role: 'parent',
   description: 'Runs the research agent.',
+  checkpointer_id: null,
   workflow_event_output_id: null,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
@@ -35,9 +36,13 @@ const workflow: Workflow = {
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
+const checkpointer: SavedBlock = {
+  id: 'checkpointer-1', name: 'Async checkpoints', durability: 'async',
+}
 
 function mockComponentLists(): void {
   vi.spyOn(managementApi, 'listBlocks').mockImplementation(async (type) => {
+    if (type === 'checkpointer') return [checkpointer]
     if (type === 'workflow-event-output') return [eventOutput]
     return []
   })
@@ -94,8 +99,8 @@ describe('WorkflowsPage', () => {
 
     await wrapper.get('[data-field="record-name"]').setValue('New Workflow')
     await wrapper.get('textarea').setValue('New description')
-    const componentSelects = wrapper.findAll('select').filter((select) => !select.attributes('data-testid'))
-    await componentSelects[0]!.setValue(eventOutput.id)
+    await wrapper.get('#workflow-checkpointer').setValue(checkpointer.id)
+    await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
     const runtimeLimits = wrapper.findAll('input[type="number"]')
     await runtimeLimits[0]!.setValue(250)
     await runtimeLimits[1]!.setValue(90_000)
@@ -107,6 +112,7 @@ describe('WorkflowsPage', () => {
       name: 'New Workflow',
       workflow_role: 'parent',
       description: 'New description',
+      checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
       recursion_limit: 250,
       execution_timeout_seconds: 90_000,
@@ -195,6 +201,7 @@ describe('WorkflowsPage', () => {
       name: 'Child Workflow',
       workflow_role: 'child',
       description: '',
+      checkpointer_id: null,
       workflow_event_output_id: null,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
@@ -203,9 +210,10 @@ describe('WorkflowsPage', () => {
     wrapper.unmount()
   })
 
-  it('round-trips the reusable event output component reference', async () => {
+  it('round-trips event output and can remove the Checkpointer reference', async () => {
     const configured = {
       ...workflow,
+      checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
     }
     vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([configured])
@@ -221,8 +229,9 @@ describe('WorkflowsPage', () => {
     })
     await flushPromises()
 
-    const componentSelects = wrapper.findAll('select').filter((select) => !select.attributes('data-testid'))
-    expect((componentSelects[0]!.element as HTMLSelectElement).value).toBe(eventOutput.id)
+    expect((wrapper.get('#workflow-checkpointer').element as HTMLSelectElement).value).toBe(checkpointer.id)
+    expect((wrapper.get('#workflow-event-output').element as HTMLSelectElement).value).toBe(eventOutput.id)
+    await wrapper.get('#workflow-checkpointer').setValue('')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
 
@@ -230,6 +239,7 @@ describe('WorkflowsPage', () => {
       name: workflow.name,
       workflow_role: 'parent',
       description: workflow.description,
+      checkpointer_id: null,
       workflow_event_output_id: eventOutput.id,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,

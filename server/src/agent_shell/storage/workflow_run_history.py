@@ -22,7 +22,7 @@ class WorkflowRunHistoryStore:
             "run_id": row["run_id"],
             "lifecycle_id": row["lifecycle_id"],
             "request_id": row["request_id"],
-            "thread_id": row["thread_id"],
+            "checkpoint_thread_id": row["checkpoint_thread_id"],
             "run_kind": row["run_kind"],
             "target_id": row["target_id"],
             "target_name": row["target_name"],
@@ -41,7 +41,6 @@ class WorkflowRunHistoryStore:
                 "output_tokens": int(row["output_tokens"]),
                 "total_tokens": int(row["total_tokens"]),
             },
-            "checkpoint_available": bool(row["checkpoint_available"]),
             "observation_status": row["observation_status"],
         }
 
@@ -136,16 +135,16 @@ class WorkflowRunHistoryStore:
         with self._database.transaction() as connection:
             connection.execute(
                 "INSERT INTO workflow_run_records ("
-                "run_id, lifecycle_id, request_id, thread_id, run_kind, "
+                "run_id, lifecycle_id, request_id, checkpoint_thread_id, run_kind, "
                 "target_id, target_name, parent_run_id, launcher_id, "
                 "background_task_id, run_depth, status, created_at, "
-                "checkpoint_available, observation_status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'available')",
+                "observation_status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 'available')",
                 (
                     record["run_id"],
                     record["lifecycle_id"],
                     record["request_id"],
-                    record["thread_id"],
+                    record.get("checkpoint_thread_id") or None,
                     record["run_kind"],
                     record["target_id"],
                     record["target_name"],
@@ -154,7 +153,6 @@ class WorkflowRunHistoryStore:
                     record.get("background_task_id") or None,
                     record["run_depth"],
                     record["created_at"],
-                    int(bool(record["checkpoint_available"])),
                 ),
             )
             self._append_in(connection, event)

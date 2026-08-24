@@ -507,6 +507,7 @@
         "callers": [
           "src/components/RecordPicker.vue",
           "src/editors/ExceptionRetryEditor.vue",
+          "src/editors/CheckpointerEditor.vue",
           "src/editors/FilesystemEditor.vue",
           "src/editors/FilesystemPermissionsEditor.vue",
           "src/editors/ModelEditor.vue",

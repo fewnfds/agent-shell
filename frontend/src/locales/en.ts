@@ -31,6 +31,7 @@ export const en: MessageSchema = {
       parentWorkflows: 'Parent workflows',
       childWorkflows: 'Child workflows',
       workflowLifecycles: 'Run history',
+      checkpointer: 'Checkpointer',
       workflowEventOutput: 'Workflow event output',
       command: 'Command Node',
       taskDispatcher: 'Task Dispatcher',
@@ -192,6 +193,7 @@ export const en: MessageSchema = {
       name: 'Name',
       description: 'Description',
       filesystem: 'Shared filesystem',
+      checkpointer: 'Checkpointer',
       eventOutput: 'Workflow event output',
       recursionLimit: 'Super-step limit',
       executionTimeoutSeconds: 'Total Run timeout',
@@ -272,12 +274,12 @@ export const en: MessageSchema = {
       parent: 'Parent Run',
       depth: 'Depth',
       tokens: 'Tokens',
-      threadId: 'Thread ID',
+      checkpointThreadId: 'Checkpoint Thread ID',
+      checkpointerDisabled: 'Checkpointer not enabled',
       launcher: 'Launcher',
       task: 'Background Task',
       started: 'Started',
       finished: 'Finished',
-      notAvailable: 'Not available',
       detailLoadFailed: 'Could not load Run details',
     },
     event: {
@@ -585,6 +587,10 @@ export const en: MessageSchema = {
       label: 'Workflow event output',
       description: 'Filter and format Workflow events with a configuration-owned Python extension',
     },
+    checkpointer: {
+      label: 'Checkpointer',
+      description: 'Persist LangGraph execution checkpoints for selected Workflows',
+    },
     'command': {
       label: 'Command Node',
       description: 'Run user-authored Python, update State, and dynamically activate successors with LangGraph Command',
@@ -703,6 +709,9 @@ export const en: MessageSchema = {
     field: 'Field',
     value: 'Value',
     workflow_event_output_id: 'Workflow event output component UUID',
+    checkpointer_id: 'Checkpointer component UUID',
+    checkpoint_thread_id: 'Checkpoint Thread ID',
+    durability: 'Durability',
     marker: 'Text marker',
     tool_description: 'Tool description',
     capability_refs: 'Capability references',
@@ -737,6 +746,22 @@ export const en: MessageSchema = {
       restoreDefault: 'Restore default text',
       true: 'true',
       useDefault: 'Use default',
+    },
+    checkpointer: {
+      durability: {
+        exit: {
+          label: 'Exit',
+          hint: 'Write checkpoints when the graph completes, errors, or interrupts. This has the lowest write overhead, but a process crash can lose in-progress state.',
+        },
+        async: {
+          label: 'Async (recommended)',
+          hint: 'Write each checkpoint asynchronously while the next step runs. This is the recommended balance of latency and persistence.',
+        },
+        sync: {
+          label: 'Sync',
+          hint: 'Finish writing each checkpoint before the next step starts. This provides the strongest durability and adds the most write latency.',
+        },
+      },
     },
     model: {
       providerTitle: 'Provider',
@@ -1240,6 +1265,8 @@ export const en: MessageSchema = {
   },
   errors: {
     workflowInvalid: 'The Workflow configuration is invalid.',
+    workflowCheckpointerNotFound: 'The selected Checkpointer component does not exist.',
+    workflowCheckpointerUnavailable: 'Workflow checkpoint data is currently unavailable.',
     workflowEventOutputNotFound: 'The selected Workflow event output component does not exist.',
     workflowNameConflict: 'A Workflow with this name already exists.',
     workflowNotFound: 'The Workflow does not exist.',

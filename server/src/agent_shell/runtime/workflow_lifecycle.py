@@ -124,7 +124,7 @@ class WorkflowLifecycleService:
         *,
         request_id: str,
         run_id: str,
-        thread_id: str,
+        checkpoint_thread_id: str | None,
         workflow_id: str,
         workflow_name: str,
     ) -> str:
@@ -133,7 +133,6 @@ class WorkflowLifecycleService:
         metadata = {
             "request_id": request_id,
             "parent_run_id": run_id,
-            "parent_thread_id": thread_id,
             "workflow_id": workflow_id,
             "workflow_name": workflow_name,
             "created_at": created_at,
@@ -170,12 +169,11 @@ class WorkflowLifecycleService:
                     "run_id": run_id,
                     "lifecycle_id": lifecycle_id,
                     "request_id": request_id,
-                    "thread_id": thread_id,
+                    "checkpoint_thread_id": checkpoint_thread_id,
                     "run_kind": "workflow",
                     "target_id": workflow_id,
                     "target_name": workflow_name,
                     "run_depth": 0,
-                    "checkpoint_available": True,
                     "created_at": created_at,
                 },
                 {

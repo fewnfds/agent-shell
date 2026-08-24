@@ -17,6 +17,11 @@ import type { ConfigLibraryApi } from '@/pages/configLibrary'
 import ConfigLibraryPage from './ConfigLibraryPage.vue'
 
 const messages = {
+  navigation: {
+    sections: {
+      configurationRepositories: 'Component configurations',
+    },
+  },
   library: {
     eyebrow: 'Library',
     title: 'Configuration library',
@@ -320,7 +325,7 @@ describe('ConfigLibraryPage', () => {
     const api = createApi()
     const workflow = {
       id: 'workflow-uuid', name: 'Parent flow', workflow_role: 'parent' as const,
-      description: '', workflow_event_output_id: null, recursion_limit: 100,
+      description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 100,
       execution_timeout_seconds: 120, max_concurrency: 4, enabled: false,
     }
     vi.mocked(api.service.listWorkflows).mockResolvedValue([workflow])

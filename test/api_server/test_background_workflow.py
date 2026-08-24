@@ -9,9 +9,15 @@ from agent_shell.runtime.errors import AgentRuntimeError
 from .support import *
 
 
-def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoint(
+@pytest.mark.parametrize(
+    ("parent_checkpointer_enabled", "child_checkpointer_enabled"),
+    ((True, True), (True, False), (False, True), (False, False)),
+)
+def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    parent_checkpointer_enabled: bool,
+    child_checkpointer_enabled: bool,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
@@ -33,6 +39,11 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
             json=event_output,
         )
         assert output_response.status_code == 200, output_response.text
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Background checkpoints", "durability": "async"},
+        )
+        assert checkpointer.status_code == 200, checkpointer.text
         child_response = client.put(
             f"/api/workflows/{child['id']}",
             json={
@@ -48,12 +59,38 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
                     )
                 },
                 "workflow_event_output_id": output_response.json()["id"],
+                "checkpointer_id": (
+                    checkpointer.json()["id"]
+                    if child_checkpointer_enabled
+                    else None
+                ),
             },
         )
         assert child_response.status_code == 200, child_response.text
         child = child_response.json()
         save_linear_workflow_graph(client, child, main_agent)
         parent = create_workflow(client, name="Not A Child Target")
+        if parent_checkpointer_enabled:
+            parent_response = client.put(
+                f"/api/workflows/{parent['id']}",
+                json={
+                    **{
+                        key: parent[key]
+                        for key in (
+                            "name",
+                            "workflow_role",
+                            "description",
+                            "workflow_event_output_id",
+                            "recursion_limit",
+                            "execution_timeout_seconds",
+                            "max_concurrency",
+                        )
+                    },
+                    "checkpointer_id": checkpointer.json()["id"],
+                },
+            )
+            assert parent_response.status_code == 200, parent_response.text
+            parent = parent_response.json()
         snapshot = client.app.state.agent_runtime.capture()
         disabled = client.put(
             f"/api/workflows/{child['id']}/draft",
@@ -68,7 +105,9 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
                 [{"role": "user", "content": "lifecycle input"}],
                 request_id="request-background",
                 run_id="parent-run",
-                thread_id="parent-thread",
+                checkpoint_thread_id=(
+                    "parent-thread" if parent_checkpointer_enabled else None
+                ),
                 workflow_id="parent-workflow",
                 workflow_name="Parent Workflow",
             )
@@ -76,7 +115,9 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
                 request_id="request-background",
                 lifecycle_id=lifecycle_id,
                 run_id="parent-run",
-                thread_id="parent-thread",
+                checkpoint_thread_id=(
+                    "parent-thread" if parent_checkpointer_enabled else None
+                ),
                 run_depth=0,
                 workflow={"id": "parent-workflow"},
                 background_runtime=snapshot,
@@ -108,8 +149,12 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
             run = client.app.state.workflow_lifecycle.history.get_run(
                 handle.child_run_id
             )
-            checkpoint_count = await client.app.state.workflow_checkpoints.checkpoint_count(
-                handle.child_thread_id
+            checkpoint_count = (
+                await client.app.state.workflow_checkpoints.checkpoint_count(
+                    handle.checkpoint_thread_id
+                )
+                if handle.checkpoint_thread_id is not None
+                else 0
             )
             return handle, terminal, run, checkpoint_count
 
@@ -122,12 +167,12 @@ def test_frozen_snapshot_runs_child_workflow_silently_with_independent_checkpoin
     assert isinstance(terminal.result["finish_reason"], str)
     assert isinstance(terminal.result["usage"], dict)
     assert run is not None
-    assert run["thread_id"] == handle.child_thread_id
+    assert (handle.checkpoint_thread_id is not None) is child_checkpointer_enabled
+    assert run["checkpoint_thread_id"] == handle.checkpoint_thread_id
     assert run["run_id"] == handle.child_run_id
     assert run["run_kind"] == "workflow"
     assert run["status"] == "completed"
-    assert run["checkpoint_available"] is True
-    assert checkpoint_count > 0
+    assert (checkpoint_count > 0) is child_checkpointer_enabled
 
 
 def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoint(
@@ -161,7 +206,7 @@ def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoi
                 [{"role": "user", "content": "background agent input"}],
                 request_id="request-background-agent",
                 run_id="parent-run",
-                thread_id="parent-thread",
+                checkpoint_thread_id=None,
                 workflow_id=parent["id"],
                 workflow_name=parent["name"],
             )
@@ -169,7 +214,7 @@ def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoi
                 request_id="request-background-agent",
                 lifecycle_id=lifecycle_id,
                 run_id="parent-run",
-                thread_id="parent-thread",
+                checkpoint_thread_id=None,
                 run_depth=0,
                 workflow=parent,
                 background_runtime=snapshot,
@@ -216,7 +261,8 @@ def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoi
     assert run is not None
     assert run["run_kind"] == "agent"
     assert run["status"] == "completed"
-    assert run["checkpoint_available"] is False
+    assert run["checkpoint_thread_id"] is None
+    assert handle.checkpoint_thread_id is None
     assert {event["subject_kind"] for event in events} >= {"run", "agent", "model"}
     assert captured_context is not None
     assert captured_context.launcher_id == "router-launcher"
@@ -224,3 +270,4 @@ def test_frozen_snapshot_runs_background_agent_without_parent_stream_or_checkpoi
     assert captured_context.agent_id == main_agent["id"]
     assert captured_context.background_task_id == handle.task_id
     assert captured_context.invocation_id == handle.task_id
+    assert captured_context.checkpoint_thread_id is None

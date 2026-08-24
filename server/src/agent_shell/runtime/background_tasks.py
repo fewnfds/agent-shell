@@ -57,7 +57,7 @@ class BackgroundTaskRecord(BaseModel):
     target_name: str
     target_graph_sha: str = ""
     child_run_id: str
-    child_thread_id: str
+    checkpoint_thread_id: str | None = None
     run_depth: int = Field(ge=0)
     status: BackgroundTaskStatus
     created_at: str
@@ -77,7 +77,7 @@ class BackgroundTaskHandle(BaseModel):
     target_kind: BackgroundTargetKind
     target_id: str
     child_run_id: str
-    child_thread_id: str
+    checkpoint_thread_id: str | None = None
     run_depth: int
     status: BackgroundTaskStatus
 
@@ -95,7 +95,7 @@ class BackgroundTaskSnapshot(BaseModel):
     target_id: str = ""
     target_name: str = ""
     child_run_id: str = ""
-    child_thread_id: str = ""
+    checkpoint_thread_id: str | None = None
     run_depth: int | None = None
     created_at: str = ""
     started_at: str = ""
@@ -108,7 +108,7 @@ class BackgroundTaskSnapshot(BaseModel):
 class BackgroundChildIdentity:
     task_id: str
     child_run_id: str
-    child_thread_id: str
+    checkpoint_thread_id: str | None
     run_depth: int
 
 
@@ -166,6 +166,7 @@ class BackgroundTaskManager:
         target_id: str,
         target_name: str,
         target_graph_sha: str,
+        checkpoint_thread_id: str | None,
         execution_factory: BackgroundExecutionFactory,
     ) -> BackgroundTaskHandle:
         return await self._start(
@@ -179,6 +180,7 @@ class BackgroundTaskManager:
             target_id=target_id,
             target_name=target_name,
             target_graph_sha=target_graph_sha,
+            checkpoint_thread_id=checkpoint_thread_id,
             execution_factory=execution_factory,
         )
 
@@ -206,6 +208,7 @@ class BackgroundTaskManager:
             target_id=target_id,
             target_name=target_name,
             target_graph_sha="",
+            checkpoint_thread_id=None,
             execution_factory=execution_factory,
         )
 
@@ -222,6 +225,7 @@ class BackgroundTaskManager:
         target_id: str,
         target_name: str,
         target_graph_sha: str,
+        checkpoint_thread_id: str | None,
         execution_factory: BackgroundExecutionFactory,
     ) -> BackgroundTaskHandle:
         if not self._started:
@@ -274,7 +278,7 @@ class BackgroundTaskManager:
             identity = BackgroundChildIdentity(
                 task_id=task_id,
                 child_run_id=str(uuid4()),
-                child_thread_id=str(uuid4()),
+                checkpoint_thread_id=checkpoint_thread_id,
                 run_depth=caller_run_depth + 1,
             )
             record = BackgroundTaskRecord(
@@ -290,7 +294,7 @@ class BackgroundTaskManager:
                 target_name=target_name,
                 target_graph_sha=target_graph_sha,
                 child_run_id=identity.child_run_id,
-                child_thread_id=identity.child_thread_id,
+                checkpoint_thread_id=identity.checkpoint_thread_id,
                 run_depth=identity.run_depth,
                 status="pending",
                 created_at=_now(),
@@ -302,7 +306,7 @@ class BackgroundTaskManager:
                         "run_id": record.child_run_id,
                         "lifecycle_id": record.lifecycle_id,
                         "request_id": record.request_id,
-                        "thread_id": record.child_thread_id,
+                        "checkpoint_thread_id": record.checkpoint_thread_id,
                         "run_kind": record.target_kind,
                         "target_id": record.target_id,
                         "target_name": record.target_name,
@@ -310,7 +314,6 @@ class BackgroundTaskManager:
                         "launcher_id": record.launcher_id,
                         "background_task_id": record.task_id,
                         "run_depth": record.run_depth,
-                        "checkpoint_available": record.target_kind == "workflow",
                         "created_at": record.created_at,
                     }
                 )
@@ -585,7 +588,7 @@ class BackgroundTaskManager:
             target_kind=record.target_kind,
             target_id=record.target_id,
             child_run_id=record.child_run_id,
-            child_thread_id=record.child_thread_id,
+            checkpoint_thread_id=record.checkpoint_thread_id,
             run_depth=record.run_depth,
             status=record.status,
         )
@@ -606,7 +609,7 @@ class BackgroundTaskManager:
             target_id=record.target_id,
             target_name=record.target_name,
             child_run_id=record.child_run_id,
-            child_thread_id=record.child_thread_id,
+            checkpoint_thread_id=record.checkpoint_thread_id,
             run_depth=record.run_depth,
             created_at=record.created_at,
             started_at=record.started_at,
@@ -664,7 +667,7 @@ class BackgroundTaskManager:
             request_id=record.request_id,
             lifecycle_id=record.lifecycle_id,
             run_id=record.child_run_id,
-            thread_id=record.child_thread_id,
+            thread_id=record.checkpoint_thread_id,
             subject_kind=record.target_kind,
             subject_id=record.target_id,
             subject_name=record.target_name,

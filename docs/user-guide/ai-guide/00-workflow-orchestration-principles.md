@@ -78,10 +78,10 @@ Command Node 和 Task Dispatcher 的 update 只能使用这些已声明 channel�
 | current Run 的轻量业务状态 | `shared_vars` | phase、status、cursor、计数器、ID、布尔条件、短小 JSON、artifact reference |
 | Agent 完成记录 | `agent_invocations` | Shell 生成的 Agent identity 和 `result_ref` |
 | background task 状态 | `background_tasks` | task handle、最近一次 `check()` 得到的 snapshot |
-| Agent 工作文件 | `files` | current Run/thread 内由 Deep Agents Filesystem 使用的文件 |
+| Agent 工作文件 | `files` | current Run 内由 Deep Agents Filesystem 使用的文件 |
 | 动态 worker 输入 | `workflow_task` | Task Dispatcher 为单个 worker 注入的 task identity 和 payload |
 | Agent 初始提示词 | Agent private `messages` | 由可选的 AAP Middleware 在 Agent invocation 开始前构造 |
-| 当前运行身份和服务入口 | `runtime.context` | lifecycle/run/thread/node/agent identity、background commands |
+| 当前运行身份和服务入口 | `runtime.context` | lifecycle/run、可空 checkpoint thread、node/agent identity、background commands |
 | Lifecycle 公共事实和 invocation artifact | `runtime.store` | request snapshot、完整 Agent messages、结构化 artifact、reference target |
 | 大型正文或二进制 artifact | mapped Filesystem 或业务拥有的 Store namespace | 报告、数据集、长文本、图片、跨 Run 文件 |
 
@@ -187,7 +187,7 @@ Task Dispatcher payload 建议只携带当前 worker 真正需要的任务数据
 
 ### 2.5 `files` 与 mapped Filesystem
 
-`files` 是 Agent Filesystem 使用的 State channel，适合 current Run/thread 的工作文件。频繁变化的大型数据会增加 State 和 checkpoint 成本。大型正文、数据集和跨 Run artifact 可以写入 mapped Filesystem，并在 `shared_vars`、`workflow_task` 或 Store record 中保存路径和 identity：
+`files` 是 Agent Filesystem 使用的 State channel，适合 current Run 的工作文件。频繁变化的大型数据会增加 State；Workflow 启用 Checkpointer 时也会增加 checkpoint 成本。大型正文、数据集和跨 Run artifact 可以写入 mapped Filesystem，并在 `shared_vars`、`workflow_task` 或 Store record 中保存路径和 identity：
 
 ```json
 {
@@ -409,9 +409,9 @@ Poll Command
 4. 计算下一状态；
 5. 激活零个或一个 successor。
 
-这种设计接近单线程程序中的一次 loop iteration，checkpoint 也能对应清晰的状态转换。
+这种设计接近单线程程序中的一次 loop iteration；Workflow 启用 Checkpointer 时，checkpoint 也能对应清晰的状态转换。
 
-轮询频率可以根据外部服务 SLA、完成延迟和 checkpoint 成本配置。异步 Python 中使用：
+轮询频率可以根据外部服务 SLA、完成延迟，以及启用 Checkpointer 时的 checkpoint 成本配置。异步 Python 中使用：
 
 ```python
 await asyncio.sleep(poll_interval_seconds)
@@ -469,7 +469,7 @@ Dispatcher
 
 ### 5.5 Background Run
 
-background Run 适合 detached child execution。它拥有独立 `run_id`、`thread_id`、State 和 checkpoint。
+background Run 适合 detached child execution。它拥有独立 `run_id` 和 State；background child Workflow 根据自己的 `checkpointer_id` 决定是否拥有 `checkpoint_thread_id` 和 checkpoint，background Agent 始终不装配 Checkpointer。
 
 parent 和 child 通过明确的 handle、Store reference 或 mapped Filesystem artifact 交换信息。parent 是否等待、轮询、取消或忽略 child，由业务决定。
 

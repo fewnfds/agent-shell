@@ -9,7 +9,7 @@ background Run 是 optional capability。普通 linear Workflow、synchronous Su
 | Normal Edge | current parent Graph | 等待当前 Super-step，再激活固定 successor Node | statically known sequential/parallel Node |
 | synchronous Subagent | current Main Agent invocation | Main Agent 等待 Subagent 返回后继续 Agent loop | 模型决定委派给一个 specialist |
 | Task Dispatcher worker | current Workflow Run 的动态 Graph task | current Graph 调度并等待其任务语义完成 | 运行时才知道数量和 payload 的 Agent map |
-| background Run | 同一 Lifecycle 中的 independent Run/thread/State/Checkpoint | start 立即返回；parent Run 自己决定是否检查、等待或取消 | detached execution、长任务、independent child Workflow/background Agent |
+| background Run | 同一 Lifecycle 中的 independent Run/State；child Workflow 可按自身配置拥有 Checkpoint | start 立即返回；parent Run 自己决定是否检查、等待或取消 | detached execution、长任务、independent child Workflow/background Agent |
 
 如果调用方需要 child 完成后立即继续当前逻辑，优先使用 Edge、Subagent 或 Task Dispatcher。需要独立 execution identity，或 parent 必须在 child 仍运行时继续其他工作时，再选择 background Run。
 
@@ -59,9 +59,9 @@ snapshot = snapshots[0]
 
 `background_tasks` 是 Workflow State 的正式 channel，写入形状为 `{task_id: snapshot_dict}`。保存 handle 或 snapshot 时先调用 `model_dump(mode="json")`，再把得到的普通 dict 写入 State。
 
-## 4. Lifecycle、Run 和 thread
+## 4. Lifecycle、Run 和可选 Checkpoint Thread
 
-一次外部 `/v1/chat/completions` request 创建一个 Lifecycle，并拥有一个 parent Run/thread。background invocation 会在同一 Lifecycle 中创建 independent child Run：
+一次外部 `/v1/chat/completions` request 创建一个 Lifecycle 和 parent Run。background invocation 会在同一 Lifecycle 中创建 independent child Run：
 
 ```text
 Lifecycle
@@ -70,7 +70,7 @@ Lifecycle
   background Workflow Run
 ```
 
-每个 Run 都有独立的 `run_id`、`thread_id` 和 invocation identity；background child 还带 `parent_run_id`、`launcher_id`、`background_task_id` 和 `run_depth`。这些 identity 从官方 `Runtime.context` 读取；State、Store 和 checkpoint 保存业务所需的序列化字段。
+每个 Run 都有独立的 `run_id` 和 invocation identity；background child 还带 `parent_run_id`、`launcher_id`、`background_task_id` 和 `run_depth`。只有引用检查点保存器的 Workflow Run 才有 `checkpoint_thread_id`；background Agent 始终没有 checkpoint thread。parent 与 child Workflow 分别读取自己的 `checkpointer_id`，四种启用组合都不改变调度、状态查询或结果获取。这些 identity 从官方 `Runtime.context` 读取；State 与 Store 保存各自职责内的序列化字段，Checkpoint 只保存启用 Run 的 Graph State 快照。
 
 Lifecycle Store 保存本次 request 的 immutable input、invocation artifact 和 task record；Workflow State 只保存 routing 所需的 lightweight reference。独立 background Run 不自动复制或 merge parent Run 的 `messages`、State、checkpoint 或 Filesystem `files` channel。跨 Run 共享的 large artifact 通过同一 Lifecycle 的 managed Filesystem 或官方 Store route 保存，再由 child AAP/Tool 按 reference 读取。
 
@@ -94,13 +94,13 @@ Management API 只提供 Lifecycle/Run 的只读观测与 explicit cleanup，不
 | `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}` | 获取单个 Run 的摘要、事件与 checkpoint 计数 |
 | `GET /api/workflow-lifecycles/{lifecycle_id}/download` | 下载 Lifecycle 完整运行详情 ZIP |
 | `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` | 下载单个 Run 完整运行详情 ZIP |
-| `DELETE /api/workflow-lifecycles/{lifecycle_id}` | 清理 parent/child Debug thread、Store prefix；存在 active Run/task 时返回 409 |
+| `DELETE /api/workflow-lifecycles/{lifecycle_id}` | 清理全部非空 Checkpoint Thread 和 Store prefix；存在 active Run/task 时返回 409 |
 
 删除时可选 `?delete_dynamic_directories=true` 清理本 Lifecycle 的 managed dynamic directory。parent Run 到达 End 不会自动取消 background task，Lifecycle 保留到显式删除；parent 和所有 background task 进入终态后，Lifecycle 接受 explicit delete。Lifecycle 进入 `deleting` status 后冻结 background Run 创建，cleanup 失败时保留该 status，以便继续 cleanup。Lifecycle summary 不返回 messages、Provider secret 或 host path。
 
 ## 7. Background Run 完成检查
 
-- 该 task 确实需要 independent child Run/thread/State/Checkpoint；
+- 该 task 确实需要 independent child Run/State；需要 Checkpoint 时，目标 child Workflow 已显式选择检查点保存器；
 - target Main Agent UUID 或 enabled child Workflow UUID 来自 current Configuration Repository；
 - `operation_id` 由 stable business identity 构成，在 current caller Run 内唯一；
 - start 返回的 handle 已序列化并写入 `background_tasks`；

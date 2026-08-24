@@ -46,7 +46,7 @@ def test_agent_additional_prompt_example_adds_private_dispatch_task() -> None:
         request_id="request-id",
         lifecycle_id="lifecycle-id",
         run_id="run-id",
-        thread_id="thread-id",
+        checkpoint_thread_id="thread-id",
     )
     store = InMemoryStore()
     store.put(
