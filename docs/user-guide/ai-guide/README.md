@@ -1,6 +1,6 @@
-# AI Workflow 编写指南
+# AI 配置指南
 
-本目录用于指导 AI 或自动化程序通过 Management API 配置 Agent Shell。读者可以没有 Agent Shell、LangGraph 或 Deep Agents 使用经验。
+本目录用于指导 AI 通过 Management API 配置 Agent Shell。
 
 本指南的完成目标是一个有限闭环：
 
@@ -17,9 +17,9 @@
 
 OpenAPI 中的通用 JSON body 不表达每类 component 的完整领域字段。创建或修改对象前，先读取当前实例的 catalog、现有对象和 template projection。API response、当前源码 contract 和稳定测试是事实来源；示例只提供结构起点。
 
-## 1. 先建立软件心智模型
+## 1. 软件架构
 
-Agent Shell 是 Workflow-first 的 LangGraph/Deep Agents 配置与运行外壳。
+Agent Shell 是 Workflow-first 的 LangGraph/LangChain Deep Agents 构建与运行外壳。
 
 - **Management API `/api/*`**：创建和维护 configuration；
 - **OpenAI-compatible API `/v1/*`**：运行已经 enabled 的 parent Workflow；
@@ -44,18 +44,18 @@ OpenAI-compatible messages[]
   -> 返回 OpenAI-compatible response
 ```
 
-客户端 `messages[]` 不会自动写入 Workflow root State。canvas Agent Node 以私有 `messages` 运行；需要为 Agent 注入动态初始提示词时，可以装配 Agent Additional Prompt（AAP）Custom Middleware。
+用户发来的 Openai api 标准消息中的 `messages[]` 不会自动写入 Workflow root State。Agent Node 以私有 `messages` 运行；需要为 Agent 注入动态初始提示词时，可以参考 Custom Middleware example：Agent Additional Prompt（以下简称 AAP）。
 
 ## 2. Terminology convention
 
-项目 keyword、API field 和 identifier 保持英文原名，普通说明使用中文。搜索 API、源码和文档时直接使用这些名称：
+搜索 API、源码和文档时直接使用这些名称：
 
 - Model Connection、Model Requirement、Model Mapping；
 - Agent Event Output、Workflow Event Output、System Prompt；
 - Filesystem、Filesystem Permissions、Skill；
 - Custom Tool、Custom Middleware、Agent Additional Prompt（AAP）；
 - Main Agent、Subagent、Command、Task Dispatcher；
-- Lifecycle、Run、invocation、可选 Checkpoint Thread、checkpoint；
+- Lifecycle、Run、invocation、Checkpoint Thread、checkpoint；
 - Graph、Node、Edge、handle、State、Runtime、Context、Store；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 
@@ -63,37 +63,32 @@ OpenAI-compatible messages[]
 
 AI 在写入配置前，先形成一个简短 design record：
 
-1. **是否需要 LLM？** 确定性流程可以只使用 Command 和 Task Dispatcher；出现 Agent Node 时才需要 Main Agent 和模型。
-2. **任务数量是否在设计时已知？** 已知 Node 直接用 Edge 连接；运行时动态数量使用 Task Dispatcher。
-3. **是否需要 detached execution？** regular sequential/parallel Node、synchronous Subagent 和 Task Dispatcher worker 都在 current Run 内；independent child Run 才使用 background Run。
-4. **状态放在哪里？** 轻量 control state 放 `shared_vars`，完整 Agent output 通过 `agent_invocations.result_ref` 读取，大型 artifact 使用 Store/Filesystem reference。
-5. **Agent 从哪里获得初始提示词？** 静态角色说明使用 System Prompt；动态 request/task/upstream material 可以由 AAP 编排。
+1. **是否需要 LLM？** 确定性流程可以只使用 Command 和 Task Dispatcher；需要 AI 能力时，才布置 Agent Node。
+2. **任务数量是否在设计时已知？** 已知 Node 直接用 Edge 连接激活；动态数量使用 Task Dispatcher 动态发布。
+3. **是否需要后台任务、detached execution？** regular sequential/parallel Node、synchronous Subagent 和 Task Dispatcher worker 都在 current Run 内；independent child Run 才使用 background Run。
+4. **状态放在哪里？** 轻量 control state 放 parent workflow `shared_vars`，完整 Agent output 通过 `agent_invocations.result_ref` 读取，大型 artifact 使用 Store/Filesystem reference。
+5. **Agent 从哪里获得初始提示词？** 需要用户指定提示词来源；动态 request/task/upstream material 由 AAP 编排。
 6. **什么条件表示完成？** 为 loop 写出业务退出条件；决定普通 leaf、End 和 background child 的收尾策略。
 
-完整运行事实和推荐数据结构见 [Workflow 编排总则](00-workflow-orchestration-principles.md)。
-
-## 4. 对象依赖与创建顺序
-
-依赖通常从叶子对象指向根对象：
+## 4. 常用的构建逻辑
 
 ```text
-Model Connection（实例私有，由用户建立）
-        |
-        +-> Model Mapping
-               ^
-               |
-Model Requirement --------+
-Agent Event Output --------+-> Main Agent ----+
-optional Component --------+                  |
-optional Subagent ----------------------------+-> Agent Node
-
-Command component ------------------------------> Command Node
-Task Dispatcher component ----------------------> Task Dispatcher Node
-Workflow Event Output --------------------------> Workflow metadata
-
-Node + Edge + layout ----------------------------> Graph document
-Graph document ---------------------------------> Workflow validate / publish
-enabled parent Workflow ------------------------> /v1/chat/completions model
+Model Connection（实例私有，由用户建立） + Model Mapping = Model Requirement
+-> Main Agent
+-> Agent Event Output
+-> optional Component
+-> optional Subagent
+-> Agent Node
+-> Command component
+-> Command Node
+-> Task Dispatcher component
+-> Task Dispatcher Node
+-> Workflow Event Output
+-> optional child  Workflow
+-> Workflow metadata
+-> Node + Edge + layout -> Graph document
+-> Graph document -> Workflow validate / publish
+-> enabled parent Workflow -> /v1/chat/completions model
 ```
 
 推荐的创建顺序：
@@ -119,7 +114,7 @@ enabled parent Workflow ------------------------> /v1/chat/completions model
 
 按顺序阅读：
 
-1. [Workflow 编排总则](00-workflow-orchestration-principles.md)
+1. [Workflow 编排建议](00-workflow-orchestration-suggestions.md)
 2. [Management API、对象关系与事实发现](01-api-and-discovery.md)
 3. [配置 Agent](02-components-and-agents.md)（Graph 含 Agent Node 时）
 4. [创建 Workflow Graph](03-workflow-graph.md)
@@ -228,7 +223,7 @@ Start -> Agent -> End
 
 ## 10. 章节索引
 
-1. [Workflow 编排总则](00-workflow-orchestration-principles.md)
+1. [Workflow 编排建议](00-workflow-orchestration-suggestions.md)
 2. [Management API、对象关系与事实发现](01-api-and-discovery.md)
 3. [配置 Agent](02-components-and-agents.md)
 4. [创建 Workflow Graph](03-workflow-graph.md)
