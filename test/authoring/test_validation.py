@@ -12,7 +12,12 @@ from agent_shell.contracts import (
 )
 from agent_shell.workflow.catalog import AgentNodeConfig
 from agent_shell.workflow_contracts import WorkflowDefinition
-from agent_shell.validation import ValidationIssue, report_from_validation_error
+from agent_shell.validation import (
+    ValidationIssue,
+    ValidationReport,
+    report_from_validation_error,
+)
+from agent_shell.validation.repository import RepositoryValidationService
 
 
 def test_contract_errors_become_safe_structured_validation_issues() -> None:
@@ -97,6 +102,87 @@ def test_validation_issue_rejects_non_primitive_message_arguments() -> None:
             message_key="validation.issue.contract.invalidValue",
             message_args={"detail": {"nested": "value"}},  # type: ignore[dict-item]
         )
+
+
+def test_repository_validation_cache_tracks_repository_and_model_revisions() -> None:
+    class Repository:
+        repository_id = "repository-id"
+        revision = 1
+        reads = 0
+        components: dict[str, list[dict[str, object]]] = {}
+
+        def repository_context(self) -> tuple[str, int]:
+            return self.repository_id, self.revision
+
+        def config(self) -> dict[str, object]:
+            self.reads += 1
+            return {
+                "components": self.components,
+                "main_agents": [],
+                "subagents": [],
+                "workflows": [],
+            }
+
+    class ModelResources:
+        current_revision = 1
+
+        def revision(self) -> int:
+            return self.current_revision
+
+        def list_connections(self) -> list[dict[str, object]]:
+            return []
+
+    class ConfigurationValidation:
+        stored_block_reads = 0
+
+        def validate_stored_block(
+            self,
+            _block_type: str,
+            _block: dict[str, object],
+            *,
+            stage: str,
+        ) -> ValidationReport:
+            self.stored_block_reads += 1
+            return ValidationReport(stage=stage)
+
+    repository = Repository()
+    models = ModelResources()
+    configuration_validation = ConfigurationValidation()
+    service = RepositoryValidationService(
+        repository,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        configuration_validation,  # type: ignore[arg-type]
+        model_resources=models,  # type: ignore[arg-type]
+    )
+
+    first = service.validate_repository()
+    assert service.validate_repository() is first
+    assert repository.reads == 1
+
+    repository.revision += 1
+    assert service.validate_repository() is not first
+    assert repository.reads == 2
+
+    models.current_revision += 1
+    service.validate_repository()
+    assert repository.reads == 3
+
+    repository.components = {
+        "custom-tool": [
+            {
+                "id": "10000000-0000-4000-8000-000000000001",
+                "name": "Tool",
+                "python_package": {
+                    "folder": "10000000-0000-4000-8000-000000000001"
+                },
+            }
+        ]
+    }
+    repository.revision += 1
+    service.validate_repository()
+    service.validate_repository()
+    assert repository.reads == 5
+    assert configuration_validation.stored_block_reads == 2
 
 
 @pytest.mark.parametrize(

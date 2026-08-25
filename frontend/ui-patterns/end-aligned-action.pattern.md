@@ -2,7 +2,7 @@
 
 Find as: 右侧操作、靠右按钮、标题栏操作、行尾操作、right action、end action、card header action。
 
-Use: Card header 或普通行有一个明确的末端操作。Source of truth: Bootstrap flex + 直接 flex item 的 `ms-auto`；policy: `approved-utilities`、`content-and-data` 与 `forms-and-actions`。
+Use: Card header 或普通行有一个明确的末端操作。Source of truth: Bootstrap flex + 直接 flex item 的 `ms-auto`。
 
 Do not use: 不得仅靠 `justify-content-between` 推断末端位置；需显式使用 `ms-auto`，也不假设 AdminLTE 会把 class 转发到最终节点。
 

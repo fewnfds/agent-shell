@@ -141,30 +141,38 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       middleware_refs: [],
     },
   }
-  return {
+  const base: AgentAuthoringService = {
     getCatalog: vi.fn(async () => ({
       block_types: [modelManifest, promptManifest],
+      workflow_component_types: [],
       editor_defaults: {},
     })),
-    listBlocks: vi.fn(async (type) => [{
-      id: `00000000-0000-0000-0000-${type === 'model' ? '000000000001' : '000000000002'}`,
-      name: `${type} block`,
-    }]),
-    listMainAgents: vi.fn(async () => [mainAgent]),
+    getConfigurationOptions: vi.fn(async () => ({
+      repository_id: '00000000-0000-4000-8000-000000000099',
+      repository_revision: 1,
+      components: {
+        model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+        'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
+        filesystem: [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem block' }],
+        'filesystem-permissions': [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem-permissions block' }],
+      },
+      main_agents: [mainAgent],
+      subagents: [subagent],
+      workflows: [],
+    })),
     getMainAgent: vi.fn(async () => mainAgent),
     createMainAgent: vi.fn(async (payload) => ({ ...mainAgent, ...payload, id: 'created-mainAgent' })),
     updateMainAgent: vi.fn(async (id, payload) => ({ ...mainAgent, ...payload, id })),
     copyMainAgent: vi.fn(async (_id, name) => ({ ...mainAgent, id: 'copied-mainAgent', name })),
     deleteMainAgent: vi.fn(async () => ({ ok: true })),
-    listSubagents: vi.fn(async () => [subagent]),
     getSubagent: vi.fn(async () => subagent),
     createSubagent: vi.fn(async (payload) => ({ ...subagent, ...payload, id: 'created-subagent' })),
     updateSubagent: vi.fn(async (id, payload) => ({ ...subagent, ...payload, id })),
     copySubagent: vi.fn(async (_id, componentName) => ({ ...subagent, id: 'copied-subagent', component_name: componentName })),
     deleteSubagent: vi.fn(async () => ({ ok: true })),
     validateDraft: vi.fn(async () => validReport),
-    ...overrides,
   }
+  return { ...base, ...overrides }
 }
 
 export function buttonByText(wrapper: ReturnType<typeof mount>, text: string) {

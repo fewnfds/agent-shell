@@ -3,8 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type {
-  MainAgent,
-  SavedBlock,
+  ConfigurationSummary,
   WorkflowNodeHandleSpec,
 } from '@/api'
 import type {
@@ -19,9 +18,9 @@ const props = defineProps<{
   edgeTargetEndpoints: WorkflowNodeHandleSpec[]
   edgeTypeOptions: WorkflowCanvasEdgeType[]
   inputEndpoints: WorkflowNodeHandleSpec[]
-  mainAgents: MainAgent[]
-  commands: SavedBlock[]
-  taskDispatchers: SavedBlock[]
+  mainAgents: ConfigurationSummary[]
+  commands: ConfigurationSummary[]
+  taskDispatchers: ConfigurationSummary[]
   node: WorkflowCanvasNode | null
   nodeIds: string[]
   outputEndpoints: WorkflowNodeHandleSpec[]

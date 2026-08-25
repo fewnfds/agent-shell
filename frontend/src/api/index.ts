@@ -21,6 +21,10 @@ import type {
   ConfigurationRepository,
   ConfigurationRepositoryActivation,
   ConfigurationRepositoryList,
+  ConfigurationCollection,
+  ConfigurationOptions,
+  ConfigurationSummary,
+  MainAgentSummary,
   RuntimePolicySettings,
   RuntimePolicyUpdate,
   PythonPackageTemplate,
@@ -32,6 +36,7 @@ import type {
   ManagementEvent,
   NamedDownload,
   Workflow,
+  WorkflowSummary,
   WorkflowLifecyclePage,
   WorkflowLifecycleDetail,
   WorkflowRunDetail,
@@ -58,6 +63,7 @@ import type {
   SkillResource,
   SkillPackageInspection,
   Subagent,
+  SubagentSummary,
   SubagentPayload,
   SystemLogSettings,
   SystemSettings,
@@ -97,6 +103,10 @@ export const managementApi = {
 
   getCatalog(): Promise<CatalogResponse> {
     return managementRequest('/api/catalog')
+  },
+
+  getConfigurationOptions(): Promise<ConfigurationOptions> {
+    return managementRequest('/api/configuration-options')
   },
 
   fetchModels(
@@ -267,9 +277,17 @@ export const managementApi = {
     })
   },
 
-  listWorkflows(workflowRole?: WorkflowRole): Promise<Workflow[]> {
-    const query = workflowRole ? `?workflow_role=${encodeURIComponent(workflowRole)}` : ''
-    return managementRequest(`/api/workflows${query}`)
+  listWorkflowSummaries(
+    workflowRole?: WorkflowRole,
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<WorkflowSummary>> {
+    return managementRequest(`/api/workflows${buildQuery({
+      workflow_role: workflowRole,
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
   },
 
   listWorkflowNodeCatalog(): Promise<WorkflowNodeCatalogItem[]> {
@@ -301,6 +319,13 @@ export const managementApi = {
 
   deleteWorkflows(ids: string[]): Promise<{ deleted: number }> {
     return managementRequest('/api/workflows/delete', jsonBody({ ids }))
+  },
+
+  deleteWorkflowsMatching(query: string, workflowRole?: WorkflowRole): Promise<{ deleted: number }> {
+    return managementRequest('/api/workflows/delete', jsonBody({
+      q: query,
+      workflow_role: workflowRole,
+    }))
   },
 
   listWorkflowLifecycles(
@@ -486,10 +511,16 @@ export const managementApi = {
     )
   },
 
-  listBlocks<TPayload extends BlockPayload = BlockPayload>(
+  listBlockSummaries(
     type: ManagedComponentType,
-  ): Promise<SavedBlock<TPayload>[]> {
-    return managementRequest(`/api/blocks/${type}`)
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<ConfigurationSummary>> {
+    return managementRequest(`/api/blocks/${type}${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
   },
 
   getBlock<TPayload extends BlockPayload = BlockPayload>(
@@ -540,6 +571,10 @@ export const managementApi = {
     return managementRequest(`/api/blocks/${type}/delete`, jsonBody({ ids }))
   },
 
+  deleteBlocksMatching(type: ManagedComponentType, query: string): Promise<{ deleted: number }> {
+    return managementRequest(`/api/blocks/${type}/delete`, jsonBody({ q: query }))
+  },
+
   validateRepository(): Promise<ValidationReport> {
     return managementRequest('/api/validation/repository')
   },
@@ -559,8 +594,15 @@ export const managementApi = {
     })
   },
 
-  listMainAgents(): Promise<MainAgent[]> {
-    return managementRequest('/api/main-agents')
+  listMainAgentSummaries(
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<MainAgentSummary>> {
+    return managementRequest(`/api/main-agents${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
   },
 
   getMainAgent(id: string): Promise<MainAgent> {
@@ -587,8 +629,19 @@ export const managementApi = {
     return managementRequest('/api/main-agents/delete', jsonBody({ ids }))
   },
 
-  listSubagents(): Promise<Subagent[]> {
-    return managementRequest('/api/subagents')
+  deleteMainAgentsMatching(query: string): Promise<{ deleted: number }> {
+    return managementRequest('/api/main-agents/delete', jsonBody({ q: query }))
+  },
+
+  listSubagentSummaries(
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<SubagentSummary>> {
+    return managementRequest(`/api/subagents${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
   },
 
   getSubagent(id: string): Promise<Subagent> {
@@ -621,6 +674,10 @@ export const managementApi = {
 
   deleteSubagents(ids: string[]): Promise<{ deleted: number }> {
     return managementRequest('/api/subagents/delete', jsonBody({ ids }))
+  },
+
+  deleteSubagentsMatching(query: string): Promise<{ deleted: number }> {
+    return managementRequest('/api/subagents/delete', jsonBody({ q: query }))
   },
 
   getApiServer(): Promise<ApiServerSettings> {

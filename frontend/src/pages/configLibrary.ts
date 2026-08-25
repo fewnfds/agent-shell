@@ -1,32 +1,44 @@
 import type {
   ManagedComponentType,
   CatalogResponse,
+  ConfigurationCollection,
   ConfigurationBundleImportResult,
   ConfigurationBundlePreview,
   ConfigurationBundleResolutions,
   ConfigurationBundleRoot,
+  ConfigurationSummary,
   MainAgent,
+  MainAgentSummary,
   ModelConnection,
   NamedDownload,
   SavedBlock,
   Subagent,
+  SubagentSummary,
   ValidationReport,
   Workflow,
   WorkflowRole,
+  WorkflowSummary,
 } from '@/api'
 
 export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'parent-workflow' | 'child-workflow' | 'model-connection'
-export type LibraryItem = SavedBlock | MainAgent | ModelConnection | Subagent | Workflow
+export type LibraryItem = ConfigurationSummary | MainAgentSummary | ModelConnection | SubagentSummary | WorkflowSummary
+export type LibraryDetailItem = SavedBlock | MainAgent | ModelConnection | Subagent | Workflow
 type BundleCategoryId = Exclude<LibraryCategoryId, 'model-connection'>
+type SummaryRequest = { q?: string, offset?: number, limit?: number }
 
 export interface ConfigLibraryApi {
   getCatalog(): Promise<CatalogResponse>
   validateRepository(): Promise<ValidationReport>
-  listBlocks(type: ManagedComponentType): Promise<SavedBlock[]>
-  listMainAgents(): Promise<MainAgent[]>
-  listSubagents(): Promise<Subagent[]>
-  listWorkflows(role?: WorkflowRole): Promise<Workflow[]>
+  listBlockSummaries(type: ManagedComponentType, request?: SummaryRequest): Promise<ConfigurationCollection<ConfigurationSummary>>
+  listMainAgentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<MainAgentSummary>>
+  listSubagentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<SubagentSummary>>
+  listWorkflowSummaries(role?: WorkflowRole, request?: SummaryRequest): Promise<ConfigurationCollection<WorkflowSummary>>
   listModelConnections(): Promise<ModelConnection[]>
+  getBlock(type: ManagedComponentType, id: string): Promise<SavedBlock>
+  getMainAgent(id: string): Promise<MainAgent>
+  getSubagent(id: string): Promise<Subagent>
+  getWorkflow(id: string): Promise<Workflow>
+  getModelConnection(id: string): Promise<ModelConnection>
   copyBlock(type: ManagedComponentType, id: string, name: string): Promise<SavedBlock>
   copyMainAgent(id: string, name: string): Promise<MainAgent>
   copySubagent(id: string, componentName: string): Promise<Subagent>
@@ -39,9 +51,13 @@ export interface ConfigLibraryApi {
   deleteWorkflow(id: string): Promise<{ ok: boolean }>
   deleteModelConnection(id: string): Promise<{ ok: boolean }>
   deleteBlocks(type: ManagedComponentType, ids: string[]): Promise<{ deleted: number }>
+  deleteBlocksMatching(type: ManagedComponentType, query: string): Promise<{ deleted: number }>
   deleteMainAgents(ids: string[]): Promise<{ deleted: number }>
+  deleteMainAgentsMatching(query: string): Promise<{ deleted: number }>
   deleteSubagents(ids: string[]): Promise<{ deleted: number }>
+  deleteSubagentsMatching(query: string): Promise<{ deleted: number }>
   deleteWorkflows(ids: string[]): Promise<{ deleted: number }>
+  deleteWorkflowsMatching(query: string, role?: WorkflowRole): Promise<{ deleted: number }>
   exportConfigurationBundle(root: ConfigurationBundleRoot): Promise<NamedDownload>
   previewConfigurationBundle(bundle: File): Promise<ConfigurationBundlePreview>
   importConfigurationBundle(bundle: File, digest: string, planToken: string, resolutions: ConfigurationBundleResolutions): Promise<ConfigurationBundleImportResult>

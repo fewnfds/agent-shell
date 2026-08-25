@@ -15,8 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ManagementApiError,
   managementApi,
-  type MainAgent,
-  type SavedBlock,
+  type ConfigurationSummary,
   type Workflow,
   type WorkflowNodeCatalogItem,
   type WorkflowNodeType,
@@ -60,9 +59,9 @@ const router = useRouter()
 const managementError = useManagementError()
 const { notify } = useToasts()
 const workflow = ref<Workflow | null>(null)
-const mainAgents = ref<MainAgent[]>([])
-const commands = ref<SavedBlock[]>([])
-const taskDispatchers = ref<SavedBlock[]>([])
+const mainAgents = ref<ConfigurationSummary[]>([])
+const commands = ref<ConfigurationSummary[]>([])
+const taskDispatchers = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
 const nodes = ref<WorkflowCanvasNode[]>([])
 const edges = ref<WorkflowCanvasEdge[]>([])
@@ -672,22 +671,18 @@ onMounted(async () => {
     const [
       metadata,
       graph,
-      agents,
-      commandRecords,
-      taskDispatcherRecords,
+      options,
       catalog,
     ] = await Promise.all([
       managementApi.getWorkflow(workflowId.value),
       managementApi.getWorkflowGraph(workflowId.value),
-      managementApi.listMainAgents(),
-      managementApi.listBlocks('command'),
-      managementApi.listBlocks('task-dispatcher'),
+      managementApi.getConfigurationOptions(),
       managementApi.listWorkflowNodeCatalog(),
     ])
     workflow.value = metadata
-    mainAgents.value = agents
-    commands.value = commandRecords
-    taskDispatchers.value = taskDispatcherRecords
+    mainAgents.value = options.main_agents
+    commands.value = options.components.command ?? []
+    taskDispatchers.value = options.components['task-dispatcher'] ?? []
     nodeCatalog.value = catalog.filter((item) => item.workflow_roles.includes(metadata.workflow_role))
     stateContract.value = graph.definition.state_contract
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)

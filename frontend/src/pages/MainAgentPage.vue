@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { LteAlert, LteButton } from '@adminlte/vue'
-import { computed, inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
@@ -12,23 +11,19 @@ import RecordPicker from '@/components/RecordPicker.vue'
 import SubagentReferencesEditor from '@/components/SubagentReferencesEditor.vue'
 import ToolReferencesEditor from '@/components/ToolReferencesEditor.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
-import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
-import { useConfirmation } from '@/composables/useConfirmation'
-import { useManagementError } from '@/composables/useManagementError'
-import { useToasts } from '@/composables/useToasts'
-import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
+import { useConfigurationResource } from '@/composables/useConfigurationResource'
 import {
   agentAuthoringServiceKey,
   blankMainAgent,
   managementAgentAuthoringService,
   normalizeMainAgent,
+  normalizeSubagent,
   mainAgentPayload,
   referenceId,
   setReference,
   type AgentAuthoringService,
   type CapabilityManifest,
   type CapabilityType,
-  type MainAgentProfile,
   type StoredBlock,
   type SubagentProfile,
 } from '@/domain/agents'
@@ -38,34 +33,72 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const route = useRoute()
-const router = useRouter()
-const managementError = useManagementError()
-const { notify } = useToasts()
-const { confirm } = useConfirmation()
 const providedService = inject(agentAuthoringServiceKey, managementAgentAuthoringService)
 const service = computed(() => props.service ?? providedService)
 
-const loading = ref(true)
-const saving = ref(false)
-const copying = ref(false)
-const deleting = ref(false)
-const copyOpen = ref(false)
-const copyName = ref('')
-const copyError = ref('')
-const feedbackKey = ref('')
-const feedbackDetail = ref('')
+const {
+  loading,
+  saving,
+  copying,
+  deleting,
+  copyOpen,
+  copyName,
+  copyError,
+  feedbackKey,
+  feedbackDetail,
+  records: profiles,
+  selectedId: selectedProfileId,
+  form,
+  validation,
+  initializeWorkspace,
+  startNew,
+  loadSelected,
+  save,
+  openCopy,
+  closeCopy,
+  copyCurrent,
+  removeCurrent,
+} = useConfigurationResource({
+  available: () => Boolean(service.value),
+  blank: blankMainAgent,
+  normalize: normalizeMainAgent,
+  payload: mainAgentPayload,
+  get: (id) => service.value!.getMainAgent(id),
+  create: (payload) => service.value!.createMainAgent(payload),
+  update: (id, payload) => service.value!.updateMainAgent(id, payload),
+  copy: (id, name) => service.value!.copyMainAgent(id, name),
+  remove: (id) => service.value!.deleteMainAgent(id),
+  location: (id = '') => id
+    ? { path: '/agents/main', query: { id } }
+    : { path: '/agents/main' },
+  validationRequest: (resource) => ({
+    target: { kind: 'main_agent' as const, id: resource.id },
+    payload: mainAgentPayload(resource),
+  }),
+  validate: (request) => service.value!.validateDraft(request),
+  deleteConfirmation: (resource) => ({
+    title: t('agents.delete.title'),
+    description: t('agents.delete.description', { name: resource.name }),
+    confirmLabel: t('common.delete'),
+    cancelLabel: t('common.cancel'),
+    dangerous: true,
+  }),
+  messages: {
+    serviceUnavailable: 'agents.serviceUnavailable',
+    newDraft: 'agents.feedback.newDraft',
+    loadFailed: 'agents.feedback.loadFailed',
+    saved: 'agents.feedback.saved',
+    saveFailed: 'agents.feedback.saveFailed',
+    copied: 'agents.feedback.copied',
+    deleted: 'agents.feedback.deleted',
+    deleteFailed: 'agents.feedback.deleteFailed',
+    copyNameRequired: 'agents.copy.nameRequired',
+  },
+})
+
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
-const profiles = ref<MainAgentProfile[]>([])
 const subagentProfiles = ref<SubagentProfile[]>([])
-const selectedProfileId = ref('')
-const form = ref(blankMainAgent())
-let profileLoadSequence = 0
-
-function editorLocation(id = ''): { path: string, query?: { id: string } } {
-  return id ? { path: '/agents/main', query: { id } } : { path: '/agents/main' }
-}
 
 const obsoleteReferences = computed(() => {
   const supported = new Set<string>(
@@ -87,35 +120,6 @@ const generalManifests = computed(() => manifests.value.filter(
   (manifest) => !workspaceCapabilityTypes.has(manifest.type),
 ))
 
-const { markClean, runAfterDiscard } = useUnsavedChanges(
-  () => form.value,
-  () => ({
-    title: t('unsavedChanges.title'),
-    description: t('unsavedChanges.description'),
-    confirmLabel: t('unsavedChanges.confirm'),
-    cancelLabel: t('common.cancel'),
-  }),
-)
-
-const { validation, validateNow } = useConfigurationValidation({
-  source: form,
-  buildRequest: () => ({
-    target: {
-      kind: 'main_agent',
-      id: form.value.id,
-    },
-    payload: mainAgentPayload(form.value),
-  }),
-  validate: async (request) => {
-    if (!service.value) throw new Error(t('agents.serviceUnavailable'))
-    return service.value.validateDraft(request)
-  },
-  errorMessage: (error) => managementError.describe(
-    error,
-    'errors.validationUnavailable',
-  ).display,
-})
-
 function capabilityBlocks(type: CapabilityType): StoredBlock[] {
   return blocks.value[type] ?? []
 }
@@ -128,220 +132,25 @@ function removeObsoleteReference(index: number): void {
   form.value.capability_refs.splice(index, 1)
 }
 
-async function startNew(): Promise<void> {
-  await runAfterDiscard(async () => {
-    profileLoadSequence += 1
-    selectedProfileId.value = ''
-    form.value = blankMainAgent()
-    feedbackKey.value = ''
-    feedbackDetail.value = ''
-    notify({ tone: 'info', title: t('agents.feedback.newDraft') })
-    markClean()
-    await router.replace(editorLocation())
-  })
-}
-
-async function loadProfile(id: string): Promise<void> {
-  const sequence = ++profileLoadSequence
-  if (!id) {
-    selectedProfileId.value = ''
-    form.value = blankMainAgent()
-    feedbackKey.value = ''
-    feedbackDetail.value = ''
-    notify({ tone: 'info', title: t('agents.feedback.newDraft') })
-    markClean()
-    loading.value = false
-    return
-  }
-  if (!service.value) return
-  loading.value = true
-  feedbackKey.value = ''
-  feedbackDetail.value = ''
-  try {
-    const loaded = normalizeMainAgent(await service.value.getMainAgent(id))
-    if (sequence !== profileLoadSequence) return
-    form.value = loaded
-    selectedProfileId.value = loaded.id
-    markClean()
-  } catch (error) {
-    if (sequence !== profileLoadSequence) return
-    selectedProfileId.value = form.value.id
-    feedbackKey.value = 'agents.feedback.loadFailed'
-    feedbackDetail.value = managementError.describe(error).display
-  } finally {
-    if (sequence === profileLoadSequence) loading.value = false
-  }
-}
-
-async function loadSelected(value?: string): Promise<void> {
-  const id = value ?? selectedProfileId.value
-  await runAfterDiscard(async () => {
-    await loadProfile(id)
-    if (selectedProfileId.value === id) {
-      await router.replace(editorLocation(id))
-    }
-  })
-}
-
-function upsertProfile(saved: MainAgentProfile): void {
-  const index = profiles.value.findIndex((profile) => profile.id === saved.id)
-  if (index === -1) profiles.value.push(saved)
-  else profiles.value[index] = saved
-}
-
-async function save(): Promise<void> {
-  if (!service.value) {
-    feedbackKey.value = 'agents.serviceUnavailable'
-    feedbackDetail.value = ''
-    return
-  }
-  saving.value = true
-  feedbackKey.value = ''
-  feedbackDetail.value = ''
-  try {
-    const state = await validateNow()
-    if (state.status !== 'valid') return
-    const payload = mainAgentPayload(form.value)
-    const saved = form.value.id
-      ? await service.value.updateMainAgent(form.value.id, payload)
-      : await service.value.createMainAgent(payload)
-    const normalized = normalizeMainAgent(saved)
-    form.value = normalized
-    selectedProfileId.value = normalized.id
-    upsertProfile(normalized)
-    markClean()
-    await router.replace(editorLocation(normalized.id))
-    notify({ tone: 'success', title: t('agents.feedback.saved') })
-  } catch (error) {
-    feedbackKey.value = 'agents.feedback.saveFailed'
-    feedbackDetail.value = managementError.describe(error).display
-  } finally {
-    saving.value = false
-  }
-}
-
-function openCopy(): void {
-  if (!form.value.id) return
-  copyName.value = ''
-  copyError.value = ''
-  copyOpen.value = true
-}
-
-function closeCopy(): void {
-  if (copying.value) return
-  copyOpen.value = false
-  copyName.value = ''
-  copyError.value = ''
-}
-
-async function copyCurrent(): Promise<void> {
-  if (!service.value || !form.value.id || copying.value) return
-  const name = copyName.value.trim()
-  if (!name) {
-    copyError.value = t('agents.copy.nameRequired')
-    return
-  }
-  await runAfterDiscard(async () => {
-    copying.value = true
-    copyError.value = ''
-    try {
-      const copied = normalizeMainAgent(
-        await service.value!.copyMainAgent(form.value.id, name),
-      )
-      upsertProfile(copied)
-      form.value = copied
-      selectedProfileId.value = copied.id
-      markClean()
-      copyOpen.value = false
-      copyName.value = ''
-      await router.replace(editorLocation(copied.id))
-      notify({ tone: 'success', title: t('agents.feedback.copied') })
-    } catch (error) {
-      copyError.value = managementError.describe(error).display
-    } finally {
-      copying.value = false
-    }
-  })
-}
-
-async function removeCurrent(): Promise<void> {
-  if (!service.value || !form.value.id || deleting.value) return
-  await runAfterDiscard(async () => {
-    const id = form.value.id
-    const accepted = await confirm({
-      title: t('agents.delete.title'),
-      description: t('agents.delete.description', { name: form.value.name }),
-      confirmLabel: t('common.delete'),
-      cancelLabel: t('common.cancel'),
-      dangerous: true,
-    })
-    if (!accepted) return
-    deleting.value = true
-    feedbackKey.value = ''
-    feedbackDetail.value = ''
-    try {
-      await service.value!.deleteMainAgent(id)
-      profiles.value = profiles.value.filter((profile) => profile.id !== id)
-      profileLoadSequence += 1
-      selectedProfileId.value = ''
-      form.value = blankMainAgent()
-      markClean()
-      await router.replace(editorLocation())
-      notify({ tone: 'success', title: t('agents.feedback.deleted') })
-    } catch (error) {
-      feedbackKey.value = 'agents.feedback.deleteFailed'
-      feedbackDetail.value = managementError.describe(error).display
-    } finally {
-      deleting.value = false
-    }
-  })
-}
-
 async function loadWorkspace(): Promise<void> {
-  if (!service.value) {
-    feedbackKey.value = 'agents.serviceUnavailable'
-    loading.value = false
-    return
-  }
-  loading.value = true
-  try {
-    const [catalog, mainAgentItems, subagentItems] = await Promise.all([
-      service.value.getCatalog(),
-      service.value.listMainAgents(),
-      service.value.listSubagents(),
+  await initializeWorkspace(async () => {
+    const [catalog, options] = await Promise.all([
+      service.value!.getCatalog(),
+      service.value!.getConfigurationOptions(),
     ])
     manifests.value = [...catalog.block_types].sort((left, right) => left.order - right.order)
-    profiles.value = mainAgentItems.map(normalizeMainAgent)
-    subagentProfiles.value = subagentItems
-    const entries = await Promise.all(manifests.value
-      .map(async (manifest) => [
+    subagentProfiles.value = options.subagents.map(normalizeSubagent)
+    blocks.value = Object.fromEntries(manifests.value.map((manifest) => [
       manifest.type,
-      await service.value?.listBlocks(manifest.type) ?? [],
-    ] as const))
-    blocks.value = Object.fromEntries(entries)
-    const requestedId = typeof route.query.id === 'string' ? route.query.id : ''
-    if (requestedId) await loadProfile(requestedId)
-    else markClean()
-  } catch (error) {
-    feedbackKey.value = 'agents.feedback.loadFailed'
-    feedbackDetail.value = managementError.describe(error).display
-  } finally {
-    loading.value = false
-  }
+      options.components[manifest.type] ?? [],
+    ]))
+    return options.main_agents
+  })
 }
 
 onMounted(() => {
   void loadWorkspace()
 })
-
-watch(
-  () => route.query.id,
-  (value) => {
-    const id = typeof value === 'string' ? value : ''
-    if (id === selectedProfileId.value) return
-    void loadProfile(id)
-  },
-)
 </script>
 
 <template>

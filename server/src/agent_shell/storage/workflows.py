@@ -13,6 +13,20 @@ from agent_shell.workflow_contracts import WorkflowRole
 
 
 class WorkflowStore:
+    _PUBLIC_FIELDS = (
+        "id",
+        "name",
+        "workflow_role",
+        "description",
+        "checkpointer_id",
+        "workflow_event_output_id",
+        "cancel_on_upstream_termination",
+        "recursion_limit",
+        "execution_timeout_seconds",
+        "max_concurrency",
+        "enabled",
+    )
+
     def __init__(self, repository: FileConfigRepository, event_logger: SecurityEventLogger | None = None) -> None:
         self._repository = repository
         self._events = event_logger
@@ -41,33 +55,62 @@ class WorkflowStore:
         enabled_only: bool = False,
         workflow_role: WorkflowRole | None = None,
     ) -> list[dict]:
-        records = [self._public(item) for item in self._repository.config().get("workflows", [])]
+        records = [
+            self._public(item)
+            for item in self._repository.list_records(
+                "workflows", fields=self._PUBLIC_FIELDS
+            )
+        ]
         if enabled_only:
             records = [item for item in records if item["enabled"]]
         if workflow_role is not None:
             records = [item for item in records if item["workflow_role"] == workflow_role]
         return sorted(records, key=lambda value: (value["name"].casefold(), value["id"]))
 
+    def list_item_summaries(
+        self,
+        *,
+        workflow_role: WorkflowRole | None = None,
+    ) -> list[dict]:
+        fields = ("id", "name", "workflow_role", "description", "enabled")
+        records = self._repository.list_records("workflows", fields=fields)
+        if workflow_role is not None:
+            records = [
+                item
+                for item in records
+                if item.get("workflow_role") == workflow_role
+            ]
+        return sorted(
+            records,
+            key=lambda value: (
+                str(value.get("name", "")).casefold(),
+                str(value.get("id", "")),
+            ),
+        )
+
     def get_item(self, item_id: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
-            if item.get("id") == item_id:
-                return self._public(item)
-        return None
+        item = self._repository.get_record(
+            "workflows", item_id, fields=self._PUBLIC_FIELDS
+        )
+        return self._public(item) if item is not None else None
 
     def get_item_by_name(self, name: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
-            if item.get("name") == name:
-                return self._public(item)
-        return None
+        item = self._repository.find_record(
+            "workflows", "name", name, fields=self._PUBLIC_FIELDS
+        )
+        return self._public(item) if item is not None else None
 
     def get_item_by_event_output(self, component_id: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
-            if item.get("workflow_event_output_id") == component_id:
-                return self._public(item)
-        return None
+        item = self._repository.find_record(
+            "workflows",
+            "workflow_event_output_id",
+            component_id,
+            fields=self._PUBLIC_FIELDS,
+        )
+        return self._public(item) if item is not None else None
 
     def get_item_by_command(self, component_id: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
+        for item in self._repository.list_records("workflows"):
             definition = item.get("definition")
             nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
             for node in nodes if isinstance(nodes, list) else []:
@@ -82,7 +125,7 @@ class WorkflowStore:
         return None
 
     def get_item_by_task_dispatcher(self, component_id: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
+        for item in self._repository.list_records("workflows"):
             definition = item.get("definition")
             nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
             for node in nodes if isinstance(nodes, list) else []:
@@ -97,7 +140,7 @@ class WorkflowStore:
         return None
 
     def get_item_by_main_agent(self, main_agent_id: str) -> dict | None:
-        for item in self._repository.config().get("workflows", []):
+        for item in self._repository.list_records("workflows"):
             definition = item.get("definition")
             nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
             for node in nodes if isinstance(nodes, list) else []:
@@ -193,10 +236,17 @@ class WorkflowStore:
         return copied
 
     def get_graph(self, item_id: str) -> WorkflowGraphDocumentV1 | None:
-        for item in self._repository.config().get("workflows", []):
-            if item.get("id") == item_id:
-                return WorkflowGraphDocumentV1.model_validate({"definition": item.get("definition", {}), "layout": item.get("layout", {})})
-        return None
+        item = self._repository.get_record(
+            "workflows", item_id, fields=("definition", "layout")
+        )
+        if item is None:
+            return None
+        return WorkflowGraphDocumentV1.model_validate(
+            {
+                "definition": item.get("definition", {}),
+                "layout": item.get("layout", {}),
+            }
+        )
 
     def save_graph_and_enabled(
         self,
@@ -232,6 +282,8 @@ class WorkflowStore:
         expected_repository_id: str | None = None,
     ) -> int:
         unique_ids = set(item_ids)
+        if not unique_ids:
+            return 0
         removed: list[str] = []
 
         def mutate(config: dict) -> None:
@@ -266,3 +318,6 @@ class WorkflowStore:
 
     def repository_id(self) -> str:
         return self._repository.repository_id
+
+    def repository_context(self) -> tuple[str, int]:
+        return self._repository.repository_context()

@@ -41,12 +41,21 @@ const checkpointer: SavedBlock = {
   id: 'checkpointer-1', name: 'Async checkpoints', durability: 'async',
 }
 
-function mockComponentLists(): void {
-  vi.spyOn(managementApi, 'listBlocks').mockImplementation(async (type) => {
-    if (type === 'checkpointer') return [checkpointer]
-    if (type === 'workflow-event-output') return [eventOutput]
-    return []
+function mockComponentLists(workflows: Workflow[] = []) {
+  const options = vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
+    repository_id: '00000000-0000-4000-8000-000000000099',
+    repository_revision: 1,
+    components: { checkpointer: [checkpointer], 'workflow-event-output': [eventOutput] },
+    main_agents: [],
+    subagents: [],
+    workflows,
   })
+  vi.spyOn(managementApi, 'getWorkflow').mockImplementation(async (id) => {
+    const selected = workflows.find((item) => item.id === id)
+    if (!selected) throw new Error('Workflow not found')
+    return selected
+  })
+  return options
 }
 
 function testRouter() {
@@ -78,8 +87,7 @@ afterEach(() => {
 
 describe('WorkflowsPage', () => {
   it('loads a Workflow and creates a new configuration from the action dock', async () => {
-    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
-    mockComponentLists()
+    mockComponentLists([workflow])
     const create = vi.spyOn(managementApi, 'createWorkflow').mockResolvedValue(workflow)
     const router = testRouter()
     await router.push('/workflows/parents')
@@ -130,8 +138,7 @@ describe('WorkflowsPage', () => {
   })
 
   it('copies the selected Workflow and switches to the draft copy', async () => {
-    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
-    mockComponentLists()
+    mockComponentLists([workflow])
     const copied = {
       ...workflow,
       id: 'workflow-copy',
@@ -160,8 +167,7 @@ describe('WorkflowsPage', () => {
   })
 
   it('deletes the selected Workflow and returns to a blank form', async () => {
-    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
-    mockComponentLists()
+    mockComponentLists([workflow])
     const remove = vi.spyOn(managementApi, 'deleteWorkflow').mockResolvedValue({ ok: true })
     const router = testRouter()
     await router.push(`/workflows/parents?id=${workflow.id}`)
@@ -184,7 +190,6 @@ describe('WorkflowsPage', () => {
   })
 
   it('queries and creates child Workflows from the child page', async () => {
-    const list = vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([])
     mockComponentLists()
     const child = { ...workflow, id: 'workflow-child', workflow_role: 'child' as const }
     const create = vi.spyOn(managementApi, 'createWorkflow').mockResolvedValue(child)
@@ -198,7 +203,7 @@ describe('WorkflowsPage', () => {
     })
     await flushPromises()
 
-    expect(list).toHaveBeenCalledWith('child')
+    expect(managementApi.getConfigurationOptions).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('Terminate when the parent Run is cancelled or fails')
     expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
@@ -227,8 +232,7 @@ describe('WorkflowsPage', () => {
       workflow_event_output_id: eventOutput.id,
       cancel_on_upstream_termination: true,
     }
-    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([configured])
-    mockComponentLists()
+    mockComponentLists([configured])
     const update = vi.spyOn(managementApi, 'updateWorkflow').mockResolvedValue(configured)
     const router = testRouter()
     await router.push('/workflows/parents')
@@ -262,8 +266,7 @@ describe('WorkflowsPage', () => {
 
   it('freezes record changes during save and sorts a created Workflow immediately', async () => {
     const pending = deferred<Workflow>()
-    vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
-    mockComponentLists()
+    mockComponentLists([workflow])
     vi.spyOn(managementApi, 'createWorkflow').mockReturnValue(pending.promise)
     const router = testRouter()
     await router.push('/workflows/parents')
@@ -295,8 +298,7 @@ describe('WorkflowsPage', () => {
   })
 
   it('canonicalizes an invalid Workflow query and removes it for an empty list', async () => {
-    const list = vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([workflow])
-    mockComponentLists()
+    const options = mockComponentLists([workflow])
     const router = testRouter()
     await router.push('/workflows/parents?id=missing')
     await router.isReady()
@@ -309,7 +311,14 @@ describe('WorkflowsPage', () => {
     expect(router.currentRoute.value.query.id).toBe(workflow.id)
     wrapper.unmount()
 
-    list.mockResolvedValue([])
+    options.mockResolvedValue({
+      repository_id: '00000000-0000-4000-8000-000000000099',
+      repository_revision: 1,
+      components: { checkpointer: [checkpointer], 'workflow-event-output': [eventOutput] },
+      main_agents: [],
+      subagents: [],
+      workflows: [],
+    })
     const emptyRouter = testRouter()
     await emptyRouter.push('/workflows/parents?id=missing')
     await emptyRouter.isReady()

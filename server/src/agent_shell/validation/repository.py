@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import threading
+
 from agent_shell.configuration.dependencies import (
     ConfigurationEntity,
     ConfigurationReference,
     iter_configuration_entities,
     iter_configuration_references,
 )
+from agent_shell.python_packages.authoring import PACKAGE_COMPONENT_SPECS
 from agent_shell.contracts import MANAGED_COMPONENT_MODELS
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
@@ -103,6 +106,9 @@ class RepositoryValidationService:
         self._blocks = blocks
         self._configuration_validation = configuration_validation
         self._model_resources = model_resources
+        self._cache_lock = threading.Lock()
+        self._cached_context: tuple[str, int, int] | None = None
+        self._cached_report: ValidationReport | None = None
 
     @staticmethod
     def _semantic_issues(report: ValidationReport) -> list[ValidationIssue]:
@@ -113,6 +119,17 @@ class RepositoryValidationService:
         ]
 
     def validate_repository(self) -> ValidationReport:
+        repository_id, repository_revision = self._repository.repository_context()
+        model_revision = (
+            self._model_resources.revision()
+            if self._model_resources is not None
+            else 0
+        )
+        context = (repository_id, repository_revision, model_revision)
+        with self._cache_lock:
+            if context == self._cached_context and self._cached_report is not None:
+                return self._cached_report
+
         stage = "repository_load"
         config = self._repository.config()
         issues: list[ValidationIssue] = []
@@ -215,7 +232,19 @@ class RepositoryValidationService:
                             severity="warning",
                         )
                     )
-        return ValidationReport(stage=stage, issues=tuple(issues))
+        report = ValidationReport(stage=stage, issues=tuple(issues))
+        has_external_package_assets = any(
+            components.get(component_type)
+            for component_type in PACKAGE_COMPONENT_SPECS
+        )
+        with self._cache_lock:
+            if has_external_package_assets:
+                self._cached_context = None
+                self._cached_report = None
+            else:
+                self._cached_context = context
+                self._cached_report = report
+        return report
 
 
 __all__ = ["RepositoryValidationService"]

@@ -23,8 +23,7 @@ Windows 源码 Clone 从项目根运行：
 - 【工作流】：【父图】（parent Workflow）与【子图】（child Workflow）的装配表单和 Vue Flow canvas；
 - 【工作流组件】：检查点保存器（Checkpointer）、Workflow Event Output、Command Node 和 Task Dispatcher 配置；
 - 【配置库】：顶部按全局、工作流、工作流组件、代理和代理组件分组；Repository-owned 配置支持通用列表操作与 Bundle 导入/导出，模型连接仅支持查看、编辑、复制和删除；
-- 【词库】：术语查询；
-- 【样式基准】：UI 样式基准核对。
+- 【词库】：术语查询。
 
 ## 第一份可运行 Workflow
 

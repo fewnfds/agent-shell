@@ -17,7 +17,7 @@ import ComponentsPage from './ComponentsPage.vue'
 
 const api = vi.hoisted(() => ({
   getCatalog: vi.fn(),
-  listBlocks: vi.fn(),
+  listBlockSummaries: vi.fn(),
   getBlock: vi.fn(),
   saveBlock: vi.fn(),
   copyBlock: vi.fn(),
@@ -38,6 +38,7 @@ const api = vi.hoisted(() => ({
   listCommandTemplates: vi.fn(),
   listTaskDispatcherTemplates: vi.fn(),
   listSkills: vi.fn(),
+  inspectPythonPackage: vi.fn(),
   inspectPrivateSkills: vi.fn(),
   addPrivateSkill: vi.fn(),
   deletePrivateSkill: vi.fn(),
@@ -164,6 +165,20 @@ function privateSkillInspection(ownerId: string, skillName: string): SkillPackag
   }
 }
 
+function pythonPackageInspection(ownerId: string) {
+  return {
+    repository_id: '00000000-0000-4000-8000-000000000098',
+    owner_id: ownerId,
+    revision: 'package-revision',
+    files: [],
+    python_package_manifest: null,
+    python_package_error: null,
+    requirements_fingerprint: '',
+    dependency_status: 'ready' as const,
+    dependency_error_code: '',
+  }
+}
+
 async function mountAt(path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -172,8 +187,18 @@ async function mountAt(path: string) {
   await router.push(path)
   await router.isReady()
   const wrapper = mount(ComponentsPage, { global: { plugins: [router] } })
-  await flushPromises()
+  await settleComponentPage(wrapper)
   return { router, wrapper }
+}
+
+async function settleComponentPage(wrapper: ReturnType<typeof mount>): Promise<void> {
+  await vi.waitFor(() => {
+    expect(
+      wrapper.find('[data-testid="component-layout"]').exists()
+      || wrapper.find('[data-testid="page-error"]').exists(),
+    ).toBe(true)
+  })
+  await flushPromises()
 }
 
 function buttonByText(wrapper: Awaited<ReturnType<typeof mountAt>>['wrapper'], text: string) {
@@ -190,6 +215,15 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+function summaryCollection(items: SavedBlock[]) {
+  return {
+    items,
+    total: items.length,
+    repository_id: '00000000-0000-4000-8000-000000000098',
+    repository_revision: 1,
+  }
+}
+
 beforeEach(() => {
   useConfirmation().cancel()
   vi.clearAllMocks()
@@ -200,10 +234,10 @@ beforeEach(() => {
       skill: { system_prompt: 'default skill prompt', required_placeholders: [] },
     },
   })
-  api.listBlocks.mockImplementation(async (type: BlockType) => (
+  api.listBlockSummaries.mockImplementation(async (type: BlockType) => summaryCollection(
     type === 'model-requirement'
       ? [modelRequirementRecord('00000000-0000-0000-0000-000000000001')]
-      : [skillRecord('00000000-0000-0000-0000-000000000002')]
+      : [skillRecord('00000000-0000-0000-0000-000000000002')],
   ))
   api.getBlock.mockImplementation(async (type: BlockType, id: string) => (
     type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)
@@ -239,6 +273,9 @@ beforeEach(() => {
     catalog: [{ name: 'research', folder: 'research', template_path: 'group/research', description: 'Research skill' }],
     errors: {},
   })
+  api.inspectPythonPackage.mockImplementation(async (_type: BlockType, id: string) => (
+    pythonPackageInspection(id)
+  ))
   api.inspectPrivateSkills.mockImplementation(async (id: string) => ({
     folder: id, path: `skills/${id}`, catalog: [], warnings: {},
   }))
@@ -265,7 +302,7 @@ describe('ComponentsPage', () => {
       props: { scope: 'workflow' },
       global: { plugins: [router] },
     })
-    await flushPromises()
+    await settleComponentPage(wrapper)
 
     expect(api.listCommandTemplates).toHaveBeenCalledOnce()
 
@@ -315,15 +352,16 @@ describe('ComponentsPage', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/agent-components/skill')
-    expect(api.listBlocks).toHaveBeenLastCalledWith('skill')
+    expect(api.listBlockSummaries).toHaveBeenLastCalledWith('skill')
 
     await router.push('/workflow-components')
     await flushPromises()
 
     await vi.waitFor(() => {
       expect(router.currentRoute.value.path).toBe('/workflow-components/command')
+      expect(wrapper.find('[data-editor="command"]').exists()).toBe(true)
     })
-    expect(api.listBlocks).toHaveBeenLastCalledWith('command')
+    expect(api.listBlockSummaries).toHaveBeenLastCalledWith('command')
     expect(wrapper.find('[data-editor="command"]').exists()).toBe(true)
     wrapper.unmount()
   })
@@ -342,8 +380,8 @@ describe('ComponentsPage', () => {
       'common.new',
       'common.save',
     ])
-    expect(api.listBlocks).toHaveBeenCalledTimes(1)
-    expect(api.listBlocks).toHaveBeenCalledWith('model-requirement')
+    expect(api.listBlockSummaries).toHaveBeenCalledTimes(1)
+    expect(api.listBlockSummaries).toHaveBeenCalledWith('model-requirement')
     expect(api.getBlock).toHaveBeenCalledWith('model-requirement', id)
     expect(wrapper.find('[data-editor="model-requirement"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="navigation-region"]').exists()).toBe(false)
@@ -355,6 +393,100 @@ describe('ComponentsPage', () => {
     expect(wrapper.text()).not.toContain('common.loading')
     expect(wrapper.text()).not.toContain(id)
     expect(api.listSkills).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('refreshes stored validation before reading a collection with a new Repository revision', async () => {
+    const modelId = '00000000-0000-4000-8000-000000000001'
+    const skillId = '00000000-0000-4000-8000-000000000002'
+    api.listBlockSummaries.mockImplementation(async (type: BlockType) => ({
+      ...summaryCollection(type === 'model-requirement'
+        ? [modelRequirementRecord(modelId)]
+        : [skillRecord(skillId)]),
+      repository_revision: type === 'model-requirement' ? 1 : 2,
+    }))
+    api.validateRepository
+      .mockResolvedValueOnce({ valid: true, stage: 'repository_load', issues: [] })
+      .mockResolvedValueOnce({
+        valid: false,
+        stage: 'repository_load',
+        issues: [{
+          code: 'storage.skill_package_owner_mismatch',
+          scope: 'block',
+          owner_id: skillId,
+          owner_name: 'Skill configuration',
+          owner_type: 'skill',
+          path: 'skill_package.folder',
+          message: 'Stored Skill package owner mismatch.',
+          message_key: 'validation.issue.storage.skillPackageOwnerMismatch',
+          message_args: {},
+        }],
+      })
+    const { router, wrapper } = await mountAt(`/agent-components/model-requirement?id=${modelId}`)
+
+    await router.push(`/agent-components/skill?id=${skillId}`)
+    await vi.waitFor(() => {
+      expect(api.validateRepository).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('[data-testid="stored-invalid-warning"]').exists()).toBe(true)
+    })
+    wrapper.unmount()
+  })
+
+  it('revalidates independently edited Python package assets on explicit refresh', async () => {
+    const id = '00000000-0000-4000-8000-000000000081'
+    const command = {
+      id,
+      name: 'Editable command',
+      python_package: { folder: id },
+    }
+    api.getCatalog.mockResolvedValueOnce({
+      block_types: [],
+      workflow_component_types: [commandManifest],
+      editor_defaults: { command: {} },
+    })
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([command]))
+    api.getBlock.mockResolvedValueOnce(command)
+    api.validateRepository
+      .mockResolvedValueOnce({ valid: true, stage: 'repository_load', issues: [] })
+      .mockResolvedValueOnce({
+        valid: false,
+        stage: 'repository_load',
+        issues: [{
+          code: 'python_package.invalid',
+          scope: 'block',
+          owner_id: id,
+          owner_name: command.name,
+          owner_type: 'command',
+          path: 'python_package.folder',
+          message: 'The referenced Python package is invalid.',
+          message_key: 'validation.issue.pythonPackage.invalid',
+          message_args: { package_id: id },
+        }],
+      })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{
+        path: '/workflow-components/:type',
+        component: ComponentsPage,
+        props: { scope: 'workflow' },
+      }],
+    })
+    await router.push(`/workflow-components/command?id=${id}`)
+    await router.isReady()
+    const wrapper = mount(ComponentsPage, {
+      props: { scope: 'workflow' },
+      global: { plugins: [router] },
+    })
+    await settleComponentPage(wrapper)
+
+    const refresh = wrapper.findAll('[data-editor="command"] button')
+      .find((button) => button.attributes('aria-label') === 'common.refresh')
+    if (!refresh) throw new Error('Python package refresh button not found')
+    await refresh.trigger('click')
+    await vi.waitFor(() => {
+      expect(api.validateRepository).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('[data-testid="stored-invalid-warning"]').exists()).toBe(true)
+    })
     wrapper.unmount()
   })
 
@@ -384,7 +516,7 @@ describe('ComponentsPage', () => {
       props: { scope: 'model' },
       global: { plugins: [router] },
     })
-    await flushPromises()
+    await settleComponentPage(wrapper)
 
     expect(api.getCatalog).not.toHaveBeenCalled()
     expect(api.listModelConnections).toHaveBeenCalledOnce()
@@ -399,7 +531,7 @@ describe('ComponentsPage', () => {
   })
 
   it('keeps route loading failures inline without also creating a toast', async () => {
-    api.listBlocks.mockRejectedValueOnce(new Error('offline'))
+    api.listBlockSummaries.mockRejectedValueOnce(new Error('offline'))
     const { wrapper } = await mountAt('/agent-components/model-requirement')
 
     expect(wrapper.get('[data-testid="page-error"]').attributes('role')).toBe('alert')
@@ -412,8 +544,9 @@ describe('ComponentsPage', () => {
     await router.push('/agent-components/skill')
     await flushPromises()
 
-    expect(api.listBlocks).toHaveBeenLastCalledWith('skill')
+    expect(api.listBlockSummaries).toHaveBeenLastCalledWith('skill')
     expect(api.listSkills).toHaveBeenCalledOnce()
+    expect(api.inspectPrivateSkills).not.toHaveBeenCalled()
     const refresh = wrapper.findAll('[data-editor="skill"] button')
       .find((button) => button.text() === 'editors.common.refresh')
     if (!refresh) throw new Error('skill refresh button not found')
@@ -421,6 +554,7 @@ describe('ComponentsPage', () => {
     await flushPromises()
 
     expect(api.listSkills).toHaveBeenCalledTimes(2)
+    expect(api.inspectPrivateSkills).not.toHaveBeenCalled()
     expect(api.listCustomToolTemplates).not.toHaveBeenCalled()
     expect(api.listMiddlewareTemplates).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -430,20 +564,33 @@ describe('ComponentsPage', () => {
     const firstId = '00000000-0000-4000-8000-000000000011'
     const secondId = '00000000-0000-4000-8000-000000000022'
     const first = deferred<SkillPackageInspection>()
-    const second = deferred<SkillPackageInspection>()
-    api.listBlocks.mockResolvedValueOnce([skillRecord(firstId), skillRecord(secondId)])
-    api.inspectPrivateSkills.mockImplementation((id: string) => (
-      id === firstId ? first.promise : second.promise
-    ))
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([
+      skillRecord(firstId), skillRecord(secondId),
+    ]))
+    api.getBlock.mockImplementation(async (_type: BlockType, id: string) => ({
+      ...skillRecord(id),
+      skill_package_contents: privateSkillInspection(
+        id,
+        id === firstId ? 'First owner skill' : 'Second owner skill',
+      ),
+    }))
+    api.inspectPrivateSkills.mockReturnValueOnce(first.promise)
     const { router, wrapper } = await mountAt(`/agent-components/skill?id=${firstId}`)
 
+    const refresh = wrapper.findAll('[data-editor="skill"] button')
+      .find((button) => button.text() === 'editors.common.refresh')
+    if (!refresh) throw new Error('skill refresh button not found')
+    await refresh.trigger('click')
+    expect(api.inspectPrivateSkills).toHaveBeenCalledWith(firstId)
+
     await router.push(`/agent-components/skill?id=${secondId}`)
-    await flushPromises()
-    second.resolve(privateSkillInspection(secondId, 'Second owner skill'))
     await flushPromises()
     first.resolve(privateSkillInspection(firstId, 'First owner skill'))
     await flushPromises()
 
+    expect(api.listBlockSummaries).toHaveBeenCalledTimes(1)
+    expect(api.validateRepository).toHaveBeenCalledTimes(1)
+    expect(api.inspectPrivateSkills).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-testid="private-skill-item"]').text()).toContain('Second owner skill')
     expect(wrapper.text()).not.toContain('First owner skill')
     wrapper.unmount()
@@ -453,10 +600,16 @@ describe('ComponentsPage', () => {
     const firstId = '00000000-0000-4000-8000-000000000033'
     const secondId = '00000000-0000-4000-8000-000000000044'
     const mutation = deferred<SkillPackageInspection>()
-    api.listBlocks.mockResolvedValueOnce([skillRecord(firstId), skillRecord(secondId)])
-    api.inspectPrivateSkills.mockImplementation(async (id: string) => (
-      privateSkillInspection(id, id === firstId ? 'First existing skill' : 'Second existing skill')
-    ))
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([
+      skillRecord(firstId), skillRecord(secondId),
+    ]))
+    api.getBlock.mockImplementation(async (_type: BlockType, id: string) => ({
+      ...skillRecord(id),
+      skill_package_contents: privateSkillInspection(
+        id,
+        id === firstId ? 'First existing skill' : 'Second existing skill',
+      ),
+    }))
     api.addPrivateSkill.mockReturnValueOnce(mutation.promise)
     const { router, wrapper } = await mountAt(`/agent-components/skill?id=${firstId}`)
 
@@ -478,7 +631,7 @@ describe('ComponentsPage', () => {
       workflow_component_types: [commandManifest],
       editor_defaults: { 'command': {} },
     })
-    api.listBlocks.mockResolvedValueOnce([])
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([]))
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{
@@ -494,7 +647,7 @@ describe('ComponentsPage', () => {
       props: { scope: 'workflow' },
       global: { plugins: [router] },
     })
-    await flushPromises()
+    await settleComponentPage(wrapper)
 
     expect(api.listCommandTemplates).toHaveBeenCalledOnce()
     expect(api.listMiddlewareTemplates).not.toHaveBeenCalled()
@@ -508,7 +661,7 @@ describe('ComponentsPage', () => {
       workflow_component_types: [taskDispatcherManifest],
       editor_defaults: { 'task-dispatcher': {} },
     })
-    api.listBlocks.mockResolvedValueOnce([])
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([]))
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{
@@ -524,7 +677,7 @@ describe('ComponentsPage', () => {
       props: { scope: 'workflow' },
       global: { plugins: [router] },
     })
-    await flushPromises()
+    await settleComponentPage(wrapper)
 
     expect(api.listTaskDispatcherTemplates).toHaveBeenCalledOnce()
     expect(wrapper.find('[data-editor="task-dispatcher"]').exists()).toBe(true)
@@ -537,11 +690,11 @@ describe('ComponentsPage', () => {
       workflow_component_types: [commandManifest],
       editor_defaults: { 'command': {} },
     })
-    api.listBlocks.mockResolvedValueOnce([{
+    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([{
       id: '00000000-0000-4000-8000-000000000010',
       name: 'Existing router',
       python_package: { folder: '00000000-0000-4000-8000-000000000010' },
-    }])
+    }]))
     api.listCommandTemplates.mockResolvedValueOnce({
       catalog: [commandTemplate],
       errors: {},
@@ -560,7 +713,7 @@ describe('ComponentsPage', () => {
       props: { scope: 'workflow' },
       global: { plugins: [router] },
     })
-    await flushPromises()
+    await settleComponentPage(wrapper)
 
     expect(wrapper.find('option[value="__empty__"]').exists()).toBe(false)
     await buttonByText(wrapper, 'common.save').trigger('click')

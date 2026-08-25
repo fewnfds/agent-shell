@@ -25,57 +25,40 @@ class BlockStore:
             raise ValueError(f"component section must be a list: {block_type}")
         return records
 
-    def _public(self, block_type: str, block: dict) -> dict:
-        return deepcopy(block)
-
     def list_blocks(self, block_type: str) -> list[dict]:
-        config = self._repository.config()
         records = sorted(
-            self._records(config, block_type),
+            self._repository.list_component_records(block_type),
             key=lambda value: (str(value.get("name", "")).casefold(), str(value.get("id", ""))),
         )
-        return [self._public(block_type, record) for record in records]
+        return records
+
+    def list_block_summaries(self, block_type: str) -> list[dict[str, str]]:
+        records = self._repository.list_component_records(
+            block_type, fields=("id", "name")
+        )
+        return sorted(
+            records,
+            key=lambda value: (
+                str(value.get("name", "")).casefold(),
+                str(value.get("id", "")),
+            ),
+        )
 
     def list_blocks_internal(self, block_type: str) -> list[dict]:
-        config = self._repository.config()
-        return [deepcopy(record) for record in self._records(config, block_type)]
+        return self._repository.list_component_records(block_type)
 
     def list_block_headers(self) -> list[dict[str, str]]:
-        config = self._repository.config()
-        headers: list[dict[str, str]] = []
-        for block_type, records in config.get("components", {}).items():
-            if not isinstance(records, list):
-                continue
-            for record in records:
-                if isinstance(record, dict):
-                    headers.append(
-                        {
-                            "id": str(record.get("id", "")),
-                            "block_type": str(block_type),
-                            "name": str(record.get("name", "")),
-                        }
-                    )
+        headers = self._repository.list_component_headers()
         return sorted(headers, key=lambda value: (value["block_type"], value["name"].casefold(), value["id"]))
 
     def get_block_header(self, block_id: str) -> dict[str, str] | None:
-        for header in self.list_block_headers():
-            if header["id"] == block_id:
-                return header
-        return None
+        return self._repository.get_component_header(block_id)
 
     def get_block(self, block_type: str, block_id: str) -> dict | None:
-        config = self._repository.config()
-        for record in self._records(config, block_type):
-            if record.get("id") == block_id:
-                return self._public(block_type, record)
-        return None
+        return self._repository.get_component_record(block_type, block_id)
 
     def get_block_internal(self, block_type: str, block_id: str) -> dict | None:
-        config = self._repository.config()
-        for record in self._records(config, block_type):
-            if record.get("id") == block_id:
-                return deepcopy(record)
-        return None
+        return self._repository.get_component_record(block_type, block_id)
 
     def save_block(
         self,
@@ -216,3 +199,6 @@ class BlockStore:
         return self._repository.new_configuration_id()
     def repository_id(self) -> str:
         return self._repository.repository_id
+
+    def repository_context(self) -> tuple[str, int]:
+        return self._repository.repository_context()

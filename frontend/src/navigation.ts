@@ -19,7 +19,6 @@ export const navigationItems: NavigationItem[] = [
   },
   { path: '/library', labelKey: 'navigation.library', icon: 'bi-archive' },
   { path: '/terminology', labelKey: 'navigation.terminology', icon: 'bi-book' },
-  { path: '/style-baseline', labelKey: 'navigation.styleBaseline', icon: 'bi-sliders' },
 ]
 
 interface SectionNavigationItem {

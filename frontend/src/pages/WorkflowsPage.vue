@@ -2,187 +2,155 @@
 import { LteAlert, LteTextarea } from '@adminlte/vue'
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 
-import { managementApi, type SavedBlock, type Workflow, type WorkflowPayload, type WorkflowRole } from '@/api'
+import { managementApi, type ConfigurationSummary, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
-import { useConfirmation } from '@/composables/useConfirmation'
-import { useManagementError } from '@/composables/useManagementError'
-import { useToasts } from '@/composables/useToasts'
+import { useConfigurationResource } from '@/composables/useConfigurationResource'
 
 const props = defineProps<{ workflowRole: WorkflowRole }>()
 const { t } = useI18n()
-const route = useRoute()
 const router = useRouter()
-const managementError = useManagementError()
-const { notify } = useToasts()
-const { confirm } = useConfirmation()
-const records = ref<Workflow[]>([])
-const checkpointers = ref<SavedBlock[]>([])
-const workflowEventOutputs = ref<SavedBlock[]>([])
-const selectedId = ref('')
-const form = ref<WorkflowPayload>(blankWorkflow())
-const loading = ref(true)
-const saving = ref(false)
-const copying = ref(false)
-const deleting = ref(false)
-const copyOpen = ref(false)
-const copyName = ref('')
-const copyError = ref('')
-const error = ref('')
+const checkpointers = ref<ConfigurationSummary[]>([])
+const workflowEventOutputs = ref<ConfigurationSummary[]>([])
 
 function pagePath(): string {
   return `/workflows/${props.workflowRole === 'parent' ? 'parents' : 'children'}`
 }
-function sortWorkflows(items: Workflow[]): Workflow[] {
+function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: readonly T[]): T[] {
   return [...items].sort((left, right) => (
     left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
     || left.id.localeCompare(right.id)
   ))
 }
-function blankWorkflow(): WorkflowPayload {
-  return { name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, cancel_on_upstream_termination: true, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100 }
+
+type WorkflowResource = WorkflowPayload & Pick<Workflow, 'id' | 'enabled'>
+
+function blankWorkflow(): WorkflowResource {
+  return { id: '', name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, cancel_on_upstream_termination: true, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100, enabled: false }
 }
-function toPayload(workflow: Workflow): WorkflowPayload {
-  return { name: workflow.name, workflow_role: workflow.workflow_role, description: workflow.description, checkpointer_id: workflow.checkpointer_id, workflow_event_output_id: workflow.workflow_event_output_id, cancel_on_upstream_termination: workflow.cancel_on_upstream_termination, recursion_limit: workflow.recursion_limit, execution_timeout_seconds: workflow.execution_timeout_seconds, max_concurrency: workflow.max_concurrency }
-}
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  try {
-    const [listed, configuredCheckpointers, outputs] = await Promise.all([
-      managementApi.listWorkflows(props.workflowRole),
-      managementApi.listBlocks('checkpointer'),
-      managementApi.listBlocks('workflow-event-output'),
-    ])
-    records.value = sortWorkflows(listed)
-    checkpointers.value = configuredCheckpointers
-    workflowEventOutputs.value = outputs
-    const requested = typeof route.query.id === 'string' ? route.query.id : ''
-    const selected = records.value.find((item) => item.id === requested) ?? records.value[0]
-    selectedId.value = selected?.id ?? ''
-    form.value = selected ? toPayload(selected) : blankWorkflow()
-    if (requested !== selectedId.value) {
-      await router.replace({
-        path: pagePath(),
-        ...(selectedId.value ? { query: { id: selectedId.value } } : {}),
-      })
-    }
-  } catch (cause) {
-    error.value = managementError.describe(cause).display
-  } finally {
-    loading.value = false
+
+function normalizeWorkflow(value: unknown): WorkflowResource {
+  const workflow = value as Partial<Workflow>
+  const defaults = blankWorkflow()
+  return {
+    id: workflow.id ?? '',
+    name: workflow.name ?? '',
+    workflow_role: workflow.workflow_role ?? props.workflowRole,
+    description: workflow.description ?? '',
+    checkpointer_id: workflow.checkpointer_id ?? null,
+    workflow_event_output_id: workflow.workflow_event_output_id ?? null,
+    cancel_on_upstream_termination: workflow.cancel_on_upstream_termination ?? true,
+    recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
+    execution_timeout_seconds: workflow.execution_timeout_seconds ?? defaults.execution_timeout_seconds,
+    max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
+    enabled: workflow.enabled ?? false,
   }
 }
-function selectRecord(id: string): void {
-  if (saving.value) return
-  selectedId.value = id
-  const selected = records.value.find((item) => item.id === id)
-  form.value = selected ? toPayload(selected) : blankWorkflow()
-  void router.replace({ path: pagePath(), ...(id ? { query: { id } } : {}) })
-}
-function updateName(value: string): void { form.value.name = value }
-function newWorkflow(): void {
-  if (saving.value || copying.value || deleting.value) return
-  selectedId.value = ''
-  form.value = blankWorkflow()
-  void router.replace({ path: pagePath() })
-}
-function openCopy(): void {
-  if (!selectedId.value) return
-  copyName.value = ''
-  copyError.value = ''
-  copyOpen.value = true
-}
-function closeCopy(): void {
-  if (copying.value) return
-  copyOpen.value = false
-  copyName.value = ''
-  copyError.value = ''
-}
-async function copyCurrent(): Promise<void> {
-  if (!selectedId.value || copying.value) return
-  const name = copyName.value.trim()
-  if (!name) {
-    copyError.value = t('workflows.copy.nameRequired')
-    return
-  }
-  copying.value = true
-  copyError.value = ''
-  try {
-    const copied = await managementApi.copyWorkflow(selectedId.value, name)
-    records.value = sortWorkflows([...records.value, copied])
-    selectedId.value = copied.id
-    form.value = toPayload(copied)
-    copyOpen.value = false
-    copyName.value = ''
-    await router.replace({ path: pagePath(), query: { id: copied.id } })
-    notify({ tone: 'success', title: t('workflows.copied') })
-  } catch (cause) {
-    copyError.value = managementError.describe(cause).display
-  } finally {
-    copying.value = false
+
+function toPayload(workflow: WorkflowResource): WorkflowPayload {
+  return {
+    name: workflow.name.trim(),
+    workflow_role: props.workflowRole,
+    description: workflow.description.trim(),
+    checkpointer_id: workflow.checkpointer_id || null,
+    workflow_event_output_id: workflow.workflow_event_output_id || null,
+    cancel_on_upstream_termination: workflow.cancel_on_upstream_termination,
+    recursion_limit: Number(workflow.recursion_limit),
+    execution_timeout_seconds: Number(workflow.execution_timeout_seconds),
+    max_concurrency: Number(workflow.max_concurrency),
   }
 }
-async function removeCurrent(): Promise<void> {
-  if (!selectedId.value || deleting.value) return
-  const id = selectedId.value
-  const name = records.value.find((item) => item.id === id)?.name ?? form.value.name
-  const accepted = await confirm({
+
+const {
+  loading,
+  saving,
+  copying,
+  deleting,
+  copyOpen,
+  copyName,
+  copyError,
+  feedbackDetail: error,
+  records,
+  selectedId,
+  form,
+  initializeWorkspace,
+  startNew,
+  loadSelected: selectRecord,
+  save,
+  openCopy,
+  closeCopy,
+  copyCurrent,
+  removeCurrent,
+} = useConfigurationResource<WorkflowResource, WorkflowPayload, never>({
+  available: () => true,
+  blank: blankWorkflow,
+  normalize: normalizeWorkflow,
+  payload: toPayload,
+  get: (id) => managementApi.getWorkflow(id),
+  create: (payload) => managementApi.createWorkflow(payload),
+  update: (id, payload) => managementApi.updateWorkflow(id, payload),
+  copy: (id, name) => managementApi.copyWorkflow(id, name),
+  remove: (id) => managementApi.deleteWorkflow(id),
+  location: (id = '') => ({
+    path: pagePath(),
+    ...(id ? { query: { id } } : {}),
+  }),
+  deleteConfirmation: (workflow) => ({
     title: t('workflows.deleteTitle'),
-    description: t('workflows.deleteDescription', { name }),
+    description: t('workflows.deleteDescription', { name: workflow.name }),
     confirmLabel: t('common.delete'),
     cancelLabel: t('common.cancel'),
     dangerous: true,
+  }),
+  initialSelection: (items, requestedId) => (
+    items.some((item) => item.id === requestedId) ? requestedId : items[0]?.id ?? ''
+  ),
+  sort: sortWorkflows,
+  trackUnsaved: false,
+  messages: {
+    serviceUnavailable: 'errors.requestFailed',
+    loadFailed: 'workflows.loadFailed',
+    saved: 'workflows.saved',
+    saveFailed: 'workflows.loadFailed',
+    copied: 'workflows.copied',
+    deleted: 'workflows.deleted',
+    deleteFailed: 'workflows.deleteFailed',
+    copyNameRequired: 'workflows.copy.nameRequired',
+  },
+})
+
+async function loadWorkspace(): Promise<void> {
+  await initializeWorkspace(async () => {
+    const options = await managementApi.getConfigurationOptions()
+    checkpointers.value = options.components.checkpointer ?? []
+    workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
+    return options.workflows.filter((item) => item.workflow_role === props.workflowRole)
   })
-  if (!accepted) return
-  deleting.value = true
-  error.value = ''
-  try {
-    await managementApi.deleteWorkflow(id)
-    records.value = records.value.filter((item) => item.id !== id)
-    selectedId.value = ''
-    form.value = blankWorkflow()
-    await router.replace({ path: pagePath() })
-    notify({ tone: 'success', title: t('workflows.deleted') })
-  } catch (cause) {
-    error.value = managementError.describe(cause).display
-  } finally {
-    deleting.value = false
-  }
 }
-async function save(): Promise<void> {
+
+function newWorkflow(): void {
   if (saving.value || copying.value || deleting.value) return
-  saving.value = true
-  error.value = ''
-  try {
-    const payload: WorkflowPayload = { ...form.value, name: form.value.name.trim(), workflow_role: props.workflowRole, description: form.value.description.trim(), checkpointer_id: form.value.checkpointer_id || null, workflow_event_output_id: form.value.workflow_event_output_id || null, recursion_limit: Number(form.value.recursion_limit), execution_timeout_seconds: Number(form.value.execution_timeout_seconds), max_concurrency: Number(form.value.max_concurrency) }
-    const saved = selectedId.value ? await managementApi.updateWorkflow(selectedId.value, payload) : await managementApi.createWorkflow(payload)
-    records.value = sortWorkflows(
-      selectedId.value
-        ? records.value.map((item) => item.id === saved.id ? saved : item)
-        : [...records.value, saved],
-    )
-    selectedId.value = saved.id
-    form.value = toPayload(saved)
-    await router.replace({ path: pagePath(), query: { id: saved.id } })
-    notify({ tone: 'success', title: t('workflows.saved') })
-  } catch (cause) {
-    error.value = managementError.describe(cause).display
-  } finally {
-    saving.value = false
+  void startNew()
+}
+
+function updateName(value: string): void {
+  form.value.name = value
+}
+
+function editGraph(): void {
+  if (selectedId.value) {
+    void router.push(`/workflows/${encodeURIComponent(selectedId.value)}/editor`)
   }
 }
-function editGraph(): void {
-  if (selectedId.value) void router.push(`/workflows/${encodeURIComponent(selectedId.value)}/editor`)
-}
-watch(() => props.workflowRole, () => { void load() })
-onMounted(() => { void load() })
+
+watch(() => props.workflowRole, () => { void loadWorkspace() })
+onMounted(() => { void loadWorkspace() })
 </script>
 
 <template>

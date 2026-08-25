@@ -4,6 +4,8 @@
 
 【配置库】的【组件配置】（Configuration Repository）与 Component、Agent、Workflow 分类复用通用表格，但 Repository 列表和组件配置列表是两个独立页面；顶部固定为全局、工作流、工作流组件、代理和代理组件五组。全局组还包含【模型连接】；Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除，已应用筛选且命中记录后才可批量删除，模型连接支持查看、编辑、复制和删除，不提供 Bundle 下载或批量删除。
 
+普通列表只读取 summary 和当前页，打开详情或编辑时再读取该记录的完整配置；筛选与分页由 Management API 返回 `total` 和当前 Repository revision。配置修改、Bundle、Repository 切换和运行快照仍由后端在需要时读取完整 Repository，这些原子边界不依赖浏览器持有整仓数据。
+
 Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。模型连接与 credential 不随 Repository 复制或下载，repository-scoped 模型映射会按新 Model Requirement UUID 复制。
 
 系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template 和模型连接属于实例域，切换 Repository 时保持不变。模型映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置和模型资源视图，后续切换只影响新请求。

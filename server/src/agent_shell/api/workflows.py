@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from agent_shell.api.errors import management_error
+from agent_shell.api.configuration_collections import (
+    configuration_collection,
+    configuration_collection_requested,
+    matches_configuration_query,
+)
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation import report_from_validation_error
@@ -20,9 +27,19 @@ from agent_shell.workflow_contracts import WorkflowDefinition, WorkflowRole
 
 
 class WorkflowBulkDelete(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    ids: list[str] = Field(min_length=1)
+    ids: list[str] | None = Field(default=None, min_length=1)
+    q: str | None = Field(default=None, min_length=1)
+    workflow_role: WorkflowRole | None = None
+
+    @model_validator(mode="after")
+    def select_ids_or_query(self) -> "WorkflowBulkDelete":
+        if (self.ids is None) == (self.q is None):
+            raise ValueError("exactly one of ids or q is required")
+        if self.workflow_role is not None and self.q is None:
+            raise ValueError("workflow_role is only valid with q")
+        return self
 
 
 class WorkflowCopy(BaseModel):
@@ -125,8 +142,29 @@ def build_workflow_router(
         return node_catalog_payload()
 
     @router.get("/api/workflows")
-    async def list_workflows(workflow_role: WorkflowRole | None = None) -> list[dict]:
-        return store.list_items(workflow_role=workflow_role)
+    async def list_workflows(
+        request: Request,
+        workflow_role: WorkflowRole | None = None,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
+        if not configuration_collection_requested(request.query_params):
+            return store.list_items(workflow_role=workflow_role)
+        items = (
+            store.list_items(workflow_role=workflow_role)
+            if view == "full"
+            else store.list_item_summaries(workflow_role=workflow_role)
+        )
+        return configuration_collection(
+            items,
+            repository_context=store.repository_context(),
+            query=q,
+            search_fields=("name", "description", "id"),
+            offset=offset,
+            limit=limit,
+        )
 
     @router.post("/api/workflows")
     async def create_workflow(payload: dict) -> dict:
@@ -184,7 +222,19 @@ def build_workflow_router(
     @router.post("/api/workflows/delete")
     async def delete_workflows(payload: WorkflowBulkDelete) -> dict[str, int]:
         mutation_repository_id = store.repository_id()
-        ids = list(dict.fromkeys(payload.ids))
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in store.list_item_summaries(
+                    workflow_role=payload.workflow_role
+                )
+                if matches_configuration_query(
+                    item, payload.q or "", ("name", "description", "id")
+                )
+            ]
+        )
         if any(store.get_item(item_id) is None for item_id in ids):
             raise management_error(
                 404,

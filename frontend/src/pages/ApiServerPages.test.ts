@@ -164,7 +164,6 @@ describe('ApiServerSettingsPage', () => {
       '/workflow-components',
       '/library',
       '/terminology',
-      '/style-baseline',
     ])
     expect(navigationItems.find((item) => item.path === '/workflows')?.icon).toBe('bi-diagram-3')
     expect(router.resolve('/').matched.at(-1)?.components?.default).toBeDefined()

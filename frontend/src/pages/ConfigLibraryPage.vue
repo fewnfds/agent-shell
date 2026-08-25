@@ -10,7 +10,7 @@ import ConfigurationLibraryActions from '@/components/ConfigurationLibraryAction
 import ConfigurationLibraryFrame from '@/components/ConfigurationLibraryFrame.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
-import type { DataTableConfig } from '@/components/data-table/types'
+import type { DataTableConfig, DataTableRequest } from '@/components/data-table/types'
 import ModalHost from '@/components/ModalHost.vue'
 import PageShell from '@/components/PageShell.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
@@ -21,6 +21,7 @@ import { useConfigurationValidation } from '@/composables/useConfigurationValida
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 import { triggerBrowserDownload } from '@/utils/download'
+import { matchesSearchText } from '@/utils/search'
 import {
   agentLibraryCategories,
   bundleRoot,
@@ -28,6 +29,7 @@ import {
   routeCategory,
   type ConfigLibraryApi,
   type LibraryCategoryId,
+  type LibraryDetailItem,
   type LibraryItem,
 } from '@/pages/configLibrary'
 
@@ -45,13 +47,14 @@ const api = computed<ConfigLibraryApi>(() => props.api ?? managementApi)
 
 const refreshing = ref(false)
 const libraryTable = ref<{ reload: () => Promise<void> } | null>(null)
-const detailItem = ref<LibraryItem | null>(null)
+const detailItem = ref<LibraryDetailItem | null>(null)
 const detailMode = ref<'card' | 'json'>('card')
 const copyItem = ref<LibraryItem | null>(null)
 const copyName = ref('')
 const copyError = ref('')
 const copying = ref(false)
 const deletingUnsupportedBlockId = ref('')
+let detailRequestSequence = 0
 const {
   manifests,
   ready: catalogReady,
@@ -118,13 +121,54 @@ async function refreshValidationIfOwned(): Promise<void> {
   await refreshRepositoryValidation()
 }
 
-async function listCategory(category: LibraryCategoryId): Promise<LibraryItem[]> {
-  if (category === 'main-agent') return api.value.listMainAgents()
-  if (category === 'subagent-profile') return api.value.listSubagents()
-  if (category === 'parent-workflow') return api.value.listWorkflows('parent')
-  if (category === 'child-workflow') return api.value.listWorkflows('child')
-  if (category === 'model-connection') return api.value.listModelConnections()
-  return api.value.listBlocks(category)
+async function listCategory(
+  category: LibraryCategoryId,
+  request: DataTableRequest,
+): Promise<{ rows: LibraryItem[], total: number }> {
+  const query = {
+    q: request.query || undefined,
+    offset: (request.page - 1) * request.pageSize,
+    limit: request.pageSize,
+  }
+  if (category === 'main-agent') {
+    const result = await api.value.listMainAgentSummaries(query)
+    return { rows: result.items, total: result.total }
+  }
+  if (category === 'subagent-profile') {
+    const result = await api.value.listSubagentSummaries(query)
+    return { rows: result.items, total: result.total }
+  }
+  if (category === 'parent-workflow' || category === 'child-workflow') {
+    const result = await api.value.listWorkflowSummaries(
+      category === 'parent-workflow' ? 'parent' : 'child',
+      query,
+    )
+    return { rows: result.items, total: result.total }
+  }
+  if (category === 'model-connection') {
+    const items = (await api.value.listModelConnections()).filter((item) => (
+      matchesSearchText(request.query, [item.name, item.id])
+    ))
+    return {
+      rows: items.slice(query.offset, query.offset + request.pageSize),
+      total: items.length,
+    }
+  }
+  const result = await api.value.listBlockSummaries(category, query)
+  return { rows: result.items, total: result.total }
+}
+
+async function getCategoryItem(
+  category: LibraryCategoryId,
+  id: string,
+): Promise<LibraryDetailItem> {
+  if (category === 'main-agent') return api.value.getMainAgent(id)
+  if (category === 'subagent-profile') return api.value.getSubagent(id)
+  if (category === 'parent-workflow' || category === 'child-workflow') {
+    return api.value.getWorkflow(id)
+  }
+  if (category === 'model-connection') return api.value.getModelConnection(id)
+  return api.value.getBlock(category, id)
 }
 
 async function downloadBundle(item: LibraryItem): Promise<void> {
@@ -144,12 +188,18 @@ async function refresh(): Promise<void> {
   refreshing.value = false
 }
 
-function showDetail(item: LibraryItem): void {
+async function showDetail(item: LibraryItem): Promise<void> {
+  const category = currentCategory.value
+  if (!category) return
+  const sequence = ++detailRequestSequence
+  const detail = await getCategoryItem(category, item.id)
+  if (sequence !== detailRequestSequence || category !== currentCategory.value) return
   detailMode.value = 'card'
-  detailItem.value = item
+  detailItem.value = detail
 }
 
 function closeDetail(): void {
+  detailRequestSequence += 1
   detailItem.value = null
 }
 
@@ -252,13 +302,13 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
   loadErrorTitle: () => t('library.loadFailed'),
   rowKey: (item) => item.id,
   provider: {
-    mode: 'local',
-    load: async () => {
+    mode: 'numbered',
+    load: async (request) => {
       const category = currentCategory.value
       if (!category) throw new Error(t('library.unknownCategory', { type: activeCategoryId.value }))
-      detailItem.value = null
+      closeDetail()
       copyItem.value = null
-      return listCategory(category)
+      return listCategory(category, request)
     },
   },
   search: {
@@ -343,14 +393,18 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
       const category = currentCategory.value
       if (!category) return { deleted: 0 }
       if (category === 'model-connection') return { deleted: 0 }
-      const ids = context.matchingRows.map((item) => item.id)
+      const query = context.applied.query
+      if (!query) return { deleted: 0 }
       const result = category === 'main-agent'
-        ? await api.value.deleteMainAgents(ids)
+        ? await api.value.deleteMainAgentsMatching(query)
         : category === 'subagent-profile'
-          ? await api.value.deleteSubagents(ids)
-          : category === 'parent-workflow' || category === 'child-workflow'
-            ? await api.value.deleteWorkflows(ids)
-          : await api.value.deleteBlocks(category, ids)
+        ? await api.value.deleteSubagentsMatching(query)
+        : category === 'parent-workflow' || category === 'child-workflow'
+          ? await api.value.deleteWorkflowsMatching(
+            query,
+            category === 'parent-workflow' ? 'parent' : 'child',
+          )
+          : await api.value.deleteBlocksMatching(category, query)
       closeDetail()
       await refreshValidationIfOwned()
       return result
@@ -411,8 +465,8 @@ onMounted(async () => {
         >
           <template #issue-actions="{ issue }">
             <LteButton
-              class="action-button"
               v-if="issue.code === 'storage.unknown_block_type' && issue.owner_id && issue.owner_type"
+              class="action-button"
               :disabled="deletingUnsupportedBlockId === issue.owner_id"
               type="button"
               @click="deleteUnsupportedBlock(issue)"
@@ -489,5 +543,4 @@ onMounted(async () => {
     @submit="copyCurrentItem"
     @update:name="copyName = $event"
   />
-
 </template>

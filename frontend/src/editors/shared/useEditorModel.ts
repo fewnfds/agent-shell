@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue'
+import { reactive, toRaw, watch } from 'vue'
 
 function clone<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => clone(item)) as T
@@ -21,15 +21,24 @@ export function useEditorModel<T extends object>(
 ): T {
   const draft = reactive(clone(readModel())) as T
   let syncing = false
+  let lastEmitted: T | null = null
 
   watch(readModel, (value) => {
+    if (toRaw(value) === lastEmitted) {
+      lastEmitted = null
+      return
+    }
+    lastEmitted = null
     syncing = true
     replaceObject(draft, value)
     syncing = false
   }, { deep: true, flush: 'sync' })
 
   watch(draft, (value) => {
-    if (!syncing) onUpdate(clone(value as T))
+    if (syncing) return
+    const emitted = clone(value as T)
+    lastEmitted = emitted
+    onUpdate(emitted)
   }, { deep: true, flush: 'sync' })
 
   return draft

@@ -211,10 +211,23 @@ function createApi() {
     stage: 'repository',
     issues: [],
   }))
-  const listBlocks = vi.fn(async () => [...stored])
-  const listMainAgents = vi.fn(async () => [])
-  const listSubagents = vi.fn(async () => [])
-  const listWorkflows = vi.fn(async () => [])
+  const collection = <T>(items: T[]) => ({
+    items,
+    total: items.length,
+    repository_id: 'repository-id',
+    repository_revision: 1,
+  })
+  const listBlockSummaries = vi.fn(async (
+    _type: string,
+    request?: { q?: string, offset?: number, limit?: number },
+  ) => {
+    const matches = stored.filter((item) => !request?.q || item.name.toLowerCase().includes(request.q.toLowerCase()))
+    const offset = request?.offset ?? 0
+    return collection(matches.slice(offset, request?.limit === undefined ? undefined : offset + request.limit))
+  })
+  const listMainAgentSummaries = vi.fn(async () => collection([]))
+  const listSubagentSummaries = vi.fn(async () => collection([]))
+  const listWorkflowSummaries = vi.fn(async () => collection([]))
   const modelConnection: ModelConnection = {
     id: '33333333-3333-4333-8333-333333333333',
     name: 'Local GPT',
@@ -244,11 +257,16 @@ function createApi() {
   const service: ConfigLibraryApi = {
     getCatalog,
     validateRepository,
-    listBlocks,
-    listMainAgents,
-    listSubagents,
-    listWorkflows,
+    listBlockSummaries,
+    listMainAgentSummaries,
+    listSubagentSummaries,
+    listWorkflowSummaries,
     listModelConnections,
+    getBlock: vi.fn(async (_type, id) => stored.find((item) => item.id === id) ?? block),
+    getMainAgent: vi.fn(async () => ({ id: 'main-id', name: 'Main Agent' } as never)),
+    getSubagent: vi.fn(async () => ({ id: 'subagent-id', component_name: 'Subagent' } as never)),
+    getWorkflow: vi.fn(async () => ({ id: 'workflow-id', name: 'Workflow' } as never)),
+    getModelConnection: vi.fn(async () => modelConnection),
     copyBlock,
     copyMainAgent: vi.fn(),
     copySubagent: vi.fn(),
@@ -257,13 +275,20 @@ function createApi() {
     deleteBlock,
     deleteUnsupportedBlock,
     deleteBlocks: vi.fn(async (_type, ids) => deleteBlocks(ids)),
+    deleteBlocksMatching: vi.fn(async (_type, query) => {
+      const ids = stored.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())).map((item) => item.id)
+      return deleteBlocks(ids)
+    }),
     deleteMainAgent: vi.fn(),
     deleteSubagent: vi.fn(),
     deleteWorkflow: vi.fn(),
     deleteModelConnection: vi.fn(),
     deleteMainAgents: vi.fn(),
+    deleteMainAgentsMatching: vi.fn(),
     deleteSubagents: vi.fn(),
+    deleteSubagentsMatching: vi.fn(),
     deleteWorkflows: vi.fn(),
+    deleteWorkflowsMatching: vi.fn(),
     exportConfigurationBundle: vi.fn(async () => ({
       blob: new Blob(),
       filename: 'configuration.agent-shell-config.zip',
@@ -276,9 +301,9 @@ function createApi() {
     block,
     getCatalog,
     validateRepository,
-    listBlocks,
-    listMainAgents,
-    listSubagents,
+    listBlockSummaries,
+    listMainAgentSummaries,
+    listSubagentSummaries,
     copyBlock,
     deleteBlock,
     deleteUnsupportedBlock,
@@ -329,10 +354,14 @@ describe('ConfigLibraryPage', () => {
       execution_timeout_seconds: 120, max_concurrency: 4,
       cancel_on_upstream_termination: true, enabled: false,
     }
-    vi.mocked(api.service.listWorkflows).mockResolvedValue([workflow])
+    vi.mocked(api.service.listWorkflowSummaries).mockResolvedValue({
+      items: [workflow], total: 1, repository_id: 'repository-id', repository_revision: 1,
+    })
     const { wrapper } = await mountPage(api.service, '/library/parent-workflow')
 
-    expect(api.service.listWorkflows).toHaveBeenCalledWith('parent')
+    expect(api.service.listWorkflowSummaries).toHaveBeenCalledWith('parent', {
+      q: undefined, offset: 0, limit: 20,
+    })
     expect(wrapper.text()).toContain('Parent flow')
     expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
@@ -496,7 +525,7 @@ describe('ConfigLibraryPage', () => {
 
   it('keeps list and copy failures in their local error regions without toasts', async () => {
     const listFailure = createApi()
-    listFailure.listBlocks.mockRejectedValueOnce(new Error('offline'))
+    listFailure.listBlockSummaries.mockRejectedValueOnce(new Error('offline'))
     const { wrapper: listWrapper } = await mountPage(listFailure.service)
 
     expect(listWrapper.get('[data-testid="data-table-error"]').attributes('role')).toBe('alert')
@@ -520,7 +549,9 @@ describe('ConfigLibraryPage', () => {
     const api = createApi()
     const { wrapper } = await mountPage(api.service)
 
-    expect(api.listBlocks).toHaveBeenCalledWith('model')
+    expect(api.listBlockSummaries).toHaveBeenCalledWith('model', {
+      q: undefined, offset: 0, limit: 20,
+    })
     expect(wrapper.get('[data-testid="library-component-group"] > span').text()).toBe('Agent components')
     expect(wrapper
       .get('[data-testid="library-component-group"] [data-testid="section-nav"]')
@@ -600,10 +631,12 @@ describe('ConfigLibraryPage', () => {
 
   it('deletes only the submitted search results through one category batch command', async () => {
     const api = createApi()
-    api.listBlocks.mockResolvedValueOnce([
-      api.block,
-      { id: 'other-uuid', name: 'Other model' },
-    ])
+    api.listBlockSummaries.mockResolvedValueOnce({
+      items: [api.block, { id: 'other-uuid', name: 'Other model' }],
+      total: 2,
+      repository_id: 'repository-id',
+      repository_revision: 1,
+    })
     const { wrapper } = await mountPage(api.service)
 
     await wrapper.get('#configuration-library-query').setValue('Original')
@@ -616,6 +649,6 @@ describe('ConfigLibraryPage', () => {
     await bulk.trigger('click')
     useConfirmation().accept()
     await flushPromises()
-    expect(api.deleteBlocks).toHaveBeenCalledWith(['block-uuid'])
+    expect(api.service.deleteBlocksMatching).toHaveBeenCalledWith('model', 'Original')
   })
 })

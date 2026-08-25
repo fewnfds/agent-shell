@@ -28,11 +28,18 @@ describe('Subagent authoring page', () => {
         block_types: [modelManifest, promptManifest, toolManifest],
         editor_defaults: {},
       })),
-      listBlocks: vi.fn(async (type) => (
-        type === 'custom-tool'
-          ? [{ id: firstId, name: 'First Tool' }, { id: secondId, name: 'Second Tool' }]
-          : [{ id: `00000000-0000-0000-0000-${type === 'model' ? '000000000001' : '000000000002'}`, name: `${type} block` }]
-      )),
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: {
+          model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+          'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
+          'custom-tool': [{ id: firstId, name: 'First Tool' }, { id: secondId, name: 'Second Tool' }],
+        },
+        main_agents: [],
+        subagents: [],
+        workflows: [],
+      })),
     })
 
     for (const mountPage of [mountMainAgentPage, mountSubagentPage]) {
@@ -70,11 +77,18 @@ describe('Subagent authoring page', () => {
         block_types: [modelManifest, promptManifest, middlewareManifest],
         editor_defaults: {},
       })),
-      listBlocks: vi.fn(async (type) => (
-        type === 'custom-middleware'
-          ? [{ id: firstId, name: 'First' }, { id: secondId, name: 'Second' }]
-          : [{ id: `00000000-0000-0000-0000-${type === 'model' ? '000000000001' : '000000000002'}`, name: `${type} block` }]
-      )),
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: {
+          model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+          'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
+          'custom-middleware': [{ id: firstId, name: 'First' }, { id: secondId, name: 'Second' }],
+        },
+        main_agents: [],
+        subagents: [],
+        workflows: [],
+      })),
     })
 
     for (const mountPage of [mountMainAgentPage, mountSubagentPage]) {

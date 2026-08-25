@@ -70,7 +70,6 @@ function titleKeyForPath(path: string): string {
   if (path.startsWith('/agent-components')) return 'components.title'
   if (path.startsWith('/library/')) return 'library.title'
   if (path === '/terminology') return 'terminology.title'
-  if (path === '/style-baseline') return 'styleBaseline.title'
   return 'apiServer.homeTitle'
 }
 
@@ -91,7 +90,6 @@ async function mountShell(path = '/', api = createShellApi()) {
       '/agent-components',
       '/workflow-components',
       '/library',
-      '/style-baseline',
       '/agents/main',
       '/agents/subagents',
       '/agent-components/model',
@@ -149,8 +147,7 @@ describe('AppShell', () => {
     expect(shell.find('a[href="/system/files"]').exists()).toBe(false)
     expect(shell.find('a[href="/agents/main"]').exists()).toBe(false)
     expect(shell.find('a[href^="/agent-components/"]').exists()).toBe(false)
-    expect(shell.get('a[href="/style-baseline"] .nav-icon').classes()).toContain('bi-sliders')
-    expect(shell.findAll('.app-sidebar .nav-link')).toHaveLength(11)
+    expect(shell.findAll('.app-sidebar .nav-link')).toHaveLength(10)
   })
 
   it('renders the localized route title beside the navigation toggle', async () => {
@@ -166,7 +163,7 @@ describe('AppShell', () => {
 
     await shell.get('#app-language').trigger('click')
     await nextTick()
-    expect(title.text()).toBe('Agent component configuration')
+    expect(title.text()).toBe('Agent components')
 
     await router.push('/workflows/parents')
     await nextTick()

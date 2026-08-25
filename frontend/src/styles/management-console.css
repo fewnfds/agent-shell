@@ -77,7 +77,7 @@ body {
 }
 
 /* Action Button palette: icons identify the stable global semantic color. */
-:is(.action-button, .icon-action-button):not(.style-baseline *) {
+:is(.action-button, .icon-action-button) {
   --bs-btn-color: var(--bs-white);
   --bs-btn-bg: var(--bs-primary);
   --bs-btn-border-color: var(--bs-primary);
@@ -92,15 +92,15 @@ body {
   --bs-btn-disabled-border-color: var(--bs-btn-border-color);
 }
 
-:is(.action-button, .icon-action-button):not(.style-baseline *):has(.bi-trash, .bi-stop-fill),
-:is(.action-button, .icon-action-button):not(.style-baseline *)[data-action="delete"] {
+:is(.action-button, .icon-action-button):has(.bi-trash, .bi-stop-fill),
+:is(.action-button, .icon-action-button)[data-action="delete"] {
   --bs-btn-bg: var(--bs-danger);
   --bs-btn-border-color: var(--bs-danger);
   --bs-btn-hover-bg: var(--bs-danger-text-emphasis);
   --bs-btn-hover-border-color: var(--bs-danger-text-emphasis);
 }
 
-:is(.action-button, .icon-action-button):not(.style-baseline *):has(.bi-copy, .bi-download, .bi-eye, .bi-archive, .bi-arrow-clockwise) {
+:is(.action-button, .icon-action-button):has(.bi-copy, .bi-download, .bi-eye, .bi-archive, .bi-arrow-clockwise) {
   --bs-btn-color: var(--bs-black);
   --bs-btn-bg: var(--bs-info);
   --bs-btn-border-color: var(--bs-info);
@@ -109,8 +109,8 @@ body {
   --bs-btn-hover-border-color: color-mix(in srgb, var(--bs-info) 85%, var(--bs-black));
 }
 
-:is(.action-button, .icon-action-button):not(.style-baseline *):has(.bi-x-lg, .bi-chevron-left, .bi-eye-slash),
-:is(.action-button, .icon-action-button):not(.style-baseline *)[data-action="cancel"] {
+:is(.action-button, .icon-action-button):has(.bi-x-lg, .bi-chevron-left, .bi-eye-slash),
+:is(.action-button, .icon-action-button)[data-action="cancel"] {
   --bs-btn-color: var(--bs-body-color);
   --bs-btn-bg: var(--bs-secondary-bg);
   --bs-btn-border-color: var(--bs-secondary-color);
@@ -119,9 +119,9 @@ body {
   --bs-btn-hover-border-color: var(--bs-body-color);
 }
 
-:is(.action-button, .icon-action-button):not(.style-baseline *):has(.bi-pencil, .bi-arrow-up, .bi-arrow-down),
-:is(.action-button, .icon-action-button):not(.style-baseline *)[data-action="restore-default"],
-:is(.action-button, .icon-action-button):not(.style-baseline *)[data-action="restore-summary-prompt"] {
+:is(.action-button, .icon-action-button):has(.bi-pencil, .bi-arrow-up, .bi-arrow-down),
+:is(.action-button, .icon-action-button)[data-action="restore-default"],
+:is(.action-button, .icon-action-button)[data-action="restore-summary-prompt"] {
   --bs-btn-color: var(--bs-black);
   --bs-btn-bg: var(--bs-warning);
   --bs-btn-border-color: var(--bs-warning);

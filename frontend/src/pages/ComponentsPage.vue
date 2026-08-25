@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
-import { computed, onMounted, ref, watch, type Component } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -51,26 +51,6 @@ import {
   applyPythonPackageInspection,
   type PythonPackageDraftState,
 } from '@/domain/blocks/pythonPackage'
-import {
-  CustomMiddlewareEditor,
-  CustomToolEditor,
-  ExceptionRetryEditor,
-  FilesystemEditor,
-  FilesystemPermissionsEditor,
-  ModelEditor,
-  ModelRequirementEditor,
-  AgentEventOutputEditor,
-  PromptCachingEditor,
-  SkillEditor,
-  SubagentCapabilityEditor,
-  SummarizationEditor,
-  SystemPromptEditor,
-  TodoListEditor,
-  WorkflowEventOutputEditor,
-  CommandEditor,
-  TaskDispatcherEditor,
-  CheckpointerEditor,
-} from '@/editors'
 
 type EditorType = ManagedComponentType | 'model-connection'
 type EditorRecord = SavedBlock | ModelConnection
@@ -93,25 +73,27 @@ const props = withDefaults(defineProps<{
   scope: 'agent',
 })
 
-const editorComponents: Record<EditorType, Component> = {
-  checkpointer: CheckpointerEditor,
-  'model-requirement': ModelRequirementEditor,
-  'system-prompt': SystemPromptEditor,
-  filesystem: FilesystemEditor,
-  'filesystem-permissions': FilesystemPermissionsEditor,
-  'todo-list': TodoListEditor,
-  'custom-tool': CustomToolEditor,
-  skill: SkillEditor,
-  'custom-middleware': CustomMiddlewareEditor,
-  'agent-event-output': AgentEventOutputEditor,
-  'exception-retry': ExceptionRetryEditor,
-  subagent: SubagentCapabilityEditor,
-  summarization: SummarizationEditor,
-  'prompt-caching': PromptCachingEditor,
-  'workflow-event-output': WorkflowEventOutputEditor,
-  'command': CommandEditor,
-  'task-dispatcher': TaskDispatcherEditor,
-  'model-connection': ModelEditor,
+type EditorModule = { default: Component }
+
+const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
+  checkpointer: () => import('@/editors/CheckpointerEditor.vue'),
+  'model-requirement': () => import('@/editors/ModelRequirementEditor.vue'),
+  'system-prompt': () => import('@/editors/SystemPromptEditor.vue'),
+  filesystem: () => import('@/editors/FilesystemEditor.vue'),
+  'filesystem-permissions': () => import('@/editors/FilesystemPermissionsEditor.vue'),
+  'todo-list': () => import('@/editors/TodoListEditor.vue'),
+  'custom-tool': () => import('@/editors/CustomToolEditor.vue'),
+  skill: () => import('@/editors/SkillEditor.vue'),
+  'custom-middleware': () => import('@/editors/CustomMiddlewareEditor.vue'),
+  'agent-event-output': () => import('@/editors/AgentEventOutputEditor.vue'),
+  'exception-retry': () => import('@/editors/ExceptionRetryEditor.vue'),
+  subagent: () => import('@/editors/SubagentCapabilityEditor.vue'),
+  summarization: () => import('@/editors/SummarizationEditor.vue'),
+  'prompt-caching': () => import('@/editors/PromptCachingEditor.vue'),
+  'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
+  command: () => import('@/editors/CommandEditor.vue'),
+  'task-dispatcher': () => import('@/editors/TaskDispatcherEditor.vue'),
+  'model-connection': () => import('@/editors/ModelEditor.vue'),
 }
 
 const { t } = useI18n()
@@ -134,6 +116,7 @@ const activeType = ref<EditorType | null>(null)
 const records = ref<EditorRecord[]>([])
 const selectedId = ref('')
 const draft = ref<BlockDraftBase | null>(null)
+const currentEditor = shallowRef<Component | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const pageError = ref('')
@@ -186,6 +169,9 @@ let resourceSequence = 0
 let privateSkillSequence = 0
 let privateSkillLoadingSequence = 0
 let privateSkillMutationSequence = 0
+let loadedCollectionType: EditorType | null = null
+let repositoryRevision: number | null = null
+let repositoryValidationPromise: Promise<ValidationReport> | null = null
 
 function invalidateResourceRequests(): void {
   resourceSequence += 1
@@ -216,7 +202,6 @@ function defaultsForType(type: EditorType | null): unknown {
 }
 
 const activeDefaults = computed(() => defaultsForType(activeType.value))
-const currentEditor = computed(() => activeType.value ? editorComponents[activeType.value] : null)
 const navigationItems = computed<SectionNavItem[]>(() => manifests.value.map((manifest) => ({
   id: manifest.type,
   label: t(`capabilities.${manifest.type}.label`),
@@ -369,7 +354,8 @@ function notifyFailure(titleKey: string, error: unknown): void {
 async function isStoredRecordInvalid(id: string): Promise<boolean> {
   if (activeType.value === 'model-connection') return false
   try {
-    const report = await managementApi.validateRepository()
+    repositoryValidationPromise ??= managementApi.validateRepository()
+    const report = await repositoryValidationPromise
     return report.issues.some((issue) => issue.scope === 'block' && issue.owner_id === id)
   } catch {
     return false
@@ -393,6 +379,9 @@ const { validation } = useConfigurationValidation({
     }
   },
   validate: (request) => managementApi.validateDraft(request),
+  onSourceChange: () => {
+    saveValidation.value = null
+  },
   errorMessage: (error) => managementError.describe(
     error,
     'errors.validationUnavailable',
@@ -413,10 +402,6 @@ const showDraftValidation = computed(() => (
   || Boolean(draft.value.id)
 ))
 
-watch(draft, () => {
-  saveValidation.value = null
-}, { deep: true })
-
 async function loadRoute(): Promise<void> {
   if (manifests.value.length === 0) return
   const requestedType = props.scope === 'model'
@@ -436,18 +421,31 @@ async function loadRoute(): Promise<void> {
   pageError.value = ''
   saveValidation.value = null
   try {
-    const [listed, filesystemItems, modelProviders] = await Promise.all([
-      manifest.type === 'model-connection'
-        ? managementApi.listModelConnections()
-        : managementApi.listBlocks(manifest.type),
+    const collectionChanged = loadedCollectionType !== manifest.type
+    const [collection, filesystemCollection, modelProviders, editorModule] = await Promise.all([
+      !collectionChanged
+        ? Promise.resolve(null)
+        : manifest.type === 'model-connection'
+          ? managementApi.listModelConnections()
+          : managementApi.listBlockSummaries(manifest.type),
       manifest.type === 'filesystem-permissions'
-        ? managementApi.listBlocks('filesystem')
-        : Promise.resolve([]),
+        ? managementApi.listBlockSummaries('filesystem')
+        : Promise.resolve(null),
       manifest.type === 'model-connection'
         ? managementApi.listModelProviders()
         : Promise.resolve(null),
+      editorLoaders[manifest.type](),
     ])
     if (sequence !== routeSequence) return
+    if (collection !== null && !Array.isArray(collection)) {
+      if (
+        repositoryRevision !== null
+        && repositoryRevision !== collection.repository_revision
+      ) {
+        repositoryValidationPromise = null
+      }
+      repositoryRevision = collection.repository_revision
+    }
     const id = routeId()
     let loadedDraft: BlockDraftBase
     if (id) {
@@ -478,13 +476,23 @@ async function loadRoute(): Promise<void> {
       storedRecordInvalid.value = false
     }
     activeType.value = manifest.type
-    records.value = listed
-    filesystems.value = filesystemItems as FilesystemImportSource[]
+    currentEditor.value = editorModule.default
+    if (collection !== null) {
+      if (Array.isArray(collection)) {
+        records.value = collection
+      } else {
+        records.value = collection.items
+      }
+      loadedCollectionType = manifest.type
+    }
+    filesystems.value = (filesystemCollection?.items ?? []) as FilesystemImportSource[]
     providers.value = modelProviders
     draft.value = loadedDraft
     selectedId.value = loadedDraft.id
     markClean()
-    if (manifest.type === 'skill' || (!id && usesPythonExtension(manifest.type))) {
+    if (manifest.type === 'skill') {
+      await refreshResource({ includeOwnedSkillPackage: !id })
+    } else if (!id && usesPythonExtension(manifest.type)) {
       await refreshResource()
     }
   } catch (error) {
@@ -639,6 +647,7 @@ async function save(): Promise<void> {
       ? ((saved as SavedBlock & { skill_package_contents?: SkillPackageInspection }).skill_package_contents ?? null)
       : null
     storedRecordInvalid.value = false
+    repositoryValidationPromise = null
     selectedId.value = saved.id
     upsertRecord(saved)
     markClean()
@@ -694,6 +703,7 @@ async function copyCurrent(): Promise<void> {
         ? await managementApi.copyModelConnection(draft.value!.id, name)
         : await managementApi.copyBlock(activeType.value!, draft.value!.id, name)
       upsertRecord(copied)
+      repositoryValidationPromise = null
       copyOpen.value = false
       copyName.value = ''
       await router.replace(editorLocation(copied.id))
@@ -728,6 +738,7 @@ async function removeCurrent(): Promise<void> {
         await managementApi.deleteBlock(activeType.value!, id)
       }
       records.value = records.value.filter((record) => record.id !== id)
+      repositoryValidationPromise = null
       await showBlankDraft()
       notify({ tone: 'success', title: t('components.delete.succeeded') })
     } catch (error) {
@@ -765,24 +776,31 @@ function updateDraft(value: BlockDraftBase): void {
   draft.value = value
 }
 
-async function refreshResource(): Promise<void> {
+async function refreshResource(
+  options: { includeOwnedSkillPackage?: boolean } = {},
+): Promise<void> {
   const type = activeType.value
   const ownerId = draft.value?.id ?? ''
   resourceSequence += 1
   const sequence = resourceSequence
-  loadingResource.value = true
-  try {
-    if (type && usesPythonExtension(type) && ownerId) {
-      const inspection: PythonPackageInspection = await managementApi.inspectPythonPackage(
-        type as ManagedComponentType,
-        ownerId,
-      )
-      if (resourceRequestIsCurrent(sequence, type) && draft.value?.id === ownerId) {
-        applyPythonPackageInspection(
-          draft.value as BlockDraftBase & PythonPackageDraftState,
-          inspection,
-        )
-      }
+    loadingResource.value = true
+    try {
+      if (type && usesPythonExtension(type) && ownerId) {
+        repositoryValidationPromise = null
+        const [inspection, invalid]: [PythonPackageInspection, boolean] = await Promise.all([
+          managementApi.inspectPythonPackage(
+            type as ManagedComponentType,
+            ownerId,
+          ),
+          isStoredRecordInvalid(ownerId),
+        ])
+        if (resourceRequestIsCurrent(sequence, type) && draft.value?.id === ownerId) {
+          applyPythonPackageInspection(
+            draft.value as BlockDraftBase & PythonPackageDraftState,
+            inspection,
+          )
+          storedRecordInvalid.value = invalid
+        }
     } else if (type === 'custom-tool') {
       const result = await managementApi.listCustomToolTemplates()
       if (!resourceRequestIsCurrent(sequence, type)) return
@@ -818,7 +836,9 @@ async function refreshResource(): Promise<void> {
       if (!resourceRequestIsCurrent(sequence, type)) return
       skills.value = result.catalog
       skillErrors.value = result.errors
-      if (ownerId) await refreshPrivateSkillPackage(ownerId)
+      if (ownerId && options.includeOwnedSkillPackage !== false) {
+        await refreshPrivateSkillPackage(ownerId)
+      }
     }
   } catch (error) {
     if (resourceRequestIsCurrent(sequence, type)) {
@@ -904,6 +924,10 @@ watch(
       invalidateResourceRequests()
       manifests.value = []
       activeType.value = null
+      currentEditor.value = null
+      loadedCollectionType = null
+      repositoryRevision = null
+      repositoryValidationPromise = null
       records.value = []
       selectedId.value = ''
       draft.value = null

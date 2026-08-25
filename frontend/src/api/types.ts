@@ -68,6 +68,42 @@ export type SavedBlock<TPayload extends BlockPayload = BlockPayload> = TPayload 
   dependency_error_code?: string
 }
 
+export interface ConfigurationSummary {
+  id: string
+  name: string
+}
+
+export type MainAgentSummary = ConfigurationSummary
+
+export interface SubagentSummary {
+  id: string
+  component_name: string
+  name: string
+  description: string
+}
+
+export interface WorkflowSummary extends ConfigurationSummary {
+  workflow_role: WorkflowRole
+  description: string
+  enabled: boolean
+}
+
+export interface ConfigurationCollection<T> {
+  items: T[]
+  total: number
+  repository_id: string
+  repository_revision: number
+}
+
+export interface ConfigurationOptions {
+  repository_id: string
+  repository_revision: number
+  components: Partial<Record<ManagedComponentType, ConfigurationSummary[]>>
+  main_agents: MainAgentSummary[]
+  subagents: SubagentSummary[]
+  workflows: WorkflowSummary[]
+}
+
 export interface ModelProviderCatalogItem {
   provider: string
   package: string

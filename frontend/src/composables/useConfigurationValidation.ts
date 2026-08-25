@@ -26,6 +26,7 @@ interface ConfigurationValidationOptions<Request> {
   debounceMs?: number
   immediate?: boolean
   errorMessage?: (error: unknown) => string
+  onSourceChange?: () => void
 }
 
 function state(
@@ -113,7 +114,10 @@ export function useConfigurationValidation<Request>(
   }
 
   if (options.source) {
-    watch(options.source, () => schedule(), {
+    watch(options.source, () => {
+      options.onSourceChange?.()
+      schedule()
+    }, {
       deep: true,
       immediate: options.immediate ?? true,
     })

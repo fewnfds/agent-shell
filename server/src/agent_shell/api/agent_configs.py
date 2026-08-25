@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent_shell.api.errors import management_error
+from agent_shell.api.configuration_collections import (
+    configuration_collection,
+    configuration_collection_requested,
+    matches_configuration_query,
+)
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.models import ValidationReport, validation_failure_detail
@@ -15,9 +22,16 @@ SUBAGENT_TABLE = "subagents"
 
 
 class ConfigurationBulkDelete(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    ids: list[str] = Field(min_length=1)
+    ids: list[str] | None = Field(default=None, min_length=1)
+    q: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def select_ids_or_query(self) -> "ConfigurationBulkDelete":
+        if (self.ids is None) == (self.q is None):
+            raise ValueError("exactly one of ids or q is required")
+        return self
 
 
 def capability_reference_id(payload: dict, capability_type: str) -> str:
@@ -125,15 +139,43 @@ def build_agent_config_router(
     router = APIRouter()
 
     @router.get("/api/main-agents")
-    async def list_main_agents() -> list[dict]:
-        return config_store.list_items(MAIN_AGENT_TABLE)
+    async def list_main_agents(
+        request: Request,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
+        if not configuration_collection_requested(request.query_params):
+            return config_store.list_items(MAIN_AGENT_TABLE)
+        items = (
+            config_store.list_items(MAIN_AGENT_TABLE)
+            if view == "full"
+            else config_store.list_item_summaries(MAIN_AGENT_TABLE)
+        )
+        return configuration_collection(
+            items,
+            repository_context=config_store.repository_context(),
+            query=q,
+            search_fields=("name", "id"),
+            offset=offset,
+            limit=limit,
+        )
 
     @router.post("/api/main-agents/delete")
     async def delete_main_agents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
         mutation_repository_id = config_store.repository_id()
-        ids = list(dict.fromkeys(payload.ids))
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in config_store.list_item_summaries(MAIN_AGENT_TABLE)
+                if matches_configuration_query(item, payload.q or "", ("name", "id"))
+            ]
+        )
         if any(config_store.get_item(MAIN_AGENT_TABLE, item_id) is None for item_id in ids):
             raise management_error(
                 404,
@@ -296,15 +338,47 @@ def build_agent_config_router(
         return {"ok": True}
 
     @router.get("/api/subagents")
-    async def list_subagents() -> list[dict]:
-        return config_store.list_items(SUBAGENT_TABLE)
+    async def list_subagents(
+        request: Request,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
+        if not configuration_collection_requested(request.query_params):
+            return config_store.list_items(SUBAGENT_TABLE)
+        items = (
+            config_store.list_items(SUBAGENT_TABLE)
+            if view == "full"
+            else config_store.list_item_summaries(SUBAGENT_TABLE)
+        )
+        return configuration_collection(
+            items,
+            repository_context=config_store.repository_context(),
+            query=q,
+            search_fields=("component_name", "name", "description", "id"),
+            offset=offset,
+            limit=limit,
+        )
 
     @router.post("/api/subagents/delete")
     async def delete_subagents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
         mutation_repository_id = config_store.repository_id()
-        ids = list(dict.fromkeys(payload.ids))
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in config_store.list_item_summaries(SUBAGENT_TABLE)
+                if matches_configuration_query(
+                    item,
+                    payload.q or "",
+                    ("component_name", "name", "description", "id"),
+                )
+            ]
+        )
         for item_id in ids:
             if config_store.get_item(SUBAGENT_TABLE, item_id) is None:
                 raise management_error(

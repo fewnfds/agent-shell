@@ -141,6 +141,7 @@ class ModelResourceStore:
             mutations=self._mutations,
         )
         self._lock = threading.RLock()
+        self._revision = 1
 
     @staticmethod
     def _secret_name(connection_id: str) -> str:
@@ -231,6 +232,10 @@ class ModelResourceStore:
     def snapshot(self) -> ModelResourceSnapshot:
         with self._mutations.mutation(), self._lock:
             return self._snapshot_unlocked()
+
+    def revision(self) -> int:
+        with self._lock:
+            return self._revision
 
     def list_connections(self) -> list[dict[str, Any]]:
         return self.snapshot().list_connections()
@@ -356,6 +361,7 @@ class ModelResourceStore:
                 except BaseException:
                     pass
                 raise
+            self._revision += 1
             return _public_record(stored, self._environment.snapshot())
 
     def copy_connection(self, source_id: str, name: str) -> dict[str, Any]:
@@ -419,6 +425,7 @@ class ModelResourceStore:
                 except BaseException:
                     pass
                 raise
+            self._revision += 1
             return True
 
     def set_binding(
@@ -455,6 +462,7 @@ class ModelResourceStore:
             if not scope:
                 value.pop(repository_id, None)
             self._write_bindings(value)
+            self._revision += 1
 
     def copy_repository_bindings(
         self,
@@ -483,6 +491,7 @@ class ModelResourceStore:
             else:
                 value.pop(target_repository_id, None)
             self._write_bindings(value)
+            self._revision += 1
 
     def remove_repository_bindings(
         self,
@@ -497,6 +506,7 @@ class ModelResourceStore:
             removed = value.pop(repository_id, {})
             if removed:
                 self._write_bindings(value)
+                self._revision += 1
             return removed
 
     def restore_repository_bindings(
@@ -515,6 +525,7 @@ class ModelResourceStore:
             else:
                 value.pop(repository_id, None)
             self._write_bindings(value)
+            self._revision += 1
 
 
 __all__ = [

@@ -26,26 +26,35 @@ class AgentConfigStore:
     def list_items(self, table: str) -> list[dict]:
         table = self._table(table)
         identity = self._identity_column(table)
-        config = self._repository.config()
         return sorted(
-            [deepcopy(item) for item in config.get(table, [])],
+            self._repository.list_records(table),
             key=lambda value: (str(value.get(identity, "")).casefold(), str(value.get("id", ""))),
+        )
+
+    def list_item_summaries(self, table: str) -> list[dict]:
+        table = self._table(table)
+        identity = self._identity_column(table)
+        fields = (
+            ("id", "name")
+            if table == "main_agents"
+            else ("id", "component_name", "name", "description")
+        )
+        return sorted(
+            self._repository.list_records(table, fields=fields),
+            key=lambda value: (
+                str(value.get(identity, "")).casefold(),
+                str(value.get("id", "")),
+            ),
         )
 
     def get_item(self, table: str, item_id: str) -> dict | None:
         table = self._table(table)
-        for item in self._repository.config().get(table, []):
-            if item.get("id") == item_id:
-                return deepcopy(item)
-        return None
+        return self._repository.get_record(table, item_id)
 
     def get_item_by_name(self, table: str, name: str) -> dict | None:
         table = self._table(table)
         identity = self._identity_column(table)
-        for item in self._repository.config().get(table, []):
-            if item.get(identity) == name:
-                return deepcopy(item)
-        return None
+        return self._repository.find_record(table, identity, name)
 
     def save_item(
         self,
@@ -98,6 +107,8 @@ class AgentConfigStore:
     ) -> int:
         table = self._table(table)
         unique_ids = list(dict.fromkeys(item_ids))
+        if not unique_ids:
+            return 0
         removed: list[str] = []
 
         def mutate(config: dict) -> None:
@@ -144,3 +155,6 @@ class AgentConfigStore:
 
     def repository_id(self) -> str:
         return self._repository.repository_id
+
+    def repository_context(self) -> tuple[str, int]:
+        return self._repository.repository_context()

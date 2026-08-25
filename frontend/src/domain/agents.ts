@@ -6,12 +6,13 @@ import type {
   CapabilityManifest as ApiCapabilityManifest,
   CapabilityOverride as ApiCapabilityOverride,
   CatalogResponse,
+  ConfigurationOptions,
+  ConfigurationSummary,
   DraftValidationRequest as ApiDraftValidationRequest,
   MainAgent,
   MiddlewareReference as ApiMiddlewareReference,
   ToolReference as ApiToolReference,
   MainAgentPayload as ApiMainAgentPayload,
-  SavedBlock,
   Subagent,
   SubagentPayload as ApiSubagentPayload,
   SubagentReference as ApiSubagentReference,
@@ -24,7 +25,7 @@ type StoredOverrideMode = Exclude<OverrideMode, 'inherit'>
 
 export type CapabilityManifest = ApiCapabilityManifest
 type AgentCatalog = CatalogResponse
-export type StoredBlock = SavedBlock
+export type StoredBlock = ConfigurationSummary
 export type SubagentReference = ApiSubagentReference
 export type MiddlewareReference = ApiMiddlewareReference
 export type ToolReference = ApiToolReference
@@ -52,14 +53,12 @@ export type DraftValidationRequest = ApiDraftValidationRequest
 
 export interface AgentAuthoringService {
   getCatalog(): Promise<AgentCatalog>
-  listBlocks(type: CapabilityType): Promise<StoredBlock[]>
-  listMainAgents(): Promise<MainAgent[]>
+  getConfigurationOptions(): Promise<ConfigurationOptions>
   getMainAgent(id: string): Promise<MainAgent>
   createMainAgent(payload: MainAgentPayload): Promise<MainAgent>
   updateMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent>
   copyMainAgent(id: string, name: string): Promise<MainAgent>
   deleteMainAgent(id: string): Promise<{ ok: boolean }>
-  listSubagents(): Promise<SubagentProfile[]>
   getSubagent(id: string): Promise<SubagentProfile>
   createSubagent(payload: SubagentPayload): Promise<SubagentProfile>
   updateSubagent(id: string, payload: SubagentPayload): Promise<SubagentProfile>
@@ -72,14 +71,12 @@ export const agentAuthoringServiceKey: InjectionKey<AgentAuthoringService> = Sym
 
 export const managementAgentAuthoringService: AgentAuthoringService = {
   getCatalog: () => managementApi.getCatalog(),
-  listBlocks: (type) => managementApi.listBlocks(type),
-  listMainAgents: () => managementApi.listMainAgents(),
+  getConfigurationOptions: () => managementApi.getConfigurationOptions(),
   getMainAgent: (id) => managementApi.getMainAgent(id),
   createMainAgent: (payload) => managementApi.saveMainAgent(payload),
   updateMainAgent: (id, payload) => managementApi.saveMainAgent({ id, ...payload }),
   copyMainAgent: (id, name) => managementApi.copyMainAgent(id, name),
   deleteMainAgent: (id) => managementApi.deleteMainAgent(id),
-  listSubagents: () => managementApi.listSubagents(),
   getSubagent: (id) => managementApi.getSubagent(id),
   createSubagent: (payload) => managementApi.saveSubagent(payload),
   updateSubagent: (id, payload) => managementApi.saveSubagent({ id, ...payload }),

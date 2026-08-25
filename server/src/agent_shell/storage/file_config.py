@@ -159,6 +159,7 @@ class FileConfigRepository:
     """Persistent configuration repository backed by layered YAML files."""
 
     _COMPONENT_DIR = "components"
+    _RECORD_SECTIONS = frozenset({"main_agents", "subagents", "workflows"})
 
     def __init__(
         self,
@@ -196,6 +197,7 @@ class FileConfigRepository:
         )
         self._config = deepcopy(_config) if _config is not None else self._load_config()
         self._system = deepcopy(_system) if _system is not None else _read_yaml(self.system_path, _default_system())
+        self._revision = 1
         self._normalize()
         validate_configuration_snapshot(
             self._config,
@@ -746,11 +748,158 @@ class FileConfigRepository:
             write_active_configuration_repository(self.data_root, descriptor.id)
             self._active_repository = descriptor
             self._config = candidate
+            self._revision += 1
             return descriptor.as_dict(active=True)
 
     def config(self) -> dict[str, Any]:
         with self._lock:
             return deepcopy(self._config)
+
+    @staticmethod
+    def _project_record(
+        record: dict[str, Any],
+        fields: tuple[str, ...] | None,
+    ) -> dict[str, Any]:
+        if fields is None:
+            return deepcopy(record)
+        return {
+            field: deepcopy(record[field])
+            for field in fields
+            if field in record
+        }
+
+    def _record_section(self, section: str) -> list[dict[str, Any]]:
+        if section not in self._RECORD_SECTIONS:
+            raise ValueError(f"unsupported configuration section: {section}")
+        records = self._config.get(section, [])
+        if not isinstance(records, list):
+            raise ValueError(f"configuration section must be a list: {section}")
+        return records
+
+    def list_records(
+        self,
+        section: str,
+        *,
+        fields: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Copy one record section, optionally projecting top-level fields."""
+
+        with self._lock:
+            return [
+                self._project_record(record, fields)
+                for record in self._record_section(section)
+                if isinstance(record, dict)
+            ]
+
+    def get_record(
+        self,
+        section: str,
+        record_id: str,
+        *,
+        fields: tuple[str, ...] | None = None,
+    ) -> dict[str, Any] | None:
+        """Copy one record without materializing unrelated configuration."""
+
+        with self._lock:
+            for record in self._record_section(section):
+                if isinstance(record, dict) and record.get("id") == record_id:
+                    return self._project_record(record, fields)
+        return None
+
+    def find_record(
+        self,
+        section: str,
+        field: str,
+        value: object,
+        *,
+        fields: tuple[str, ...] | None = None,
+    ) -> dict[str, Any] | None:
+        """Copy the first record matching one top-level field."""
+
+        with self._lock:
+            for record in self._record_section(section):
+                if isinstance(record, dict) and record.get(field) == value:
+                    return self._project_record(record, fields)
+        return None
+
+    def _component_records(self, component_type: str) -> list[dict[str, Any]]:
+        components = self._config.get("components", {})
+        if not isinstance(components, dict):
+            raise ValueError("configuration components must be a mapping")
+        records = components.get(component_type, [])
+        if not isinstance(records, list):
+            raise ValueError(
+                f"component configuration section must be a list: {component_type}"
+            )
+        return records
+
+    def list_component_records(
+        self,
+        component_type: str,
+        *,
+        fields: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Copy one Component type, optionally projecting top-level fields."""
+
+        with self._lock:
+            return [
+                self._project_record(record, fields)
+                for record in self._component_records(component_type)
+                if isinstance(record, dict)
+            ]
+
+    def get_component_record(
+        self,
+        component_type: str,
+        record_id: str,
+        *,
+        fields: tuple[str, ...] | None = None,
+    ) -> dict[str, Any] | None:
+        """Copy one Component record without materializing its collection."""
+
+        with self._lock:
+            for record in self._component_records(component_type):
+                if isinstance(record, dict) and record.get("id") == record_id:
+                    return self._project_record(record, fields)
+        return None
+
+    def list_component_headers(self) -> list[dict[str, str]]:
+        with self._lock:
+            components = self._config.get("components", {})
+            if not isinstance(components, dict):
+                raise ValueError("configuration components must be a mapping")
+            return [
+                {
+                    "id": str(record.get("id", "")),
+                    "block_type": str(component_type),
+                    "name": str(record.get("name", "")),
+                }
+                for component_type, records in components.items()
+                if isinstance(records, list)
+                for record in records
+                if isinstance(record, dict)
+            ]
+
+    def get_component_header(self, record_id: str) -> dict[str, str] | None:
+        with self._lock:
+            components = self._config.get("components", {})
+            if not isinstance(components, dict):
+                raise ValueError("configuration components must be a mapping")
+            for component_type, records in components.items():
+                if not isinstance(records, list):
+                    continue
+                for record in records:
+                    if isinstance(record, dict) and record.get("id") == record_id:
+                        return {
+                            "id": str(record.get("id", "")),
+                            "block_type": str(component_type),
+                            "name": str(record.get("name", "")),
+                        }
+        return None
+
+    def repository_context(self) -> tuple[str, int]:
+        with self._lock:
+            return self.repository_id, self._revision
 
     def system(self) -> dict[str, Any]:
         with self._lock:
@@ -818,6 +967,7 @@ class FileConfigRepository:
                     pass
                 raise
             self._config = candidate
+            self._revision += 1
             return result
 
     def update_system(self, mutator: Callable[[dict[str, Any]], Any]) -> Any:

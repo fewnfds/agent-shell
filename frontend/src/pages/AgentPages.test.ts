@@ -241,20 +241,17 @@ describe('agent authoring pages', () => {
     const currentId = '00000000-0000-0000-0000-000000000010'
     const failedId = '00000000-0000-0000-0000-000000000099'
     const api = service({
-      listMainAgents: vi.fn(async () => [
-        {
-          id: currentId,
-          name: 'Current MainAgent',
-          capability_refs: [],
-          subagents: [],
-        },
-        {
-          id: failedId,
-          name: 'Unavailable MainAgent',
-          capability_refs: [],
-          subagents: [],
-        },
-      ]),
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: {},
+        main_agents: [
+          { id: currentId, name: 'Current MainAgent' },
+          { id: failedId, name: 'Unavailable MainAgent' },
+        ],
+        subagents: [],
+        workflows: [],
+      })),
       getMainAgent: vi.fn(async (id) => {
         if (id === failedId) throw new Error('load failed')
         return {

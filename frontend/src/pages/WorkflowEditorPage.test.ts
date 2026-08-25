@@ -237,9 +237,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(managementApi, 'getWorkflow').mockResolvedValue(workflow)
   vi.spyOn(managementApi, 'getWorkflowGraph').mockResolvedValue(graph)
-  vi.spyOn(managementApi, 'listMainAgents').mockResolvedValue([agent])
-  vi.spyOn(managementApi, 'listBlocks').mockResolvedValue([])
-  vi.spyOn(managementApi, 'listWorkflows').mockResolvedValue([childWorkflow])
+  vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
+    repository_id: '00000000-0000-4000-8000-000000000099',
+    repository_revision: 1,
+    components: { command: [], 'task-dispatcher': [] },
+    main_agents: [agent],
+    subagents: [],
+    workflows: [childWorkflow],
+  })
   vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(nodeCatalog)
   vi.spyOn(managementApi, 'validateWorkflow').mockResolvedValue({
     valid: true,

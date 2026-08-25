@@ -3,13 +3,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_shell import __version__
+from agent_shell.api.configuration_collections import (
+    configuration_collection,
+    configuration_collection_requested,
+    matches_configuration_query,
+)
 from agent_shell.api.errors import management_error
 from agent_shell.authoring import editor_defaults
 from agent_shell.contracts import (
@@ -122,6 +127,21 @@ def build_router(
     def package_reference(payload: dict) -> dict:
         value = payload.get("python_package")
         return dict(value) if isinstance(value, dict) else {}
+
+    @router.get("/api/configuration-options")
+    async def get_configuration_options() -> dict[str, object]:
+        repository_id, repository_revision = configuration.repository_context()
+        return {
+            "repository_id": repository_id,
+            "repository_revision": repository_revision,
+            "components": {
+                component_type: block_store.list_block_summaries(component_type)
+                for component_type in MANAGED_COMPONENT_MODELS
+            },
+            "main_agents": config_store.list_item_summaries("main_agents"),
+            "subagents": config_store.list_item_summaries("subagents"),
+            "workflows": workflow_store.list_item_summaries(),
+        }
 
     def authoring_error(exc: PythonPackageAuthoringError) -> HTTPException:
         parts = exc.code.split("_")
@@ -411,9 +431,30 @@ def build_router(
         )
 
     @router.get("/api/blocks/{block_type}")
-    async def list_blocks(block_type: str) -> list[dict]:
+    async def list_blocks(
+        request: Request,
+        block_type: str,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
         check_type(block_type)
-        return [project_block(block_type, item) for item in block_store.list_blocks(block_type)]
+        if not configuration_collection_requested(request.query_params):
+            return [project_block(block_type, item) for item in block_store.list_blocks(block_type)]
+        items = (
+            [project_block(block_type, item) for item in block_store.list_blocks(block_type)]
+            if view == "full"
+            else block_store.list_block_summaries(block_type)
+        )
+        return configuration_collection(
+            items,
+            repository_context=block_store.repository_context(),
+            query=q,
+            search_fields=("name", "id"),
+            offset=offset,
+            limit=limit,
+        )
 
     @router.delete("/api/unsupported-blocks/{block_id}")
     @configuration_mutation
@@ -448,7 +489,17 @@ def build_router(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
         check_type(block_type)
-        ids = list(dict.fromkeys(payload.ids))
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in block_store.list_block_summaries(block_type)
+                if matches_configuration_query(
+                    item, payload.q or "", ("name", "id")
+                )
+            ]
+        )
         for block_id in ids:
             if block_store.get_block(block_type, block_id) is None:
                 raise management_error(

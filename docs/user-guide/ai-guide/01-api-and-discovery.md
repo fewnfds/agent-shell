@@ -51,7 +51,7 @@ AI 不应把 token、API Key、Provider credential 写入 Workflow State、Graph
 3. 调用 `GET /api/configuration-repositories`，记录 active Repository；
 4. 调用 `GET /api/catalog`，读取 component type、required flag、Subagent policy 和 editor defaults；
 5. 调用 `GET /api/workflow-node-catalog`，读取 Node type/version、`config_schema` 和 handle；
-6. 列出现有 component、Agent 和 Workflow，优先复用语义与依赖都满足需求的对象；
+6. 调用 `GET /api/configuration-options`，一次取得当前 Repository 的引用摘要；需要检查完整配置或复用现有对象时，再直接读取对应完整 collection 或单项 Get；
 7. 需要 Python-backed component 时，读取对应 template catalog；
 8. 需要 Agent Node 时，读取 Model Requirement、Model Connection 和 binding 状态；
 9. 调用 `GET /api/validation/repository`，了解写入前已经存在的 error 或 warning；
@@ -65,18 +65,32 @@ AI 不应把 token、API Key、Provider credential 写入 Workflow State、Graph
 | --- | --- |
 | `GET /api/catalog` | current Component type、required flag、Subagent policy 和 editor defaults |
 | `GET /api/workflow-node-catalog` | current Node type/version、`config_schema`、input/output handle 和允许角色 |
-| `GET /api/blocks/{type}` | 某类现有 component 及 UUID |
-| `GET /api/main-agents`、`GET /api/subagents` | 现有 Agent configuration |
+| `GET /api/configuration-options` | active Repository identity/revision，以及全部 Component、Agent、Workflow 引用摘要 |
+| `GET /api/blocks/{type}` | 某类现有 component 的完整 collection；`/{id}` 读取一条完整记录 |
+| `GET /api/main-agents`、`GET /api/subagents` | 完整 Agent configuration collection；`/{id}` 读取一条完整记录 |
 | `GET /api/configuration-repositories` | Repository 列表和 active Repository；配置写入 active Repository |
 | `GET /api/model-connections` | 当前实例私有 Model Connection 的 masked/missing projection |
 | `GET /api/model-requirements` | current Configuration Repository 的 Model Requirement 及本机 binding projection |
-| `GET /api/workflows?workflow_role=parent` | 现有 parent Workflow |
+| `GET /api/workflows?workflow_role=parent` | 现有 parent Workflow 完整 collection；`/{id}` 读取一条完整 metadata |
 | `GET /api/skills` | 可选择的 Skill Template catalog 及模板错误 |
 | `GET /api/python-package-templates/{kind}` | 当前 script template 和 read-only built-in example |
 | `GET /api/validation/repository` | 当前完整 Configuration Repository validation |
 | `POST /api/configuration-bundles/export`、`preview`、`import` | 单根 Configuration Bundle 导出、预检和提交 |
 
 `{kind}` 当前为 `custom-tool`、`middleware`、`agent-event-output`、`workflow-event-output`、`command` 或 `task-dispatcher`。Node 和 component type 以 catalog 为准；Model Connection 以 `/api/model-connections` 为准；Model Requirement 与 binding 以 `/api/model-requirements` 为准。
+
+### Collection representation
+
+管理台与 AI 使用同一套 `/api/*`。Component、Main Agent、Subagent 和 Workflow collection 有两种读取方式：
+
+- 省略 `view/q/offset/limit`：返回完整对象数组，适合 AI 在一次请求中取得一类配置的完整 authoring context；不会隐式分页或截断；
+- `view` 决定 item projection：省略或使用 `view=full` 时 item 保持完整读取 projection，`view=summary` 时 item 只保留列表/引用字段；只要显式提交 `view/q/offset/limit`，response 就使用 `items`、`total`、`repository_id`、`repository_revision` envelope；
+- `GET /collection/{id}`：读取一条完整配置，适合编辑、复核或 Debug 单个对象；
+- `GET /api/configuration-options`：一次取得引用 ledger 所需的摘要，不包含 prompt、Graph、Python/Skill package 等大字段。
+
+AI 不需要为了获得完整 collection 逐条 Get。只需要 UUID 和引用候选时优先使用 `configuration-options`；需要检查全部 payload 时直接使用默认完整 collection；只处理一个对象时使用单项 Get。`repository_revision` 是当前进程内的内容一致性身份，不是发布版本或历史号。
+
+`q` 对 Component/Main Agent 搜索 name 和 UUID，对 Subagent 搜索 component name、task route、description 和 UUID，对 Workflow 搜索 name、description 和 UUID；Workflow 继续用 `workflow_role` 限定 parent/child。批量删除可以提交明确的 `ids`，或提交与列表相同的 `q` predicate；两者只能选一个，Workflow query delete 同时提交对应 `workflow_role`。
 
 软件实例会自动准备 default Configuration Repository。创建或激活其他 Configuration Repository 使用 `/api/configuration-repositories` 的对应 POST endpoint。管理台【配置库 / 全局 / 组件配置】提供 Repository 操作和 single-root Bundle 操作。
 
@@ -134,7 +148,7 @@ component -> Subagent / Main Agent -> Workflow -> Graph -> Run
 
 ## 6. GET projection 与 PUT payload
 
-GET response 是读取 projection，可能包含 `id`、状态、masked credential、计算字段和其他 read-only field。PUT 接收该对象的完整可写 payload。不要把 GET response 原样提交给 PUT。
+GET response 是读取 projection，可能包含 `id`、状态、masked credential、计算字段和其他 read-only field。Collection summary envelope 不是 PUT payload；完整 collection 与单项 Get 中的每条记录也仍是读取 projection。PUT 接收该对象的完整可写 payload，不要把 GET response 原样提交给 PUT。
 
 修改对象时按以下步骤处理：
 
@@ -185,7 +199,7 @@ Graph validation 返回多个 issue 时，修正全部 `severity=error`；warnin
 - health 与 readiness 成功；
 - active Configuration Repository 已记录；
 - `/api/catalog` 与 `/api/workflow-node-catalog` 已读取；
-- 目标类型的现有对象已经列出；
+- `/api/configuration-options` 已读取，目标类型需要复用或 Debug 时也已读取对应完整对象；
 - 需要的 template `key` 和 `revision` 来自当前 catalog；
 - reference ledger 已建立；
 - 已知当前 repository validation 中哪些问题属于本次工作；
