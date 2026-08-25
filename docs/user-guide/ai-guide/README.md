@@ -1,234 +1,168 @@
 # AI 配置指南
 
-本目录用于指导 AI 通过 Management API 配置 Agent Shell。
+本目录指导 AI 或自动化程序通过 Management API 配置和运行 Agent Shell。目标是完成用户要求的最小 Workflow，证明它在当前实例中真实可用，然后停止。
 
-本指南的完成目标是一个有限闭环：
+## 1. 事实优先级
 
-```text
-理解需求
-  -> 读取当前实例事实
-  -> 选择最小可用结构
-  -> 创建 component / Agent / Workflow
-  -> validation
-  -> publish
-  -> 真实 invocation
-  -> 停止
-```
+处理配置任务时按以下顺序判断事实：
 
-OpenAPI 中的通用 JSON body 不表达每类 component 的完整领域字段。创建或修改对象前，先读取当前实例的 catalog、现有对象和 template projection。API response、当前源码 contract 和稳定测试是事实来源；示例只提供结构起点。
+1. 当前实例的 API response、Catalog、目标对象 GET projection 和 structured validation issue；
+2. 当前源码 contract 与稳定测试；
+3. 本指南和其他当前状态文档；
+4. 仓库中的可运行示例；
+5. LangChain、LangGraph 和 Deep Agents 官方文档；
+6. 模型记忆。
 
-## 1. 软件架构
+Catalog key、template revision、UUID、Node handle、Model Connection、Model Mapping 和当前设置必须从实例读取。不要从示例或模型记忆猜测动态值。
 
-Agent Shell 是 Workflow-first 的 LangGraph/LangChain Deep Agents 构建与运行外壳。
+Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭环的能力。官方框架支持某项功能，不代表 Agent Shell 当前 Catalog 已经提供该功能。
 
-- **Management API `/api/*`**：创建和维护 configuration；
-- **OpenAI-compatible API `/v1/*`**：运行已经 enabled 的 parent Workflow；
-- **Workflow Graph**：决定 Node activation、State transition 和结束条件；
-- **Main Agent**：提供一次完整 Agent loop；
-- **Component**：为 Agent、Workflow Node 或 output projection 提供可复用配置；
-- **Configuration Repository**：保存可迁移配置；
-- **Model Connection**：保存当前实例私有的 Provider、model 和 credential；
-- **Model Mapping**：把可迁移的 Model Requirement 绑定到本机 Model Connection。
+## 2. 产品入口
 
-一次 `/v1/chat/completions` 请求按 `model` 字段选择一个 enabled parent Workflow：
+Management API 使用 `/api/*`，负责发现、创建、修改、校验和发布配置。
+
+OpenAI-compatible API 使用 `/v1/*`，负责发现和运行已经 enabled 的 parent Workflow。
+
+一次外部请求按以下路径运行：
 
 ```text
 OpenAI-compatible messages[]
-  -> 按 parent Workflow name 捕获 configuration snapshot
-  -> 创建 Lifecycle 与 parent Run；仅在 Workflow 已选 Checkpointer 时创建 checkpoint thread
-  -> 把原始 messages[] 冻结到 Lifecycle Store
-  -> 物化 Graph、Agent、Middleware 和 Python extension
-  -> 执行 Workflow StateGraph
-  -> 消费 LangGraph v3 event
-  -> Agent Event Output / Workflow Event Output projection
+  -> 按 model 选择 enabled parent Workflow name
+  -> 捕获当前配置和模型资源快照
+  -> 创建 Lifecycle 与 parent Run
+  -> 保存不可变 request messages[]
+  -> 物化 Workflow Graph、Agent、Middleware 和 Python extension
+  -> 执行 LangGraph StateGraph
+  -> 投影 Agent 与 Workflow event
   -> 返回 OpenAI-compatible response
 ```
 
-用户发来的 Openai api 标准消息中的 `messages[]` 不会自动写入 Workflow root State。Agent Node 以私有 `messages` 运行；需要为 Agent 注入动态初始提示词时，可以参考 Custom Middleware example：Agent Additional Prompt（以下简称 AAP）。
+客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。它们保存在当前 Lifecycle Store，不会自动进入 Workflow root State，也不会跨请求累积为产品聊天历史。
 
-## 2. Terminology convention
+需要让某个 Agent 使用 request、task 或上游结果时，为该 Agent 装配 Agent Additional Prompt（AAP）或其他明确的 Custom Middleware。AAP 在 Agent invocation 开始前选择材料，并构造该 Agent 私有的初始 `messages`。
 
-搜索 API、源码和文档时直接使用这些名称：
+## 3. 配置对象关系
 
+常见依赖方向如下：
+
+```text
+Component
+  -> Subagent
+  -> Main Agent
+  -> Workflow metadata
+  -> Workflow Graph
+  -> enabled parent Workflow
+  -> /v1/chat/completions
+```
+
+Model Connection 是当前实例私有资源。Model Requirement 是可迁移的能力描述。Model Mapping 把当前 Configuration Repository 中的 Model Requirement 绑定到本机 Model Connection。
+
+Workflow Graph 决定 Node activation、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop。Component 为 Agent、Workflow Node 或 output projection 提供配置。
+
+## 4. 开始前形成任务记录
+
+写入配置前，先用简短文本回答：
+
+1. 用户需要的可观察结果是什么；
+2. 哪些步骤需要模型推理，哪些步骤是确定性逻辑；
+3. Node 数量是否在设计时已知；
+4. 是否真正需要 independent background child Run；
+5. 每类运行数据由哪个 State、Store 或 Filesystem owner 保存；
+6. 每个 Agent 从哪里获得初始工作材料；
+7. 正常成功、业务失败和循环退出分别由什么条件表示。
+
+暂时未知的 UUID、Catalog key 或 template revision 不写成假值。在 discovery 阶段读取后再加入 reference ledger。
+
+## 5. 标准操作闭环
+
+每次配置任务按以下有限流程进行：
+
+```text
+理解需求
+  -> 发现当前实例事实
+  -> 设计最小 Workflow
+  -> 复用或创建缺少的配置
+  -> 保存 Graph draft
+  -> 验证同一份完整 Graph document
+  -> publish
+  -> 检查模型映射和 Python dependency
+  -> 确认 /v1/models
+  -> 发起一次真实 invocation
+  -> 交付并停止
+```
+
+创建或更新对象后保存 API 返回的 UUID。Configuration reference 使用 UUID。Node ID 和 Edge ID 只在当前 Graph document 内使用。
+
+不要为了清空整个 Repository 的既有 warning 扩大任务范围。只修复本次对象和本次运行路径需要修复的问题。
+
+## 6. 阅读路径
+
+所有任务先读[发现当前实例事实](01-discover-current-instance.md)，再读[设计 Workflow](02-design-workflow.md)。
+
+如果 Graph 包含 Agent Node，再读[配置 Agent](03-configure-agent.md)。纯 Command Workflow 可以跳过 Agent 章节。
+
+所有 Workflow 都需要读[构建 Workflow Graph](04-build-workflow-graph.md)。
+
+只有需要创建或修改 Python-backed component 时才读[编写 Python extension](05-python-extensions.md)。使用现有 component 时跳过。
+
+只有需要 independent child Workflow Run 时才读[使用 background Run](06-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Task Dispatcher 不需要 background Run。
+
+所有任务最后读[验证、运行与交付](07-validate-run-deliver.md)。
+
+## 7. 写入纪律
+
+写入前：
+
+- 确认 base URL、credential domain 和 active Configuration Repository；
+- 读取 `/api/catalog`、`/api/workflow-node-catalog` 和 `/api/configuration-options`；
+- 读取准备复用或修改的完整对象；
+- 读取需要使用的 Python template catalog；
+- 明确 topology、State ownership、Agent input 和结束条件。
+
+写入时：
+
+- 提交当前 endpoint 接受的最小完整 payload；
+- 修改现有对象时保留未修改的必需可写字段；
+- 不把 GET response、masked secret 或 collection envelope 原样作为 PUT payload；
+- Python-backed component 使用当前 catalog 返回的 `key + revision`；
+- Graph layout 只保存展示位置；
+- 不把 secret、完整用户消息或大型 artifact 复制到普通控制 State 或诊断摘要。
+
+写入后：
+
+- GET 回读创建或修改结果；
+- Graph draft、validation 和 publish 使用明确的完整 Graph document；
+- 修正全部 `severity=error` issue；
+- publish 后确认 `enabled=true`；
+- 用 `/v1/models` 和一次真实 invocation 验证用户可观察行为。
+
+## 8. 停止条件
+
+满足以下条件后停止继续扩展：
+
+- 用户要求的 topology 和配置已经保存；
+- 准备发布的 Graph validation 返回 `valid=true`；
+- Workflow 已按任务要求 publish，或用户明确要求保持 draft；
+- 所有可达 Agent 使用的 Model Requirement 已绑定；
+- 可达 Python extension 的 dependency status 满足运行条件；
+- 至少一次最接近用户需求的真实 invocation 得到可解释结果，或外部阻塞已经明确记录；
+- 没有意外遗留的 active background task；
+- 交付报告说明新建或复用的对象、关键 UUID、运行入口、验证结果和未验证项。
+
+不要因为还有可选 Component、Middleware、Node、测试输入或优化方向而继续增加范围。
+
+## 9. 术语
+
+搜索 API、源码和文档时使用以下产品名称：
+
+- Configuration Repository、Configuration Bundle；
 - Model Connection、Model Requirement、Model Mapping；
-- Agent Event Output、Workflow Event Output、System Prompt；
-- Filesystem、Filesystem Permissions、Skill；
-- Custom Tool、Custom Middleware、Agent Additional Prompt（AAP）；
-- Main Agent、Subagent、Command、Task Dispatcher；
-- Lifecycle、Run、invocation、Checkpoint Thread、checkpoint；
-- Graph、Node、Edge、handle、State、Runtime、Context、Store；
+- Main Agent、Subagent、Agent Node、Agent invocation；
+- Agent Event Output、Workflow Event Output；
+- System Prompt、Agent Additional Prompt（AAP）；
+- Command、Task Dispatcher、Custom Tool、Custom Middleware；
+- Workflow Graph、Node、Edge、handle、State、Runtime、Store；
+- Lifecycle、Run、background Run、Checkpoint Thread；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 
-## 3. 开始配置前先回答六个问题
-
-AI 在写入配置前，先形成一个简短 design record：
-
-1. **是否需要 LLM？** 确定性流程可以只使用 Command 和 Task Dispatcher；需要 AI 能力时，才布置 Agent Node。
-2. **任务数量是否在设计时已知？** 已知 Node 直接用 Edge 连接激活；动态数量使用 Task Dispatcher 动态发布。
-3. **是否需要后台任务、detached execution？** regular sequential/parallel Node、synchronous Subagent 和 Task Dispatcher worker 都在 current Run 内；independent child Run 才使用 background Run。
-4. **状态放在哪里？** 轻量 control state 放 parent workflow `shared_vars`，完整 Agent output 通过 `agent_invocations.result_ref` 读取，大型 artifact 使用 Store/Filesystem reference。
-5. **Agent 从哪里获得初始提示词？** 需要用户指定提示词来源；动态 request/task/upstream material 由 AAP 编排。
-6. **什么条件表示完成？** 为 loop 写出业务退出条件；决定普通 leaf、End 和 background child 的收尾策略。
-
-## 4. 常用的构建逻辑
-
-```text
-Model Connection（实例私有，由用户建立） + Model Mapping = Model Requirement
--> Main Agent
--> Agent Event Output
--> optional Component
--> optional Subagent
--> Agent Node
--> Command component
--> Command Node
--> Task Dispatcher component
--> Task Dispatcher Node
--> Workflow Event Output
--> optional child  Workflow
--> Workflow metadata
--> Node + Edge + layout -> Graph document
--> Graph document -> Workflow validate / publish
--> enabled parent Workflow -> /v1/chat/completions model
-```
-
-推荐的创建顺序：
-
-1. 检查 health、readiness、active Configuration Repository 和 catalog；
-2. 列出现有配置，优先复用满足当前需求的对象；
-3. 让用户建立所需 Model Connection；AI 描述模型能力要求；
-4. 创建缺少的 component；
-5. 需要 Agent Node 时创建 Subagent 和 Main Agent；
-6. 创建 parent Workflow metadata；
-7. 构造并保存 Graph draft；
-8. 调用 Graph validation；
-9. 完整校验通过后 publish Graph；
-10. 检查 Model Mapping、API Server 和 `/v1/models`；
-11. 发起一次真实 invocation；
-12. 达到当前需求的可观察结果后停止。
-
-每次 POST 后立即保存 response 中的 UUID。后续 reference 使用 UUID；Node ID 和 Edge ID 只在 current Graph document 内使用。
-
-## 5. 选择最短学习路径
-
-### 5.1 第一次使用
-
-按顺序阅读：
-
-1. [Workflow 编排建议](00-workflow-orchestration-suggestions.md)
-2. [Management API、对象关系与事实发现](01-api-and-discovery.md)
-3. [配置 Agent](02-components-and-agents.md)（Graph 含 Agent Node 时）
-4. [创建 Workflow Graph](03-workflow-graph.md)
-5. [Validation、publish 与真实 invocation](06-validation-and-references.md)
-
-### 5.2 需要编写 Python
-
-在阅读第三章 Graph contract 后，再读[编写 Python extension](04-python-extensions.md)。
-
-### 5.3 需要 detached child Run
-
-先完成 regular Workflow，再读[使用 background Run](05-background-runs.md)。
-
-### 5.4 只修改已有对象
-
-先读取目标对象 GET projection、第一章的 PUT 规则和对应领域章节。不要把 GET response 原样作为 PUT payload。
-
-## 6. 三条最小成功路径
-
-### 6.1 空 Graph
-
-```text
-Start -> End
-```
-
-用于验证 Workflow metadata、Graph wire、publish 和 `/v1` 入口。它不需要 Agent 或模型。
-
-### 6.2 确定性 Workflow
-
-```text
-Start -> Command -> End
-```
-
-用于 State update、condition、routing、轮询或 background control。它不需要 Main Agent、Model Requirement、Model Connection 或 Agent Event Output。
-
-### 6.3 单 Agent Workflow
-
-```text
-Start -> Agent -> End
-```
-
-它需要：
-
-- 一个 Model Requirement；
-- 一个 Agent Event Output；
-- 一个 Main Agent；
-- 用户建立的 Model Connection；
-- Model Requirement 到 Model Connection 的 binding；
-- 可选 System Prompt、AAP、Filesystem、Tool、Skill、Subagent 和其他 Middleware。
-
-从最小路径开始，只有当前需求需要时再增加 Node 和 component。
-
-## 7. AI 操作纪律
-
-### 写入前
-
-- 读取 `/api/catalog` 和 `/api/workflow-node-catalog`；
-- 读取 active Configuration Repository；
-- 列出目标类型的现有对象；
-- 读取所需 Python template catalog；
-- 确认用户选择或提供的 Model Connection；
-- 写出 topology、State ownership 和结束条件。
-
-### 写入时
-
-- 使用 API 返回的 UUID；
-- 按 schema 提交最小完整 payload；
-- Python-backed component 从 catalog 的 `key + revision` 创建；
-- layout 只保存展示位置；
-- State 和 routing return value 分开设计；
-- 不把 secret、完整用户消息或大型 artifact 复制到普通诊断和控制 State。
-
-### 写入后
-
-- 读取创建结果，确认 reference；
-- 先保存 draft，再调用 Graph validation；
-- 修正全部 `severity=error` issue；
-- publish 后检查 `enabled=true`；
-- 用 `/v1/models` 确认 Workflow name；
-- 发起一次真实 invocation；
-- 记录未验证的外部依赖或用户操作。
-
-## 8. 如何处理错误
-
-优先读取 HTTP status、structured error code、`detail`、`issues[]`、`path` 和 `owner_id`：
-
-- `404`：引用对象或 endpoint 不存在，重新读取 catalog/列表；
-- `409`：存在名称冲突、引用占用、未绑定模型或 operation identity 冲突；
-- `422`：payload、Graph、package 或 assembly 不符合当前 contract；
-- `5xx`：运行时、Provider、外部服务或系统资源失败，保留 request ID 并查看运行诊断。
-
-收到错误后修改错误指出的 owner。不要通过删除必要字段、降低业务要求或新增兼容层绕过 validation。
-
-## 9. 完成定义
-
-一次 AI 配置任务达到以下条件即可交付：
-
-- 用户要求的 topology 已保存；
-- current Graph validation 返回 `valid=true`；
-- Workflow 已按需求 publish 或明确保持 draft；
-- 所有使用中的 Model Requirement 已绑定；
-- Python extension dependency status 满足运行条件；
-- 至少一次最接近需求的真实 invocation 得到可解释结果；
-- 没有遗留 active background task，或已明确其继续运行的业务原因；
-- 向用户说明新建对象、关键 UUID、模型要求、运行入口和未执行的验证。
-
-## 10. 章节索引
-
-1. [Workflow 编排建议](00-workflow-orchestration-suggestions.md)
-2. [Management API、对象关系与事实发现](01-api-and-discovery.md)
-3. [配置 Agent](02-components-and-agents.md)
-4. [创建 Workflow Graph](03-workflow-graph.md)
-5. [编写 Python extension](04-python-extensions.md)
-6. [使用 background Run](05-background-runs.md)
-7. [Validation、publish 与真实 invocation](06-validation-and-references.md)
-
-仓库的 `examples/` 目录展示可复制起点。示例中的 business field、condition、prompt、model 和 path 都需要根据当前任务修改。function signature、return structure、Graph wire 和 API validation boundary 以对应章节与当前实例 response 为准。
+详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择逻辑、操作顺序和最小闭环，不复制完整字段参考。

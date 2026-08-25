@@ -98,5 +98,5 @@ Agent Event Output 没有独立事件过滤配置。需要过滤时直接在 `ou
 }
 ```
 
-先从 [`GET /api/python-package-templates/agent-event-output`](../user-guide/ai-guide/01-api-and-discovery.md) 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。新建时 `python_package.folder` 必须为空，`revision` 必须与 catalog 的目录 sha256 一致；首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致且不可变，复制时自动跟随新 UUID。
+先从 [`GET /api/python-package-templates/agent-event-output`](../user-guide/ai-guide/01-discover-current-instance.md) 取得精确 `key` 与 `revision`，再提交到 `POST /api/blocks/agent-event-output`。新建时 `python_package.folder` 必须为空，`revision` 必须与 catalog 的目录 sha256 一致；首次保存后服务端生成配置 UUID，并令 package folder、manifest ID 与配置 UUID一致且不可变，复制时自动跟随新 UUID。
 保存后源码位于 current Configuration Repository 的 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-event-output/<configuration-uuid>/` 独占目录；组件页通过 `GET /api/blocks/agent-event-output/{id}/python-package` 投影后交给 File Manager 编辑。流式与非流式响应消费同一扩展结果，不会从最终 State 绕过 Agent Event Output 读取原始 Agent 内容。另见[Workflow Event Output](workflow-event-output-config.md)。

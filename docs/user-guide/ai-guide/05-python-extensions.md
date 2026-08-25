@@ -1,0 +1,303 @@
+# 编写 Python extension
+
+只有当前任务需要创建或修改 Python-backed Component 时才读本章。使用已经满足需求的现有 Component 时跳过。
+
+Python extension 在 Agent Shell service process 的 trusted boundary 中执行，没有 sandbox。只编写当前 Workflow 需要的代码，并使用 LangChain、LangGraph 和 Deep Agents public API。
+
+## 1. 选择 extension type
+
+Custom Tool：让模型在 Agent loop 中选择并调用确定性能力。固定 entry 是同步 `create_tool()`，返回一个 LangChain `BaseTool`。
+
+Custom Middleware：在 Agent lifecycle、model call 或 Tool call 周围增加行为。模块提供同步 `create_middleware(...)` factory，返回一个 `AgentMiddleware`。factory 可以按参数名请求当前可用的构造数据，或使用 `**kwargs` 接收全部可用值。
+
+Command：执行确定性 State transition 和 Branch Edge selection。同步 `create_command()` 返回 async Node callable。
+
+Task Dispatcher：运行时生成一批 Agent worker task。同步 `create_dispatcher()` 返回 async dispatcher callable。
+
+Agent Event Output：过滤和渲染 Agent event。同步 `output(event)` 返回 `str`。
+
+Workflow Event Output：过滤和渲染 Workflow-owned event。同步 `output(event)` 返回 `str`。
+
+先确定行为 owner：
+
+- State update 属于 Node、Tool 或 Middleware contract；
+- successor selection 属于 Command 或 Task Dispatcher；
+- 公开文本 projection 属于 Event Output；
+- long-lived artifact 属于 Store 或 Filesystem。
+
+不要让一个 extension 同时充当 State store、router 和 output renderer。
+
+## 2. 创建和编辑闭环
+
+```text
+读取 template catalog
+  -> 用 key + revision 创建 Component
+  -> GET 私有 Python package projection
+  -> 编辑 source 和 local module
+  -> 根据真实 import 编辑 requirements.txt
+  -> requirements 变化时 restart service
+  -> GET package 并检查 dependency_status
+  -> repository 和 Graph validation
+  -> 真实 invocation
+```
+
+具体步骤：
+
+1. 调用对应的 `GET /api/python-package-templates/{kind}`；
+2. 从当前 response 选择精确 `key` 和 `revision`；
+3. POST 创建 Component，并保存 UUID；
+4. 调用 `GET /api/blocks/{type}/{id}/python-package`；
+5. 从 response 确认私有 folder、manifest、entry file、file path 和 revision；
+6. 通过 File Manager API 或用户授权的本地编辑器修改该私有 package；
+7. 只为 source 直接 import 的额外 third-party package 声明 dependency；
+8. `requirements.txt` 变化后重启 service；
+9. 再次 GET package，确认 dependency status；
+10. validation 通过后发起一次真实 Workflow invocation。
+
+## 3. 从 template 创建 Component
+
+Python-backed Component 使用统一创建形状：
+
+```http
+POST /api/blocks/<component type>
+```
+
+```json
+{
+  "name": "<component name>",
+  "python_package": {
+    "folder": ""
+  },
+  "python_package_template": {
+    "key": "<catalog key>",
+    "revision": "<catalog revision>"
+  }
+}
+```
+
+Component type 与 template kind 的常用对应关系是：
+
+- `custom-tool` 使用 `custom-tool` template；
+- `custom-middleware` 使用 `middleware` template；
+- `agent-event-output` 使用 `agent-event-output` template；
+- `workflow-event-output` 使用 `workflow-event-output` template；
+- `command` 使用 `command` template；
+- `task-dispatcher` 使用 `task-dispatcher` template。
+
+以当前 Catalog 和 endpoint response 为准。不要根据这个列表构造当前实例不存在的 type。
+
+首次保存后，系统把 template 复制到该 Configuration UUID 独占的 private package。一个 Configuration 不引用另一个 Configuration 的 package directory。
+
+`package.json.id`、folder 和 adapter 必须与 owner Configuration 一致。不要移动或重命名受管 extension directory。
+
+## 4. 编辑 package
+
+`GET /api/blocks/{type}/{id}/python-package` 递归返回 package file 和真实 File Manager path。根据 response 编辑 `main.py`、local module 和 `requirements.txt`。
+
+local module 使用普通 relative import，例如：
+
+```python
+from .helpers import build_tasks
+```
+
+Python source change 在下一次 request materialization 时重新加载。`requirements.txt` change 在 service restart 后生效。
+
+文件 revision 已变化时，旧 revision 的保存会被拒绝。重新读取当前内容，合并用户草稿，再显式保存。不要用旧 projection 覆盖并发修改。
+
+完整 package、manifest 和 File Manager 规则见[文件化 Python 扩展](../middleware-packages.md)。
+
+## 5. Construction stage 和 runtime stage
+
+factory 在 Agent 或 Graph materialization 时运行，只负责创建 callable 或 Middleware object。
+
+Runtime callable 在 Node、Tool 或 Agent hook 真正执行时运行，才拥有 State、Runtime Context、Store 和 stream writer。下一节的 Command 示例展示这两个阶段的边界。
+
+`create_tool()`、`create_command()`、`create_dispatcher()` 和 `create_middleware(...)` 中没有某次 invocation 的 Runtime。
+
+需要 `runtime.context`、`runtime.store`、`ToolRuntime` 或 `get_stream_writer()` 的代码必须放在对应 runtime callable 或 Middleware hook 中。
+
+## 6. Command contract
+
+Command Component 的 factory 是同步函数：
+
+```python
+def create_command():
+    async def command(state, runtime):
+        shared_vars = state.get("shared_vars", {})
+        branch = "review" if shared_vars.get("requires_review") else "continue"
+        return {
+            "activate": [branch],
+            "update": {
+                "shared_vars": {
+                    "last_route": branch
+                }
+            }
+        }
+
+    return command
+```
+
+系统约束：
+
+- factory 返回 async callable；
+- callable 接收完整 Workflow `state` 和 LangGraph `runtime`；
+- `activate` 是零个、一个或多个 Branch Edge key；
+- `update` 是当前 Workflow State 的 partial update；
+- 非空 key 必须与同源 Graph `branch_key` 完全匹配；
+- package 不读取 Edge ID、target Node ID、layout 或完整 topology；
+- package 不 import 或直接返回 LangGraph `Command`。
+
+业务字段、condition、key 和 update shape 根据当前 design record修改。
+
+## 7. Task Dispatcher contract
+
+Task Dispatcher Component 的 factory 也是同步函数：
+
+```python
+def create_dispatcher():
+    async def dispatch(state, runtime):
+        items = state.get("shared_vars", {}).get("items")
+        if not isinstance(items, list) or not items:
+            raise ValueError("shared_vars.items must be a non-empty list")
+
+        tasks = [
+            {
+                "task_id": f'item:{item["id"]}',
+                "dispatch_key": "item",
+                "payload": {
+                    "item": item
+                }
+            }
+            for item in items
+        ]
+
+        return {
+            "tasks": tasks,
+            "update": {
+                "shared_vars": {
+                    "dispatched_count": len(tasks)
+                }
+            }
+        }
+
+    return dispatch
+```
+
+系统约束：
+
+- factory 返回 async dispatcher callable；
+- callable 接收完整 Workflow `state` 和 LangGraph `runtime`；
+- 每次 invocation 至少返回一个 task；
+- `task_id` 长度为 1 至 128 个字符，在当前 batch 唯一，并建议来自稳定业务 identity；
+- `dispatch_key` 长度为 1 至 64 个字符，必须与同源 Dispatch Edge 完全匹配；
+- `payload` 是 strict JSON object，数值必须是有限数；
+- `update` 是 parent Workflow State partial update；
+- package不 import 或返回 LangGraph `Send`。
+
+如果 task source 可能为空，建议由 upstream Command 绕过 Task Dispatcher，不构造空 `tasks`。
+
+worker 所需的本批材料必须放入 `payload`。Task Dispatcher 的 parent `update` 不自动成为同一批 worker 的私有 input。
+
+## 8. Custom Tool 和 Middleware
+
+Custom Tool 固定使用同步无参 `create_tool()`，返回一个 `BaseTool`。常见实现使用 LangChain `@tool`，并为 Tool 参数提供明确 type hint 和 docstring。
+
+Tool invocation 需要 Runtime 时，在 Tool callable 参数中使用当前 LangChain `ToolRuntime` public contract。不要尝试给 `create_tool()` 注入一次 invocation 的 Runtime。
+
+Custom Middleware factory 返回官方 `AgentMiddleware`。运行能力位于 `before_agent`、`before_model`、`wrap_model_call`、`wrap_tool_call` 等官方 hook 中。
+
+使用 Middleware 改写 Agent 初始消息时，先阅读[Agent Additional Prompt](../agent-additional-prompt.md)，并保留 ordered Middleware composition。
+
+不要根据模型记忆调用私有 attribute。先从当前 entry function 的 public type 查询 LangChain 官方文档，再对照 Agent Shell contract 和真实 invocation。
+
+## 9. Event Output contract
+
+Agent Event Output 和 Workflow Event Output 都只有一个同步 entry：
+
+```python
+def output(event):
+    if event["event_type"] == "assistant_text":
+        return event["message"]
+    return ""
+```
+
+系统约束：
+
+- `output(event)` 必须返回 `str`；
+- 所属 scope 的所有 event type 都进入同一个 function；
+- 读取 event-specific field 前先判断 `event_type`；
+- 空字符串只过滤公开渲染文本；
+- Event Output 不更新 State、不选择 successor，也不处理顶层 HTTP error。
+
+Agent Event Output 处理 Agent-owned event。Workflow Event Output 处理 Workflow-owned non-Agent event。
+
+稳定 event field 和示例见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)与[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)。
+
+## 10. 从 Workflow Node 写出 custom event
+
+Command 或 Task Dispatcher 的 runtime callable 可以使用 LangGraph public stream writer：
+
+```python
+from langgraph.config import get_stream_writer
+
+get_stream_writer()("Command selected branch review.\n")
+```
+
+只在 `command(state, runtime)` 或 `dispatch(state, runtime)` 等 runtime callable 内获取 writer。不要在 module top level、factory 或 `output(event)` 中调用。
+
+这些数据在 LangGraph v3 stream 中成为 `custom` event。Command 和 Task Dispatcher 属于 Workflow，因此需要 Workflow 引用 Workflow Event Output，并由其 `custom` branch 返回非空字符串，才会进入 OpenAI response。
+
+Agent Node 内 Tool 或 Middleware 写出的 `custom` event 使用该 Agent 的 Agent Event Output projection。
+
+event 是单向 output。Node 不会收到 projection result。
+
+## 11. Dependency
+
+Python 3.12 standard library 可以直接 import。使用 standard library 能完成任务时，不增加 third-party dependency。
+
+平台公开 contract 中明确展示的 LangChain、LangGraph、Deep Agents 和 `agent_shell` helper 可以按当前 locked version 使用。
+
+其他 third-party package 必须在当前 extension 自己的 `requirements.txt` 中声明 direct dependency。不要依赖核心 runtime 偶然安装的 transitive dependency。
+
+`requirements.txt` 使用普通 PyPI requirement。URL、local path、`.pth` 和只有 source distribution 的 dependency 会被拒绝。额外 package 还必须支持内置 CPython 3.12、Windows x64 和平台核心约束。
+
+Management API 没有 enumerate-all-importable-modules endpoint。不能仅凭模型记忆声称某个 package 已安装。
+
+读取 package projection 中的：
+
+- `dependency_status: "ready"` 表示当前 requirement 已准备完成，或没有额外 dependency；
+- `dependency_status: "restart_required"` 表示 requirement 已变化，需要 restart；
+- `dependency_status: "failed"` 表示 dependency preparation 失败，需要结合 `dependency_error_code` 修正；
+- `requirements_fingerprint` 表示当前 dependency declaration identity。
+
+dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Component。因此最终证据是 publish、restart、package GET 和真实 invocation 的闭环。
+
+## 12. Official capability discovery
+
+需要当前指南未展开的 LangChain、LangGraph 或 Deep Agents public capability 时：
+
+1. 从本章确认 script entry 和 runtime stage；
+2. 从 `docs/development-and-release.md` 确认 locked version；
+3. 使用已注册的 `langchain-docs` MCP 按 public type 和目标动作查询官方文档；
+4. 对照 Agent Shell source、contract 或稳定测试，确认该 capability 在当前 entry 中可达；
+5. 用 dependency status 和一次真实 Workflow invocation 证明当前实例可运行。
+
+官方 type 提供但 Agent Shell 未接入产品 wire 的功能，不自动成为 Agent Shell 配置能力。
+
+## 13. 本章完成结果
+
+返回 Graph 或 validation 前确认：
+
+- extension type 与行为 owner 一致；
+- Component 来自当前 template `key + revision`；
+- 编辑的是该 Configuration UUID 独占的 package；
+- factory 只负责 construction；
+- Runtime access 位于 runtime callable 或 hook；
+- routing key 与 Graph Edge key 一致；
+- State update、routing 和 output projection 各自遵循自己的 contract；
+- source 只使用 public API；
+- 每个直接 import 的额外 third-party package 都声明在自己的 `requirements.txt`；
+- requirement 变化后已 restart，并确认 dependency status；
+- Graph draft 已使用最新 Component UUID 和 key 重新保存。
+
+需要 independent child Run 时阅读[使用 background Run](06-background-runs.md)。否则阅读[验证、运行与交付](07-validate-run-deliver.md)。
