@@ -348,6 +348,7 @@ class V3EventNormalizer:
             channel = workflow_event.channel
             custom_data = workflow_event.data
         serialized = _json_text(custom_data)
+        message = custom_data if isinstance(custom_data, str) else serialized
         source_agent_name = (
             self._subagent_for_namespace(namespace)
             or self._workflow_agent_name(node="", namespace=namespace)
@@ -399,7 +400,7 @@ class V3EventNormalizer:
                 timestamp=timestamp,
                 namespace=namespace,
                 source=source,
-                message=serialized,
+                message=message,
                 channel=channel,
                 data_json=serialized,
                 data=custom_data,

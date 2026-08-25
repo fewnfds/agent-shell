@@ -65,6 +65,8 @@ def output(event):
 | `custom` | `channel`, `data_json` | custom event 的原始 Python payload；`data_json` 是 JSON 文本 |
 | `lifecycle` | `status`, `finish_reason`, `error_code` | lifecycle envelope `dict`，或 Shell 构造的状态 `dict` |
 
+`custom` payload 为 `str` 时，`message` 保持原始字符串，`data_json` 保持带 JSON 字符串引号的合法 JSON 文本。payload 为其他类型时，`message` 与 `data_json` 都使用紧凑 JSON 文本。
+
 `assistant_text` 和 `reasoning` 的 token delta 会先缓冲。脚本只在完整语义 block 到达时执行一次，不能依赖每个 token 调用一次 `output()`。工具调用与可匹配的结果仍按同一来源和调用周期配对，并保持相邻输出。返回空字符串只过滤配对后的渲染文本，不会让该事件绕过整流；因此 `tool_call` 即使最终被过滤，也可能先等待匹配的结果或调用周期边界。
 
 ## 读取 `data`

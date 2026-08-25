@@ -76,14 +76,18 @@ def test_raw_custom_transformer_requests_custom_mode_without_root_child_duplicat
 
 def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
     def emit_progress(state: _State) -> dict[str, str]:
-        get_stream_writer()(WorkflowCustomEventV1(
-            source=WorkflowEventSourceV1(
-                source_type="script",
-                workflow_node_id="script-node",
-            ),
-            channel="progress",
-            data={"progress": "ready"},
-        ).model_dump(mode="json"))
+        writer = get_stream_writer()
+        writer("progress ready")
+        writer(
+            WorkflowCustomEventV1(
+                source=WorkflowEventSourceV1(
+                    source_type="script",
+                    workflow_node_id="script-node",
+                ),
+                channel="progress",
+                data={"progress": "ready"},
+            ).model_dump(mode="json")
+        )
         return {"value": "done"}
 
     builder = StateGraph(_State)
@@ -109,7 +113,10 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
     async def collect() -> list[str]:
         return [part async for part in execution.stream_text()]
 
-    assert asyncio.run(collect()) == ['{"progress":"ready"}']
+    assert asyncio.run(collect()) == [
+        "progress ready",
+        '{"progress":"ready"}',
+    ]
     assert execution.final_state == {"value": "done"}
 
 

@@ -44,6 +44,7 @@ def output(event):
 
 `channel` 对已知 State 类事件等于事件 method；`data_json` 是用于显示和简单拼接的 JSON 文本。要访问完整 State、消息对象、`Command` 或其他 Python 值，应使用 `event["data"]`。这些对象来自锁定 LangChain/LangGraph 版本的 v3 语义 payload，
 不保证本身 JSON-compatible；本页外层 `event` dict 和字段名才是 Agent Shell 的稳定输出脚本 contract。
+`custom` payload 为 `str` 时，`message` 保持原始字符串，`data_json` 保持带 JSON 字符串引号的合法 JSON 文本。payload 为其他类型时，`message` 与 `data_json` 都使用紧凑 JSON 文本。
 
 `output(event)` 抛异常或返回非字符串时以 `event_output.execution_failed`（502）终止本次运行；声明了尚未就绪的依赖时，请求期返回 `python_package.dependencies_not_ready`（409）。公开错误响应使用结构化摘要；组件源码以受信任服务进程权限执行。
 

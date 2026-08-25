@@ -67,6 +67,51 @@ def test_workflow_custom_events_have_no_product_byte_ceiling() -> None:
     assert len(normalized[0].values["data_json"]) > 1_000_000
 
 
+def test_custom_string_message_stays_plain_for_workflow_and_agent_sources() -> None:
+    source = WorkflowEventSourceV1(
+        source_type="agent",
+        workflow_node_id="agent-a",
+        agent_profile_id=MAIN_A,
+    )
+    normalizer = V3EventNormalizer(
+        "Writer",
+        workflow_mode=True,
+        workflow_sources={"agent-a": source},
+        workflow_agent_names={"agent-a": "Writer"},
+    )
+
+    workflow_event = normalizer.feed(
+        {
+            "method": "custom",
+            "params": {"namespace": [], "data": "workflow progress"},
+        }
+    )[0]
+    agent_event = normalizer.feed(
+        {
+            "method": "custom",
+            "params": {
+                "namespace": ["agent-a:invocation"],
+                "data": "agent progress",
+            },
+        }
+    )[0]
+
+    assert workflow_event.source_type == "non_agent"
+    assert agent_event.source_type == "agent"
+    assert [workflow_event.message, agent_event.message] == [
+        "workflow progress",
+        "agent progress",
+    ]
+    assert [workflow_event.data, agent_event.data] == [
+        "workflow progress",
+        "agent progress",
+    ]
+    assert [
+        workflow_event.values["data_json"],
+        agent_event.values["data_json"],
+    ] == ['"workflow progress"', '"agent progress"']
+
+
 def test_workflow_output_uses_the_policy_frozen_for_each_node() -> None:
     policy_a = output_renderer({"assistant_text": "A:{{message}}"})
     policy_b = output_renderer({"assistant_text": "B:{{message}}"})
