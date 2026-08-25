@@ -670,7 +670,10 @@ def create_app(
 
         @app.get("/admin", include_in_schema=False)
         async def admin_page() -> FileResponse:
-            return FileResponse(frontend_dir / "index.html")
+            return FileResponse(
+                frontend_dir / "index.html",
+                headers={"Content-Security-Policy": "frame-ancestors 'none'"},
+            )
 
         @app.get("/admin/favicon.ico", include_in_schema=False)
         async def admin_favicon() -> FileResponse:

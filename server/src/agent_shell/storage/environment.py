@@ -11,7 +11,7 @@ from typing import Mapping
 
 from dotenv import dotenv_values
 
-from agent_shell.storage.atomic_files import write_text_atomic
+from agent_shell.storage.atomic_files import write_private_text_atomic
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 
 
@@ -206,7 +206,7 @@ class InstanceEnvironmentStore:
             candidate.update(replacements)
             for name in removals:
                 candidate.pop(name, None)
-            write_text_atomic(self.path, serialize_environment(candidate))
+            write_private_text_atomic(self.path, serialize_environment(candidate))
             return EnvironmentSnapshot.capture(candidate)
 
     def replace_owned(
@@ -231,7 +231,7 @@ class InstanceEnvironmentStore:
                 if name not in removals
             }
             candidate.update(replacements)
-            write_text_atomic(self.path, serialize_environment(candidate))
+            write_private_text_atomic(self.path, serialize_environment(candidate))
             return EnvironmentSnapshot.capture(candidate)
 
 

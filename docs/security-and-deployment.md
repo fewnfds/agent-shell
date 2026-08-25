@@ -9,6 +9,8 @@
 
 默认监听 `127.0.0.1`，本地模式也始终要求管理密码。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
+管理台 HTML 使用 `Content-Security-Policy: frame-ancestors 'none'` 拒绝被其他页面嵌入。反向代理不得删除或覆盖这个响应头。
+
 Agent Shell 按单实例、单一所有者信任域设计。管理、审计和日常使用由同一个实例所有者承担；业务 Workflow 和 Run 可以并发执行，运行数据仍归同一个所有者。管理鉴权保护实例入口，不建立多租户数据隔离、SaaS 角色分权或管理者、审计者、用户之间的下载可见性分层。
 
 ## CORS 与代理
@@ -22,6 +24,8 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 Provider credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接 YAML 只保存 credential 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
 不要提交 Git 或公开分享。
+
+应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
 普通 API response、DOM、system log 和 runtime diagnostic summary 不回显 credential、Bearer token、宿主敏感路径、traceback 或 Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
 

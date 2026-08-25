@@ -98,6 +98,19 @@ def test_admin_shell_uses_only_bundled_script_assets(
     assert authorized.status_code == 200
 
 
+def test_admin_shell_rejects_cross_origin_framing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+
+    with TestClient(create_app()) as client:
+        response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+
+
 def test_automatic_fastapi_documentation_is_not_registered(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

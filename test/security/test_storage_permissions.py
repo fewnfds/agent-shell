@@ -8,6 +8,10 @@ import pytest
 
 from agent_shell.storage import permissions
 from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.environment import (
+    InstanceEnvironmentStore,
+    SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
+)
 from agent_shell.storage.permissions import (
     secure_database_files,
     secure_directory,
@@ -144,6 +148,28 @@ def test_database_main_wal_and_shm_receive_same_file_policy(tmp_path: Path) -> N
 
     assert len(statuses) == 3
     assert all(status.enforced for status in statuses)
+
+
+def test_secret_environment_replacement_remains_private(tmp_path: Path) -> None:
+    environment_path = tmp_path / "config" / "agent-shell.env"
+    store = InstanceEnvironmentStore(environment_path)
+
+    store.patch(
+        SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
+        set_values={"AGENT_SHELL_MANAGEMENT_TOKEN": "first-secret"},
+    )
+    store.patch(
+        SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
+        set_values={"AGENT_SHELL_MANAGEMENT_TOKEN": "replacement-secret"},
+    )
+
+    if os.name == "nt":
+        assert permissions._windows_acl_is_private(
+            environment_path,
+            permissions._current_windows_sid(),
+        )
+    else:
+        assert environment_path.stat().st_mode & 0o077 == 0
 
 
 def test_database_transaction_commits_on_success(tmp_path: Path) -> None:
