@@ -309,6 +309,14 @@ export const en: MessageSchema = {
     deleteDescription: 'Delete Store data, checkpoints, and managed dynamic directories for “{name}”?',
     deleted: 'Run history deleted.',
     deleteFailed: 'Could not delete run history',
+    bulkDelete: {
+      action: 'Bulk delete',
+      title: 'Bulk delete run history',
+      description: 'Delete terminated records among the {count} run histories matching the current filter, including their Store data, checkpoints, and managed dynamic directories. Active records will be retained.',
+      completed: 'Deleted {deleted} run history records.',
+      completedWithActive: 'Deleted {deleted} run history records and retained {skipped_active} active records.',
+      failed: 'Could not bulk delete run history',
+    },
   },
   systemSettings: {
     title: 'System settings',

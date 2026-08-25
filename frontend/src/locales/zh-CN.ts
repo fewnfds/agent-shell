@@ -307,6 +307,14 @@ export const zhCN = {
     deleteDescription: '删除“{name}”的 Store 数据、Checkpoint 和受管动态目录？',
     deleted: '运行历史已删除。',
     deleteFailed: '无法删除运行历史',
+    bulkDelete: {
+      action: '批量删除',
+      title: '批量删除运行历史',
+      description: '删除当前筛选匹配的 {count} 条运行历史中的已终止记录，并清理其 Store 数据、Checkpoint 和受管动态目录；仍在运行的记录会保留。',
+      completed: '已删除 {deleted} 条运行历史。',
+      completedWithActive: '已删除 {deleted} 条运行历史，保留 {skipped_active} 条仍在运行的记录。',
+      failed: '无法批量删除运行历史',
+    },
   },
   systemSettings: {
     title: '系统配置',

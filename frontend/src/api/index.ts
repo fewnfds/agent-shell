@@ -39,6 +39,7 @@ import type {
   WorkflowSummary,
   WorkflowLifecyclePage,
   WorkflowLifecycleDetail,
+  WorkflowLifecycleBulkDeleteResult,
   WorkflowRunDetail,
   WorkflowRunEventPage,
   WorkflowGraphDocument,
@@ -344,6 +345,13 @@ export const managementApi = {
       `/api/workflow-lifecycles/${encodeURIComponent(id)}?delete_dynamic_directories=true`,
       { method: 'DELETE' },
     )
+  },
+
+  deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult> {
+    return managementRequest('/api/workflow-lifecycles/delete', jsonBody({
+      query,
+      delete_dynamic_directories: true,
+    }))
   },
 
   getWorkflowLifecycle(id: string): Promise<WorkflowLifecycleDetail> {

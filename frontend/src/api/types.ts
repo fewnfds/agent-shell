@@ -480,6 +480,14 @@ export interface WorkflowLifecycleSummary {
 
 export type WorkflowLifecyclePage = PaginationResponse<WorkflowLifecycleSummary>
 
+export interface WorkflowLifecycleBulkDeleteResult {
+  matched: number
+  deleted: number
+  skipped_active: number
+  deleted_checkpoint_thread_count: number
+  deleted_dynamic_directories: boolean
+}
+
 export interface WorkflowRunRecord {
   run_id: string
   lifecycle_id: string

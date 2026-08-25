@@ -58,7 +58,7 @@ Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume �
 - background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Task Dispatcher 在请求内生成动态 worker，多个 normal 出边、一次激活的多个 branch 目标和多个 Send task 按 LangGraph Super-step 语义执行；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。
+- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 一次清理完整匹配集中的已终止 Lifecycle，并返回删除数和保留的 active 记录数。详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。
 
 ## API Key 与状态
 

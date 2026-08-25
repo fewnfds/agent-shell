@@ -486,6 +486,9 @@ class WorkflowLifecycleService:
         )
         return [deepcopy(record) for record in records], total
 
+    async def matching_record_ids(self, *, query: str = "") -> list[str]:
+        return self._index.list_matching_ids(query=query)
+
     async def record(self, lifecycle_id: str) -> dict[str, Any] | None:
         record = self._index.get(lifecycle_id)
         return deepcopy(record) if record is not None else None

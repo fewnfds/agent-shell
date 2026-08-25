@@ -38,7 +38,7 @@ Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍�
 
 单条持久化 background task 记录无法按当前 contract 解析时，Lifecycle 的观测状态标记为 `partial`，页面局部提示无效记录数量，并继续显示可读取的 Run、结构事件、Store 和其他内容。Lifecycle ZIP 同样保持可下载，并原样包含无法解析的 background task 记录；运行控制、取消和清理仍要求 task 记录完整有效。
 
-运行详情 ZIP 是持久化运行快照，不承诺字节级重放。`on_chat_model_start` 位于 LangChain ChatModel 边界，可以稳定观察 middleware 处理后的消息和绑定到模型调用的 Tool/参数，但它不是 Provider adapter 最终序列化出的 HTTP payload；Provider 网络请求原文和成功 Provider HTTP 原始响应不持久化。下载没有敏感度分类或内容开关；写入运行记录的 prompt、用户消息、Tool schema/payload、State、路径和其他敏感材料会进入 ZIP。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件；请求序列化也会排除 Secret 类型和明确的 credential 字段。运行历史没有自动 retention；只有 Lifecycle 显式删除会清理 Run/Event、Model Request、Store、Checkpoint 和选择的受管动态目录。
+运行详情 ZIP 是持久化运行快照，不承诺字节级重放。`on_chat_model_start` 位于 LangChain ChatModel 边界，可以稳定观察 middleware 处理后的消息和绑定到模型调用的 Tool/参数，但它不是 Provider adapter 最终序列化出的 HTTP payload；Provider 网络请求原文和成功 Provider HTTP 原始响应不持久化。下载没有敏感度分类或内容开关；写入运行记录的 prompt、用户消息、Tool schema/payload、State、路径和其他敏感材料会进入 ZIP。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件；请求序列化也会排除 Secret 类型和明确的 credential 字段。运行历史没有自动 retention。单项删除会清理对应 Lifecycle 的 Run/Event、Model Request、Store、Checkpoint 和受管动态目录；批量删除作用于当前搜索的完整匹配结果，清理其中已终止的 Lifecycle，并保留仍有 active parent/background Run 的记录。搜索为空时，批量删除会处理全部运行历史中的已终止记录。
 
 下载时事件按页、已启用 Run 的 checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。
 

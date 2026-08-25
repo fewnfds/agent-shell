@@ -62,6 +62,19 @@ class WorkflowLifecycleStore:
             ).fetchone()
         return self._row(row) if row is not None else None
 
+    @staticmethod
+    def _query_clause(query: str) -> tuple[str, tuple[object, ...]]:
+        normalized_query = query.strip()
+        if not normalized_query:
+            return "", ()
+        return (
+            "WHERE instr(lower(workflow_name), lower(?)) > 0 "
+            "OR instr(lower(workflow_id), lower(?)) > 0 "
+            "OR instr(lower(lifecycle_id), lower(?)) > 0 "
+            "OR instr(lower(request_id), lower(?)) > 0",
+            (normalized_query,) * 4,
+        )
+
     def list_page(
         self,
         *,
@@ -69,17 +82,7 @@ class WorkflowLifecycleStore:
         offset: int,
         query: str = "",
     ) -> tuple[list[dict[str, object]], int]:
-        normalized_query = query.strip()
-        where = ""
-        parameters: tuple[object, ...] = ()
-        if normalized_query:
-            where = (
-                "WHERE instr(lower(workflow_name), lower(?)) > 0 "
-                "OR instr(lower(workflow_id), lower(?)) > 0 "
-                "OR instr(lower(lifecycle_id), lower(?)) > 0 "
-                "OR instr(lower(request_id), lower(?)) > 0"
-            )
-            parameters = (normalized_query,) * 4
+        where, parameters = self._query_clause(query)
         with self._database.transaction() as connection:
             total = int(
                 connection.execute(
@@ -93,6 +96,16 @@ class WorkflowLifecycleStore:
                 (*parameters, limit, offset),
             ).fetchall()
         return [self._row(row) for row in rows], total
+
+    def list_matching_ids(self, *, query: str = "") -> list[str]:
+        where, parameters = self._query_clause(query)
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                f"SELECT lifecycle_id FROM workflow_lifecycles {where} "
+                "ORDER BY created_at DESC, lifecycle_id DESC",
+                parameters,
+            ).fetchall()
+        return [str(row["lifecycle_id"]) for row in rows]
 
     def finish_parent(
         self,

@@ -86,6 +86,50 @@ describe('WorkflowLifecyclesPage', () => {
     wrapper.unmount()
   })
 
+  it('bulk deletes the complete applied result set and reports retained active records', async () => {
+    vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue({
+      items: [lifecycle],
+      page: 1,
+      page_size: 10,
+      total: 12,
+      total_pages: 2,
+    })
+    const removeMatching = vi.spyOn(managementApi, 'deleteWorkflowLifecyclesMatching')
+      .mockResolvedValue({
+        matched: 12,
+        deleted: 11,
+        skipped_active: 1,
+        deleted_checkpoint_thread_count: 3,
+        deleted_dynamic_directories: true,
+      })
+    const wrapper = mount(WorkflowLifecyclesPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
+      },
+    })
+    await flushPromises()
+
+    const search = wrapper.get<HTMLInputElement>('input[type="search"]')
+    await search.setValue('research')
+    await wrapper.get('form[role="search"]').trigger('submit')
+    await flushPromises()
+
+    const bulkDelete = wrapper.findAll('button').find(
+      (button) => button.text() === 'Bulk delete',
+    )
+    expect(bulkDelete).toBeDefined()
+    await bulkDelete!.trigger('click')
+    expect(useConfirmation().current.value?.description).toContain('12')
+    useConfirmation().accept()
+    await flushPromises()
+
+    expect(removeMatching).toHaveBeenCalledWith('research')
+    expect(useToasts().items.value.some(
+      (toast) => toast.title === 'Deleted 11 run history records and retained 1 active records.',
+    )).toBe(true)
+    wrapper.unmount()
+  })
+
   it('opens structured Run history and downloads lifecycle and Run diagnostics', async () => {
     const partialLifecycle: WorkflowLifecycleSummary = {
       ...lifecycle,

@@ -96,8 +96,9 @@ Management API 只提供 Lifecycle/Run 的只读观测与 explicit cleanup，不
 | `GET /api/workflow-lifecycles/{lifecycle_id}/download` | 下载 Lifecycle 完整运行详情 ZIP |
 | `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` | 下载单个 Run 完整运行详情 ZIP |
 | `DELETE /api/workflow-lifecycles/{lifecycle_id}` | 清理全部非空 Checkpoint Thread 和 Store prefix；存在 active Run/task 时返回 409 |
+| `POST /api/workflow-lifecycles/delete` | 按列表的 `query` 清理完整匹配集中的已终止 Lifecycle；空 `query` 匹配全部，active Lifecycle 保留并计数 |
 
-删除时可选 `?delete_dynamic_directories=true` 清理本 Lifecycle 的 managed dynamic directory。parent Run 正常到达 End 不会自动取消 background task；parent 取消或失败时按 child 的【父运行取消或失败时终止】配置传播。Lifecycle 保留到显式删除；parent 和所有 background task 进入终态后，Lifecycle 接受 explicit delete。Lifecycle 进入 `deleting` status 后冻结 background Run 创建，cleanup 失败时保留该 status，以便继续 cleanup。Lifecycle summary 不返回 messages、Provider secret 或 host path。
+单项删除可选 `?delete_dynamic_directories=true`，批量删除 body 可选同名 boolean，清理 Lifecycle 的 managed dynamic directory。批量 body 为 `{"query":"...","delete_dynamic_directories":true}`；响应包含 `matched`、`deleted`、`skipped_active` 和删除的 Checkpoint Thread 数。parent Run 正常到达 End 不会自动取消 background task；parent 取消或失败时按 child 的【父运行取消或失败时终止】配置传播。Lifecycle 保留到显式删除；parent 和所有 background task 进入终态后，Lifecycle 接受 explicit delete。Lifecycle 进入 `deleting` status 后冻结 background Run 创建，cleanup 失败时保留该 status，以便继续 cleanup。Lifecycle summary 不返回 messages、Provider secret 或 host path。
 
 ## 7. Background Run 完成检查
 

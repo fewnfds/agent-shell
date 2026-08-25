@@ -515,6 +515,89 @@ def test_lifecycle_restart_cancels_interrupted_parent_and_allows_cleanup(
         assert deleted.status_code == 200, deleted.text
 
 
+def test_lifecycle_bulk_delete_uses_full_query_and_retains_active_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def create_history() -> tuple[str, str, str]:
+            terminal_id = await client.app.state.workflow_lifecycle.create(
+                [{"role": "user", "content": "terminal"}],
+                request_id="matching-terminal-request",
+                run_id="matching-terminal-run",
+                checkpoint_thread_id=None,
+                workflow_id="matching-terminal-workflow",
+                workflow_name="Matching Terminal Workflow",
+            )
+            await client.app.state.workflow_lifecycle.finish_parent(
+                terminal_id,
+                "completed",
+            )
+            active_id = await client.app.state.workflow_lifecycle.create(
+                [{"role": "user", "content": "active"}],
+                request_id="matching-active-request",
+                run_id="matching-active-run",
+                checkpoint_thread_id=None,
+                workflow_id="matching-active-workflow",
+                workflow_name="Matching Active Workflow",
+            )
+            other_id = await client.app.state.workflow_lifecycle.create(
+                [{"role": "user", "content": "other"}],
+                request_id="other-request",
+                run_id="other-run",
+                checkpoint_thread_id=None,
+                workflow_id="other-workflow",
+                workflow_name="Other Workflow",
+            )
+            await client.app.state.workflow_lifecycle.finish_parent(
+                other_id,
+                "completed",
+            )
+            return terminal_id, active_id, other_id
+
+        terminal_id, active_id, other_id = portal.call(create_history)
+        deleted = client.post(
+            "/api/workflow-lifecycles/delete",
+            json={"query": "matching", "delete_dynamic_directories": True},
+        )
+
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json() == {
+            "matched": 2,
+            "deleted": 1,
+            "skipped_active": 1,
+            "deleted_checkpoint_thread_count": 0,
+            "deleted_dynamic_directories": True,
+        }
+        assert client.get(
+            f"/api/workflow-lifecycles/{terminal_id}"
+        ).status_code == 404
+        assert client.get(
+            f"/api/workflow-lifecycles/{active_id}"
+        ).status_code == 200
+        assert client.get(
+            f"/api/workflow-lifecycles/{other_id}"
+        ).status_code == 200
+
+        portal.call(
+            client.app.state.workflow_lifecycle.finish_parent,
+            active_id,
+            "completed",
+        )
+        cleared = client.post(
+            "/api/workflow-lifecycles/delete",
+            json={"delete_dynamic_directories": True},
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["matched"] == 2
+        assert cleared.json()["deleted"] == 2
+        assert cleared.json()["skipped_active"] == 0
+        assert client.get("/api/workflow-lifecycles").json()["items"] == []
+
+
 def test_lifecycle_without_checkpointer_never_accesses_saver(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

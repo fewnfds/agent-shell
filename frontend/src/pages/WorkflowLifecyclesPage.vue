@@ -230,6 +230,27 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
       reloadAfter: 'current',
     },
   ],
+  bulkAction: {
+    label: () => t('workflowLifecycles.bulkDelete.action'),
+    busyLabel: () => t('common.deleting'),
+    icon: 'delete',
+    enabled: (context) => context.total > 0,
+    confirm: (context) => ({
+      title: t('workflowLifecycles.bulkDelete.title'),
+      description: t('workflowLifecycles.bulkDelete.description', { count: context.total }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      dangerous: true,
+    }),
+    run: (context) => managementApi.deleteWorkflowLifecyclesMatching(context.applied.query),
+    successTitle: (result) => {
+      const response = result as { deleted: number; skipped_active: number }
+      return response.skipped_active
+        ? t('workflowLifecycles.bulkDelete.completedWithActive', response)
+        : t('workflowLifecycles.bulkDelete.completed', response)
+    },
+    failureTitle: () => t('workflowLifecycles.bulkDelete.failed'),
+  },
   detail: true,
   pageSize: 10,
   pageSizeOptions: [10],

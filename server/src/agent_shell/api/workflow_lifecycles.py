@@ -14,6 +14,7 @@ import zipfile
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict
 from starlette.background import BackgroundTask
 
 from agent_shell.api.errors import management_error
@@ -42,6 +43,13 @@ EXPORT_SECTIONS = frozenset(
         "store_payloads",
     }
 )
+
+
+class WorkflowLifecycleBulkDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = ""
+    delete_dynamic_directories: bool = False
 
 
 def _json_default(value: object) -> object:
@@ -417,6 +425,49 @@ def build_workflow_lifecycle_router(
             )
         return run
 
+    async def cleanup_lifecycle(
+        lifecycle_id: str,
+        *,
+        delete_dynamic_directories: bool,
+        skip_active: bool,
+        skip_missing: bool = False,
+    ) -> tuple[str, int]:
+        async with lifecycle_service.exclusive_mutation(lifecycle_id):
+            record = await lifecycle_service.record(lifecycle_id)
+            if record is None:
+                if skip_missing:
+                    return "missing", 0
+                record = await require_lifecycle(lifecycle_id)
+            tasks = await background_tasks.list_for_cleanup(lifecycle_id)
+            runs = lifecycle_service.runs(lifecycle_id)
+            if record.get("parent_status") == "running" or any(
+                task.runtime_status in ACTIVE_BACKGROUND_STATUSES for task in tasks
+            ):
+                if skip_active:
+                    return "active", 0
+                raise management_error(
+                    409,
+                    code="workflow_lifecycle_active",
+                    message_key="errors.workflowLifecycleActive",
+                    message="A Workflow lifecycle with an active run cannot be deleted.",
+                )
+            await lifecycle_service.mark_deleting(lifecycle_id)
+            checkpoint_thread_ids = {
+                str(run["checkpoint_thread_id"])
+                for run in runs
+                if run.get("checkpoint_thread_id") is not None
+            }
+            for checkpoint_thread_id in checkpoint_thread_ids:
+                await purge_checkpoint_thread(
+                    checkpoint_thread_id,
+                    lifecycle_id=lifecycle_id,
+                )
+            await lifecycle_service.delete(
+                lifecycle_id,
+                delete_dynamic_directories=delete_dynamic_directories,
+            )
+        return "deleted", len(checkpoint_thread_ids)
+
     def diagnostic_details(
         diagnostics: list[dict[str, object]],
     ) -> list[tuple[Path, str]]:
@@ -752,38 +803,45 @@ def build_workflow_lifecycle_router(
         lifecycle_id: str,
         delete_dynamic_directories: bool = Query(default=False),
     ) -> dict[str, object]:
-        async with lifecycle_service.exclusive_mutation(lifecycle_id):
-            record = await require_lifecycle(lifecycle_id)
-            tasks = await background_tasks.list_for_cleanup(lifecycle_id)
-            runs = lifecycle_service.runs(lifecycle_id)
-            if record.get("parent_status") == "running" or any(
-                task.runtime_status in ACTIVE_BACKGROUND_STATUSES for task in tasks
-            ):
-                raise management_error(
-                    409,
-                    code="workflow_lifecycle_active",
-                    message_key="errors.workflowLifecycleActive",
-                    message="A Workflow lifecycle with an active run cannot be deleted.",
-                )
-            await lifecycle_service.mark_deleting(lifecycle_id)
-            checkpoint_thread_ids = {
-                str(run["checkpoint_thread_id"])
-                for run in runs
-                if run.get("checkpoint_thread_id") is not None
-            }
-            for checkpoint_thread_id in checkpoint_thread_ids:
-                await purge_checkpoint_thread(
-                    checkpoint_thread_id,
-                    lifecycle_id=lifecycle_id,
-                )
-            await lifecycle_service.delete(
-                lifecycle_id,
-                delete_dynamic_directories=delete_dynamic_directories,
-            )
+        _, deleted_checkpoint_thread_count = await cleanup_lifecycle(
+            lifecycle_id,
+            delete_dynamic_directories=delete_dynamic_directories,
+            skip_active=False,
+        )
         return {
             "ok": True,
-            "deleted_checkpoint_thread_count": len(checkpoint_thread_ids),
+            "deleted_checkpoint_thread_count": deleted_checkpoint_thread_count,
             "deleted_dynamic_directories": delete_dynamic_directories,
+        }
+
+    @router.post("/api/workflow-lifecycles/delete")
+    async def delete_workflow_lifecycles(
+        payload: WorkflowLifecycleBulkDelete,
+    ) -> dict[str, object]:
+        lifecycle_ids = await lifecycle_service.matching_record_ids(
+            query=payload.query,
+        )
+        deleted = 0
+        skipped_active = 0
+        deleted_checkpoint_thread_count = 0
+        for lifecycle_id in lifecycle_ids:
+            outcome, checkpoint_count = await cleanup_lifecycle(
+                lifecycle_id,
+                delete_dynamic_directories=payload.delete_dynamic_directories,
+                skip_active=True,
+                skip_missing=True,
+            )
+            if outcome == "deleted":
+                deleted += 1
+                deleted_checkpoint_thread_count += checkpoint_count
+            elif outcome == "active":
+                skipped_active += 1
+        return {
+            "matched": len(lifecycle_ids),
+            "deleted": deleted,
+            "skipped_active": skipped_active,
+            "deleted_checkpoint_thread_count": deleted_checkpoint_thread_count,
+            "deleted_dynamic_directories": payload.delete_dynamic_directories,
         }
 
     return router
