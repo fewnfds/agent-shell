@@ -219,6 +219,9 @@ export const en: MessageSchema = {
     loadFailed: 'Could not load run history',
     detailLoadFailed: 'Could not load run details',
     searchPlaceholder: 'Search Workflow, Lifecycle, or request ID',
+    invalidTaskRecords: '{status} · Invalid background task records: {count}',
+    invalidTaskWarningTitle: 'Some background task records are unavailable',
+    invalidTaskWarning: 'Invalid background task records: {count}. Other Run history remains available, and the diagnostics ZIP retains the original records.',
     columns: {
       parentWorkflow: 'Parent Workflow',
       created: 'Created',

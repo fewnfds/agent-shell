@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Protocol
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent_shell.runtime.diagnostics import (
     RuntimeDiagnosticContext,
@@ -361,6 +361,27 @@ class BackgroundTaskManager:
         async with self._lifecycle.exclusive_mutation(lifecycle_id):
             return await self._list_locked(lifecycle_id, statuses=statuses)
 
+    async def list_for_history(
+        self,
+        lifecycle_id: str,
+    ) -> tuple[list[BackgroundTaskSnapshot], int]:
+        """Project valid task records without hiding the rest of Run History."""
+
+        async with self._lifecycle.exclusive_mutation(lifecycle_id):
+            checked_at = _now()
+            records: list[BackgroundTaskRecord] = []
+            invalid_record_count = 0
+            for value in await self._record_values_locked(lifecycle_id):
+                try:
+                    records.append(BackgroundTaskRecord.model_validate(value))
+                except ValidationError:
+                    invalid_record_count += 1
+            snapshots = await self._snapshots_locked(
+                records,
+                checked_at=checked_at,
+            )
+            return snapshots, invalid_record_count
+
     async def list_for_cleanup(
         self,
         lifecycle_id: str,
@@ -377,7 +398,19 @@ class BackgroundTaskManager:
     ) -> list[BackgroundTaskSnapshot]:
         checked_at = _now()
         records = await self._records_locked(lifecycle_id)
+        return await self._snapshots_locked(
+            records,
+            checked_at=checked_at,
+            statuses=statuses,
+        )
 
+    async def _snapshots_locked(
+        self,
+        records: list[BackgroundTaskRecord],
+        *,
+        checked_at: str,
+        statuses: frozenset[BackgroundTaskStatus] | None = None,
+    ) -> list[BackgroundTaskSnapshot]:
         snapshots = []
         for record in sorted(records, key=lambda item: (item.created_at, item.task_id)):
             record = await self._normalize_active(record, checked_at=checked_at)
@@ -389,7 +422,16 @@ class BackgroundTaskManager:
         self,
         lifecycle_id: str,
     ) -> list[BackgroundTaskRecord]:
-        records: list[BackgroundTaskRecord] = []
+        return [
+            BackgroundTaskRecord.model_validate(value)
+            for value in await self._record_values_locked(lifecycle_id)
+        ]
+
+    async def _record_values_locked(
+        self,
+        lifecycle_id: str,
+    ) -> list[object]:
+        values: list[object] = []
         offset = 0
         while True:
             items = await self._lifecycle.store.asearch(
@@ -397,13 +439,11 @@ class BackgroundTaskManager:
                 limit=100,
                 offset=offset,
             )
-            records.extend(
-                BackgroundTaskRecord.model_validate(item.value) for item in items
-            )
+            values.extend(item.value for item in items)
             if len(items) < 100:
                 break
             offset += len(items)
-        return records
+        return values
 
     async def cancel_children_on_parent_termination(
         self,

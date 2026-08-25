@@ -27,6 +27,7 @@ const lifecycle: WorkflowLifecycleSummary = {
   messages_sha: 'sha',
   message_count: 2,
   task_count: 3,
+  invalid_task_count: 0,
   active_task_count: 1,
   task_status_counts: { running: 1, succeeded: 2 },
   checkpoint_count: 7,
@@ -86,8 +87,13 @@ describe('WorkflowLifecyclesPage', () => {
   })
 
   it('opens structured Run history and downloads lifecycle and Run diagnostics', async () => {
-    const detail: WorkflowLifecycleDetail = {
+    const partialLifecycle: WorkflowLifecycleSummary = {
       ...lifecycle,
+      invalid_task_count: 1,
+      observation_status: 'partial',
+    }
+    const detail: WorkflowLifecycleDetail = {
+      ...partialLifecycle,
       runs: [{
         run_id: 'run-1',
         lifecycle_id: lifecycle.lifecycle_id,
@@ -155,7 +161,7 @@ describe('WorkflowLifecyclesPage', () => {
       event_has_more: true,
     }
     vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue({
-      items: [lifecycle],
+      items: [partialLifecycle],
       page: 1,
       page_size: 10,
       total: 1,
@@ -188,9 +194,13 @@ describe('WorkflowLifecyclesPage', () => {
     })
     await flushPromises()
 
+    expect(wrapper.text()).toContain('Partial · Invalid background task records: 1')
     await wrapper.get('[data-testid="data-table-row"]').trigger('click')
     await flushPromises()
     expect(getDetail).toHaveBeenCalledWith(lifecycle.lifecycle_id)
+    expect(wrapper.get('[data-testid="invalid-task-warning"]').text()).toContain(
+      'Other Run history remains available',
+    )
     expect(wrapper.text()).toContain('Structural events')
     expect(wrapper.text()).toContain('Workflow Node')
     expect(wrapper.text()).toContain('run-1')

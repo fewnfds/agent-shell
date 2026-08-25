@@ -359,11 +359,14 @@ def build_workflow_lifecycle_router(
 
     async def summary(record: dict[str, object]) -> dict[str, object]:
         lifecycle_id = str(record["lifecycle_id"])
-        tasks = await background_tasks.list(lifecycle_id)
+        tasks, invalid_task_count = await background_tasks.list_for_history(
+            lifecycle_id
+        )
+        task_count = len(tasks) + invalid_task_count
         task_counts = Counter(task.runtime_status for task in tasks)
         runs = lifecycle_service.runs(lifecycle_id)
         run_summary = lifecycle_service.run_summary(lifecycle_id)
-        if len(runs) < 1 + len(tasks):
+        if invalid_task_count or len(runs) < 1 + task_count:
             run_summary["observation_status"] = (
                 "unavailable" if not runs else "partial"
             )
@@ -380,7 +383,8 @@ def build_workflow_lifecycle_router(
         return {
             **record,
             "lifecycle_status": record.get("lifecycle_status", "active"),
-            "task_count": len(tasks),
+            "task_count": task_count,
+            "invalid_task_count": invalid_task_count,
             "active_task_count": sum(
                 task_counts.get(status, 0) for status in ACTIVE_BACKGROUND_STATUSES
             ),

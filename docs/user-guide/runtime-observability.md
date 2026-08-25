@@ -36,6 +36,8 @@ Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍�
 
 运行历史直接提供 Lifecycle ZIP 和 single Run ZIP。ZIP 标注 `captured_at`、当前终态/活动状态、最后事件 sequence 和观测完整性，并固定包含下载时可读取的 Run Registry、结构事件、Lifecycle 输入、持久化 Agent invocation artifact、上述 ChatModel 请求、background task 记录、Lifecycle Store 摘要与原始记录、诊断摘要和现存异常详情附件。只有 `checkpoint_thread_id` 非空的 Run 写入 complete Checkpoint State；Lifecycle ZIP 不为未启用的 Run 建立 checkpoint 文件，single Run ZIP 保留空的 `checkpoints.jsonl` 并在 manifest 中写入 `checkpoint_thread_id=null`。模型请求索引位于 `model-requests/index.json`；Main Agent 分别写入 `model-requests/main-agents/*.jsonl`，Subagent 按 parent Main Agent scope 写入 `model-requests/subagents/<parent-scope>/*.jsonl`，没有混合所有 Agent 的聚合请求文件。
 
+单条持久化 background task 记录无法按当前 contract 解析时，Lifecycle 的观测状态标记为 `partial`，页面局部提示无效记录数量，并继续显示可读取的 Run、结构事件、Store 和其他内容。Lifecycle ZIP 同样保持可下载，并原样包含无法解析的 background task 记录；运行控制、取消和清理仍要求 task 记录完整有效。
+
 运行详情 ZIP 是持久化运行快照，不承诺字节级重放。`on_chat_model_start` 位于 LangChain ChatModel 边界，可以稳定观察 middleware 处理后的消息和绑定到模型调用的 Tool/参数，但它不是 Provider adapter 最终序列化出的 HTTP payload；Provider 网络请求原文和成功 Provider HTTP 原始响应不持久化。下载没有敏感度分类或内容开关；写入运行记录的 prompt、用户消息、Tool schema/payload、State、路径和其他敏感材料会进入 ZIP。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件；请求序列化也会排除 Secret 类型和明确的 credential 字段。运行历史没有自动 retention；只有 Lifecycle 显式删除会清理 Run/Event、Model Request、Store、Checkpoint 和选择的受管动态目录。
 
 下载时事件按页、已启用 Run 的 checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。

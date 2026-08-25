@@ -9,6 +9,7 @@ import zipfile
 from agent_shell.app import create_app
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.workflow_lifecycle import lifecycle_tasks_namespace
 from support import ScopedAuthTestClient
 
 from .support import *
@@ -88,6 +89,94 @@ def test_lifecycle_list_orders_by_creation_not_later_status_updates(
         "Workflow 2",
         "Workflow 1",
     ]
+
+
+def test_lifecycle_history_keeps_valid_content_when_a_task_record_is_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def create_history() -> tuple[str, dict[str, object]]:
+            lifecycle_id = await client.app.state.workflow_lifecycle.create(
+                [{"role": "user", "content": "preserve valid history"}],
+                request_id="partial-history-request",
+                run_id="partial-history-run",
+                checkpoint_thread_id=None,
+                workflow_id="partial-history-workflow",
+                workflow_name="Partial History Workflow",
+            )
+            invalid_task = {
+                "contract_version": 1,
+                "task_id": "invalid-task",
+                "lifecycle_id": lifecycle_id,
+                "runtime_instance_id": "old-runtime",
+                "request_id": "partial-history-request",
+                "launcher_run_id": "partial-history-run",
+                "launcher_id": "launcher",
+                "operation_id": "old-operation",
+                "target_kind": "workflow",
+                "target_id": "child-workflow",
+                "target_name": "Child Workflow",
+                "target_graph_sha": "graph-sha",
+                "child_run_id": "missing-child-run",
+                "checkpoint_thread_id": None,
+                "run_depth": 1,
+                "status": "succeeded",
+                "created_at": "2026-08-24T00:00:00+00:00",
+                "started_at": "2026-08-24T00:00:01+00:00",
+                "finished_at": "2026-08-24T00:00:02+00:00",
+                "result": {"finish_reason": "stop"},
+                "error_code": "",
+            }
+            await client.app.state.workflow_lifecycle.store.aput(
+                lifecycle_tasks_namespace(lifecycle_id),
+                "invalid-task",
+                invalid_task,
+            )
+            await client.app.state.workflow_lifecycle.finish_parent(
+                lifecycle_id,
+                "completed",
+            )
+            return lifecycle_id, invalid_task
+
+        lifecycle_id, invalid_task = portal.call(create_history)
+        listed = client.get("/api/workflow-lifecycles")
+        detail = client.get(f"/api/workflow-lifecycles/{lifecycle_id}")
+        downloaded = client.get(
+            f"/api/workflow-lifecycles/{lifecycle_id}/download"
+        )
+
+    assert listed.status_code == 200, listed.text
+    summary = listed.json()["items"][0]
+    assert summary["lifecycle_id"] == lifecycle_id
+    assert summary["task_count"] == 1
+    assert summary["invalid_task_count"] == 1
+    assert summary["active_task_count"] == 0
+    assert summary["task_status_counts"] == {}
+    assert summary["run_count"] == 1
+    assert summary["observation_status"] == "partial"
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["invalid_task_count"] == 1
+    assert [run["run_id"] for run in detail.json()["runs"]] == [
+        "partial-history-run"
+    ]
+
+    assert downloaded.status_code == 200, downloaded.text
+    with zipfile.ZipFile(BytesIO(downloaded.content)) as archive:
+        lifecycle = json.loads(archive.read("lifecycle.json"))
+        tasks = [
+            json.loads(line)
+            for line in archive.read("background-tasks.jsonl").splitlines()
+        ]
+        assert lifecycle["invalid_task_count"] == 1
+        assert lifecycle["observation_status"] == "partial"
+        assert tasks == [invalid_task]
+        assert "runs.json" in archive.namelist()
+        assert "events.jsonl" in archive.namelist()
 
 
 def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(

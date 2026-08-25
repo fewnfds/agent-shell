@@ -426,6 +426,7 @@ export interface WorkflowLifecycleSummary {
   messages_sha: string
   message_count: number
   task_count: number
+  invalid_task_count: number
   active_task_count: number
   task_status_counts: Record<string, number>
   checkpoint_count: number

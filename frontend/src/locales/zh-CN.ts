@@ -217,6 +217,9 @@ export const zhCN = {
     loadFailed: '无法载入运行历史',
     detailLoadFailed: '无法载入运行详情',
     searchPlaceholder: '搜索 Workflow、Lifecycle 或请求 ID',
+    invalidTaskRecords: '{status} · 无效 Background Task 记录：{count}',
+    invalidTaskWarningTitle: '部分 Background Task 记录不可用',
+    invalidTaskWarning: '有 {count} 条 Background Task 记录无法解析。其他 Run 历史仍可查看，诊断包也会保留这些原始记录。',
     columns: {
       parentWorkflow: 'Parent Workflow',
       created: '创建时间',

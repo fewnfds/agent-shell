@@ -51,6 +51,15 @@ function observationStatus(status: WorkflowLifecycleSummary['observation_status'
   return t(`workflowLifecycles.observationStatuses.${status}`)
 }
 
+function lifecycleObservation(row: WorkflowLifecycleSummary): string {
+  const status = observationStatus(row.observation_status)
+  if (!row.invalid_task_count) return status
+  return t('workflowLifecycles.invalidTaskRecords', {
+    status,
+    count: row.invalid_task_count,
+  })
+}
+
 function eventSubject(event: WorkflowRunEvent): string {
   return event.subject_name || event.workflow_node_id || shortId(event.subject_id)
 }
@@ -189,7 +198,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
     {
       key: 'observation',
       label: () => t('workflowLifecycles.columns.observation'),
-      value: (row) => observationStatus(row.observation_status),
+      value: lifecycleObservation,
     },
   ],
   rowActions: [
@@ -241,6 +250,17 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
           theme="danger"
         />
         <div v-else-if="details[row.lifecycle_id]" class="p-3">
+          <LteAlert
+            v-if="details[row.lifecycle_id]!.invalid_task_count"
+            class="mb-3"
+            data-testid="invalid-task-warning"
+            :title="t('workflowLifecycles.invalidTaskWarningTitle')"
+            theme="warning"
+          >
+            {{ t('workflowLifecycles.invalidTaskWarning', {
+              count: details[row.lifecycle_id]!.invalid_task_count,
+            }) }}
+          </LteAlert>
           <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
             <div>
               <div class="fw-semibold">{{ details[row.lifecycle_id]!.workflow_name }}</div>
