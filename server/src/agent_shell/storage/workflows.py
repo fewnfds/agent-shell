@@ -100,60 +100,6 @@ class WorkflowStore:
         )
         return self._public(item) if item is not None else None
 
-    def get_item_by_event_output(self, component_id: str) -> dict | None:
-        item = self._repository.find_record(
-            "workflows",
-            "workflow_event_output_id",
-            component_id,
-            fields=self._PUBLIC_FIELDS,
-        )
-        return self._public(item) if item is not None else None
-
-    def get_item_by_command(self, component_id: str) -> dict | None:
-        for item in self._repository.list_records("workflows"):
-            definition = item.get("definition")
-            nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
-            for node in nodes if isinstance(nodes, list) else []:
-                if not isinstance(node, dict) or node.get("type") != "command":
-                    continue
-                node_config = node.get("config")
-                if (
-                    isinstance(node_config, dict)
-                    and node_config.get("command_id") == component_id
-                ):
-                    return self._public(item)
-        return None
-
-    def get_item_by_task_dispatcher(self, component_id: str) -> dict | None:
-        for item in self._repository.list_records("workflows"):
-            definition = item.get("definition")
-            nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
-            for node in nodes if isinstance(nodes, list) else []:
-                if not isinstance(node, dict) or node.get("type") != "task-dispatcher":
-                    continue
-                node_config = node.get("config")
-                if (
-                    isinstance(node_config, dict)
-                    and node_config.get("task_dispatcher_id") == component_id
-                ):
-                    return self._public(item)
-        return None
-
-    def get_item_by_main_agent(self, main_agent_id: str) -> dict | None:
-        for item in self._repository.list_records("workflows"):
-            definition = item.get("definition")
-            nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
-            for node in nodes if isinstance(nodes, list) else []:
-                if not isinstance(node, dict):
-                    continue
-                node_config = node.get("config")
-                if (
-                    isinstance(node_config, dict)
-                    and node_config.get("main_agent_id") == main_agent_id
-                ):
-                    return self._public(item)
-        return None
-
     def save_item(
         self,
         item_id: str,

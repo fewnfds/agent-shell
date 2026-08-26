@@ -157,6 +157,14 @@ function updateSelection(capability: CapabilityManifest, value: string): void {
   setOverrideSelection(form.value, capability.type, 'replace', value)
 }
 
+function missingOverrideReference(type: CapabilityType): string {
+  const value = selectionValue(type)
+  if ([INHERIT_VALUE, DISABLED_VALUE, INVALID_VALUE].includes(value)) return ''
+  return value && !capabilityBlocks(type).some((block) => block.id === value)
+    ? value
+    : ''
+}
+
 function removeObsoleteOverride(index: number): void {
   form.value.settings.capability_overrides.splice(index, 1)
 }
@@ -310,6 +318,13 @@ onMounted(() => {
                     @change="filesystemManifest && updateSelection(filesystemManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
+                    <option
+                      v-if="missingOverrideReference('filesystem')"
+                      disabled
+                      :value="missingOverrideReference('filesystem')"
+                    >
+                      {{ t('common.missingConfiguration', { id: missingOverrideReference('filesystem') }) }}
+                    </option>
                     <option v-for="block in capabilityBlocks('filesystem')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
@@ -330,6 +345,13 @@ onMounted(() => {
                     @change="filesystemToolsManifest && updateSelection(filesystemToolsManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
+                    <option
+                      v-if="missingOverrideReference('filesystem-tools')"
+                      disabled
+                      :value="missingOverrideReference('filesystem-tools')"
+                    >
+                      {{ t('common.missingConfiguration', { id: missingOverrideReference('filesystem-tools') }) }}
+                    </option>
                     <option v-for="block in capabilityBlocks('filesystem-tools')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
@@ -382,6 +404,13 @@ onMounted(() => {
                       <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
                       <option v-if="!capability.required" :value="DISABLED_VALUE">
                         {{ t('agents.override.mode.disabled') }}
+                      </option>
+                      <option
+                        v-if="missingOverrideReference(capability.type)"
+                        disabled
+                        :value="missingOverrideReference(capability.type)"
+                      >
+                        {{ t('common.missingConfiguration', { id: missingOverrideReference(capability.type) }) }}
                       </option>
                       <option v-for="block in capabilityBlocks(capability.type)" :key="block.id" :value="block.id">
                         {{ block.name }}

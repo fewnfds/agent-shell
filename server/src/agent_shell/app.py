@@ -608,7 +608,6 @@ def create_app(
         build_agent_config_router(
             config_store,
             configuration_validation,
-            workflow_store,
         )
     )
     app.include_router(

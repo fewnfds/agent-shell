@@ -250,7 +250,7 @@ Content-Type: application/json
 
 - `401` 或 `403`：credential domain、Authorization header 或访问范围；
 - `404`：endpoint、Repository、UUID 或 Workflow name；
-- `409`：名称冲突、引用占用、未绑定模型、operation conflict 或当前状态不允许；
+- `409`：名称冲突、未绑定模型、operation conflict 或当前状态不允许；
 - `422`：payload、Graph、package 或 assembly 不符合 contract；
 - `5xx`：Runtime、Provider、外部服务或系统资源失败。
 

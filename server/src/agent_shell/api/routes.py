@@ -22,11 +22,7 @@ from agent_shell.contracts import (
     MANAGED_COMPONENT_MODELS,
     validate_provider_credential,
 )
-from agent_shell.api.agent_configs import (
-    ConfigurationBulkDelete,
-    main_agent_block_reference_owner,
-)
-from agent_shell.capability_manifest import CAPABILITY_BY_TYPE
+from agent_shell.api.agent_configs import ConfigurationBulkDelete
 from agent_shell.configuration.component_mutations import (
     ComponentMutationError,
     ComponentMutationService,
@@ -203,50 +199,6 @@ def build_router(
                 ),
             }
         return block
-
-    def reject_workflow_event_output_reference(
-        block_type: str, block_id: str
-    ) -> None:
-        if block_type != "workflow-event-output":
-            return
-        owner = workflow_store.get_item_by_event_output(block_id)
-        if owner is None:
-            return
-        raise management_error(
-            409,
-            code="configuration_referenced",
-            message_key="errors.configurationReferencedByWorkflow",
-            message="The configuration is still referenced by a Workflow.",
-            message_args={"owner": owner["name"]},
-        )
-
-    def reject_command_reference(block_type: str, block_id: str) -> None:
-        if block_type != "command":
-            return
-        owner = workflow_store.get_item_by_command(block_id)
-        if owner is None:
-            return
-        raise management_error(
-            409,
-            code="configuration_referenced",
-            message_key="errors.configurationReferencedByWorkflow",
-            message="The configuration is still referenced by a Workflow.",
-            message_args={"owner": owner["name"]},
-        )
-
-    def reject_task_dispatcher_reference(block_type: str, block_id: str) -> None:
-        if block_type != "task-dispatcher":
-            return
-        owner = workflow_store.get_item_by_task_dispatcher(block_id)
-        if owner is None:
-            return
-        raise management_error(
-            409,
-            code="configuration_referenced",
-            message_key="errors.configurationReferencedByWorkflow",
-            message="The configuration is still referenced by a Workflow.",
-            message_args={"owner": owner["name"]},
-        )
 
     @router.get("/api/catalog")
     async def catalog() -> dict:
@@ -472,7 +424,6 @@ def build_router(
         if not block_store.delete_block(
             block_type,
             block_id,
-            detach_references=True,
             expected_repository_id=mutation_repository_id,
         ):
             raise management_error(
@@ -507,26 +458,6 @@ def build_router(
                     code="block_not_found",
                     message_key="errors.blockNotFound",
                     message="A component configuration does not exist.",
-                )
-            reject_workflow_event_output_reference(block_type, block_id)
-            reject_command_reference(block_type, block_id)
-            reject_task_dispatcher_reference(block_type, block_id)
-            manifest = CAPABILITY_BY_TYPE.get(block_type)
-            if manifest is not None and manifest.required:
-                owner = main_agent_block_reference_owner(
-                    config_store,
-                    block_type,
-                    block_id,
-                )
-                if owner is None:
-                    continue
-                _, owner_name = owner
-                raise management_error(
-                    409,
-                    code="configuration_referenced",
-                    message_key="errors.configurationReferencedByMainAgent",
-                    message="The configuration is still referenced.",
-                    message_args={"owner": owner_name},
                 )
         deleted = perform_component_mutation(
             lambda: component_mutations.delete_many(block_type, ids)
@@ -634,21 +565,6 @@ def build_router(
     @router.delete("/api/blocks/{block_type}/{block_id}")
     async def delete_block(block_type: str, block_id: str) -> dict[str, bool]:
         check_type(block_type)
-        reject_workflow_event_output_reference(block_type, block_id)
-        reject_command_reference(block_type, block_id)
-        reject_task_dispatcher_reference(block_type, block_id)
-        manifest = CAPABILITY_BY_TYPE.get(block_type)
-        if manifest is not None and manifest.required:
-            owner = main_agent_block_reference_owner(config_store, block_type, block_id)
-            if owner is not None:
-                _, owner_name = owner
-                raise management_error(
-                    409,
-                    code="configuration_referenced",
-                    message_key="errors.configurationReferencedByMainAgent",
-                    message="The configuration is still referenced.",
-                    message_args={"owner": owner_name},
-                )
         perform_component_mutation(
             lambda: component_mutations.delete(block_type, block_id)
         )

@@ -69,6 +69,60 @@ describe('Subagent authoring page', () => {
     }))
   })
 
+  it('keeps missing capability and ordered-reference UUIDs selectable for repair', async () => {
+    const missingModelId = '00000000-0000-4000-8000-000000000075'
+    const missingToolId = '00000000-0000-4000-8000-000000000076'
+    const mainAgent = {
+      id: '00000000-0000-4000-8000-000000000077',
+      name: 'Broken Main Agent',
+      capability_refs: [{ type: 'model' as const, block_id: missingModelId }],
+      tool_refs: [{ tool_id: missingToolId }],
+      middleware_refs: [],
+      subagents: [],
+    }
+    const subagent = {
+      id: '00000000-0000-4000-8000-000000000078',
+      component_name: 'Broken Subagent',
+      name: 'broken_worker',
+      description: 'Exercises repair controls.',
+      settings: {
+        capability_overrides: [{ type: 'model' as const, mode: 'replace' as const, block_id: missingModelId }],
+        tool_refs: [{ tool_id: missingToolId }],
+        middleware_refs: [],
+      },
+    }
+    const api = service({
+      getCatalog: vi.fn(async () => ({
+        block_types: [modelManifest, toolManifest],
+        workflow_component_types: [],
+        editor_defaults: {},
+      })),
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: { model: [], 'custom-tool': [] },
+        main_agents: [mainAgent],
+        subagents: [subagent],
+        workflows: [],
+      })),
+      getMainAgent: vi.fn(async () => mainAgent),
+      getSubagent: vi.fn(async () => subagent),
+    })
+
+    const main = await mountMainAgentPage(api, `/agents/main?id=${mainAgent.id}`)
+    expect((main.wrapper.get('#main-agent-capability-model').element as HTMLSelectElement).value).toBe(missingModelId)
+    expect(main.wrapper.get(`#main-agent-capability-model option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
+    expect((main.wrapper.get('[data-testid="tool-reference"]').element as HTMLSelectElement).value).toBe(missingToolId)
+    expect(main.wrapper.get(`[data-testid="tool-reference"] option[value="${missingToolId}"]`).attributes('disabled')).toBeDefined()
+    main.wrapper.unmount()
+
+    const sub = await mountSubagentPage(api, `/agents/subagents?id=${subagent.id}`)
+    expect((sub.wrapper.get('[data-testid="subagent-capability-model"]').element as HTMLSelectElement).value).toBe(missingModelId)
+    expect(sub.wrapper.get(`[data-testid="subagent-capability-model"] option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
+    expect((sub.wrapper.get('[data-testid="tool-reference"]').element as HTMLSelectElement).value).toBe(missingToolId)
+    sub.wrapper.unmount()
+  })
+
   it('orders independent Middleware references for Main Agent and Subagent', async () => {
     const firstId = '00000000-0000-0000-0000-000000000071'
     const secondId = '00000000-0000-0000-0000-000000000072'

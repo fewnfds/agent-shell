@@ -5,7 +5,6 @@ from copy import deepcopy
 from agent_shell.configuration.identity import name_collision_key
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
 from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.reference_mutations import detach_component_references
 
 
 class BlockStore:
@@ -148,7 +147,6 @@ class BlockStore:
         block_type: str,
         block_ids: list[str],
         *,
-        detach_references: bool = False,
         expected_repository_id: str | None = None,
     ) -> int:
         unique_ids = list(dict.fromkeys(block_ids))
@@ -165,8 +163,6 @@ class BlockStore:
                 else:
                     retained.append(record)
             config.setdefault("components", {})[block_type] = retained
-            if detach_references:
-                detach_component_references(config, block_type, set(unique_ids))
 
         self._repository.update_config(
             mutate, expected_repository_id=expected_repository_id
@@ -186,13 +182,11 @@ class BlockStore:
         block_type: str,
         block_id: str,
         *,
-        detach_references: bool = False,
         expected_repository_id: str | None = None,
     ) -> bool:
         return self.delete_blocks(
             block_type,
             [block_id],
-            detach_references=detach_references,
             expected_repository_id=expected_repository_id,
         ) == 1
     def new_id(self) -> str:

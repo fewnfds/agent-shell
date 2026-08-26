@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from agent_shell.validation import ValidationIssue
+from agent_shell.validation.references import reference_not_found_issue
 from agent_shell.workflow.catalog import NodeHandleSpec, NodeTypeSpec, node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 
@@ -313,13 +314,17 @@ def validate_workflow_topology(
                 continue
             if node.id not in commands:
                 issues.append(
-                    _issue(
-                        "workflow.command_not_found",
-                        f"definition.nodes[{node_indexes[node.id]}].config.command_id",
-                        "The selected Command Node configuration does not exist.",
-                        "validation.issue.workflow.commandNotFound",
+                    reference_not_found_issue(
+                        scope="workflow",
                         owner_id=node.id,
+                        owner_name=node.id,
                         owner_type=node.type,
+                        path=(
+                            f"definition.nodes[{node_indexes[node.id]}].config."
+                            "command_id"
+                        ),
+                        reference_id=str(node.config.get("command_id", "")),
+                        expected_type="command",
                     )
                 )
                 continue
@@ -331,13 +336,19 @@ def validate_workflow_topology(
                 continue
             if node.id not in task_dispatchers:
                 issues.append(
-                    _issue(
-                        "workflow.task_dispatcher_not_found",
-                        f"definition.nodes[{node_indexes[node.id]}].config.task_dispatcher_id",
-                        "The selected Task Dispatcher configuration does not exist.",
-                        "validation.issue.workflow.taskDispatcherNotFound",
+                    reference_not_found_issue(
+                        scope="workflow",
                         owner_id=node.id,
+                        owner_name=node.id,
                         owner_type=node.type,
+                        path=(
+                            f"definition.nodes[{node_indexes[node.id]}].config."
+                            "task_dispatcher_id"
+                        ),
+                        reference_id=str(
+                            node.config.get("task_dispatcher_id", "")
+                        ),
+                        expected_type="task-dispatcher",
                     )
                 )
                 continue

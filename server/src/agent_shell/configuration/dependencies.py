@@ -281,13 +281,17 @@ def iter_configuration_references(
 def rewrite_configuration_references(
     owner: ConfigurationEntity,
     target_ids: dict[str, str],
+    *,
+    preserve_unmapped: bool = False,
 ) -> dict[str, Any]:
-    """Return an entity payload whose declared references use ``target_ids``."""
+    """Rewrite declared targets, optionally retaining unmapped UUIDs."""
 
     payload = deepcopy(owner.payload)
     for reference in iter_configuration_references(owner):
         target_id = target_ids.get(reference.target_id)
         if target_id is None:
+            if preserve_unmapped:
+                continue
             raise ValueError(
                 f"configuration bundle omits reference target {reference.target_id}"
             )

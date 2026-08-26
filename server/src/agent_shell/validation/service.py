@@ -35,6 +35,10 @@ from agent_shell.validation.capability_assembly import (
 )
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
+from agent_shell.validation.references import (
+    reference_not_found_issue,
+    reference_type_mismatch_issue,
+)
 from agent_shell.validation.subagent_references import subagent_reference_issues
 
 
@@ -275,15 +279,14 @@ class ConfigurationValidationService:
                 "skill", str(skill_package_id)
             ) is None:
                 return [
-                    ValidationIssue(
-                        code="assembly.skill_package_not_found",
+                    self._reference_issue(
                         scope="block",
                         owner_id=owner_id,
                         owner_name=str(payload.get("name", "")),
+                        owner_type="filesystem",
                         path="skill_package_id",
-                        message="The selected Skill package does not exist.",
-                        message_key="validation.issue.assembly.skillPackageNotFound",
-                        message_args={},
+                        reference_id=str(skill_package_id),
+                        expected_type="skill",
                     )
                 ]
         return []
@@ -357,14 +360,14 @@ class ConfigurationValidationService:
     ) -> tuple[ValidationReport, StaticAssembly | None]:
         main_agent = self._agent_configs.get_item("main_agents", main_agent_id)
         if main_agent is None:
-            issue = ValidationIssue(
-                code="assembly.main_agent_not_found",
+            issue = self._reference_issue(
                 scope="main_agent",
                 owner_id=main_agent_id,
+                owner_name="",
+                owner_type="",
                 path="id",
-                message="The requested Main Agent does not exist.",
-                message_key="validation.issue.assembly.mainAgentNotFound",
-                message_args={},
+                reference_id=main_agent_id,
+                expected_type="main_agent",
             )
             return ValidationReport(stage=stage, issues=(issue,)), None
         report, _, assembly = self.validate_main_agent(
@@ -479,6 +482,44 @@ class ConfigurationValidationService:
             },
         )
 
+    def _actual_reference_type(self, reference_id: str) -> str | None:
+        block = self._blocks.get_block_header(reference_id)
+        if block is not None:
+            return str(block.get("block_type", "component"))
+        if self._agent_configs.get_item("main_agents", reference_id) is not None:
+            return "main_agent"
+        if self._agent_configs.get_item("subagents", reference_id) is not None:
+            return "subagent"
+        return None
+
+    def _reference_issue(
+        self,
+        *,
+        scope: str,
+        owner_id: str,
+        owner_name: str,
+        owner_type: str,
+        path: str,
+        reference_id: str,
+        expected_type: str,
+    ) -> ValidationIssue:
+        actual_type = self._actual_reference_type(reference_id)
+        arguments = {
+            "scope": scope,
+            "owner_id": owner_id,
+            "owner_name": owner_name,
+            "owner_type": owner_type,
+            "path": path,
+            "reference_id": reference_id,
+            "expected_type": expected_type,
+        }
+        if actual_type is None or actual_type == expected_type:
+            return reference_not_found_issue(**arguments)
+        return reference_type_mismatch_issue(
+            **arguments,
+            actual_type=actual_type,
+        )
+
     def _load_references(
         self,
         references: dict[str, str],
@@ -502,18 +543,14 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    ValidationIssue(
-                        code="assembly.reference_not_found",
+                    self._reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
+                        owner_type="",
                         path=path,
-                        message=(
-                            f"The referenced {capability_type} configuration "
-                            "does not exist."
-                        ),
-                        message_key="validation.issue.assembly.referenceNotFound",
-                        message_args={"capability_type": capability_type},
+                        reference_id=block_id,
+                        expected_type=capability_type,
                     )
                 )
                 continue
@@ -555,15 +592,14 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    ValidationIssue(
-                        code="assembly.reference_not_found",
+                    self._reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
+                        owner_type="",
                         path=path,
-                        message="The referenced custom-tool configuration does not exist.",
-                        message_key="validation.issue.assembly.referenceNotFound",
-                        message_args={"capability_type": "custom-tool"},
+                        reference_id=block_id,
+                        expected_type="custom-tool",
                     )
                 )
                 continue
@@ -616,15 +652,14 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    ValidationIssue(
-                        code="assembly.reference_not_found",
+                    self._reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
+                        owner_type="",
                         path=path,
-                        message="The referenced custom-middleware configuration does not exist.",
-                        message_key="validation.issue.assembly.referenceNotFound",
-                        message_args={"capability_type": "custom-middleware"},
+                        reference_id=block_id,
+                        expected_type="custom-middleware",
                     )
                 )
                 continue
@@ -701,17 +736,14 @@ class ConfigurationValidationService:
                 )
                 if skill_package is None:
                     issues.append(
-                        ValidationIssue(
-                            code="assembly.skill_package_not_found",
+                        self._reference_issue(
                             scope=scope,
                             owner_id=owner_id,
                             owner_name=owner_name,
+                            owner_type="",
                             path="capability_refs.filesystem.skill_package_id",
-                            message="The selected Skill package does not exist.",
-                            message_key=(
-                                "validation.issue.assembly.skillPackageNotFound"
-                            ),
-                            message_args={},
+                            reference_id=skill_package_id,
+                            expected_type="skill",
                         )
                     )
                 else:
@@ -810,15 +842,14 @@ class ConfigurationValidationService:
             else self._agent_configs.get_item("subagents", profile_id)
         )
         if profile is None:
-            return None, ValidationIssue(
-                code="assembly.subagent_not_found",
-                scope="subagent",
+            return None, self._reference_issue(
+                scope="main_agent",
                 owner_id=owner_id,
                 owner_name=owner_name,
+                owner_type="",
                 path=path,
-                message="The referenced Subagent entity does not exist.",
-                message_key="validation.issue.assembly.subagentNotFound",
-                message_args={},
+                reference_id=profile_id,
+                expected_type="subagent",
             )
         try:
             model = SubagentProfile.model_validate(

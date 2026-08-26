@@ -199,7 +199,11 @@ class AgentBuilder:
         report, assembly = self._validation.resolve_main_agent(main_agent_id)
         if not report.valid:
             issue = report.issues[0]
-            if issue.code == "assembly.main_agent_not_found":
+            if (
+                issue.code == "configuration.reference_not_found"
+                and issue.path == "id"
+                and issue.message_args.get("expected_type") == "main_agent"
+            ):
                 status_code = 404
             elif issue.code in {
                 "assembly.referenced_block_invalid",

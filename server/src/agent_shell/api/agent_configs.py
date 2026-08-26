@@ -12,7 +12,6 @@ from agent_shell.api.configuration_collections import (
     matches_configuration_query,
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
-from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.models import ValidationReport, validation_failure_detail
 from agent_shell.validation.service import ConfigurationValidationService
 
@@ -32,21 +31,6 @@ class ConfigurationBulkDelete(BaseModel):
         if (self.ids is None) == (self.q is None):
             raise ValueError("exactly one of ids or q is required")
         return self
-
-
-def capability_reference_id(payload: dict, capability_type: str) -> str:
-    references = payload.get("capability_refs", [])
-    if not isinstance(references, list):
-        return ""
-    reference = next(
-        (
-            item
-            for item in references
-            if isinstance(item, dict) and item.get("type") == capability_type
-        ),
-        None,
-    )
-    return str(reference.get("block_id", "")) if reference else ""
 
 
 def _raise_if_invalid(report: ValidationReport) -> None:
@@ -98,43 +82,9 @@ def _copy_component_name(payload: dict) -> str:
         )
     return component_name
 
-def main_agent_block_reference_owner(
-    config_store: AgentConfigStore, block_type: str, block_id: str
-) -> tuple[str, str] | None:
-    for item in config_store.list_items(MAIN_AGENT_TABLE):
-        if block_type == "custom-tool" and any(
-            isinstance(reference, dict)
-            and reference.get("tool_id") == block_id
-            for reference in item.get("tool_refs", [])
-        ):
-            return "main_agent", str(item.get("name", ""))
-        if block_type == "custom-middleware" and any(
-            isinstance(reference, dict)
-            and reference.get("middleware_id") == block_id
-            for reference in item.get("middleware_refs", [])
-        ):
-            return "main_agent", str(item.get("name", ""))
-        if capability_reference_id(item, block_type) == block_id:
-            return "main_agent", str(item.get("name", ""))
-    if block_type in {"custom-tool", "custom-middleware"}:
-        for item in config_store.list_items(SUBAGENT_TABLE):
-            settings = item.get("settings", {})
-            if not isinstance(settings, dict):
-                continue
-            reference_key = "tool_refs" if block_type == "custom-tool" else "middleware_refs"
-            id_key = "tool_id" if block_type == "custom-tool" else "middleware_id"
-            if any(
-                isinstance(reference, dict) and reference.get(id_key) == block_id
-                for reference in settings.get(reference_key, [])
-            ):
-                return "subagent", str(item.get("component_name", ""))
-    return None
-
-
 def build_agent_config_router(
     config_store: AgentConfigStore,
     validation: ConfigurationValidationService,
-    workflow_store: WorkflowStore,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -183,16 +133,6 @@ def build_agent_config_router(
                 message_key="errors.mainAgentNotFound",
                 message="A Main Agent configuration does not exist.",
             )
-        for item_id in ids:
-            workflow = workflow_store.get_item_by_main_agent(item_id)
-            if workflow is not None:
-                raise management_error(
-                    409,
-                    code="configuration_referenced",
-                    message_key="errors.configurationReferencedByWorkflow",
-                    message="The Main Agent is still referenced by a Workflow.",
-                    message_args={"owner": workflow["name"]},
-                )
         return {
             "deleted": config_store.delete_items(
                 MAIN_AGENT_TABLE,
@@ -321,15 +261,6 @@ def build_agent_config_router(
                 message_key="errors.mainAgentNotFound",
                 message="The Main Agent configuration does not exist.",
             )
-        workflow = workflow_store.get_item_by_main_agent(item_id)
-        if workflow is not None:
-            raise management_error(
-                409,
-                code="configuration_referenced",
-                message_key="errors.configurationReferencedByWorkflow",
-                message="The Main Agent is still referenced by a Workflow.",
-                message_args={"owner": workflow["name"]},
-            )
         config_store.delete_item(
             MAIN_AGENT_TABLE,
             item_id,
@@ -391,7 +322,6 @@ def build_agent_config_router(
             "deleted": config_store.delete_items(
                 SUBAGENT_TABLE,
                 ids,
-                detach_references=True,
                 expected_repository_id=mutation_repository_id,
             )
         }
@@ -518,7 +448,6 @@ def build_agent_config_router(
         config_store.delete_item(
             SUBAGENT_TABLE,
             item_id,
-            detach_references=True,
             expected_repository_id=mutation_repository_id,
         )
         return {"ok": True}

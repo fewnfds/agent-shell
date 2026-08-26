@@ -52,7 +52,7 @@ def test_main_agent_and_subagent_copy_create_server_ids_and_preserve_sources(
     assert client.get(f"/api/subagents/{subagent['id']}").json() == subagent
 
 
-def test_component_bulk_delete_detaches_optional_references(
+def test_component_bulk_delete_preserves_references_for_repository_validation(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -81,7 +81,19 @@ def test_component_bulk_delete_detaches_optional_references(
         for item_id in ids
     )
     stored = client.get(f"/api/main-agents/{main_agent['id']}").json()
-    assert all(item["type"] != "system-prompt" for item in stored["capability_refs"])
+    assert next(
+        item for item in stored["capability_refs"] if item["type"] == "system-prompt"
+    )["block_id"] == required["system-prompt"]["id"]
+    issues = [
+        issue
+        for issue in client.get("/api/validation/repository").json()["issues"]
+        if issue["owner_id"] == main_agent["id"]
+        and issue["code"] == "configuration.reference_not_found"
+    ]
+    assert len(issues) == 1
+    assert issues[0]["message_args"]["reference_id"] == required[
+        "system-prompt"
+    ]["id"]
 
     assert client.delete(f"/api/main-agents/{main_agent['id']}").status_code == 200
     assert client.get("/api/blocks/system-prompt").json() == []

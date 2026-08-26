@@ -595,12 +595,16 @@ def test_executable_validation_attaches_main_agent_issues_to_the_agent_node() ->
             stage="workflow_publish",
             issues=(
                 ValidationIssue(
-                    code="assembly.main_agent_not_found",
+                    code="configuration.reference_not_found",
                     scope="main_agent",
                     owner_id=main_agent_id,
                     path="id",
                     message="The requested Main Agent does not exist.",
-                    message_key="validation.issue.assembly.mainAgentNotFound",
+                    message_key="validation.issue.configuration.referenceNotFound",
+                    message_args={
+                        "expected_type": "main_agent",
+                        "reference_id": main_agent_id,
+                    },
                 ),
             ),
         )
@@ -612,7 +616,9 @@ def test_executable_validation_attaches_main_agent_issues_to_the_agent_node() ->
 
     assert report.valid is False
     issue = next(
-        item for item in report.issues if item.code == "assembly.main_agent_not_found"
+        item
+        for item in report.issues
+        if item.code == "configuration.reference_not_found"
     )
     assert issue.owner_id == "agent-1"
     assert issue.owner_type == "agent"

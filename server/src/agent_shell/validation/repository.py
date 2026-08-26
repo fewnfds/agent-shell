@@ -3,8 +3,6 @@ from __future__ import annotations
 import threading
 
 from agent_shell.configuration.dependencies import (
-    ConfigurationEntity,
-    ConfigurationReference,
     iter_configuration_entities,
     iter_configuration_references,
 )
@@ -14,34 +12,12 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceStore
 from agent_shell.validation.models import ValidationIssue, ValidationReport
+from agent_shell.validation.references import (
+    REFERENCE_ISSUE_CODES,
+    configuration_reference_issue,
+)
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.workflows import validate_stored_workflow
-
-
-_REFERENCE_NOT_FOUND_CODES = frozenset(
-    {
-        "assembly.main_agent_not_found",
-        "assembly.reference_not_found",
-        "assembly.subagent_not_found",
-        "workflow.command_not_found",
-        "workflow.task_dispatcher_not_found",
-        "workflow_event_output_not_found",
-    }
-)
-
-
-def _target_label(reference: ConfigurationReference) -> str:
-    return reference.target_component_type or reference.target_kind
-
-
-def _matches_target(
-    target: ConfigurationEntity,
-    reference: ConfigurationReference,
-) -> bool:
-    return target.kind == reference.target_kind and (
-        reference.target_kind != "component"
-        or target.component_type == reference.target_component_type
-    )
 
 
 def _dependency_issues(config: dict) -> list[ValidationIssue]:
@@ -51,45 +27,9 @@ def _dependency_issues(config: dict) -> list[ValidationIssue]:
     for owner in entities:
         for reference in iter_configuration_references(owner):
             target = by_id.get(reference.target_id)
-            common = {
-                "scope": "block" if owner.kind == "component" else owner.kind,
-                "owner_id": owner.id,
-                "owner_name": owner.name,
-                "owner_type": owner.component_type,
-                "path": reference.path,
-            }
-            expected = _target_label(reference)
-            if target is None:
-                issues.append(
-                    ValidationIssue(
-                        code="storage.reference_not_found",
-                        message=(
-                            f"The referenced {expected} configuration does not exist."
-                        ),
-                        message_key="validation.issue.assembly.referenceNotFound",
-                        message_args={"capability_type": expected},
-                        **common,
-                    )
-                )
-            elif not _matches_target(target, reference):
-                actual = target.component_type or target.kind
-                issues.append(
-                    ValidationIssue(
-                        code="storage.reference_type_mismatch",
-                        message=(
-                            f"The referenced UUID belongs to {actual}, not {expected}."
-                        ),
-                        message_key=(
-                            "validation.issue.assembly.referencedBlockInvalid"
-                        ),
-                        message_args={
-                            "capability_type": expected,
-                            "block_name": target.name,
-                            "detail": f"The UUID belongs to {actual}.",
-                        },
-                        **common,
-                    )
-                )
+            issue = configuration_reference_issue(owner, reference, target)
+            if issue is not None:
+                issues.append(issue)
     return issues
 
 
@@ -115,7 +55,7 @@ class RepositoryValidationService:
         return [
             issue
             for issue in report.issues
-            if issue.code not in _REFERENCE_NOT_FOUND_CODES
+            if issue.code not in REFERENCE_ISSUE_CODES
         ]
 
     def validate_repository(self) -> ValidationReport:

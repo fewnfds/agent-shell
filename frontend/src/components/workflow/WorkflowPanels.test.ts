@@ -151,6 +151,33 @@ describe('Workflow canvas panels', () => {
     expect(wrapper.text()).toContain('Normal Edge · in')
   })
 
+  it('keeps a missing node target UUID visible in the property panel', () => {
+    const missingId = '00000000-0000-4000-8000-000000000074'
+    const node = newAgentCanvasNode('agent-missing', missingId)
+    const wrapper = mount(WorkflowInspector, {
+      props: {
+        edge: null,
+        edgeSourceEndpoints: [],
+        edgeTargetEndpoints: [],
+        edgeTypeOptions: [],
+        inputEndpoints: agentCatalog.input_handles,
+        mainAgents: agents,
+        commands: [],
+        taskDispatchers: [],
+        node,
+        nodeIds: [node.id],
+        outputEndpoints: agentCatalog.output_handles,
+        stateContract: 'agent-shell.workflow.agent-invocations.v1',
+        workflowName: 'Research Workflow',
+      },
+      global: { plugins: [i18n()] },
+    })
+
+    const selected = wrapper.get('#workflow-node-main-agent')
+    expect((selected.element as HTMLSelectElement).value).toBe(missingId)
+    expect(selected.text()).toContain(missingId)
+  })
+
   it('selects the semantic Edge class and its declared endpoint identities', async () => {
     const edge: WorkflowCanvasEdge = {
       id: 'edge-agent-end',

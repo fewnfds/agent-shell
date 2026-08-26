@@ -128,6 +128,11 @@ function updateReference(type: CapabilityType, value: string): void {
   setReference(form.value, type, value)
 }
 
+function missingCapabilityReference(type: CapabilityType): string {
+  const id = referenceId(form.value, type)
+  return id && !capabilityBlocks(type).some((block) => block.id === id) ? id : ''
+}
+
 function removeObsoleteReference(index: number): void {
   form.value.capability_refs.splice(index, 1)
 }
@@ -247,6 +252,13 @@ onMounted(() => {
                     @change="updateReference('filesystem', ($event.target as HTMLSelectElement).value)"
                   >
                     <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option
+                      v-if="missingCapabilityReference('filesystem')"
+                      disabled
+                      :value="missingCapabilityReference('filesystem')"
+                    >
+                      {{ t('common.missingConfiguration', { id: missingCapabilityReference('filesystem') }) }}
+                    </option>
                     <option v-for="block in capabilityBlocks('filesystem')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
@@ -271,6 +283,13 @@ onMounted(() => {
                     @change="updateReference('filesystem-tools', ($event.target as HTMLSelectElement).value)"
                   >
                     <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option
+                      v-if="missingCapabilityReference('filesystem-tools')"
+                      disabled
+                      :value="missingCapabilityReference('filesystem-tools')"
+                    >
+                      {{ t('common.missingConfiguration', { id: missingCapabilityReference('filesystem-tools') }) }}
+                    </option>
                     <option v-for="block in capabilityBlocks('filesystem-tools')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
@@ -309,6 +328,13 @@ onMounted(() => {
                   >
                     <option v-if="capability.required" disabled value="">{{ t('common.chooseConfiguration') }}</option>
                     <option v-else value="">{{ t('agents.capability.notAttached') }}</option>
+                    <option
+                      v-if="missingCapabilityReference(capability.type)"
+                      disabled
+                      :value="missingCapabilityReference(capability.type)"
+                    >
+                      {{ t('common.missingConfiguration', { id: missingCapabilityReference(capability.type) }) }}
+                    </option>
                     <option v-for="block in capabilityBlocks(capability.type)" :key="block.id" :value="block.id">
                       {{ block.name }}
                     </option>

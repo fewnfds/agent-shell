@@ -113,11 +113,11 @@ const messages = {
       nested: '{child} under {parent}',
     },
     resolution: {
-      referenceNotFound: 'Select a new {capability_type_label} configuration.',
+      configurationReferenceNotFound: 'Select a new {expected_type_label} configuration.',
     },
     issue: {
-      assembly: {
-        referenceNotFound: 'The selected {capability_type_label} configuration no longer exists.',
+      configuration: {
+        referenceNotFound: 'The selected {expected_type_label} configuration no longer exists.',
       },
     },
   },
@@ -192,14 +192,14 @@ describe('ApiServerSettingsPage', () => {
         valid: false,
         stage: 'repository_load',
         issues: [{
-          code: 'assembly.reference_not_found',
+          code: 'configuration.reference_not_found',
           scope: 'main_agent',
           owner_id: 'main-agent-id',
           owner_name: 'Broken MainAgent',
           path: 'capability_refs.model',
           message: 'raw issue detail',
-          message_key: 'validation.issue.assembly.referenceNotFound',
-          message_args: { capability_type: 'model' },
+          message_key: 'validation.issue.configuration.referenceNotFound',
+          message_args: { expected_type: 'model', reference_id: 'missing-model-id' },
         }],
       })),
     }

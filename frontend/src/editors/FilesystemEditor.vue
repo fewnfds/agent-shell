@@ -57,6 +57,10 @@ function addVirtualFile(): void {
     permission: 'read-write',
   })
 }
+
+function hasSkillPackage(id: string): boolean {
+  return props.skillPackages.some((item) => item.id === id)
+}
 </script>
 
 <template>
@@ -284,6 +288,13 @@ function addVirtualFile(): void {
           >
             <select id="filesystem-skill-package" v-model="draft.skill_package_id" class="form-select">
               <option value="">{{ t('editors.filesystem.noSkillPackage') }}</option>
+              <option
+                v-if="draft.skill_package_id && !hasSkillPackage(draft.skill_package_id)"
+                disabled
+                :value="draft.skill_package_id"
+              >
+                {{ t('common.missingConfiguration', { id: draft.skill_package_id }) }}
+              </option>
               <option v-for="item in skillPackages" :key="item.id" :value="item.id">{{ item.name }}</option>
             </select>
           </FormField>

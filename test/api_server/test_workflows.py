@@ -4,10 +4,18 @@ from copy import deepcopy
 import json
 import shutil
 
-from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.workflows import WorkflowStore
 from .support import *
+
+
+def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
+    return [
+        issue
+        for issue in client.get("/api/validation/repository").json()["issues"]
+        if issue["owner_id"] == owner_id
+        and issue["code"].startswith("configuration.reference_")
+    ]
 
 
 def test_workflow_runtime_boundaries_are_managed(
@@ -79,7 +87,7 @@ def test_workflow_copy_preserves_graph_layout_and_role_as_a_draft(
     assert missing.json()["detail"]["code"] == "workflow_not_found"
 
 
-def test_workflow_event_output_is_a_reusable_component_reference(
+def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -102,17 +110,23 @@ def test_workflow_event_output_is_a_reusable_component_reference(
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["workflow_event_output_id"] == output.json()["id"]
-        protected = client.delete(
+        deleted = client.delete(
             f"/api/blocks/workflow-event-output/{output.json()['id']}"
         )
-        assert protected.status_code == 409
+        assert deleted.status_code == 200, deleted.text
+        saved = client.get(f"/api/workflows/{workflow['id']}").json()
+        assert saved["workflow_event_output_id"] == output.json()["id"]
+        issues = repository_reference_issues(client, owner_id=workflow["id"])
+        assert len(issues) == 1
+        assert issues[0]["path"] == "workflow_event_output_id"
+        assert issues[0]["message_args"]["reference_id"] == output.json()["id"]
 
     with make_client(tmp_path, monkeypatch) as client:
         saved = client.get(f"/api/workflows/{workflow['id']}").json()
         assert saved["workflow_event_output_id"] == output.json()["id"]
 
 
-def test_workflow_checkpointer_reference_defaults_copies_and_detaches(
+def test_workflow_checkpointer_delete_preserves_references_for_each_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -187,13 +201,22 @@ def test_workflow_checkpointer_reference_defaults_copies_and_detaches(
         assert deleted.json() == {"deleted": 2}
         assert client.get(f"/api/workflows/{workflow['id']}").json()[
             "checkpointer_id"
-        ] is None
+        ] == first.json()["id"]
         assert client.get(f"/api/workflows/{copied.json()['id']}").json()[
             "checkpointer_id"
-        ] is None
+        ] == first.json()["id"]
         assert client.get(f"/api/workflows/{other['id']}").json()[
             "checkpointer_id"
-        ] is None
+        ] == second.json()["id"]
+        for owner_id, reference_id in (
+            (workflow["id"], first.json()["id"]),
+            (copied.json()["id"], first.json()["id"]),
+            (other["id"], second.json()["id"]),
+        ):
+            issues = repository_reference_issues(client, owner_id=owner_id)
+            assert len(issues) == 1
+            assert issues[0]["path"] == "checkpointer_id"
+            assert issues[0]["message_args"]["reference_id"] == reference_id
 
 
 def test_workflow_rejects_missing_or_wrong_type_checkpointer_reference(
@@ -266,17 +289,10 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
         assert updated.status_code == 200, updated.text
         document = save_linear_workflow_graph(client, workflow, main_agent)
 
-        original_get = BlockStore.get_block_internal
-
-        def hide_event_output(self, block_type: str, block_id: str):
-            if (
-                block_type == "workflow-event-output"
-                and block_id == output.json()["id"]
-            ):
-                return None
-            return original_get(self, block_type, block_id)
-
-        monkeypatch.setattr(BlockStore, "get_block_internal", hide_event_output)
+        deleted = client.delete(
+            f"/api/blocks/workflow-event-output/{output.json()['id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
         report = client.post(
             f"/api/workflows/{workflow['id']}/validate", json=document
         )
@@ -288,7 +304,7 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
     issue = next(
         item
         for item in report.json()["issues"]
-        if item["code"] == "workflow_event_output_not_found"
+        if item["code"] == "configuration.reference_not_found"
     )
     assert issue["scope"] == "workflow"
     assert issue["owner_id"] == workflow["id"]
@@ -329,29 +345,33 @@ def test_workflow_roles_filter_management_and_public_model_entries(
         ]
         assert created["workflow_role"] == "parent"
         assert child["workflow_role"] == "child"
-        protected = client.delete(f"/api/main-agents/{main_agent['id']}")
-        assert protected.status_code == 409
-        assert protected.json()["detail"] == {
-            "code": "configuration_referenced",
-            "message_key": "errors.configurationReferencedByWorkflow",
-            "message": "The Main Agent is still referenced by a Workflow.",
-            "message_args": {"owner": "Research Workflow"},
-        }
-
         copied = client.post(
             f"/api/main-agents/{main_agent['id']}/copy",
             json={"name": "Unreferenced Main Agent"},
         )
         assert copied.status_code == 200, copied.text
-        bulk_protected = client.post(
+        deleted_agents = client.post(
             "/api/main-agents/delete",
             json={"ids": [copied.json()["id"], main_agent["id"]]},
         )
-        assert bulk_protected.status_code == 409
-        assert {item["id"] for item in client.get("/api/main-agents").json()} == {
-            copied.json()["id"],
-            main_agent["id"],
-        }
+        assert deleted_agents.status_code == 200, deleted_agents.text
+        assert deleted_agents.json() == {"deleted": 2}
+        assert client.get("/api/main-agents").json() == []
+        for workflow in (created, child):
+            stored_document = client.get(
+                f"/api/workflows/{workflow['id']}/graph"
+            ).json()
+            agent_node = next(
+                node
+                for node in stored_document["definition"]["nodes"]
+                if node["type"] == "agent"
+            )
+            assert agent_node["config"]["main_agent_id"] == main_agent["id"]
+            issues = repository_reference_issues(client, owner_id=workflow["id"])
+            assert any(
+                issue["message_args"]["reference_id"] == main_agent["id"]
+                for issue in issues
+            )
 
         disabled = client.put(
             f"/api/workflows/{created['id']}/draft",
@@ -468,11 +488,11 @@ def test_repository_validation_includes_disabled_workflow_references(
     }
     assert issues == {
         (
-            "storage.reference_not_found",
+            "configuration.reference_not_found",
             "definition.nodes[0].config.main_agent_id",
         ),
         (
-            "storage.reference_type_mismatch",
+            "configuration.reference_type_mismatch",
             "definition.nodes[1].config.main_agent_id",
         ),
     }

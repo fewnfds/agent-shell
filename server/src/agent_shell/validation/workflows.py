@@ -7,6 +7,10 @@ from pydantic import Field, ValidationError
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
+from agent_shell.validation.references import (
+    reference_not_found_issue,
+    reference_type_mismatch_issue,
+)
 from agent_shell.workflow.catalog import (
     CommandNodeConfig,
     TaskDispatcherNodeConfig,
@@ -48,6 +52,32 @@ class StoredWorkflowConfiguration(WorkflowDefinition):
     layout: WorkflowLayoutV1
 
 
+def _component_reference_issue(
+    blocks: BlockStore,
+    *,
+    workflow: dict[str, Any],
+    path: str,
+    reference_id: str,
+    expected_type: str,
+) -> ValidationIssue:
+    common = {
+        "scope": "workflow",
+        "owner_id": str(workflow.get("id", "")),
+        "owner_name": str(workflow.get("name", "")),
+        "owner_type": "workflow",
+        "path": path,
+        "reference_id": reference_id,
+        "expected_type": expected_type,
+    }
+    header = blocks.get_block_header(reference_id)
+    if header is None or header.get("block_type") == expected_type:
+        return reference_not_found_issue(**common)
+    return reference_type_mismatch_issue(
+        **common,
+        actual_type=str(header.get("block_type", "component")),
+    )
+
+
 def workflow_executable_report(
     document: WorkflowGraphDocumentV1,
     *,
@@ -68,18 +98,12 @@ def workflow_executable_report(
         )
         if stored_output is None:
             referenced_issues.append(
-                ValidationIssue(
-                    code="workflow_event_output_not_found",
-                    scope="workflow",
-                    owner_id=str(workflow.get("id", "")),
-                    owner_name=str(workflow.get("name", "")),
-                    owner_type="workflow",
+                _component_reference_issue(
+                    blocks,
+                    workflow=workflow,
                     path="workflow_event_output_id",
-                    message=(
-                        "The selected Workflow event output component does not "
-                        "exist."
-                    ),
-                    message_key="errors.workflowEventOutputNotFound",
+                    reference_id=str(workflow_event_output_id),
+                    expected_type="workflow-event-output",
                 )
             )
         else:
@@ -161,6 +185,17 @@ def workflow_executable_report(
                     report=report,
                 )
                 commands[node.id] = stored
+            else:
+                referenced_issues.append(
+                    _component_reference_issue(
+                        blocks,
+                        workflow=workflow,
+                        path=f"definition.nodes[{node_index}].config.command_id",
+                        reference_id=reference,
+                        expected_type="command",
+                    )
+                )
+                commands[node.id] = object()
         elif node.type == "task-dispatcher":
             reference = TaskDispatcherNodeConfig.model_validate(
                 node.config
@@ -176,6 +211,20 @@ def workflow_executable_report(
                     report=report,
                 )
                 task_dispatchers[node.id] = stored
+            else:
+                referenced_issues.append(
+                    _component_reference_issue(
+                        blocks,
+                        workflow=workflow,
+                        path=(
+                            f"definition.nodes[{node_index}].config."
+                            "task_dispatcher_id"
+                        ),
+                        reference_id=reference,
+                        expected_type="task-dispatcher",
+                    )
+                )
+                task_dispatchers[node.id] = object()
 
     def validate_main_agent(main_agent_id: str) -> ValidationReport:
         report, _ = configuration_validation.resolve_main_agent(

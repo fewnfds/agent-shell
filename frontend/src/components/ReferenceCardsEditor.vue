@@ -137,6 +137,13 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
             >
               <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
               <option
+                v-if="reference && !optionFor(reference)"
+                disabled
+                :value="reference"
+              >
+                {{ t('common.missingConfiguration', { id: reference }) }}
+              </option>
+              <option
                 v-for="option in options"
                 :key="option.id"
                 :disabled="optionDisabled(option.id, index)"

@@ -4,13 +4,12 @@ import type { JsonPrimitive, ValidationIssue } from '@/api'
 import { fieldLabelKeys, normalizeFieldPath } from '@/locales/fieldLabels'
 
 const resolutionKeys: Record<string, string> = {
-  'assembly.mainAgent_not_found': 'mainAgentNotFound',
+  'configuration.reference_not_found': 'configurationReferenceNotFound',
+  'configuration.reference_type_mismatch': 'configurationReferenceTypeMismatch',
   'assembly.referenced_block_invalid': 'referencedBlockInvalid',
-  'assembly.reference_not_found': 'referenceNotFound',
   'assembly.required_capability_missing': 'requiredCapabilityMissing',
   'assembly.tool_name_conflict': 'toolNameConflict',
   'assembly.filesystem_permission_path_unmatched': 'filesystemPermissionPathUnmatched',
-  'assembly.subagent_not_found': 'subagentNotFound',
   'assembly.subagent_invalid': 'subagentInvalid',
   'assembly.subagent_reference_required': 'subagentReferenceRequired',
   'contract.subagent_name_required': 'subagentNameRequired',
@@ -94,17 +93,26 @@ export function useValidationIssuePresentation() {
     return te(key) ? t(key) : capabilityType
   }
 
+  function configurationTypeLabel(type: string): string {
+    const key = `validation.referenceType.${type}`
+    return te(key) ? t(key) : capabilityLabel(type)
+  }
+
   function messageArgs(issue: ValidationIssue): Record<string, JsonPrimitive> {
     const args = { ...issue.message_args }
     for (const key of [
       'capability_type',
       'dependency_type',
+      'expected_type',
+      'actual_type',
       'first_capability_type',
       'second_capability_type',
     ]) {
       const value = issue.message_args[key]
       if (typeof value !== 'string') continue
-      args[`${key}_label`] = capabilityLabel(value)
+      args[`${key}_label`] = key === 'expected_type' || key === 'actual_type'
+        ? configurationTypeLabel(value)
+        : capabilityLabel(value)
     }
     return args
   }

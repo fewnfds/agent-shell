@@ -15,22 +15,21 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - 配置 UUID 是全部 Repository 间全局唯一的小写 UUID4；Component、Main Agent、Subagent、Workflow 之间也不能复用同一 UUID；
 - Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义，并继续作为公开 model ID；
 - 详情显示保存的完整 payload，包括当前版本无法识别或无法运行的记录；
-- 删除可选组件或 Subagent 实体时，服务端会在一次配置更新中从所有 Agent 配置摘除对应引用；
-- 删除检查点保存器时，服务端会在同一次配置更新中把所有引用它的 Workflow `checkpointer_id` 设为 `null`；
-- Main Agent 必选的模型要求和 Agent Event Output 在仍被引用时删除会返回冲突，替代配置解除引用后即可删除；
-- Main Agent 被任一 Workflow Graph 的 Agent Node 引用时，单项或批量删除都会返回冲突；批量删除是原子操作，任一记录冲突时全部不删；
-- 批量删除与引用摘除由文件配置仓库在一次配置 mutation 中原子提交；每条记录保存为独立 YAML 文件；
-- catalog 中无法装配的组件类型会显示为失效引用，可在 Agent 编辑页移除；删除该记录时服务端也会自动摘除引用。
+- Component、Main Agent、Subagent 和 Workflow 都可以独立删除；删除目标只清理该记录及其自有 Python/Skill package，不会自动修改其他配置；
+- 引用方保留已删除目标的 UUID，Repository 校验会产生 `configuration.reference_not_found`；UUID 存在但 target type 错误时产生 `configuration.reference_type_mismatch`；
+- 首页和配置库显示 active Repository 的全部问题；Component、Main Agent、Subagent 和 Workflow 编辑页只显示当前 owner 的问题；
+- 引用选择器会显示“配置已缺失”和原 UUID。用户可以改选现存配置，或在该字段允许时移除引用；页面加载与 catalog 刷新不会改写 payload；
+- 单项与批量删除使用同一语义，每条记录保存为独立 YAML 文件。Active Repository 仍不能删除；Model Connection 和 repository-scoped model binding 仍由实例级模型资源管理。
 
 ## 校验与存储位置
 
-Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看和编辑，复制与运行会重新校验；
+Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看、编辑、整库复制、下载和切换；整库复制会重写仍存在的 target UUID，已悬空 UUID 保持不变并在副本中继续报警。Agent 装配、Workflow publish 和运行会重新校验并拒绝不完整引用；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
 Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configuration-repositories/<repository-uuid>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_package_instances/` 与 `skill_package_instances/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
 
 ## 原子配置 Bundle API
 
-current backend 可以把一个 Component、Subagent、Main Agent 或 Workflow 作为 single-root export。Bundle 是 ZIP，root record 所需的声明式配置依赖会自动闭合；shared dependency 只保存一次。Management API 为：
+current backend 可以把一个 Component、Subagent、Main Agent 或 Workflow 作为 single-root export。Bundle 是 ZIP，root record 所需的声明式配置依赖会自动闭合；shared dependency 只保存一次。single-root closure 中存在缺失或类型错误的引用时，export 返回 `configuration_bundle_invalid`，不生成不完整 Bundle。整仓库下载是另一种原样诊断快照，会保留悬空 UUID。Management API 为：
 
 - `POST /api/configuration-bundles/export`：JSON body 使用 `kind`、`source_id`，Component 根另带 `type`；返回 Bundle ZIP。下载名只保留 ASCII 字母数字、`-`、`_` 和 `.`，其他字符替换为 `-`，再去除首尾的 `-`/`.`；空名回退到 root kind，Windows 保留设备名增加 `configuration-` 前缀，并使用 `.agent-shell-config.zip` 后缀；实际文件名以响应的 `Content-Disposition` 为准。整仓库下载是另一种 `agent-shell.configuration-repository` 格式，使用 `.agent-shell-repository.zip` 后缀。
 - `POST /api/configuration-bundles/preview`：multipart 的 `bundle` 文件；返回 `bundle_sha256`、固定 target UUID map、名称建议、Filesystem binding、errors、warnings 和本次 preview 的 `plan_token`；

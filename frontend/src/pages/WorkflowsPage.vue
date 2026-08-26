@@ -4,13 +4,15 @@ import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { managementApi, type ConfigurationSummary, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
+import { managementApi, type ConfigurationSummary, type ValidationReport, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
+import ValidationChecklist from '@/components/ValidationChecklist.vue'
+import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useConfigurationResource } from '@/composables/useConfigurationResource'
 
 const props = defineProps<{ workflowRole: WorkflowRole }>()
@@ -125,6 +127,35 @@ const {
   },
 })
 
+const {
+  validation: ownerValidation,
+  validateNow: validateOwner,
+} = useConfigurationValidation({
+  source: selectedId,
+  debounceMs: 0,
+  buildRequest: () => selectedId.value || null,
+  validate: async (workflowId): Promise<ValidationReport> => {
+    const report = await managementApi.validateRepository()
+    const issues = report.issues.filter((issue) => (
+      issue.scope === 'workflow' && issue.owner_id === workflowId
+    ))
+    return {
+      valid: !issues.some((issue) => issue.severity !== 'warning'),
+      stage: report.stage,
+      issues,
+    }
+  },
+})
+
+function hasConfiguration(options: ConfigurationSummary[], id: string | null): boolean {
+  return Boolean(id && options.some((item) => item.id === id))
+}
+
+async function saveWorkflow(): Promise<void> {
+  await save()
+  await validateOwner()
+}
+
 async function loadWorkspace(): Promise<void> {
   await initializeWorkspace(async () => {
     const options = await managementApi.getConfigurationOptions()
@@ -168,7 +199,7 @@ onMounted(() => { void loadWorkspace() })
         @delete="removeCurrent"
         @edit="editGraph"
         @new="newWorkflow"
-        @save="save"
+        @save="saveWorkflow"
       />
     </template>
     <ConfigurationEditorLayout v-if="!loading" :loading="loading">
@@ -180,12 +211,26 @@ onMounted(() => { void loadWorkspace() })
             <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
               <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
                 <option :value="null">{{ t('common.none') }}</option>
+                <option
+                  v-if="form.checkpointer_id && !hasConfiguration(checkpointers, form.checkpointer_id)"
+                  disabled
+                  :value="form.checkpointer_id"
+                >
+                  {{ t('common.missingConfiguration', { id: form.checkpointer_id }) }}
+                </option>
                 <option v-for="checkpointer in checkpointers" :key="checkpointer.id" :value="checkpointer.id">{{ checkpointer.name }}</option>
               </select>
             </FormField>
             <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
               <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
                 <option :value="null">{{ t('common.none') }}</option>
+                <option
+                  v-if="form.workflow_event_output_id && !hasConfiguration(workflowEventOutputs, form.workflow_event_output_id)"
+                  disabled
+                  :value="form.workflow_event_output_id"
+                >
+                  {{ t('common.missingConfiguration', { id: form.workflow_event_output_id }) }}
+                </option>
                 <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
               </select>
             </FormField>
@@ -235,6 +280,11 @@ onMounted(() => { void loadWorkspace() })
         </div>
       </template>
       <template #aside>
+        <ValidationChecklist
+          v-if="selectedId"
+          :title="t('validation.storedTitle')"
+          :validation="ownerValidation"
+        />
         <div class="card">
           <header class="card-header"><h2 class="card-title">{{ t('workflows.statusTitle') }}</h2></header>
           <div class="card-body">

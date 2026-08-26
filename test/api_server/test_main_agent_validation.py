@@ -37,7 +37,7 @@ def test_subagent_references_report_duplicate_entity_name_and_missing_target(
     expected = {
         ("contract.subagent_reference_duplicate", "subagents[1].subagent_id"),
         ("contract.subagent_name_duplicate", "subagents[2].subagent_id"),
-        ("assembly.subagent_not_found", "subagents[3].subagent_id"),
+        ("configuration.reference_not_found", "subagents[3].subagent_id"),
     }
     assert draft.status_code == 200
     assert {

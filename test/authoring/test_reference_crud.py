@@ -6,7 +6,17 @@ from uuid import UUID
 
 from .reference_support import *
 
-def test_main_agent_reference_delete_detaches_optional_and_protects_required_types(
+
+def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
+    return [
+        issue
+        for issue in client.get("/api/validation/repository").json()["issues"]
+        if issue["owner_id"] == owner_id
+        and issue["code"].startswith("configuration.reference_")
+    ]
+
+
+def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -36,10 +46,21 @@ def test_main_agent_reference_delete_detaches_optional_and_protects_required_typ
         MAIN_AGENT_TYPES
     )
 
+    expected_original_ids = {
+        item["block_id"] for item in main_agent["capability_refs"]
+    } | {main_agent["middleware_refs"][0]["middleware_id"]}
     for capability_type, block in original.items():
         deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
-        expected = 409 if capability_type in REQUIRED_TYPES else 200
-        assert deleted.status_code == expected, (capability_type, deleted.text)
+        assert deleted.status_code == 200, (capability_type, deleted.text)
+
+    stored = client.get(f"/api/main-agents/{main_agent['id']}").json()
+    assert stored["capability_refs"] == main_agent["capability_refs"]
+    assert stored["middleware_refs"] == main_agent["middleware_refs"]
+    issues = repository_reference_issues(client, owner_id=main_agent["id"])
+    assert {issue["message_args"]["reference_id"] for issue in issues} == (
+        expected_original_ids
+    )
+    assert all(issue["code"] == "configuration.reference_not_found" for issue in issues)
 
     updated = client.put(
         f"/api/main-agents/{main_agent['id']}",
@@ -52,22 +73,16 @@ def test_main_agent_reference_delete_detaches_optional_and_protects_required_typ
     )
     assert updated.status_code == 200, updated.text
 
-    for capability_type in REQUIRED_TYPES:
-        block = original[capability_type]
-        released = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
-        assert released.status_code == 200, (capability_type, released.text)
     for capability_type, block in replacement.items():
         deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
-        expected = 409 if capability_type in REQUIRED_TYPES else 200
-        assert deleted.status_code == expected, (capability_type, deleted.text)
+        assert deleted.status_code == 200, (capability_type, deleted.text)
 
+    stored = client.get(f"/api/main-agents/{main_agent['id']}").json()
+    assert stored["capability_refs"] == updated.json()["capability_refs"]
     assert client.delete(f"/api/main-agents/{main_agent['id']}").status_code == 200
-    for capability_type in REQUIRED_TYPES:
-        block = replacement[capability_type]
-        released = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
-        assert released.status_code == 200, (capability_type, released.text)
 
-def test_subagent_replace_references_are_detached_when_blocks_are_deleted(
+
+def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -95,7 +110,13 @@ def test_subagent_replace_references_are_detached_when_blocks_are_deleted(
         deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
         assert deleted.status_code == 200, (capability_type, deleted.text)
     stored = client.get(f"/api/subagents/{subagent['id']}").json()
-    assert stored["settings"]["capability_overrides"] == []
+    assert stored["settings"]["capability_overrides"] == subagent["settings"][
+        "capability_overrides"
+    ]
+    issues = repository_reference_issues(client, owner_id=subagent["id"])
+    assert {issue["message_args"]["reference_id"] for issue in issues} == {
+        block["id"] for block in original.values()
+    }
 
     passive_modes = [
         {
@@ -126,7 +147,7 @@ def test_subagent_replace_references_are_detached_when_blocks_are_deleted(
     assert client.delete(f"/api/subagents/{subagent['id']}").status_code == 200
 
 
-def test_skill_package_delete_detaches_composite_filesystem_reference(
+def test_skill_package_delete_preserves_composite_filesystem_reference(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -145,9 +166,27 @@ def test_skill_package_delete_detaches_composite_filesystem_reference(
     deleted = client.delete(f"/api/blocks/skill/{skill['id']}")
     assert deleted.status_code == 200, deleted.text
     stored = client.get(f"/api/blocks/filesystem/{filesystem['id']}").json()
-    assert stored["skill_package_id"] is None
+    assert stored["skill_package_id"] == skill["id"]
+    assert repository_reference_issues(client, owner_id=filesystem["id"]) == [
+        {
+            "code": "configuration.reference_not_found",
+            "scope": "block",
+            "owner_id": filesystem["id"],
+            "owner_name": filesystem["name"],
+            "owner_type": "filesystem",
+            "path": "skill_package_id",
+            "message": "The referenced skill configuration does not exist.",
+            "message_key": "validation.issue.configuration.referenceNotFound",
+            "message_args": {
+                "expected_type": "skill",
+                "reference_id": skill["id"],
+            },
+            "severity": "error",
+        }
+    ]
 
-def test_subagent_delete_detaches_entity_references(
+
+def test_subagent_delete_preserves_entity_references_and_reports_owner(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -184,7 +223,14 @@ def test_subagent_delete_detaches_entity_references(
     deleted = client.delete(f"/api/subagents/{subagent['id']}")
     assert deleted.status_code == 200, deleted.text
     stored_owner = client.get(f"/api/main-agents/{owner['id']}").json()
-    assert stored_owner["subagents"] == []
+    assert stored_owner["subagents"] == owner["subagents"]
+    issue = repository_reference_issues(client, owner_id=owner["id"])
+    assert len(issue) == 1
+    assert issue[0]["path"] == "subagents[0].subagent_id"
+    assert issue[0]["message_args"] == {
+        "expected_type": "subagent",
+        "reference_id": subagent["id"],
+    }
 
     assert client.delete(f"/api/main-agents/{owner['id']}").status_code == 200
 

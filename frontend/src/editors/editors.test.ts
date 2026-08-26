@@ -170,6 +170,19 @@ describe('dedicated block editors', () => {
     expect((filesystem.emitted('update:modelValue')?.at(-1)?.[0] as { backend_type: string }).backend_type).toBe('local-shell')
   })
 
+  it('keeps a missing Skill package UUID visible until it is replaced or removed', () => {
+    const filesystemDraft = filesystemAdapter.blank(filesystemDefaults)
+    filesystemDraft.skill_package_id = '00000000-0000-4000-8000-000000000073'
+    const filesystem = mount(FilesystemEditor, {
+      props: { modelValue: filesystemDraft, defaults: filesystemDefaults, skillPackages: [] },
+      global: { plugins: [localizedI18n] },
+    })
+
+    const selected = filesystem.get('#filesystem-skill-package')
+    expect((selected.element as HTMLSelectElement).value).toBe(filesystemDraft.skill_package_id)
+    expect(selected.text()).toContain(filesystemDraft.skill_package_id)
+  })
+
   it('edits filesystem tool visibility separately from the backend', async () => {
     const tools = mount(FilesystemToolsEditor, {
       props: { modelValue: filesystemToolsAdapter.blank(filesystemToolsDefaults), defaults: filesystemToolsDefaults },

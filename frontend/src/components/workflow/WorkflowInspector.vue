@@ -92,6 +92,10 @@ function endpointLabel(endpoint: WorkflowNodeHandleSpec): string {
   return `${edgeTypeLabel(endpoint.edge_type)} · ${endpoint.id}`
 }
 
+function hasConfiguration(options: ConfigurationSummary[], id: string): boolean {
+  return Boolean(id && options.some((item) => item.id === id))
+}
+
 function updateAgent(event: Event): void {
   if (!props.node || props.node.data.nodeType !== 'agent') return
   emit('updateAgent', props.node.id, (event.target as HTMLSelectElement).value)
@@ -228,6 +232,9 @@ function selectEdgeTargetEndpoint(event: Event): void {
             <label class="workflow-inspector-label" for="workflow-node-main-agent"><span>{{ $t('workflows.editor.mainAgent') }}</span><span aria-hidden="true">:</span></label>
             <select id="workflow-node-main-agent" class="form-select form-select-sm workflow-inspector-select" :value="node.data.mainAgentId" @change="updateAgent">
               <option v-if="mainAgents.length === 0" value="">{{ $t('workflows.editor.noMainAgents') }}</option>
+              <option v-if="node.data.mainAgentId && !hasConfiguration(mainAgents, node.data.mainAgentId)" disabled :value="node.data.mainAgentId">
+                {{ $t('common.missingConfiguration', { id: node.data.mainAgentId }) }}
+              </option>
               <option v-for="agent in mainAgents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
             </select>
           </div>
@@ -245,6 +252,9 @@ function selectEdgeTargetEndpoint(event: Event): void {
             <label class="workflow-inspector-label" for="workflow-node-command"><span>{{ $t('workflows.editor.commandConfig') }}</span><span aria-hidden="true">:</span></label>
             <select id="workflow-node-command" class="form-select form-select-sm workflow-inspector-select" :value="node.data.commandId" @change="updateCommand">
               <option v-if="commands.length === 0" value="">{{ $t('workflows.editor.noCommands') }}</option>
+              <option v-if="node.data.commandId && !hasConfiguration(commands, node.data.commandId)" disabled :value="node.data.commandId">
+                {{ $t('common.missingConfiguration', { id: node.data.commandId }) }}
+              </option>
               <option v-for="router in commands" :key="router.id" :value="router.id">{{ router.name }}</option>
             </select>
           </div>
@@ -255,6 +265,9 @@ function selectEdgeTargetEndpoint(event: Event): void {
             <label class="workflow-inspector-label" for="workflow-node-task-dispatcher"><span>{{ $t('workflows.editor.taskDispatcherConfig') }}</span><span aria-hidden="true">:</span></label>
             <select id="workflow-node-task-dispatcher" class="form-select form-select-sm workflow-inspector-select" :value="node.data.taskDispatcherId" @change="updateTaskDispatcher">
               <option v-if="taskDispatchers.length === 0" value="">{{ $t('workflows.editor.noTaskDispatchers') }}</option>
+              <option v-if="node.data.taskDispatcherId && !hasConfiguration(taskDispatchers, node.data.taskDispatcherId)" disabled :value="node.data.taskDispatcherId">
+                {{ $t('common.missingConfiguration', { id: node.data.taskDispatcherId }) }}
+              </option>
               <option v-for="dispatcher in taskDispatchers" :key="dispatcher.id" :value="dispatcher.id">{{ dispatcher.name }}</option>
             </select>
           </div>

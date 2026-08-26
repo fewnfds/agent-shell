@@ -106,7 +106,7 @@ def test_missing_custom_tool_reference_is_reported(
 
     assert response.status_code == 422
     issue = response.json()["detail"]["validation"]["issues"][0]
-    assert issue["code"] == "assembly.reference_not_found"
+    assert issue["code"] == "configuration.reference_not_found"
     assert issue["path"] == "tool_refs[0].tool_id"
 
 
@@ -192,7 +192,7 @@ def test_generic_draft_validation_covers_each_target_without_writing(
         issue["code"] == "assembly.required_capability_missing"
         for issue in main_agent_report.json()["issues"]
     )
-    assert subagent_report.json()["issues"][0]["code"] == "assembly.reference_not_found"
+    assert subagent_report.json()["issues"][0]["code"] == "configuration.reference_not_found"
     assert client.get("/api/blocks/system-prompt").json() == []
     assert client.get("/api/main-agents").json() == []
     assert client.get("/api/subagents").json() == []

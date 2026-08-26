@@ -86,6 +86,79 @@ def test_repository_names_are_unique_without_switching_on_create(
         assert conflict.json()["detail"]["code"] == "configuration_repository_conflict"
 
 
+def test_repository_copy_download_and_activate_preserve_dangling_references(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        source_repository = client.get(
+            "/api/configuration-repositories"
+        ).json()["repositories"][0]
+        workflow = create_workflow(client, name="Repairable Workflow")
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Temporary checkpoints", "durability": "sync"},
+        ).json()
+        updated = client.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                **{
+                    key: workflow[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "workflow_event_output_id",
+                        "cancel_on_upstream_termination",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                    )
+                },
+                "checkpointer_id": checkpointer["id"],
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        deleted = client.delete(
+            f"/api/blocks/checkpointer/{checkpointer['id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
+
+        downloaded = client.get(
+            f"/api/configuration-repositories/{source_repository['id']}/download"
+        )
+        assert downloaded.status_code == 200, downloaded.text
+        with ZipFile(BytesIO(downloaded.content)) as archive:
+            workflow_documents = [
+                archive.read(name)
+                for name in archive.namelist()
+                if name.startswith("repository/workflows/")
+            ]
+        assert checkpointer["id"].encode() in b"".join(workflow_documents)
+
+        copied = client.post(
+            f"/api/configuration-repositories/{source_repository['id']}/copy",
+            json={"name": "Repairable copy"},
+        )
+        assert copied.status_code == 200, copied.text
+        activated = client.post(
+            f"/api/configuration-repositories/{copied.json()['id']}/activate"
+        )
+        assert activated.status_code == 200, activated.text
+        copied_workflow = client.get("/api/workflows").json()[0]
+        assert copied_workflow["id"] != workflow["id"]
+        assert copied_workflow["checkpointer_id"] == checkpointer["id"]
+        issues = [
+            issue
+            for issue in activated.json()["validation"]["issues"]
+            if issue["owner_id"] == copied_workflow["id"]
+            and issue["code"] == "configuration.reference_not_found"
+        ]
+        assert len(issues) == 1
+        assert issues[0]["path"] == "checkpointer_id"
+        assert issues[0]["message_args"]["reference_id"] == checkpointer["id"]
+
+
 def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

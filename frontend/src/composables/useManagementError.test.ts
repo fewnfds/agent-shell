@@ -50,14 +50,14 @@ describe('useManagementError', () => {
         stage: 'api_start',
         issues: [
           {
-            code: 'assembly.reference_not_found',
+            code: 'configuration.reference_not_found',
             scope: 'main_agent',
             owner_id: 'main-agent-id',
             owner_name: 'Main Agent A',
             path: 'capability_refs.model',
             message: 'raw issue text',
-            message_key: 'validation.issue.assembly.referenceNotFound',
-            message_args: {},
+            message_key: 'validation.issue.configuration.referenceNotFound',
+            message_args: { expected_type: 'model', reference_id: 'missing-model-id' },
           },
           {
             code: 'contract.unknown_field',
@@ -78,7 +78,7 @@ describe('useManagementError', () => {
     expect(result.validationIssues).toHaveLength(2)
     expect(result.display).toContain('validation.location.namedOwner')
     expect(result.display).toContain('capability_refs.model')
-    expect(result.display).toContain('validation.issue.assembly.referenceNotFound')
+    expect(result.display).toContain('validation.issue.configuration.referenceNotFound')
     expect(result.display).toContain('legacy_field')
     expect(result.display).toContain(
       'validation.issue.contract.unknownField:{"field":"legacy_field"}',

@@ -777,5 +777,50 @@ def test_bundle_download_avoids_windows_reserved_basenames(
     assert disposition.endswith('.agent-shell-config.zip"')
 
 
+def test_single_root_bundle_rejects_a_dangling_reference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        workflow = create_workflow(client, name="Incomplete Workflow")
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Temporary checkpoints", "durability": "sync"},
+        ).json()
+        updated = client.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                **{
+                    key: workflow[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "workflow_event_output_id",
+                        "cancel_on_upstream_termination",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                    )
+                },
+                "checkpointer_id": checkpointer["id"],
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        deleted = client.delete(
+            f"/api/blocks/checkpointer/{checkpointer['id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
+
+        exported = client.post(
+            "/api/configuration-bundles/export",
+            json={"kind": "workflow", "source_id": workflow["id"]},
+        )
+
+    assert exported.status_code == 422, exported.text
+    assert exported.json()["detail"]["code"] == "configuration_bundle_invalid"
+    assert "checkpointer_id" in exported.json()["detail"]["message"]
+
+
 def deepcopy_json(value: dict) -> dict:
     return json.loads(json.dumps(value))

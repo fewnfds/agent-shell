@@ -318,7 +318,6 @@ class ComponentMutationService:
                 if not self._blocks.delete_block(
                     block_type,
                     block_id,
-                    detach_references=True,
                     expected_repository_id=repository_id,
                 ):
                     raise self._not_found()
@@ -340,7 +339,6 @@ class ComponentMutationService:
                 return self._blocks.delete_blocks(
                     block_type,
                     unique_ids,
-                    detach_references=True,
                     expected_repository_id=repository_id,
                 )
 

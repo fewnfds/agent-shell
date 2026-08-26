@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from agent_shell.contracts import (
     CustomMiddlewareBlock,
-    FilesystemBlock,
+    FilesystemToolsBlock,
     MainAgentProfile,
     SubagentProfile,
     SystemPromptBlock,
@@ -240,6 +240,18 @@ def test_declared_configuration_references_require_canonical_uuid4(
     ("model", "payload", "scope", "owner_type", "expected"),
     [
         (
+            FilesystemToolsBlock,
+            {"name": "Filesystem tools", "grep_max_count": 0},
+            "block",
+            "filesystem-tools",
+            (
+                "contract.number_at_least",
+                "validation.issue.contract.numberAtLeast",
+                "grep_max_count",
+                {"ge": 1},
+            ),
+        ),
+        (
             SubagentProfile,
             {
                 "component_name": "Worker",
@@ -274,18 +286,6 @@ def test_declared_configuration_references_require_canonical_uuid4(
                 "validation.issue.contract.pythonPackageFolderFormatInvalid",
                 "python_package.folder",
                 {},
-            ),
-        ),
-        (
-            FilesystemBlock,
-            {"name": "Workspace", "grep_max_count": 0},
-            "block",
-            "filesystem",
-            (
-                "contract.number_at_least",
-                "validation.issue.contract.numberAtLeast",
-                "grep_max_count",
-                {"ge": 1},
             ),
         ),
     ],

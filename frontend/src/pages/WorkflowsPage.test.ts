@@ -55,6 +55,11 @@ function mockComponentLists(workflows: Workflow[] = []) {
     if (!selected) throw new Error('Workflow not found')
     return selected
   })
+  vi.spyOn(managementApi, 'validateRepository').mockResolvedValue({
+    valid: true,
+    stage: 'repository_load',
+    issues: [],
+  })
   return options
 }
 
@@ -261,6 +266,61 @@ describe('WorkflowsPage', () => {
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,
     })
+    wrapper.unmount()
+  })
+
+  it('shows missing metadata UUIDs and only this Workflow repository issues', async () => {
+    const missingCheckpointerId = '00000000-0000-4000-8000-000000000071'
+    const missingOutputId = '00000000-0000-4000-8000-000000000072'
+    const configured = {
+      ...workflow,
+      checkpointer_id: missingCheckpointerId,
+      workflow_event_output_id: missingOutputId,
+    }
+    mockComponentLists([configured])
+    vi.mocked(managementApi.validateRepository).mockResolvedValue({
+      valid: false,
+      stage: 'repository_load',
+      issues: [
+        {
+          code: 'configuration.reference_not_found',
+          scope: 'workflow',
+          owner_id: workflow.id,
+          owner_name: workflow.name,
+          owner_type: 'workflow',
+          path: 'checkpointer_id',
+          message: 'Missing Checkpointer',
+          message_key: 'validation.issue.configuration.referenceNotFound',
+          message_args: { expected_type: 'checkpointer', reference_id: missingCheckpointerId },
+          severity: 'error',
+        },
+        {
+          code: 'configuration.reference_not_found',
+          scope: 'workflow',
+          owner_id: 'other-workflow',
+          owner_name: 'Other Workflow',
+          owner_type: 'workflow',
+          path: 'checkpointer_id',
+          message: 'Unrelated',
+          message_key: 'validation.issue.configuration.referenceNotFound',
+          message_args: { expected_type: 'checkpointer', reference_id: 'other-id' },
+          severity: 'error',
+        },
+      ],
+    })
+    const router = testRouter()
+    await router.push(`/workflows/parents?id=${workflow.id}`)
+    await router.isReady()
+    const wrapper = mount(WorkflowsPage, {
+      props: { workflowRole: 'parent' },
+      global: { plugins: [i18n(), router] },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('#workflow-checkpointer').text()).toContain(missingCheckpointerId)
+    expect(wrapper.get('#workflow-event-output').text()).toContain(missingOutputId)
+    expect(wrapper.findAll('[data-testid="validation-issue"]')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Other Workflow')
     wrapper.unmount()
   })
 

@@ -526,7 +526,11 @@ class FileConfigRepository:
 
             target_entities: list[ConfigurationEntity] = []
             for entity in source_entities:
-                payload = rewrite_configuration_references(entity, target_ids)
+                payload = rewrite_configuration_references(
+                    entity,
+                    target_ids,
+                    preserve_unmapped=True,
+                )
                 target_id = target_ids[entity.id]
                 payload["id"] = target_id
                 if entity.kind == "workflow":
