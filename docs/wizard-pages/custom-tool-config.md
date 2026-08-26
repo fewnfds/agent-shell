@@ -25,4 +25,4 @@ def create_tool() -> BaseTool:
 Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配零个或多个 Custom Tool 配置。两者列表独立，不使用 capability 的 inherit/replace/disabled。运行时按列表顺序调用每个 `create_tool()`，再把得到的 Tool 列表交给 `create_deep_agent(tools=...)`；
 重复的模型可见 Tool name（包括 Filesystem 和 `task` 等默认工具）会在 Agent 构建边界被拒绝；Main Agent 使用 `tool_refs: [{"tool_id": "..."}]`，Subagent 使用 `settings.tool_refs`，各列表内的引用必须去重。
 
-完整 package、依赖和 ToolRuntime capability 见[编写 Python extension](../user-guide/ai-guide/05-python-extensions.md)。
+完整 package、依赖和 ToolRuntime capability 见[编写 Agent Tool、Middleware 与 hook](../user-guide/ai-guide/04-agent-tools-middleware-hooks.md)。

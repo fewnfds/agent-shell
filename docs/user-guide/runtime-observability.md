@@ -26,7 +26,7 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 ## 运行历史
 
-【系统 / 运行历史】以一次顶层请求的 Lifecycle 聚合 root Workflow 和 background Workflow Run（management-only，需要管理鉴权；导出接口见[使用 background Run](ai-guide/06-background-runs.md)）。
+【系统 / 运行历史】以一次顶层请求的 Lifecycle 聚合 root Workflow 和 background Workflow Run（management-only，需要管理鉴权；导出接口见[使用 background Run](ai-guide/07-background-runs.md)）。
 Run Registry 是 Run 身份与终态的权威记录；append-only Event Journal 保存 Run、Workflow Node、Agent、Model 和 Tool 的结构边界。Workflow Node 每次执行使用独立 `span_id`，其 `node_invocation_id` 与该 `span_id` 相同；Agent、Model 和 Tool 拥有自己的 `span_id/parent_span_id`，并保留所属 `node_invocation_id`。同一 Node 的循环、重试和 fan-out 不会合并。
 Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍开放的 Node、Agent、Model 和 Tool span，Timeline 不保留伪 `running` 子项。
 

@@ -2,38 +2,36 @@
 
 本章把用户需求转换为 topology、State ownership、Agent input 和结束条件。完成设计后再创建 Component、Agent 和 Workflow。
 
-本章同时包含 Agent Shell 的运行约束和编排建议。标为“系统约束”的内容必须遵守；标为“建议”的内容可以根据业务调整。
+本章同时说明 Agent Shell 的运行约束、执行机制和数据流。标为“系统约束”的内容来自 Graph compiler 与 runtime contract。
 
-## 1. 先选择最小结构
+## 1. 识别步骤需要的执行能力
 
-先判断是否需要 LLM。
+逐步记录语言理解、模型推理、Tool selection、确定性代码、State transition 和运行时 task generation 分别由哪个执行机制承担。
 
-不需要语言理解、模型推理或模型选择 Tool 时，使用 Command 或 Task Dispatcher 组成确定性 Workflow。不要为了“强行使用AI”而增加 Agent Node。
+Command 与 Task Dispatcher 运行确定性 Python callable。Agent Node 运行完整 Main Agent invocation，其中包含 model-tool loop。一个 Workflow 可以组合这些机制，也可以只使用其中一种。
 
-需要模型能力时，为对应步骤使用 Agent Node。一个 Agent Node 表示一次完整 Main Agent invocation，包含该 Agent 内部的全部 model-tool loop。
-
-三个最小起点是：
+下面是三种基础 topology 语法示例：
 
 ```text
-验证通路：
+连通性：
 Start -> End
 
-脚本：
+Command：
 Start -> Command -> End
 
-AI Agent：
+Agent：
 Start -> Agent -> End
 ```
 
 ## 2. 选择执行机制
 
-使用 Normal Edge：
+Normal Edge 表达设计时已知的 activation：
 
 - 下一步在设计时已经确定；
 - 一个 source 完成后需要固定激活一个或多个 target；
 - 设计时已知多个 Agent，可以直接串行或 fan-out。
 
-使用 Command：
+Command 提供确定性 State transition 与 Branch Edge selection：
 
 - 需要确定性 condition；
 - 需要更新 Workflow State；
@@ -41,32 +39,32 @@ Start -> Agent -> End
 - 需要表达 loop exit、轮询状态或 background controller；
 - 需要确定性数据转换。
 
-使用 Agent Node：
+Agent Node 提供完整 Main Agent invocation：
 
 - 需要语言理解、非确定性推理或模型选择 Tool；
 - 一次 Node invocation 应完成一个完整 Agent loop；
 - Agent 的模型、Tool、Middleware 和 Subagent 由 Main Agent configuration 决定。
 
-使用 Task Dispatcher：
+Task Dispatcher 从运行时数据生成 Agent worker task：
 
 - task 数量、payload 或 target 在运行时才知道；
 - 每个 task 需要独立 Agent worker invocation；
 - 这是 dynamic map，不是设计时已知的普通 fan-out。
 
-使用 synchronous Subagent：
+synchronous Subagent 在 Main Agent loop 内提供模型选择的 specialist delegation：
 
 - Main Agent 需要由模型决定是否委派给 specialist；
 - Main Agent 等待 Subagent 返回后继续同一个 Agent loop；
 - 不需要独立 Workflow Run 或 State。
 
-使用 background Run：
+background Run 启动独立 child Workflow Run：
 
 - child 必须拥有独立 `run_id` 和独立 Workflow State；
 - launcher 需要在 child 仍运行时继续；
 - parent 需要自行决定检查、等待、取消或忽略 child；
 - task 需要由 enabled child Workflow 表达。
 
-普通 parallel Node、异步 Python、synchronous Subagent 和 Task Dispatcher worker 都不需要 background Run。
+parallel Node、异步 Python、synchronous Subagent 和 Task Dispatcher worker 都属于 current Run。background Run 拥有独立 child `run_id` 和 Workflow State。
 
 ## 3. LangGraph 执行约束
 
@@ -122,7 +120,7 @@ End 是 termination sentinel，不是 executable join Node。多条进入 End �
 
 普通 Node 和 Agent Node 使用 static Normal Edge。Command 使用 Branch Edge。Task Dispatcher 使用 Dispatch Edge。
 
-Command 和 Task Dispatcher 不再配置 static Normal output。否则 static route 和 dynamic route 可能同时执行；当前 Catalog 也不会为它们提供 normal output handle。
+Command 和 Task Dispatcher 使用 dynamic route，并且没有 static Normal output handle。普通 Node 和 Agent Node 使用 static Normal Edge。
 
 ### 3.4 Graph 结束
 
@@ -213,7 +211,7 @@ Task Dispatcher 为每个 Agent worker 注入：
 }
 ```
 
-payload 只携带当前 worker 真正需要的 JSON data。大型材料先保存到 Store 或 Filesystem，再传递 reference。
+payload 定义当前 worker 的私有 JSON input，字段由该 task contract 决定。大型材料可以保存到 Store 或 Filesystem，并在 payload 中传递 reference。
 
 ### 4.5 Filesystem 和 Store
 
@@ -231,7 +229,7 @@ Workflow root State 不包含 `messages`。Start Node 不注入客户端消息�
 
 System Prompt 保存每次 invocation 都适用的稳定角色和规则。AAP 负责本次运行材料的选择、裁剪、role 编排和初始消息构造。
 
-不同 Agent 可以使用不同 AAP，也可以不使用 AAP。不要把完整 request 自动复制给每个 Agent。
+不同 Agent 可以使用不同 AAP，也可以不使用 AAP。每份 AAP 显式决定使用完整 request、current task、指定 upstream result、文件材料或它们的组合；Workflow 不向所有 Agent 隐式广播完整 request。
 
 ## 6. 常用 topology
 
@@ -251,7 +249,7 @@ Start -> Fan               Join -> End
              -> Agent B ->
 ```
 
-设计时已知 Agent A 和 Agent B 时，直接使用 Normal Edge fan-out。为两个 branch 分配不同 State owner。Join 的所有 source 必须在同一次运行中实际到达。
+这里的 Agent A 和 Agent B 由 Normal Edge fan-out 激活。两个 branch 使用不同 State owner。Join 的所有 source 必须在同一次运行中实际到达。
 
 ### 6.3 条件和循环
 
@@ -262,7 +260,7 @@ Poll Command
   -> failed  -> Failure -> End
 ```
 
-一次 Poll invocation 建议只查询一次外部状态，更新精简 observation，再选择一个 successor。
+示例中的一次 Poll invocation 查询外部状态、写入 observation 并选择 successor。查询频率、observation shape 和等待方式属于该 Workflow 的业务 contract。
 
 `next_poll_at` 只是业务数据，不会自动创建 timer 或 wakeup。当前没有通用 delay command；在 async Node callable 中使用 `await asyncio.sleep(...)` 会占用当前 Node invocation 时间，并受 Workflow execution timeout 约束。
 
@@ -275,7 +273,7 @@ Task Dispatcher
   -> worker(item-N)
 ```
 
-只有运行时才知道 task 集合时使用 Task Dispatcher。每个 task 使用稳定 `task_id`、明确 `dispatch_key` 和精简 payload。
+Task Dispatcher 根据运行时才确定的 task 集合生成 worker invocation。每个 task 使用稳定 `task_id`、明确 `dispatch_key` 和 JSON payload。
 
 ### 6.5 Independent child Run
 
@@ -288,7 +286,7 @@ Start child
   -> End
 ```
 
-只有 child 需要独立 Run 和 State 时使用 background Run。具体 command、cancellation 和 result handoff 见[使用 background Run](06-background-runs.md)。
+background Run 为 child 提供独立 Run、State、cancellation 和 result handoff。具体 command 与数据流见[使用 background Run](07-background-runs.md)。
 
 ## 7. 输出 design record
 
@@ -313,7 +311,7 @@ background policy: <none | wait | poll | fire-and-forget | cancel redundant chil
 
 进入配置阶段前确认：
 
-- 已选择最少的 Node 和 execution mechanism；
+- Node 和 execution mechanism 已表达目标 topology 与运行边界；
 - 已区分固定 fan-out、dynamic map、Subagent 和 background Run；
 - 每个 `shared_vars` top-level key 有明确 owner；
 - parallel branch 不会覆盖同一个 top-level value；
@@ -323,4 +321,4 @@ background policy: <none | wait | poll | fire-and-forget | cancel redundant chil
 - all-of fan-in 的所有 source 都会实际到达；
 - 已形成 design record。
 
-Graph 包含 Agent Node 时，下一步阅读[配置 Agent](03-configure-agent.md)。没有 Agent Node 时，直接阅读[构建 Workflow Graph](04-build-workflow-graph.md)。
+Graph 包含 Agent Node 时，下一步阅读[配置 Agent](03-configure-agent.md)。没有 Agent Node 时，直接阅读[构建 Workflow Graph](05-build-workflow-graph.md)。

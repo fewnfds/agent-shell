@@ -1,20 +1,18 @@
 # 使用 background Run
 
-只有任务需要 independent child Workflow Run 时才读本章。
+本章说明 independent child Workflow Run 的启动、State isolation、检查、取消和 result handoff。
 
-background Run 不是“所有异步工作”的通用入口。普通 async Node、parallel Node、synchronous Subagent 和 Task Dispatcher worker 都在 current Run 内完成，不需要 background Run。
+background Run 为 child 创建独立 `run_id`、Workflow State 和终态。async Node、parallel Node、synchronous Subagent 和 Task Dispatcher worker 在 current Run 内完成。
 
 ## 1. 选择条件
 
-使用 Normal Edge：Node 数量和连接在设计时已知，current Graph 应等待固定 successor。
+Normal Edge 激活设计时已知的固定 successor，执行仍属于 current Run。
 
-使用 synchronous Subagent：Main Agent 由模型委派给 specialist，并等待结果后继续同一个 Agent loop。
+synchronous Subagent 由 Main Agent model 委派给 specialist，并在取得结果后继续同一个 Agent loop。
 
-使用 Task Dispatcher：运行时才知道 Agent worker task 数量或 payload，但这些 worker 仍属于 current Workflow Run。
+Task Dispatcher 根据运行时数据生成 Agent worker task，这些 worker 属于 current Workflow Run。
 
-使用 background Run：child 需要独立 `run_id`、独立 Workflow State 和独立终态；launcher 在 start 后立即取得 handle，并自行决定是否 check、cancel 或继续其他逻辑。
-
-如果调用方需要 child 完成后立即继续当前固定逻辑，优先使用 Edge、Subagent 或 Task Dispatcher。
+background Run 的 child 拥有独立 `run_id`、Workflow State 和终态；launcher 在 start 后立即取得 handle，并自行决定 check、cancel、继续其他逻辑或结束自己的 path。
 
 ## 2. 准备 child Workflow
 
@@ -39,7 +37,7 @@ publish child 后确认 `enabled=true`。child 不出现在 `/v1/models`，但�
 
 ## 3. Controller topology
 
-需要等待或处理 child 结果的 parent 通常使用：
+需要等待或处理 child 结果的 parent 可以使用：
 
 ```text
 Start child
@@ -50,14 +48,14 @@ Start child
   -> End
 ```
 
-建议：
+Controller 数据按以下 ownership 保存：
 
 - `shared_vars.background_controller` 保存 phase、pending task ID、winner 和 artifact reference；
 - `background_tasks` 保存最新 task handle 或 snapshot；
 - child 完整业务 artifact 写入 child 可访问的 Store 或 mapped Filesystem；
 - parent 通过明确 reference 读取需要的 artifact。
 
-一个最小 controller 可以保存：
+controller State 示例：
 
 ```json
 {
@@ -180,11 +178,11 @@ task snapshot 的 `runtime_status` 可能是：
 
 `not_found` 表示指定 task ID 未知。旧 service instance 遗留的 active record，或者当前 instance 已无 live task 的 active record，可以在读取时归一为 `interrupted`。
 
-一次 poll 建议：
+一次 poll 可以执行：
 
 1. 从 controller 读取待检查 ID；
 2. 调用一次 `check()`；
-3. 保存精简 snapshot；
+3. 保存 snapshot；
 4. 根据业务终态更新 controller；
 5. 选择继续 poll、处理 artifact、进入 failure 或 finalizer。
 
@@ -265,7 +263,7 @@ Lifecycle summary 不返回 messages、Provider secret 或 resolved host path。
 
 进入最终 validation 前确认：
 
-- task 确实需要 independent child Run 和 State；
+- child 的独立 Run、State 与终态符合目标 topology；
 - target 是当前 Repository 中 enabled child Workflow UUID；
 - child input 通过 initial State、workflow task 或 artifact reference 明确传递；
 - `operation_id` 稳定，并在 current caller Run 内唯一；
@@ -277,4 +275,4 @@ Lifecycle summary 不返回 messages、Provider secret 或 resolved host path。
 - finalizer 只处理当前 controller 拥有的 task；
 - parent 正常完成时不会意外遗留 active child。
 
-下一步阅读[验证、运行与交付](07-validate-run-deliver.md)。
+下一步阅读[验证、运行与交付](08-validate-run-deliver.md)。

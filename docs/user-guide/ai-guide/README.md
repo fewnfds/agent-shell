@@ -1,6 +1,6 @@
 # AI 配置指南
 
-本目录指导 AI 或自动化程序通过 Management API 配置和运行 Agent Shell。目标是完成用户要求的最小 Workflow，证明它在当前实例中真实可用，然后停止。
+本目录指导 AI 或自动化程序通过 Management API 发现、配置、运行和验证 Agent Shell。内容围绕当前实例事实、对象关系、运行语义、代码入口与可观察验收组织。
 
 ## 1. 事实优先级
 
@@ -16,6 +16,8 @@
 Catalog key、template revision、UUID、Node handle、Model Connection、Model Mapping 和当前设置必须从实例读取。不要从示例或模型记忆猜测动态值。
 
 Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭环的能力。官方框架支持某项功能，不代表 Agent Shell 当前 Catalog 已经提供该功能。
+
+【建议】用户为执行配置任务的 AI 客户端安装或连接 [LangChain Docs MCP](https://docs.langchain.com/mcp)，用它查询 LangChain、LangGraph 和 Deep Agents 的概念指南、操作说明与示例。查询结果按上述事实优先级与当前实例 Catalog、项目源码 contract 和稳定测试核对。
 
 ## 2. 产品入口
 
@@ -66,7 +68,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 1. 用户需要的可观察结果是什么；
 2. 哪些步骤需要模型推理，哪些步骤是确定性逻辑；
 3. Node 数量是否在设计时已知；
-4. 是否真正需要 independent background child Run；
+4. 是否使用 independent background child Run，以及 parent/child 的 State、cancellation 和 result handoff；
 5. 每类运行数据由哪个 State、Store 或 Filesystem owner 保存；
 6. 每个 Agent 从哪里获得初始工作材料；
 7. 正常成功、业务失败和循环退出分别由什么条件表示。
@@ -80,20 +82,20 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 ```text
 理解需求
   -> 发现当前实例事实
-  -> 设计最小 Workflow
-  -> 复用或创建缺少的配置
+  -> 设计 Workflow topology、运行机制和数据 owner
+  -> 读取、创建或引用任务使用的配置
   -> 保存 Graph draft
   -> 验证同一份完整 Graph document
   -> publish
   -> 检查模型映射和 Python dependency
   -> 确认 /v1/models
-  -> 发起一次真实 invocation
-  -> 交付并停止
+  -> 发起与任务相符的真实 invocation
+  -> 交付验收结果
 ```
 
 创建或更新对象后保存 API 返回的 UUID。Configuration reference 使用 UUID。Node ID 和 Edge ID 只在当前 Graph document 内使用。
 
-不要为了清空整个 Repository 的既有 warning 扩大任务范围。只修复本次对象和本次运行路径需要修复的问题。
+记录整个 Repository 的既有 warning；本次任务负责其创建或修改对象以及目标运行路径中的问题。
 
 ## 6. 阅读路径
 
@@ -101,13 +103,15 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 如果 Graph 包含 Agent Node，再读[配置 Agent](03-configure-agent.md)。纯 Command Workflow 可以跳过 Agent 章节。
 
-所有 Workflow 都需要读[构建 Workflow Graph](04-build-workflow-graph.md)。
+创建或修改 Custom Tool、Custom Middleware 时读[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。
 
-只有需要创建或修改 Python-backed component 时才读[编写 Python extension](05-python-extensions.md)。使用现有 component 时跳过。
+所有 Workflow 都需要读[构建 Workflow Graph](05-build-workflow-graph.md)。
 
-只有需要 independent child Workflow Run 时才读[使用 background Run](06-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Task Dispatcher 不需要 background Run。
+创建或修改 Command、Task Dispatcher、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明六类 Python package 共用的文件与 dependency contract。
 
-所有任务最后读[验证、运行与交付](07-validate-run-deliver.md)。
+使用 independent child Workflow Run 时读[使用 background Run](07-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Task Dispatcher 都在 current Run 内执行。
+
+所有任务最后读[验证、运行与交付](08-validate-run-deliver.md)。
 
 ## 7. 写入纪律
 
@@ -122,7 +126,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 写入时：
 
-- 提交当前 endpoint 接受的最小完整 payload；
+- 按当前 endpoint contract 提交可写 payload；
 - 修改现有对象时保留未修改的必需可写字段；
 - 不把 GET response、masked secret 或 collection envelope 原样作为 PUT payload；
 - Python-backed component 使用当前 catalog 返回的 `key + revision`；
@@ -137,9 +141,9 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - publish 后确认 `enabled=true`；
 - 用 `/v1/models` 和一次真实 invocation 验证用户可观察行为。
 
-## 8. 停止条件
+## 8. 交付条件
 
-满足以下条件后停止继续扩展：
+以下内容组成一次完整交付：
 
 - 用户要求的 topology 和配置已经保存；
 - 准备发布的 Graph validation 返回 `valid=true`；
@@ -149,8 +153,6 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - 至少一次最接近用户需求的真实 invocation 得到可解释结果，或外部阻塞已经明确记录；
 - 没有意外遗留的 active background task；
 - 交付报告说明新建或复用的对象、关键 UUID、运行入口、验证结果和未验证项。
-
-不要因为还有可选 Component、Middleware、Node、测试输入或优化方向而继续增加范围。
 
 ## 9. 术语
 
@@ -166,4 +168,4 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - Lifecycle、Run、background Run、Checkpoint Thread；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 
-详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择逻辑、操作顺序和最小闭环，不复制完整字段参考。
+详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择入口、操作顺序、运行语义和验收路径，不复制完整字段参考。

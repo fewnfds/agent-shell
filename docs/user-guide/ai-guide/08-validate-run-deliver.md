@@ -1,6 +1,6 @@
 # 验证、运行与交付
 
-本章把配置工作收敛为一次有限验收。目标是证明 current Workflow 在当前实例中可以被发现并真实运行，然后停止。
+本章验证 current Workflow 在当前实例中的配置、发布、发现与真实运行结果，并形成交付记录。
 
 `/api/*` 使用 AI 进程环境中的 `AGENT_SHELL_MANAGEMENT_TOKEN`。`/v1/*` 使用 `AGENT_SHELL_API_KEY`。两类 credential 不能互换，也不从实例 secret 文件读取。
 
@@ -16,7 +16,7 @@ Repository validation
   -> API Server
   -> /v1/models
   -> one real invocation
-  -> delivery and stop
+  -> delivery
 ```
 
 ## 2. Repository validation
@@ -35,7 +35,7 @@ GET /api/validation/repository
 
 准备一份完整 `WorkflowGraphDocumentV1`。它应与准备 publish 的 document 完全相同。
 
-如果还没有保存 draft，先按[构建 Workflow Graph](04-build-workflow-graph.md)保存并回读，不在本章重复构造 draft payload。
+如果还没有保存 draft，先按[构建 Workflow Graph](05-build-workflow-graph.md)保存并回读，不在本章重复构造 draft payload。
 
 然后把完整 document 作为 request body 调用 validation：
 
@@ -143,7 +143,7 @@ response 只返回 API Key 是否 configured，不返回 secret value。
 
 如果 API Key 已 configured，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY`，在 HTTP client 边界直接引用该变量完成后续 `/v1/*` 调用。不要读取或输出它的值，也不要因为 GET 不回显 secret 就自动替换它。
 
-如果 API Key 已 configured，但 `AGENT_SHELL_API_KEY` 缺失，报告缺少该环境变量并停止真实 `/v1/*` 验证。不要读取 `data/config/agent-shell.env`，不要要求用户在对话中粘贴 API Key。
+如果 API Key 已 configured，但 `AGENT_SHELL_API_KEY` 缺失，报告缺少该环境变量，并把真实 `/v1/*` 验证记录为未验证项。不要读取 `data/config/agent-shell.env`，不要要求用户在对话中粘贴 API Key。
 
 只有用户明确要求替换或当前尚未配置，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY` 时，才从该变量构造 write-only value：
 
@@ -248,7 +248,7 @@ Content-Type: application/json
 5. 通过 `GET /api/workflow-lifecycles` 找到当前 Lifecycle；
 6. 读取 Lifecycle detail、events 和失败 Run；
 7. 根据 `run_id`、Node invocation、event type 和 checkpoint 修正一个 owner；
-8. 使用同一个最小输入重试。
+8. 使用同一个可复现输入重试。
 
 常见 HTTP 范围：
 
@@ -309,9 +309,9 @@ Not tested or user action
 
 报告可以包含 Configuration UUID 和非敏感名称。不要包含 token、API Key、Provider credential、完整私密消息或用户文件正文。
 
-## 13. 成功后停止
+## 13. 完成判定
 
-一次最接近用户需求的真实 invocation 成功，并且可观察结果符合预期后，本轮配置任务完成。
+与用户需求相符的真实 invocation 成功，并且可观察结果符合预期时，本轮配置任务具备运行验收证据。
 
 以下情况可以记录为未验证项后交付：
 
@@ -322,5 +322,3 @@ Not tested or user action
 - 当前任务只授权文档或静态配置检查。
 
 未验证项必须说明阻塞条件和用户下一步，不能描述为已通过。
-
-不要因为存在更多可选 Node、Middleware、测试输入或优化方向继续扩展配置。

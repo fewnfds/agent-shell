@@ -2,7 +2,7 @@
 
 本章把已经完成的 design record 转换为 Workflow metadata 和 `WorkflowGraphDocumentV1`。
 
-完成结果是一份已经保存为 draft 的完整 Graph document。validation 和 publish 在[验证、运行与交付](07-validate-run-deliver.md)中完成。
+完成结果是一份已经保存为 draft 的完整 Graph document。validation 和 publish 在[验证、运行与交付](08-validate-run-deliver.md)中完成。
 
 ## 1. 准备引用
 
@@ -12,13 +12,13 @@
 - 已读取当前 `/api/workflow-node-catalog`；
 - design record 已明确 topology、State owner 和结束条件；
 - Graph 使用的 Main Agent、Command、Task Dispatcher、Checkpointer 和 Workflow Event Output UUID 已记录；
-- 缺少 Python-backed Component 时，先按[编写 Python extension](05-python-extensions.md)创建，再返回本章。
+- 缺少 Python-backed Component 时，先按[编写 Python extension](06-python-extensions.md)创建，再返回本章。
 
-不要从旧 Graph 或示例复制 Node type、version、handle 或 Component UUID，除非当前 Catalog 和当前 Repository 已确认它们仍然有效。
+从已有 Graph 或示例复制 Node type、version、handle 或 Component UUID 前，先通过当前 Catalog 和当前 Repository 确认这些值仍然有效。
 
 ## 2. 创建 Workflow metadata
 
-创建 parent Workflow 的最小 payload：
+创建 parent Workflow 的 payload 示例：
 
 ```http
 POST /api/workflows
@@ -49,7 +49,7 @@ Workflow metadata 还可以保存：
 - `execution_timeout_seconds`：默认 `1200`；
 - `max_concurrency`：默认 `100`。
 
-创建时省略这些字段会使用当前 backend default。不要为了复制示例而显式提交默认值。
+创建时省略这些字段会使用当前 backend default。显式提交的字段表示用户为该 Workflow 选择的 runtime value。
 
 如果用户需要调整运行值，先说明：
 
@@ -60,9 +60,9 @@ Workflow metadata 还可以保存：
 
 修改现有 Workflow 时先 GET，保留未修改的 metadata。metadata PUT 不改变当前 `enabled`。
 
-Checkpointer 只用于当前 Debug checkpoint 需求。未选择时不创建 Checkpoint Thread。当前没有外围 Resume 产品流程，不要为了可能的未来恢复默认增加 Checkpointer。
+Checkpointer 为当前 Debug checkpoint 提供 State 持久化。未选择时不创建 Checkpoint Thread。当前没有外围 Resume 产品流程。
 
-确实需要 Debug checkpoint 时，先创建 Checkpointer Component：
+配置 Debug checkpoint 时，先创建 Checkpointer Component：
 
 ```http
 POST /api/blocks/checkpointer
@@ -77,7 +77,7 @@ POST /api/blocks/checkpointer
 
 `durability` 可以是 `exit`、`async` 或 `sync`，默认是 `async`。保存 response UUID，再把它写入 Workflow metadata 的 `checkpointer_id`。该选择会增加 checkpoint 持久化和存储成本。
 
-需要公开 Command、Task Dispatcher 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](05-python-extensions.md)。
+需要公开 Command、Task Dispatcher 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
 
 `cancel_on_upstream_termination` 的含义取决于 Workflow role：
 
@@ -135,7 +135,7 @@ Start -> Work Node -> End
 
 reachable executable Node 可以没有 outgoing Edge。该 path 会自然结束。End 可以没有 incoming Edge。
 
-## 6. 最小单 Agent Graph
+## 6. 单 Agent Graph 示例
 
 下面示例要求 reference ledger 中已经存在 Main Agent UUID：
 
@@ -313,7 +313,7 @@ Dispatch Edge 从 Task Dispatcher 的 `dispatch` handle 发出，并保存唯一
 
 Dispatch target 必须是 Agent 的 task-aware input。同一个 Agent 不能同时使用 Dispatch Edge 和 Normal 或 Branch input。
 
-Command 和 Task Dispatcher 的完整 Python contract 见[编写 Python extension](05-python-extensions.md)。
+Command 和 Task Dispatcher 的完整 Python contract 见[编写 Python extension](06-python-extensions.md)。
 
 ## 10. Fan-out、fan-in、leaf 和 loop
 
@@ -334,7 +334,7 @@ Command -> branch A -> J
 
 loop 必须通过 Command 或其他业务逻辑提供可达 exit path。只有 static Normal Edge 的环没有受控出口，会一直运行到失败边界。
 
-Task Dispatcher 的动态 pending worker 需要 downstream aggregation 时，可以在下游 aggregation Agent Node 使用 `defer=true`，让它等待当前 Graph 中其他 pending task 完成。只为真实 aggregation 需要使用该设置。
+Task Dispatcher 的动态 pending worker 需要 downstream aggregation 时，可以在下游 aggregation Agent Node 使用 `defer=true`。该设置让 Agent Node 等待当前 Graph 中其他 pending task 完成后再执行。
 
 ## 11. 保存 draft
 
@@ -381,4 +381,4 @@ GET /api/workflows/<workflow UUID>/graph
 - layout 不承载运行语义；
 - 完整 Graph document 已保存为 draft 并回读一致。
 
-如果缺少或需要修改 Python-backed Component，阅读[编写 Python extension](05-python-extensions.md)并重新保存 draft。需要 independent child Run 时阅读[使用 background Run](06-background-runs.md)。其他情况直接阅读[验证、运行与交付](07-validate-run-deliver.md)。
+如果缺少或需要修改 Python-backed Component，阅读[编写 Python extension](06-python-extensions.md)并重新保存 draft。需要 independent child Run 时阅读[使用 background Run](07-background-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。

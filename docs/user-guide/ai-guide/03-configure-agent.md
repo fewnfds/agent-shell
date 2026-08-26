@@ -4,11 +4,13 @@
 
 完成结果是一个满足目标行为的 Main Agent，以及已经记录或完成的 Model Mapping。
 
-## 1. 当前最小依赖
+## 1. Main Agent assembly
 
 当前 Main Agent 必须引用：
 
 - 一个 Model Requirement；
+- 一个 Filesystem Backend；
+- 一个 Filesystem Tools；
 - 一个 Agent Event Output。
 
 仍应通过 `GET /api/catalog` 确认当前 required capability。
@@ -17,7 +19,8 @@
 
 ```text
 Model Requirement ----+
-                      +-> Main Agent -> Agent Node
+Filesystem Backend ---+
+Filesystem Tools -----+-> Main Agent -> Agent Node
 Agent Event Output ---+
 
 Model Connection
@@ -25,7 +28,7 @@ Model Connection
   -> Model Requirement
 ```
 
-建议先建立最小 Agent assembly，再加入目标行为必需的 System Prompt、AAP、Filesystem、Tool、Skill、Middleware 或 Subagent。完成目标 invocation 所必需的能力必须在真实验收前装配；只有非必需增强项才留到成功之后。
+Main Agent 还可以引用 System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、Skill package 和 Subagent。Agent Node 每次执行时物化该 Main Agent 的完整 assembly。
 
 ## 2. Model Requirement
 
@@ -52,7 +55,7 @@ description 只写真实能力要求，例如：
 - 预期 context 规模；
 - 速度、成本或推理能力倾向。
 
-多个 Agent 的能力要求相同时复用同一个 Model Requirement。只有真实能力要求不同才拆分。
+多个 Agent 可以引用同一个或不同的 Model Requirement。每份 Requirement 描述引用它的 Agent 所需模型能力，并通过各自的 Model Mapping 绑定当前实例连接。
 
 ## 3. Model Connection 和 Model Mapping
 
@@ -109,11 +112,11 @@ POST /api/blocks/agent-event-output
 
 服务端会生成该 configuration UUID 独占的 package。只需要最终 Assistant text 时，output function 可以按 `assistant_text` event 返回 `event["message"]`，其他 event 返回空字符串。
 
-创建和自定义 Python package 的完整流程见[编写 Python extension](05-python-extensions.md)。字段说明见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
+创建和自定义 Python package 的完整流程见[编写 Python extension](06-python-extensions.md)。字段说明见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
 
 ## 5. 创建 Main Agent
 
-保存 Model Requirement 和 Agent Event Output 的 UUID，然后创建 Main Agent：
+保存 Model Requirement、Filesystem Backend、Filesystem Tools 和 Agent Event Output 的 UUID，然后创建 Main Agent：
 
 ```http
 POST /api/main-agents
@@ -128,6 +131,14 @@ POST /api/main-agents
       "block_id": "<model requirement UUID>"
     },
     {
+      "type": "filesystem",
+      "block_id": "<filesystem backend UUID>"
+    },
+    {
+      "type": "filesystem-tools",
+      "block_id": "<filesystem tools UUID>"
+    },
+    {
       "type": "agent-event-output",
       "block_id": "<agent-event-output UUID>"
     }
@@ -138,7 +149,7 @@ POST /api/main-agents
 }
 ```
 
-`tool_refs`、`middleware_refs` 和 `subagents` 只有在当前 Agent 行为需要时才增加。
+`tool_refs`、`middleware_refs` 和 `subagents` 分别保存 Custom Tool、Custom Middleware 和 direct Subagent 的有序引用。
 
 创建后保存 Main Agent UUID。Agent Node 只引用这个 UUID，不在 Graph Node 内重复保存模型、Tool 或 prompt 配置。
 
@@ -201,39 +212,37 @@ POST /api/blocks/custom-middleware
 }
 ```
 
-AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapshot`、upstream invocation、Runtime Store 和 Agent Filesystem。修改 AAP 时，只为目标 Agent 选择真正需要的材料，并保留输入消息的 `system`、`user`、`assistant` role 语义。
+AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapshot`、upstream invocation、Runtime Store 和 Agent Filesystem。每份 AAP 为目标 Agent 定义材料范围、裁剪、排序和 role 编排，并保留输入消息的 `system`、`user`、`assistant` role 语义。
 
 多个 Middleware 的顺序具有运行意义。LangChain `before_*` hook 正序执行，`after_*` hook 逆序执行，`wrap_*` 按列表嵌套。多个 Middleware 修改 `messages` 时，先明确组合顺序，再保存 `middleware_refs`。
 
 详细 contract 见[Agent Additional Prompt](../agent-additional-prompt.md)。
 
-## 7. 选择能力
+## 7. 能力入口
 
-只为当前 Agent 的真实行为添加能力。
+System Prompt：保存适用于每次 invocation 的稳定角色和固定规则。
 
-使用 System Prompt：稳定角色和固定规则适用于每次 invocation。
+AAP 或 Custom Middleware：根据当前 request、task、State 或 Store 构造动态输入，或者在 Agent lifecycle、model call、Tool call hook 中运行代码。
 
-使用 AAP 或 Custom Middleware：需要根据当前 request、task、State 或 Store 构造动态输入，或者需要 Agent lifecycle、model call、Tool call hook。
+Custom Tool：向 model-tool loop 提供由模型选择和调用的能力。
 
-使用 Custom Tool：能力应由模型在 Agent loop 中选择和调用。
+Skill：通过 CompositeBackend 的只读 `/skills/` route 提供领域知识或操作说明。
 
-使用 Skill：Agent 需要按需读取一组领域知识或操作说明；先制作 Skill 独立包，再由 CompositeBackend 引用。
+CompositeBackend：提供 mapped route、initial file、来源权限和 Skill 独立包。
 
-使用 CompositeBackend：Agent 需要 mapped route、initial file、来源权限或 Skill 独立包。
+LocalShellBackend：提供一个真实固定 workspace，并可与 Filesystem Tools 一起暴露 `execute`。
 
-使用 LocalShellBackend：Agent 需要在一个真实固定 workspace 中使用 `execute`。
+Filesystem Tools：控制文件 Tool visibility、description 和执行参数；该配置与 Backend 都是 required capability。
 
-使用 Filesystem Tools：控制文件 Tool visibility、description 和执行参数；该配置与 Backend 都是 required capability。
+Todo List：向 Agent 提供 `write_todos` 与对应规划提示。
 
-使用 Todo List：Agent 内部任务足够复杂，需要 `write_todos` 管理计划。
+Subagent：Main Agent 通过 `task` Tool 同步委派给 specialist，并在取得结果后继续 Agent loop。
 
-使用 Subagent：Main Agent 需要同步委派给一个 specialist，并等待结果后继续 Agent loop。
+Summarization：在 Agent loop 中按配置管理 context summary。
 
-使用 Summarization：长 Agent loop 需要控制 context。
+Exception Retry：按配置处理可重试 Provider 或 Tool error。
 
-使用 Exception Retry：需要统一处理可重试 Provider 或 Tool 错误。
-
-使用 Prompt Caching：所选 Provider 和 model 支持并确实需要显式 caching 配置。
+Prompt Caching：为支持该能力的 Provider 和 model 配置显式 caching 参数。
 
 required flag、inheritance 和 override policy 以 `/api/catalog` 为准。详细字段见[代理组件](../capabilities.md)。
 
@@ -308,7 +317,7 @@ POST /api/blocks/skill
 
 后端把所选 Skill Template 复制到该 Component 的 Skill 独立包，之后 Template 与 Component 独立。独立包内的 Skill 名称必须唯一。Skill Component 不直接装配到 Agent；保存后把它的 UUID 写入 CompositeBackend 的 `skill_package_id`。
 
-Python-backed Tool 和 Middleware 见[编写 Python extension](05-python-extensions.md)。Skill 见[Skill 配置](../../wizard-pages/skill-config.md)。
+Custom Tool、Custom Middleware 与 hook 见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。通用 Python package contract 见[编写 Python extension](06-python-extensions.md)。Skill 见[Skill 配置](../../wizard-pages/skill-config.md)。
 
 ## 10. Subagent
 
@@ -353,7 +362,7 @@ Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_
 
 进入 Graph 构建前确认：
 
-- Graph 确实需要 Agent Node；
+- Agent Node 引用了目标 Main Agent UUID；
 - Model Requirement 描述能力，不包含实例 credential；
 - Agent Event Output 来自当前 template `key + revision`；
 - Main Agent 引用了当前 Catalog 要求的全部 required capability；
@@ -361,7 +370,7 @@ Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_
 - Model Mapping 已完成，或明确列为运行前用户操作；
 - System Prompt 只保存稳定角色和规则；
 - 动态 request、task 和 upstream material 有明确输入入口；
-- Tool、Filesystem Backend、Filesystem Tools、Middleware 和 Subagent 都有当前调用方，Skill 独立包由 CompositeBackend 引用；
+- Tool、Middleware 和 Subagent reference 已保存在目标 Agent，Skill 独立包由 CompositeBackend 引用；
 - 所有 Configuration reference 使用 API 返回的 UUID。
 
-下一步阅读[构建 Workflow Graph](04-build-workflow-graph.md)。
+创建或修改 Custom Tool、Custom Middleware 时继续阅读[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。随后阅读[构建 Workflow Graph](05-build-workflow-graph.md)。

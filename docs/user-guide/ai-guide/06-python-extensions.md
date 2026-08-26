@@ -1,14 +1,14 @@
 # 编写 Python extension
 
-只有当前任务需要创建或修改 Python-backed Component 时才读本章。使用已经满足需求的现有 Component 时跳过。
+本章说明六类 Python-backed Component 共用的 package 生命周期、dependency 与 runtime 边界，并给出 Command、Task Dispatcher 和 Event Output 的 callable contract。
 
-Python extension 在 Agent Shell service process 的 trusted boundary 中执行，没有 sandbox。只编写当前 Workflow 需要的代码，并使用 LangChain、LangGraph 和 Deep Agents public API。
+Python extension 在 Agent Shell service process 的 trusted boundary 中执行，没有 sandbox。扩展使用 LangChain、LangGraph 和 Deep Agents public API。
 
 ## 1. 选择 extension type
 
-Custom Tool：让模型在 Agent loop 中选择并调用确定性能力。固定 entry 是同步 `create_tool()`，返回一个 LangChain `BaseTool`。
+Custom Tool：让模型在 Agent loop 中选择并调用能力。固定 entry 是同步 `create_tool()`，返回一个 LangChain `BaseTool`。完整说明见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。
 
-Custom Middleware：在 Agent lifecycle、model call 或 Tool call 周围增加行为。模块提供同步 `create_middleware(...)` factory，返回一个 `AgentMiddleware`。factory 可以按参数名请求当前可用的构造数据，或使用 `**kwargs` 接收全部可用值。
+Custom Middleware：在 Agent lifecycle、model call 或 Tool call 周围增加行为。模块提供同步 `create_middleware(...)` factory，返回一个 `AgentMiddleware`。factory 可以按参数名请求当前可用的构造数据，或使用 `**kwargs` 接收全部可用值。hook 与 ordered ref 见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。
 
 Command：执行确定性 State transition 和 Branch Edge selection。同步 `create_command()` 返回 async Node callable。
 
@@ -18,14 +18,14 @@ Agent Event Output：过滤和渲染 Agent event。同步 `output(event)` 返回
 
 Workflow Event Output：过滤和渲染 Workflow-owned event。同步 `output(event)` 返回 `str`。
 
-先确定行为 owner：
+各接口的行为 owner：
 
 - State update 属于 Node、Tool 或 Middleware contract；
 - successor selection 属于 Command 或 Task Dispatcher；
 - 公开文本 projection 属于 Event Output；
 - long-lived artifact 属于 Store 或 Filesystem。
 
-不要让一个 extension 同时充当 State store、router 和 output renderer。
+State persistence、routing 和 output projection 分别通过对应 contract 生效。
 
 ## 2. 创建和编辑闭环
 
@@ -200,15 +200,15 @@ worker 所需的本批材料必须放入 `payload`。Task Dispatcher 的 parent 
 
 ## 8. Custom Tool 和 Middleware
 
-Custom Tool 固定使用同步无参 `create_tool()`，返回一个 `BaseTool`。常见实现使用 LangChain `@tool`，并为 Tool 参数提供明确 type hint 和 docstring。
+Custom Tool 固定使用同步无参 `create_tool()`，返回一个 `BaseTool`。LangChain `@tool` 的 function name、description 与 typed parameters 形成模型可见 Tool contract。
 
-Tool invocation 需要 Runtime 时，在 Tool callable 参数中使用当前 LangChain `ToolRuntime` public contract。不要尝试给 `create_tool()` 注入一次 invocation 的 Runtime。
+Tool invocation 的 Runtime 通过 Tool callable 的 `ToolRuntime` 注入参数取得。`create_tool()` 属于 construction stage。
 
 Custom Middleware factory 返回官方 `AgentMiddleware`。运行能力位于 `before_agent`、`before_model`、`wrap_model_call`、`wrap_tool_call` 等官方 hook 中。
 
-使用 Middleware 改写 Agent 初始消息时，先阅读[Agent Additional Prompt](../agent-additional-prompt.md)，并保留 ordered Middleware composition。
+Agent Shell 使用 async Agent execution path；同步 hook 需要对应 async hook。Main Agent 与 Subagent 分别通过 ordered `tool_refs` 和 `middleware_refs` 装配这些配置。
 
-不要根据模型记忆调用私有 attribute。先从当前 entry function 的 public type 查询 LangChain 官方文档，再对照 Agent Shell contract 和真实 invocation。
+代码、API shape、排序、AAP、Runtime 与装配示例见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。使用 Middleware 改写 Agent 初始消息时同时阅读[Agent Additional Prompt](../agent-additional-prompt.md)。
 
 ## 9. Event Output contract
 
@@ -300,4 +300,4 @@ dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Compone
 - requirement 变化后已 restart，并确认 dependency status；
 - Graph draft 已使用最新 Component UUID 和 key 重新保存。
 
-需要 independent child Run 时阅读[使用 background Run](06-background-runs.md)。否则阅读[验证、运行与交付](07-validate-run-deliver.md)。
+需要 independent child Run 时阅读[使用 background Run](07-background-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。
