@@ -26,8 +26,8 @@ def test_requirements_parser_has_no_product_size_or_package_count_ceiling() -> N
 
 
 def write_package(root: Path, owner_id: str, package_id: str) -> tuple[str, Path]:
-    folder_name = owner_id
-    folder = root / "agent-middleware" / folder_name
+    folder_name = f"Package {package_id[:8]}"
+    folder = root / "agent_middleware" / folder_name
     folder.mkdir(parents=True)
     (folder / "package.json").write_text(
         json.dumps(
@@ -50,7 +50,8 @@ def write_package(root: Path, owner_id: str, package_id: str) -> tuple[str, Path
 
 
 def write_tool_package(root: Path, owner_id: str) -> tuple[str, Path]:
-    folder = root / "agent-tool" / owner_id
+    folder_name = f"Tool {owner_id[:8]}"
+    folder = root / "agent_tool" / folder_name
     folder.mkdir(parents=True)
     (folder / "package.json").write_text(
         json.dumps(
@@ -73,7 +74,7 @@ def write_tool_package(root: Path, owner_id: str) -> tuple[str, Path]:
         "    return dependency_tool\n",
         encoding="utf-8",
     )
-    return owner_id, folder
+    return folder_name, folder
 
 
 def write_runtime_manifest(runtime_root: Path) -> None:
@@ -129,7 +130,7 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
 ) -> None:
     data_root = tmp_path / "data"
     runtime_root = tmp_path / "runtime"
-    packages = FileConfigRepository(data_root).python_package_instances_root
+    packages = FileConfigRepository(data_root).python_packages_root
     owner_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     package_id = "11111111-1111-4111-8111-111111111111"
     folder_name, folder = write_package(packages, owner_id, package_id)

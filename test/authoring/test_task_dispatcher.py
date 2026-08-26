@@ -221,8 +221,8 @@ def test_dispatcher_validates_task_identity_routes_and_state_updates() -> None:
 
 
 def test_task_dispatcher_package_materializes_async_dispatch(tmp_path: Path) -> None:
-    folder_name = DISPATCHER_ID
-    package_dir = tmp_path / "packages" / "task-dispatcher" / folder_name
+    folder_name = "City dispatcher"
+    package_dir = tmp_path / "packages" / "task_dispatcher" / folder_name
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text(
         json.dumps(
@@ -446,9 +446,9 @@ def test_builtin_dispatcher_example_creates_owned_python_package(
     assert response.status_code == 200, response.text
     created = response.json()
     manifest_path = (
-        FileConfigRepository(tmp_path / "data").python_package_instances_root
-        / "task-dispatcher"
-        / created["id"]
+        FileConfigRepository(tmp_path / "data").python_packages_root
+        / "task_dispatcher"
+        / created["name"]
         / "package.json"
     )
     assert json.loads(manifest_path.read_text(encoding="utf-8")) == {

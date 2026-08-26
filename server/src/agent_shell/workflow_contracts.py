@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.contracts import RequiredReference
 
 WorkflowRole = Literal["parent", "child"]
@@ -12,7 +13,7 @@ WorkflowRole = Literal["parent", "child"]
 class WorkflowDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: Annotated[str, Field(min_length=1, max_length=120)]
+    name: ConfigurationName
     workflow_role: WorkflowRole
     description: Annotated[str, Field(max_length=2_000)] = ""
     checkpointer_id: RequiredReference | None = None

@@ -22,6 +22,7 @@ from agent_shell.registries.errors import ResourceScanError
 class PackageAssetPlan:
     source_id: str
     target_id: str
+    target_folder: str
     component_type: str
     asset: PythonPackageAsset
     requirements: bool
@@ -31,6 +32,7 @@ class PackageAssetPlan:
 class SkillPackageAssetPlan:
     source_id: str
     target_id: str
+    target_folder: str
     asset: SkillPackageAsset
 
 
@@ -63,10 +65,10 @@ def validate_asset_ownership(
             "bundle Skill package assets do not match Skill Component records"
         )
     for source_id, asset in packages.items():
-        if asset.path != f"assets/python-packages/{source_id}/":
+        if asset.path != f"assets/python_packages/{source_id}/":
             raise BundleArchiveError("bundle Python package asset path is not canonical")
     for source_id, asset in skills.items():
-        if asset.path != f"assets/skill-packages/{source_id}/":
+        if asset.path != f"assets/skill_packages/{source_id}/":
             raise BundleArchiveError("bundle Skill package asset path is not canonical")
     return packages, skills
 
@@ -76,6 +78,7 @@ def materialize_package_assets(
     packages: dict[str, PythonPackageAsset],
     component_types: dict[str, str],
     target_ids: dict[str, str],
+    target_folders: dict[str, str],
     destination: Path,
     *,
     runtime_root: Path,
@@ -83,9 +86,10 @@ def materialize_package_assets(
     plans: list[PackageAssetPlan] = []
     for source_id, asset in sorted(packages.items()):
         target_id = target_ids[source_id]
+        target_folder = target_folders[source_id]
         component_type = component_types[source_id]
         spec = PACKAGE_COMPONENT_SPECS[component_type]
-        folder = destination / spec.adapter / target_id
+        folder = destination / spec.directory / target_folder
         materialize_files(folder, parsed.asset_files(asset.path))
         manifest_path = folder / "package.json"
         try:
@@ -131,6 +135,7 @@ def materialize_package_assets(
             PackageAssetPlan(
                 source_id=source_id,
                 target_id=target_id,
+                target_folder=target_folder,
                 component_type=component_type,
                 asset=asset,
                 requirements=requirements,
@@ -143,17 +148,20 @@ def materialize_skill_package_assets(
     parsed: ParsedBundle,
     skills: dict[str, SkillPackageAsset],
     target_ids: dict[str, str],
+    target_folders: dict[str, str],
     destination: Path,
 ) -> tuple[SkillPackageAssetPlan, ...]:
     plans: list[SkillPackageAssetPlan] = []
     for source_id, asset in sorted(skills.items()):
         target_id = target_ids[source_id]
-        bundled = destination / target_id
+        target_folder = target_folders[source_id]
+        bundled = destination / target_folder
         materialize_files(bundled, parsed.asset_files(asset.path))
         plans.append(
             SkillPackageAssetPlan(
                 source_id=source_id,
                 target_id=target_id,
+                target_folder=target_folder,
                 asset=asset,
             )
         )

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.errors import management_error
 from agent_shell.python_packages.dependencies import (
     dependency_metadata,
@@ -18,18 +20,19 @@ from agent_shell.configuration.repository_management import (
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.file_config import ActiveRepositoryDeleteError
 from agent_shell.validation.repository import RepositoryValidationService
+from agent_shell.configuration.identity import is_configuration_id
 
 
 class RepositoryCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=120)
+    name: ConfigurationName
 
 
 class RepositoryCopy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=120)
+    name: ConfigurationName
 
 
 def _restart_required(packages_root: Path, runtime_root: Path) -> bool:
@@ -43,9 +46,19 @@ def _restart_required(packages_root: Path, runtime_root: Path) -> bool:
                 continue
             try:
                 requirements = read_package_requirements(folder)
-            except ResourceScanError:
+                manifest = json.loads(
+                    (folder / "package.json").read_text(encoding="utf-8")
+                )
+                package_id = manifest.get("id") if isinstance(manifest, dict) else None
+                if not is_configuration_id(package_id):
+                    continue
+            except (OSError, UnicodeError, json.JSONDecodeError, ResourceScanError):
                 continue
-            metadata = dependency_metadata(folder.name, requirements, runtime_root)
+            metadata = dependency_metadata(
+                f"python-package:{package_id}",
+                requirements,
+                runtime_root,
+            )
             if metadata["dependency_status"] == "restart_required":
                 return True
     return False
@@ -94,7 +107,7 @@ def build_configuration_repository_router(
         return {
             **active,
             "restart_required": _restart_required(
-                repository.python_package_instances_root, runtime_root
+                repository.python_packages_root, runtime_root
             ),
             "validation": report.as_dict(),
         }

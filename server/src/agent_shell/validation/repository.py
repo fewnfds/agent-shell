@@ -96,8 +96,26 @@ class RepositoryValidationService:
                     )
                 continue
             for block in records:
+                if (
+                    block_type in PACKAGE_COMPONENT_SPECS
+                    and block.get("python_package")
+                    != {"folder": block.get("name")}
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            code="storage.python_package_owner_mismatch",
+                            scope="block",
+                            owner_id=str(block.get("id", "")),
+                            owner_name=str(block.get("name", "")),
+                            owner_type=str(block_type),
+                            path="python_package.folder",
+                            message="The Python package folder does not match its configuration name.",
+                            message_key="validation.issue.storage.pythonPackageOwnerMismatch",
+                            message_args={},
+                        )
+                    )
                 if block_type == "skill" and block.get("skill_package") != {
-                    "folder": block.get("id")
+                    "folder": block.get("name")
                 }:
                     issues.append(
                         ValidationIssue(
@@ -107,7 +125,7 @@ class RepositoryValidationService:
                             owner_name=str(block.get("name", "")),
                             owner_type="skill",
                             path="skill_package.folder",
-                            message="The Skill package folder does not match its owner configuration.",
+                            message="The Skill package folder does not match its configuration name.",
                             message_key="validation.issue.storage.skillPackageOwnerMismatch",
                             message_args={},
                         )

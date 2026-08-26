@@ -5,7 +5,7 @@ Command Node 是 Workflow canvas 上可同时更新 State 和动态选择 succes
 
 ## Package 与入口
 
-用户模板位于 `data/templates/workflow/command/<template-key>/`，内置示例位于 `examples/workflow-components/command/<example-key>/`，新建页以 `<key>` 和 `内置示例-<key>` 合并展示。新配置首次保存时复制为 `data/configuration-repositories/<repository-uuid>/python_package_instances/command/<configuration-uuid>/` 下的配置扩展。
+用户模板位于 `data/templates/workflow/command/<template-key>/`，内置示例位于 `examples/workflow-components/command/<example-key>/`，新建页以 `<key>` 和 `内置示例-<key>` 合并展示。新配置首次保存时复制为 `data/config_repos/<repository-name>/python_packages/command/<configuration-name>/` 下的配置扩展。
 配置扩展至少包含 `package.json` 和 `main.py`，模板本身无需 `package.json`，并可包含 `requirements.txt`、本地模块和测试。manifest 固定使用 `family: workflow-node` 与 `adapter: command`。完整目录、manifest、imports 和依赖规则见[文件化 Python 扩展包](../user-guide/middleware-packages.md)。
 
 `main.py` 必须提供同步无参工厂 `create_command()`，返回的 async callable 签名必须恰为 `(state, runtime)`，两个参数都不能有默认值：

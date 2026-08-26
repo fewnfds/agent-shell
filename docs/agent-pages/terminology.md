@@ -38,7 +38,7 @@
 | Subagent reference | Main Agent 保存的 `subagent_id`，运行时投影为官方 dictionary-based SubAgent |
 | Skill | 含 `SKILL.md` 的按需说明目录 |
 | Skill Template / 技能模板 | `data/skills-template/` 中可被选择并复制的 public Skill 素材，以规范相对路径区分同名模板 |
-| Skill package / Skill 独立包 | Skill Component 创建后按 owner UUID 保存的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
+| Skill package / Skill 独立包 | Skill Component 创建后按配置名称保存、由 Component UUID 拥有的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
 | Custom Tool / 自定义工具 | 从 Python `@tool` 资源物化的 LangChain Tool |
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
 | Task Dispatcher | 从 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node 的 canvas Node |

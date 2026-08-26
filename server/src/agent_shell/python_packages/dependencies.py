@@ -353,7 +353,7 @@ def prepare_windows_dependencies(
         raise ValueError("The Windows runtime manifest lacks its build fingerprint.")
     recover_configuration_imports(data_root)
     repository = FileConfigRepository(data_root)
-    packages_dir = repository.python_package_instances_root
+    packages_dir = repository.python_packages_root
     config = repository.config()
     components = config.get("components", {})
 

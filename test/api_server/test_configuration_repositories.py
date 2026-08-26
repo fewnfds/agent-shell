@@ -176,10 +176,6 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
             item
             for item in source_config["components"]["model-requirement"]
         )
-        source_output = next(
-            item
-            for item in source_config["components"]["agent-event-output"]
-        )
         source_binding = next(
             item
             for item in client.get("/api/model-requirements").json()
@@ -248,17 +244,16 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         copied_package = (
             tmp_path
             / "data"
-            / "configuration-repositories"
-            / copied_repository["id"]
-            / "python_package_instances"
-            / "agent-event-output"
-            / copied_output["id"]
+            / "config_repos"
+            / copied_repository["name"]
+            / "python_packages"
+            / "agent_event_output"
+            / copied_output["name"]
         )
         assert copied_package.is_dir()
         assert json.loads(
             (copied_package / "package.json").read_text(encoding="utf-8")
         )["id"] == copied_output["id"]
-        assert not (copied_package.parent / source_output["id"]).exists()
 
         active_delete = client.delete(
             f"/api/configuration-repositories/{copied_repository['id']}"
@@ -294,9 +289,36 @@ def test_invalid_repository_name_does_not_leave_an_orphan_directory(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         response = client.post("/api/configuration-repositories", json={"name": "   "})
-        assert response.status_code == 409, response.text
-        repository_root = tmp_path / "data" / "configuration-repositories"
+        assert response.status_code == 422, response.text
+        repository_root = tmp_path / "data" / "config_repos"
         assert len(list(repository_root.iterdir())) == 1
+
+
+def test_repository_names_follow_windows_directory_rules_and_allow_unicode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        valid_name = "项目_日本語 Français Deutsch"
+        created = client.post(
+            "/api/configuration-repositories",
+            json={"name": valid_name},
+        )
+        assert created.status_code == 200, created.text
+        assert (tmp_path / "data" / "config_repos" / valid_name).is_dir()
+
+        for invalid_name in (
+            "invalid/name",
+            "invalid:name",
+            "invalid*name",
+            "CON",
+            "trailing.",
+        ):
+            rejected = client.post(
+                "/api/configuration-repositories",
+                json={"name": invalid_name},
+            )
+            assert rejected.status_code == 422, rejected.text
 
 
 def test_repository_listing_ignores_only_internal_work_directories(
@@ -304,9 +326,9 @@ def test_repository_listing_ignores_only_internal_work_directories(
 ) -> None:
     data_root = tmp_path / "data"
     repository = FileConfigRepository(data_root)
-    repository_root = data_root / "configuration-repositories"
-    (repository_root / ".repository-copy-interrupted").mkdir()
-    (repository_root / ".repository-delete-interrupted").mkdir()
+    repository_root = data_root / "config_repos"
+    (repository_root / ".repository_copy_interrupted").mkdir()
+    (repository_root / ".repository_delete_interrupted").mkdir()
 
     assert [
         item.id for item in list_configuration_repositories(data_root)

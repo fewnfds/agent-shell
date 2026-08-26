@@ -17,7 +17,8 @@ def _write_tool_package(
     *,
     body: str,
 ) -> dict:
-    folder = root / "agent-tool" / owner_id
+    folder_name = f"Tool {owner_id[:8]}"
+    folder = root / "agent_tool" / folder_name
     folder.mkdir(parents=True)
     (folder / "package.json").write_text(
         json.dumps(
@@ -35,7 +36,7 @@ def _write_tool_package(
     return {
         "id": owner_id,
         "name": "Tool package",
-        "python_package": {"folder": owner_id},
+        "python_package": {"folder": folder_name},
     }
 
 

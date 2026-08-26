@@ -2,7 +2,7 @@
 
 public Skill Template 根为 `data/skills-template/`。扫描允许任意层级；某一层第一次发现 `SKILL.md` 后，该目录成为完整 Skill 边界并结束该分支扫描。名称、目录、UTF-8 和 YAML frontmatter 通过当前 contract 的 Template 可在前端选择，catalog 同时按规范相对路径报告坏项。
 
-创建请求使用 Template 路径，服务端复制完整目录到 Component owner UUID 的 Skill 独立包：
+创建请求使用 Template 路径，服务端复制完整目录到以 Component 配置名称命名的 Skill 独立包；Component UUID 仍是领域 owner：
 
 ```json
 {
@@ -16,7 +16,7 @@ public Skill Template 根为 `data/skills-template/`。扫描允许任意层级�
 保存后的记录只引用：
 
 ```json
-{"skill_package": {"folder": "<component-uuid>"}}
+{"skill_package": {"folder": "<component-name>"}}
 ```
 
 新建组件时使用 `skill_template_paths`，系统复制所选 Template 后只保存 `skill_package`。已有组件的普通更新必须继续提交原 `skill_package` 引用；增量添加使用 `POST /api/blocks/skill/{id}/skills` 与 `{"template_path": "..."}`，删除使用 `DELETE /api/blocks/skill/{id}/skills/{folder_name}`。

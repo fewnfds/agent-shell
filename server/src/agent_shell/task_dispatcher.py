@@ -14,6 +14,7 @@ from pydantic import (
 )
 from langgraph.runtime import Runtime
 
+from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.python_packages.contracts import PythonPackageReference
 from agent_shell.runtime.context import WorkflowRuntimeContext
 
@@ -37,7 +38,7 @@ TaskDispatcherCallable = Callable[
 class TaskDispatcherBlock(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: Annotated[str, Field(min_length=1, max_length=120)]
+    name: ConfigurationName
     python_package: PythonPackageReference
 
 

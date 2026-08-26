@@ -18,7 +18,7 @@ def create_tool() -> BaseTool:
 
 `create_tool()` 必须返回一个 `BaseTool`；推荐使用 LangChain `@tool`。函数名是模型可见 Tool name，docstring 是模型看到的 description，typed parameters 形成 input schema。一个扩展只导出一个 Tool；共享 helper 可以放在同一目录的 local module 中。
 
-用户模板位于 `data/templates/agent/custom_tool/<template-key>/`；首次保存后实例位于 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-tool/<configuration-uuid>/`，生成的 `package.json` 固定为 `family: tool`、`adapter: agent-tool` 且 `id` 等于配置 UUID。
+用户模板位于 `data/templates/agent/custom_tool/<template-key>/`；首次保存后实例位于 `data/config_repos/<repository-name>/python_packages/agent_tool/<configuration-name>/`，生成的 `package.json` 固定为 `family: tool`、`adapter: agent-tool` 且 `id` 等于配置 UUID。
 
 新建配置时选择一份合法用户模板或内置示例。首次保存会复制模板的完整目录；保存后，组件页列出私有包中的全部文件，点击编辑会打开共享文件管理工作区。只有源码直接 import 第三方包时才在 `requirements.txt` 逐行声明 direct dependency，重启后通过 package inspection 的 `dependency_status` 和 `requirements_fingerprint` 确认。
 

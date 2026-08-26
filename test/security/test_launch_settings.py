@@ -56,7 +56,7 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
     runtime_dir = tmp_path / "runtime"
     data_root = tmp_path / "data"
     python_templates_dir = data_root / "templates"
-    python_package_instances_dir = FileConfigRepository(data_root).python_package_instances_root
+    python_packages_dir = FileConfigRepository(data_root).python_packages_root
     _write_system_settings(tmp_path, cors_origins=["https://console.example"])
     _write_environment_file(
         tmp_path, "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n"
@@ -103,9 +103,9 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
     assert (python_templates_dir / "workflow" / "command").is_dir()
     assert (python_templates_dir / "workflow" / "task_dispatcher").is_dir()
     assert (python_templates_dir / "agent" / "custom_middleware").is_dir()
-    assert (python_package_instances_dir / "command").is_dir()
-    assert (python_package_instances_dir / "task-dispatcher").is_dir()
-    assert (python_package_instances_dir / "agent-middleware").is_dir()
+    assert (python_packages_dir / "command").is_dir()
+    assert (python_packages_dir / "task_dispatcher").is_dir()
+    assert (python_packages_dir / "agent_middleware").is_dir()
 
 
 def test_official_launcher_uses_only_validated_settings_and_disables_proxy_headers(

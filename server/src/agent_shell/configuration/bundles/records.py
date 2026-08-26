@@ -116,9 +116,9 @@ def load_bundle_record_set(manifest: BundleManifest) -> BundleRecordSet:
                 )
         if entity.component_type in PACKAGE_COMPONENT_SPECS:
             reference = entity.payload.get("python_package")
-            if not isinstance(reference, dict) or reference.get("folder") != entity.id:
+            if not isinstance(reference, dict) or reference.get("folder") != entity.name:
                 raise BundleArchiveError(
-                    "bundle Python package ownership does not match its Component UUID"
+                    "bundle Python package folder does not match its Component name"
                 )
         payload = deepcopy(entity.payload)
         payload.pop("id", None)
@@ -130,9 +130,9 @@ def load_bundle_record_set(manifest: BundleManifest) -> BundleRecordSet:
         )
         if entity.component_type == "skill":
             reference = entity.payload.get("skill_package")
-            if not isinstance(reference, dict) or reference.get("folder") != entity.id:
+            if not isinstance(reference, dict) or reference.get("folder") != entity.name:
                 raise BundleArchiveError(
-                    "bundle Skill package ownership does not match its Component UUID"
+                    "bundle Skill package folder does not match its Component name"
                 )
             skill_package_owners.add(entity.id)
     return BundleRecordSet(
@@ -274,9 +274,9 @@ def transform_bundle_records(
         if source.kind == "component":
             rewritten.update(component_payloads[source.id])
             if source.component_type in PACKAGE_COMPONENT_SPECS:
-                rewritten["python_package"]["folder"] = identities.target_ids[source.id]
+                rewritten["python_package"]["folder"] = identities.names[source.id]
             if source.component_type == "skill":
-                rewritten["skill_package"]["folder"] = identities.target_ids[source.id]
+                rewritten["skill_package"]["folder"] = identities.names[source.id]
         if source.kind == "workflow":
             rewritten["enabled"] = False
         transformed.append(

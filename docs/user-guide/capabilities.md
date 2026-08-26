@@ -24,7 +24,7 @@
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
 
-Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到 owner UUID 的 Skill 独立包，Template 与 Component 随后独立维护。独立包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。独立包问题在组件页载入或刷新时显示 warning，组件仍可保存。Agent 不直接选择 Skill Component；CompositeBackend 通过 `skill_package_id` 引用独立包并只读挂载 `/skills/`，LocalShellBackend 不装配 Skill。
+Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到以 Component 配置名称命名、由 Component UUID 拥有的 Skill 独立包，Template 与 Component 随后独立维护。独立包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。独立包问题在组件页载入或刷新时显示 warning，组件仍可保存。Agent 不直接选择 Skill Component；CompositeBackend 通过 `skill_package_id` 引用独立包并只读挂载 `/skills/`，LocalShellBackend 不装配 Skill。
 
 详细字段见[组件说明](../wizard-pages/README.md)。Agent 组合方式见[装配 Main Agent 与 Subagent](configuration-workflow.md)。
 

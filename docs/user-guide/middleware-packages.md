@@ -5,7 +5,7 @@ Agent Shell 的文件化 Python 扩展分为扩展模板、配置扩展和组件
 - 用户模板是 `data/templates/` 下的公共代码资源，只用于创建配置；
 - 源码附带的只读示例位于 `examples/`，在模板选择器中使用 `内置示例-<key>` 名称；
 - 保存新配置时，系统把所选模板复制成由该配置独占的 Python 扩展；
-- 配置扩展位于当前 `data/configuration-repositories/<repository-uuid>/python_package_instances/`，复制完成后与原模板彻底解耦；
+- 配置扩展位于当前 `data/config_repos/<repository-name>/python_packages/`，复制完成后与原模板彻底解耦；
 - 组件 YAML 只保存扩展代码目录引用。
 
 模板和内置示例都不会被直接导入、执行或收集依赖。修改或删除来源不会影响已经保存的配置；模板和配置扩展各自独立维护。
@@ -22,21 +22,21 @@ data/
     agent/custom_tool/<template-key>/
     agent/custom_middleware/<template-key>/
     agent/agent_event_output/<template-key>/
-  configuration-repositories/<repository-uuid>/
+  config_repos/<repository-name>/
     components/<type>/<configuration-uuid>.yaml
-    python_package_instances/
+    python_packages/
       command/
-        <configuration-uuid>/
-      task-dispatcher/
-        <configuration-uuid>/
-      workflow-event-output/
-        <configuration-uuid>/
-      agent-tool/
-        <configuration-uuid>/
-      agent-middleware/
-        <configuration-uuid>/
-      agent-event-output/
-        <configuration-uuid>/
+        <configuration-name>/
+      task_dispatcher/
+        <configuration-name>/
+      workflow_event_output/
+        <configuration-name>/
+      agent_tool/
+        <configuration-name>/
+      agent_middleware/
+        <configuration-name>/
+      agent_event_output/
+        <configuration-name>/
 
 examples/
   workflow-components/command/<example-key>/
@@ -50,8 +50,8 @@ examples/
 模板至少包含 `main.py`，可以包含 `requirements.txt`、本地模块、测试和随源码分发的目录；第三方依赖仍需在 `requirements.txt` 中逐行声明。
 模板目录名 `template-key` 长 1 至 64 个字符，只使用小写字母、数字、`_` 和 `-`，并以字母或数字开头、结尾。模板没有 package UUID，也不属于任何配置。
 
-配置扩展至少包含 `package.json` 和 `main.py`。文件夹名就是拥有它的组件配置 UUID，`package.json.id` 与该 UUID 相等。
-系统据此拒绝配置引用其他配置的扩展代码目录，也避免模板名和额外 UUID 增加 Windows 路径长度。
+配置扩展至少包含 `package.json` 和 `main.py`。文件夹名等于拥有它的 Component 配置名称，`package.json.id` 等于该 Component UUID。
+系统通过名称目录引用和 manifest UUID 校验拒绝配置引用其他配置的扩展代码目录；名称改动会同步移动目录，但不会改变 UUID 身份和引用。
 
 ## Manifest
 
@@ -75,7 +75,7 @@ Command Node、Task Dispatcher 和 Custom Middleware 使用同一 YAML 外壳：
 
 ```yaml
 python_package:
-  folder: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+  folder: My Command
 ```
 
 YAML 保存配置字段和私有包引用；源码、requirements 与 manifest 位于私有包目录。创建时提交的模板 `key/revision` 用于检测模板目录并发变化。复制组件配置时会复制一份新的配置扩展；删除组件配置时会删除其扩展代码目录。

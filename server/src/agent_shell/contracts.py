@@ -24,7 +24,7 @@ from agent_shell.capability_manifest import (
     PUBLIC_CAPABILITY_MANIFESTS,
     validate_capability_manifests,
 )
-from agent_shell.configuration.identity import ConfigurationId
+from agent_shell.configuration.identity import ConfigurationId, ConfigurationName
 from agent_shell.command import CommandBlock
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
@@ -38,11 +38,11 @@ SKILL_PROMPT_FIELDS = (
     "skills_load_warnings",
     "skills_list",
 )
-from agent_shell.python_packages.contracts import PythonPackageReference
+from agent_shell.python_packages.contracts import PackageFolder, PythonPackageReference
 TASK_DESCRIPTION_FIELDS = ("available_agents",)
 
 
-BlockName = Annotated[str, Field(min_length=1, max_length=120)]
+BlockName = ConfigurationName
 LocalPath = Annotated[str, Field(max_length=4096)]
 VirtualPath = Annotated[str, Field(min_length=1, max_length=4096)]
 DescriptionDraft = Annotated[str, Field(max_length=100_000)]
@@ -651,7 +651,7 @@ class SkillBlock(StrictBlock):
     class SkillPackageReference(BaseModel):
         model_config = ConfigDict(extra="forbid")
 
-        folder: ConfigurationId
+        folder: PackageFolder
 
     skill_package: SkillPackageReference
     system_prompt_enabled: bool = True

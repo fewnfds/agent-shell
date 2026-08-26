@@ -141,8 +141,8 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
     component = created.json()
     owner_id = component["id"]
     private_root = (
-        FileConfigRepository(tmp_path / "data").skill_package_instances_root
-        / owner_id
+        FileConfigRepository(tmp_path / "data").skill_packages_root
+        / component["name"]
     )
     assert "First body." in private_root.joinpath("outline", "SKILL.md").read_text(
         encoding="utf-8"
@@ -180,7 +180,7 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
         f"/api/blocks/skill/{owner_id}",
         json={
             "name": "Writing",
-            "skill_package": {"folder": owner_id},
+            "skill_package": {"folder": component["name"]},
             "system_prompt_enabled": True,
             "instruction_override": None,
         },
@@ -192,10 +192,11 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
     )
     assert copied.status_code == 200, copied.text
     copy_id = copied.json()["id"]
-    assert (private_root.parent / copy_id / "outline" / "SKILL.md").is_file()
+    copy_name = copied.json()["name"]
+    assert (private_root.parent / copy_name / "outline" / "SKILL.md").is_file()
     deleted = client.delete(f"/api/blocks/skill/{copy_id}")
     assert deleted.status_code == 200, deleted.text
-    assert not (private_root.parent / copy_id).exists()
+    assert not (private_root.parent / copy_name).exists()
 
 
 def test_failed_skill_create_rolls_back_private_package(tmp_path: Path, monkeypatch) -> None:
@@ -207,13 +208,13 @@ def test_failed_skill_create_rolls_back_private_package(tmp_path: Path, monkeypa
     )
     client = make_client(tmp_path, monkeypatch)
     repository = FileConfigRepository(tmp_path / "data")
-    before = set(repository.skill_package_instances_root.iterdir())
+    before = set(repository.skill_packages_root.iterdir())
     response = client.post(
         "/api/blocks/skill",
         json={"name": "", "skill_template_paths": ["outline"]},
     )
     assert response.status_code == 422, response.text
-    assert set(repository.skill_package_instances_root.iterdir()) == before
+    assert set(repository.skill_packages_root.iterdir()) == before
 
 
 @pytest.mark.parametrize("owner_id", ["", ".", "..", "nested/owner"])
@@ -229,7 +230,7 @@ def test_skill_package_rejects_non_configuration_owner_without_side_effects(
     )
 
     with pytest.raises(SkillPackageAuthoringError) as raised:
-        service.inspect(owner_id)
+        service.inspect(owner_id, "Valid package")
 
     assert raised.value.code == "skill_package_owner_invalid"
     assert list(instances.iterdir()) == []
@@ -242,7 +243,8 @@ def test_skill_remove_rejects_non_segment_before_creating_staging(
 ) -> None:
     owner_id = "11111111-1111-4111-8111-111111111111"
     instances = tmp_path / "instances"
-    skill = instances / owner_id / "outline"
+    package_folder = "Owner skills"
+    skill = instances / package_folder / "outline"
     skill.mkdir(parents=True)
     skill.joinpath("SKILL.md").write_text(
         "---\nname: outline\ndescription: Outline.\n---\n",
@@ -255,7 +257,7 @@ def test_skill_remove_rejects_non_segment_before_creating_staging(
     before = sorted(path.relative_to(instances) for path in instances.rglob("*"))
 
     with pytest.raises(SkillPackageAuthoringError) as raised:
-        service.remove(owner_id, folder_name)
+        service.remove(owner_id, package_folder, folder_name)
 
     assert raised.value.code == "skill_folder_invalid"
     assert sorted(path.relative_to(instances) for path in instances.rglob("*")) == before
@@ -386,5 +388,5 @@ def test_saving_custom_middleware_source_does_not_execute_it(
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["python_package"]["folder"] == response.json()["id"]
+    assert response.json()["python_package"]["folder"] == response.json()["name"]
     assert not marker.exists()

@@ -480,9 +480,9 @@ def build_deepagents_capabilities(
     skill_sources: list[str] = []
     skill_package_root: Path | None = None
     if skill is not None:
-        if skill.skill_package.folder != skill_owner_id:
+        if skill.skill_package.folder != skill.name:
             raise DeepAgentsCapabilityError(
-                "Skill package folder does not match its owner configuration."
+                "Skill package folder does not match its configuration name."
             )
         canonical_skills_root = skills_dir.resolve()
         candidate_root = canonical_skills_root / skill.skill_package.folder

@@ -783,7 +783,7 @@ def test_workflow_publish_reports_broken_router_package_without_missing_referenc
         assert router.status_code == 200, router.text
         folder = router.json()["python_package"]["folder"]
         shutil.rmtree(
-            FileConfigRepository(tmp_path / "data").python_package_instances_root
+            FileConfigRepository(tmp_path / "data").python_packages_root
             / "command"
             / folder
         )

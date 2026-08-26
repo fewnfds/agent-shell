@@ -192,6 +192,7 @@ class BundleImportPlanner:
                 package_assets,
                 component_types,
                 target_ids,
+                identities.names,
                 staged_packages,
                 runtime_root=self._runtime_root,
             )
@@ -199,6 +200,7 @@ class BundleImportPlanner:
                 parsed,
                 skill_assets,
                 target_ids,
+                identities.names,
                 staged_skills,
             )
 

@@ -86,7 +86,7 @@ Component type 与 template kind 的常用对应关系是：
 
 以当前 Catalog 和 endpoint response 为准。不要根据这个列表构造当前实例不存在的 type。
 
-首次保存后，系统把 template 复制到该 Configuration UUID 独占的 private package。一个 Configuration 不引用另一个 Configuration 的 package directory。
+首次保存后，系统把 template 复制到以 Configuration 名称命名、由该 Configuration UUID 独占的 private package。一个 Configuration 不引用另一个 Configuration 的 package directory。
 
 `package.json.id`、folder 和 adapter 必须与 owner Configuration 一致。不要移动或重命名受管 extension directory。
 
@@ -290,7 +290,7 @@ dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Compone
 
 - extension type 与行为 owner 一致；
 - Component 来自当前 template `key + revision`；
-- 编辑的是该 Configuration UUID 独占的 package；
+- 编辑的是以 Configuration 名称命名、由该 Configuration UUID 独占的 package；
 - factory 只负责 construction；
 - Runtime access 位于 runtime callable 或 hook；
 - routing key 与 Graph Edge key 一致；

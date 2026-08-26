@@ -12,8 +12,12 @@ import tempfile
 from typing import Any, Literal
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from agent_shell.configuration.identity import is_configuration_id
-from agent_shell.configuration.repositories import load_configuration_repository
+from agent_shell.configuration.repositories import (
+    CONFIGURATION_REPOSITORIES_DIRECTORY,
+    PYTHON_PACKAGES_DIRECTORY,
+    SKILL_PACKAGES_DIRECTORY,
+    load_configuration_repository,
+)
 from agent_shell.storage.atomic_files import write_bytes_atomic
 from agent_shell.storage.owned_paths import is_reparse_point
 from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
@@ -30,16 +34,24 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
-_DATA_CHILDREN = ("files", "skills-template", "templates", "configuration-repositories")
+_DATA_CHILDREN = (
+    "files",
+    "skills-template",
+    "templates",
+    CONFIGURATION_REPOSITORIES_DIRECTORY,
+)
 _REPOSITORY_CHILDREN = (
     "components",
     "agents",
     "workflows",
-    "python_package_instances",
-    "skill_package_instances",
+    PYTHON_PACKAGES_DIRECTORY,
+    SKILL_PACKAGES_DIRECTORY,
 )
 _EDITABLE_DATA_ROOTS = {"files", "skills-template", "templates"}
-_EDITABLE_REPOSITORY_ROOTS = {"python_package_instances", "skill_package_instances"}
+_EDITABLE_REPOSITORY_ROOTS = {
+    PYTHON_PACKAGES_DIRECTORY,
+    SKILL_PACKAGES_DIRECTORY,
+}
 _READ_ONLY_REPOSITORY_ROOTS = {"components", "agents", "workflows"}
 
 AccessMode = Literal["navigation", "read-only", "editable"]
@@ -169,10 +181,12 @@ class FileManagerService:
             self._validate_segment(segment)
         return parts
 
-    def _repository_root(self, repository_id: str) -> Path:
-        if not is_configuration_id(repository_id):
-            raise self._missing()
-        root = self._data_root / "configuration-repositories" / repository_id
+    def _repository_root(self, repository_name: str) -> Path:
+        root = (
+            self._data_root
+            / CONFIGURATION_REPOSITORIES_DIRECTORY
+            / repository_name
+        )
         if not root.is_dir() or is_reparse_point(root):
             raise self._missing()
         try:
@@ -187,7 +201,7 @@ class FileManagerService:
         first = parts[1]
         if first in _EDITABLE_DATA_ROOTS:
             return "editable"
-        if first != "configuration-repositories":
+        if first != CONFIGURATION_REPOSITORIES_DIRECTORY:
             raise self._missing()
         if len(parts) == 2:
             return "navigation"
@@ -236,7 +250,8 @@ class FileManagerService:
     @staticmethod
     def _protected_root(parts: tuple[str, ...]) -> bool:
         return len(parts) == 2 or (
-            len(parts) == 4 and parts[1] == "configuration-repositories"
+            len(parts) == 4
+            and parts[1] == CONFIGURATION_REPOSITORIES_DIRECTORY
         )
 
     @classmethod
@@ -296,8 +311,8 @@ class FileManagerService:
     def _visible_names(self, parts: tuple[str, ...]) -> set[str] | None:
         if parts == ("data",):
             return set(_DATA_CHILDREN)
-        if parts == ("data", "configuration-repositories"):
-            root = self._data_root / "configuration-repositories"
+        if parts == ("data", CONFIGURATION_REPOSITORIES_DIRECTORY):
+            root = self._data_root / CONFIGURATION_REPOSITORIES_DIRECTORY
             if not root.exists():
                 return set()
             result: set[str] = set()
@@ -308,7 +323,10 @@ class FileManagerService:
                     continue
                 result.add(child.name)
             return result
-        if len(parts) == 3 and parts[1] == "configuration-repositories":
+        if (
+            len(parts) == 3
+            and parts[1] == CONFIGURATION_REPOSITORIES_DIRECTORY
+        ):
             return set(_REPOSITORY_CHILDREN)
         return None
 

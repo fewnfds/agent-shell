@@ -40,17 +40,17 @@ def _manifest(*, skill: bool = False) -> tuple[BundleManifest, dict[str, bytes]]
             b"---\nname: outline\ndescription: Build an outline.\n---\n\nSteps.\n"
         )
         tree = {"outline/SKILL.md": content}
-        files = {f"assets/skill-packages/{SOURCE_ID}/outline/SKILL.md": content}
+        files = {f"assets/skill_packages/{SOURCE_ID}/outline/SKILL.md": content}
         assets = [
             SkillPackageAsset(
                 kind="skill-package",
                 owner_source_id=SOURCE_ID,
-                path=f"assets/skill-packages/{SOURCE_ID}/",
+                path=f"assets/skill_packages/{SOURCE_ID}/",
                 sha256=canonical_tree_sha256(tree),
             )
         ]
         payload = {
-            "skill_package": {"folder": SOURCE_ID},
+            "skill_package": {"folder": "Portable configuration"},
             "system_prompt_enabled": True,
             "instruction_override": None,
         }
@@ -116,7 +116,7 @@ def test_bundle_archive_rejects_path_traversal_unknown_version_and_asset_tamperi
 
     conflicting = BytesIO(bundle)
     with ZipFile(conflicting, "a") as archive:
-        prefix = f"assets/skill-packages/{SOURCE_ID}/outline/"
+        prefix = f"assets/skill_packages/{SOURCE_ID}/outline/"
         archive.writestr(f"{prefix}nested", b"file")
         archive.writestr(f"{prefix}nested/child.txt", b"child")
     with pytest.raises(BundleArchiveError, match="files and directories"):
@@ -144,7 +144,7 @@ def test_bundle_archive_rejects_path_traversal_unknown_version_and_asset_tamperi
 
     tampered = _rewrite_entry(
         bundle,
-        f"assets/skill-packages/{SOURCE_ID}/outline/SKILL.md",
+        f"assets/skill_packages/{SOURCE_ID}/outline/SKILL.md",
         b"different",
     )
     with pytest.raises(BundleArchiveError, match="hash"):
@@ -199,7 +199,7 @@ def test_python_package_requirements_must_use_utf8(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest, _files = _manifest()
-    prefix = f"assets/python-packages/{SOURCE_ID}/"
+    prefix = f"assets/python_packages/{SOURCE_ID}/"
     asset = PythonPackageAsset(
         kind="python-package",
         owner_source_id=SOURCE_ID,
@@ -226,6 +226,7 @@ def test_python_package_requirements_must_use_utf8(
             {SOURCE_ID: asset},
             {SOURCE_ID: "custom-tool"},
             {SOURCE_ID: "22222222-2222-4222-8222-222222222222"},
+            {SOURCE_ID: "Portable configuration"},
             tmp_path / "packages",
             runtime_root=tmp_path / "runtime",
         )

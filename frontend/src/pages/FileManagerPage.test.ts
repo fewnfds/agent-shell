@@ -107,7 +107,7 @@ describe('File Workspace', () => {
   })
 
   it('opens a caller path at its real parent and waits for a file click before editing', async () => {
-    const path = 'data/configuration-repositories/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/python_package_instances/command/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/main.py'
+    const path = 'data/config_repos/Default/python_packages/command/Command config/main.py'
     const parent = path.slice(0, path.lastIndexOf('/'))
     const list = vi.spyOn(managementApi, 'listManagedFiles').mockResolvedValue({
       path: parent,

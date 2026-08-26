@@ -6,12 +6,20 @@ from pathlib import Path
 import shutil
 from uuid import uuid4
 
-from agent_shell.configuration.identity import require_configuration_id
+from agent_shell.configuration.identity import (
+    normalize_configuration_name,
+    require_configuration_id,
+)
 from agent_shell.storage.atomic_files import write_text_atomic
 
 
 REPOSITORY_SCHEMA_VERSION = 1
 DEFAULT_REPOSITORY_NAME = "Default"
+CONFIGURATION_REPOSITORIES_DIRECTORY = "config_repos"
+PYTHON_PACKAGES_DIRECTORY = "python_packages"
+SKILL_PACKAGES_DIRECTORY = "skill_packages"
+CONFIGURATION_IMPORTS_DIRECTORY = "configuration_imports"
+_INTERNAL_REPOSITORY_PREFIXES = (".repository_copy_", ".repository_delete_")
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,15 +30,15 @@ class ConfigurationRepositoryDescriptor:
 
     @property
     def python_packages_root(self) -> Path:
-        return self.root / "python_package_instances"
+        return self.root / PYTHON_PACKAGES_DIRECTORY
 
     @property
     def skill_packages_root(self) -> Path:
-        return self.root / "skill_package_instances"
+        return self.root / SKILL_PACKAGES_DIRECTORY
 
     @property
     def imports_root(self) -> Path:
-        return self.root / "configuration-imports"
+        return self.root / CONFIGURATION_IMPORTS_DIRECTORY
 
     def as_dict(self, *, active: bool = False) -> dict[str, object]:
         return {
@@ -42,7 +50,7 @@ class ConfigurationRepositoryDescriptor:
 
 
 def configuration_repositories_root(data_root: Path) -> Path:
-    return data_root.resolve() / "configuration-repositories"
+    return data_root.resolve() / CONFIGURATION_REPOSITORIES_DIRECTORY
 
 
 def active_repository_pointer(data_root: Path) -> Path:
@@ -55,9 +63,10 @@ def _write_json_atomic(path: Path, value: dict[str, object]) -> None:
 
 
 def normalize_repository_name(value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("configuration repository name is required")
-    name = value.strip()
+    name = normalize_configuration_name(
+        value,
+        label="configuration repository name",
+    )
     if len(name) > 120:
         raise ValueError("configuration repository name must not exceed 120 characters")
     return name
@@ -75,13 +84,14 @@ def load_configuration_repository(root: Path) -> ConfigurationRepositoryDescript
     repository_id = require_configuration_id(
         value.get("id"), label="configuration repository id"
     )
-    if root.name != repository_id:
-        raise ValueError("configuration repository folder must match its manifest id")
+    name = normalize_repository_name(value.get("name"))
+    if root.name != name:
+        raise ValueError("configuration repository folder must match its manifest name")
     if value.get("schema_version") != REPOSITORY_SCHEMA_VERSION:
         raise ValueError("configuration repository schema version is unsupported")
     return ConfigurationRepositoryDescriptor(
         id=repository_id,
-        name=normalize_repository_name(value.get("name")),
+        name=name,
         root=root,
     )
 
@@ -94,9 +104,7 @@ def list_configuration_repositories(
         return ()
     repositories: list[ConfigurationRepositoryDescriptor] = []
     for path in sorted(root.iterdir(), key=lambda item: item.name.casefold()):
-        if path.is_dir() and not path.name.startswith(
-            (".repository-copy-", ".repository-delete-")
-        ):
+        if path.is_dir() and not path.name.startswith(_INTERNAL_REPOSITORY_PREFIXES):
             repositories.append(load_configuration_repository(path))
     return tuple(sorted(repositories, key=lambda item: (item.name.casefold(), item.id)))
 
@@ -111,11 +119,11 @@ def create_configuration_repository(
     repository_id = require_configuration_id(
         repository_id or str(uuid4()), label="configuration repository id"
     )
-    root = configuration_repositories_root(data_root) / repository_id
+    root = configuration_repositories_root(data_root) / normalized_name
     try:
         root.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
-        raise ValueError("configuration repository id already exists") from exc
+        raise ValueError("configuration repository name already exists") from exc
     descriptor = ConfigurationRepositoryDescriptor(
         id=repository_id,
         name=normalized_name,
@@ -172,9 +180,21 @@ def active_configuration_repository(
     repository_id = require_configuration_id(
         value.get("repository_id"), label="active configuration repository id"
     )
-    return load_configuration_repository(
-        configuration_repositories_root(data_root) / repository_id
+    return find_configuration_repository(data_root, repository_id)
+
+
+def find_configuration_repository(
+    data_root: Path,
+    repository_id: str,
+) -> ConfigurationRepositoryDescriptor:
+    repository_id = require_configuration_id(
+        repository_id,
+        label="configuration repository id",
     )
+    for descriptor in list_configuration_repositories(data_root):
+        if descriptor.id == repository_id:
+            return descriptor
+    raise ValueError("configuration repository does not exist")
 
 
 def ensure_active_configuration_repository(
@@ -195,12 +215,17 @@ def ensure_active_configuration_repository(
 
 __all__ = [
     "ConfigurationRepositoryDescriptor",
+    "CONFIGURATION_IMPORTS_DIRECTORY",
+    "CONFIGURATION_REPOSITORIES_DIRECTORY",
+    "PYTHON_PACKAGES_DIRECTORY",
     "REPOSITORY_SCHEMA_VERSION",
+    "SKILL_PACKAGES_DIRECTORY",
     "active_configuration_repository",
     "active_repository_pointer",
     "configuration_repositories_root",
     "create_configuration_repository",
     "ensure_active_configuration_repository",
+    "find_configuration_repository",
     "list_configuration_repositories",
     "load_configuration_repository",
     "normalize_repository_name",

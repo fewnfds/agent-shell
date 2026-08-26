@@ -1299,6 +1299,7 @@ export const en: MessageSchema = {
     mainAgentNotFound: 'The Main Agent configuration does not exist.',
     subagentNotFound: 'The Subagent entity does not exist.',
     configurationNameConflict: 'A configuration with this name already exists.',
+    configurationNameInvalid: 'Use a valid Windows file name for the configuration name.',
     unknownConfigurationType: 'Unknown configuration type: {type}',
     modelCatalogRequestInvalid: 'The model catalog request contains invalid fields.',
     modelEndpointInvalid: 'The model endpoint must be a complete HTTP(S) URL.',
@@ -1635,7 +1636,8 @@ export const en: MessageSchema = {
       },
       storage: {
         credentialMetadataInvalid: 'The saved credential state for this model configuration is damaged.',
-        skillPackageOwnerMismatch: 'The Skill package directory does not match its component identity.',
+        pythonPackageOwnerMismatch: 'The Python package directory does not match its configuration name.',
+        skillPackageOwnerMismatch: 'The Skill package directory does not match its configuration name.',
       },
       runtime: {
         configuration: 'The runtime cannot load this configuration.',

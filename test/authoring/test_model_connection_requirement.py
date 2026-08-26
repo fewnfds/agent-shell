@@ -76,7 +76,7 @@ def test_model_connection_is_instance_private_and_secret_is_write_only(tmp_path:
     assert connection["credential"] == {"status": "masked"}
     assert "do-not-export-this-secret" not in str(connection)
     assert resources.resolve_connection(connection["id"])["credential"] == "do-not-export-this-secret"
-    assert not (tmp_path / "configuration-repositories").exists()
+    assert not (tmp_path / "config_repos").exists()
 
 
 def test_saved_connection_resolves_masked_catalog_credential(tmp_path: Path) -> None:

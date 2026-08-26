@@ -238,11 +238,11 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
     output = target_config["components"]["agent-event-output"][0]
     target_repository = FileConfigRepository(target_root / "data")
     package_folder = (
-        target_repository.python_package_instances_root
-        / "agent-event-output"
-        / output["id"]
+        target_repository.python_packages_root
+        / "agent_event_output"
+        / output["name"]
     )
-    assert output["python_package"]["folder"] == output["id"]
+    assert output["python_package"]["folder"] == output["name"]
     assert json.loads((package_folder / "package.json").read_text(encoding="utf-8"))[
         "id"
     ] == output["id"]
@@ -313,9 +313,9 @@ def test_bundle_import_failure_removes_staged_configuration_and_assets(
     target_repository = FileConfigRepository(target_root / "data")
     config_root = target_repository.config_root
     assert not any(path.stem in target_ids for path in config_root.rglob("*.yaml"))
-    packages = config_root / "python_package_instances"
+    packages = config_root / "python_packages"
     assert not any(path.name in target_ids for path in packages.rglob("*"))
-    journals = config_root / "configuration-imports" / "journals"
+    journals = config_root / "configuration_imports" / "journals"
     assert not journals.exists() or not any(journals.iterdir())
 
 
@@ -344,8 +344,8 @@ def test_stale_target_uuid_is_rejected_without_deleting_current_configuration(
     target_root = tmp_path / "stale-target"
     data_root = target_root / "data"
     repository = FileConfigRepository(data_root)
-    packages_dir = repository.python_package_instances_root
-    skills_dir = repository.skill_package_instances_root
+    packages_dir = repository.python_packages_root
+    skills_dir = repository.skill_packages_root
     runtime_root = target_root / "runtime"
     prepared = BundleImportPlanner(
         repository,
@@ -491,8 +491,8 @@ def test_skill_private_package_import_is_independent_from_target_templates(
         assert created.status_code == 200, created.text
         source_id = created.json()["id"]
         private_manifest = (
-            FileConfigRepository(source_root / "data").skill_package_instances_root
-            / source_id
+            FileConfigRepository(source_root / "data").skill_packages_root
+            / created.json()["name"]
             / "outline"
             / "SKILL.md"
         )
@@ -553,10 +553,12 @@ def test_skill_private_package_import_is_independent_from_target_templates(
     target_repository = FileConfigRepository(target_root / "data")
     imported_record = target_repository.config()["components"]["skill"][0]
     assert imported_record["id"] == target_id
-    assert imported_record["skill_package"] == {"folder": target_id}
+    assert imported_record["skill_package"] == {
+        "folder": imported_record["name"]
+    }
     assert (
-        target_repository.skill_package_instances_root
-        / target_id
+        target_repository.skill_packages_root
+        / imported_record["name"]
         / "outline"
         / "SKILL.md"
     ).read_text(encoding="utf-8") == "user-authored invalid content\n"
@@ -580,8 +582,19 @@ def test_prepared_import_journal_recovery_removes_only_declared_new_paths(
         records=[
             JournalRecord(kind="component", type="custom-tool", target_id=target_id)
         ],
-        packages=[JournalPackage(adapter="agent-tool", target_id=target_id)],
-        skill_packages=[JournalSkillPackage(target_id=target_id)],
+        packages=[
+            JournalPackage(
+                adapter="agent-tool",
+                target_id=target_id,
+                folder="Imported tool",
+            )
+        ],
+        skill_packages=[
+            JournalSkillPackage(
+                target_id=target_id,
+                folder="Imported skills",
+            )
+        ],
     )
     root = transaction_root(repository_root)
     journal_path = root / "journals" / f"{transaction_id}.json"
@@ -590,13 +603,13 @@ def test_prepared_import_journal_recovery_removes_only_declared_new_paths(
     )
     package = (
         repository_root
-        / "python_package_instances"
-        / "agent-tool"
-        / target_id
+        / "python_packages"
+        / "agent_tool"
+        / "Imported tool"
     )
-    skill = repository_root / "skill_package_instances" / target_id
+    skill = repository_root / "skill_packages" / "Imported skills"
     staging = root / "staging" / transaction_id
-    unrelated = repository_root / "skill_package_instances" / "keep"
+    unrelated = repository_root / "skill_packages" / "keep"
     for folder in (configuration.parent, package, skill, staging, unrelated):
         folder.mkdir(parents=True, exist_ok=True)
     configuration.write_text("incomplete", encoding="utf-8")
@@ -751,7 +764,7 @@ def test_malformed_bundle_is_422_for_preview_and_import(
 
 
 @pytest.mark.parametrize("name", ["CON", "PRN.txt", "com1.JSON"])
-def test_bundle_download_avoids_windows_reserved_basenames(
+def test_configuration_names_reject_windows_reserved_basenames(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     name: str,
@@ -761,20 +774,8 @@ def test_bundle_download_avoids_windows_reserved_basenames(
             "/api/blocks/system-prompt",
             json={"name": name, "system_prompt": "Portable prompt."},
         )
-        assert created.status_code == 200, created.text
-        exported = client.post(
-            "/api/configuration-bundles/export",
-            json={
-                "kind": "component",
-                "type": "system-prompt",
-                "source_id": created.json()["id"],
-            },
-        )
-
-    assert exported.status_code == 200, exported.text
-    disposition = exported.headers["content-disposition"]
-    assert 'filename="configuration-' in disposition
-    assert disposition.endswith('.agent-shell-config.zip"')
+    assert created.status_code == 422, created.text
+    assert created.json()["detail"]["code"] == "configuration_name_invalid"
 
 
 def test_single_root_bundle_rejects_a_dangling_reference(

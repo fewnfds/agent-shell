@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+from agent_shell.configuration.identity import normalize_configuration_name
 from agent_shell.python_packages.authoring import PythonPackageAuthoringService
 from agent_shell.skills.authoring import SkillPackageAuthoringService
 from agent_shell.storage.blocks import BlockStore
@@ -106,11 +107,11 @@ class ComponentMutationService:
         block_id: str,
     ) -> dict[str, Any]:
         if block_type == "skill" and payload.get("skill_package") != {
-            "folder": block_id
+            "folder": payload.get("name")
         }:
             raise ComponentMutationError(
                 "skill_package_owner_invalid",
-                "The Skill package folder must match its Component UUID.",
+                "The Skill package folder must match its configuration name.",
                 message_key="errors.skillPackageOwnerInvalid",
             )
         report, validated = self._validation.validate_block(
@@ -124,6 +125,22 @@ class ComponentMutationService:
         assert validated is not None
         return validated
 
+    @staticmethod
+    def _normalize_name(payload: dict[str, Any]) -> dict[str, Any]:
+        candidate = dict(payload)
+        try:
+            candidate["name"] = normalize_configuration_name(
+                candidate.get("name"),
+                label="configuration name",
+            )
+        except ValueError as exc:
+            raise ComponentMutationError(
+                "configuration_name_invalid",
+                str(exc),
+                message_key="errors.configurationNameInvalid",
+            ) from exc
+        return candidate
+
     def _stage_create(
         self,
         block_type: str,
@@ -131,7 +148,7 @@ class ComponentMutationService:
         payload: dict[str, Any],
         changes: list[StagedPathChange],
     ) -> dict[str, Any]:
-        candidate = dict(payload)
+        candidate = self._normalize_name(payload)
         if self._python_packages.supports(block_type):
             template = candidate.pop("python_package_template", None)
             if (
@@ -156,6 +173,7 @@ class ComponentMutationService:
             reference, change = self._python_packages.create(
                 block_type,
                 block_id,
+                str(candidate["name"]),
                 template_key=template["key"],
                 template_revision=template["revision"],
             )
@@ -172,7 +190,7 @@ class ComponentMutationService:
                     message_key="errors.skillTemplatesRequired",
                 )
             reference, change = self._skill_packages.create(
-                block_id, template_paths
+                block_id, str(candidate["name"]), template_paths
             )
             changes.append(change)
             candidate["skill_package"] = reference
@@ -213,8 +231,9 @@ class ComponentMutationService:
             source = self._blocks.get_block_internal(block_type, block_id)
             if source is None:
                 raise self._not_found()
+            normalized_name = str(self._normalize_name({"name": name})["name"])
             report = self._validation.validate_block_copy(
-                block_type, source, name=name
+                block_type, source, name=normalized_name
             )
             if not report.valid:
                 raise ComponentMutationValidationError(report)
@@ -225,19 +244,31 @@ class ComponentMutationService:
                         block_type,
                         block_id,
                         new_id,
+                        normalized_name,
                         self._package_reference(source),
                     )
                     changes.append(change)
                     source = {**source, "python_package": reference}
                 elif block_type == "skill":
-                    changes.append(self._skill_packages.copy(block_id, new_id))
-                    source = {**source, "skill_package": {"folder": new_id}}
+                    source_folder = str(source.get("skill_package", {}).get("folder", ""))
+                    changes.append(
+                        self._skill_packages.copy(
+                            block_id,
+                            source_folder,
+                            new_id,
+                            normalized_name,
+                        )
+                    )
+                    source = {
+                        **source,
+                        "skill_package": {"folder": normalized_name},
+                    }
                 try:
                     copied = self._blocks.copy_block(
                         block_type,
                         block_id,
                         new_id,
-                        name,
+                        normalized_name,
                         source=source,
                         expected_repository_id=repository_id,
                     )
@@ -257,7 +288,7 @@ class ComponentMutationService:
             existing = self._blocks.get_block_internal(block_type, block_id)
             if existing is None:
                 raise self._not_found()
-            candidate = dict(payload)
+            candidate = self._normalize_name(payload)
             if self._python_packages.supports(block_type):
                 if candidate.get("python_package") != self._package_reference(existing):
                     raise ComponentMutationError(
@@ -275,16 +306,35 @@ class ComponentMutationService:
                     message_key="errors.skillPackageFolderImmutable",
                     status_code=409,
                 )
-            validated = self._validate(block_type, candidate, block_id=block_id)
-            try:
-                self._blocks.save_block(
-                    block_type,
-                    block_id,
-                    validated,
-                    expected_repository_id=repository_id,
-                )
-            except ValueError as exc:
-                raise self._name_conflict() from exc
+            with self._staged_changes() as changes:
+                if str(candidate["name"]) != str(existing.get("name", "")):
+                    if self._python_packages.supports(block_type):
+                        reference, change = self._python_packages.stage_rename(
+                            block_type,
+                            block_id,
+                            self._package_reference(existing),
+                            str(candidate["name"]),
+                        )
+                        changes.append(change)
+                        candidate["python_package"] = reference
+                    elif block_type == "skill":
+                        reference, change = self._skill_packages.stage_rename(
+                            block_id,
+                            str(existing.get("skill_package", {}).get("folder", "")),
+                            str(candidate["name"]),
+                        )
+                        changes.append(change)
+                        candidate["skill_package"] = reference
+                validated = self._validate(block_type, candidate, block_id=block_id)
+                try:
+                    self._blocks.save_block(
+                        block_type,
+                        block_id,
+                        validated,
+                        expected_repository_id=repository_id,
+                    )
+                except ValueError as exc:
+                    raise self._name_conflict() from exc
             updated = self._blocks.get_block(block_type, block_id)
             if updated is None:
                 raise RuntimeError("the committed Component record is unavailable")
@@ -303,7 +353,10 @@ class ComponentMutationService:
                 self._package_reference(source),
             )
         if block_type == "skill":
-            return self._skill_packages.stage_delete(block_id)
+            return self._skill_packages.stage_delete(
+                block_id,
+                str(source.get("skill_package", {}).get("folder", "")),
+            )
         return None
 
     def delete(self, block_type: str, block_id: str) -> None:
@@ -344,19 +397,25 @@ class ComponentMutationService:
 
     def add_skill(self, block_id: str, template_path: str) -> dict[str, Any]:
         with self._mutation():
-            if self._blocks.get_block_internal("skill", block_id) is None:
+            block = self._blocks.get_block_internal("skill", block_id)
+            if block is None:
                 raise self._not_found()
             with self._staged_changes() as changes:
-                changes.append(self._skill_packages.add(block_id, template_path))
-                return self._skill_packages.inspect(block_id)
+                folder = str(block.get("skill_package", {}).get("folder", ""))
+                changes.append(self._skill_packages.add(block_id, folder, template_path))
+                return self._skill_packages.inspect(block_id, folder)
 
     def remove_skill(self, block_id: str, folder_name: str) -> dict[str, Any]:
         with self._mutation():
-            if self._blocks.get_block_internal("skill", block_id) is None:
+            block = self._blocks.get_block_internal("skill", block_id)
+            if block is None:
                 raise self._not_found()
             with self._staged_changes() as changes:
-                changes.append(self._skill_packages.remove(block_id, folder_name))
-                return self._skill_packages.inspect(block_id)
+                package_folder = str(block.get("skill_package", {}).get("folder", ""))
+                changes.append(
+                    self._skill_packages.remove(block_id, package_folder, folder_name)
+                )
+                return self._skill_packages.inspect(block_id, package_folder)
 
 
 __all__ = [

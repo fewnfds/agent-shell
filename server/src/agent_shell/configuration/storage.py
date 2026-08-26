@@ -9,6 +9,7 @@ from agent_shell.configuration.dependencies import (
 )
 from agent_shell.configuration.identity import (
     name_collision_key,
+    normalize_configuration_name,
     require_configuration_id,
 )
 
@@ -66,6 +67,14 @@ def validate_configuration_snapshot(
         if not isinstance(raw_name, str) or not raw_name.strip():
             raise ValueError(
                 f"{entity.kind} {entity_id} must have a non-empty {identity_field}"
+            )
+        normalized_name = normalize_configuration_name(
+            raw_name,
+            label=f"{entity.kind} {entity_id} {identity_field}",
+        )
+        if normalized_name != raw_name:
+            raise ValueError(
+                f"{entity.kind} {entity_id} must use a normalized {identity_field}"
             )
         scope = (
             entity.kind,

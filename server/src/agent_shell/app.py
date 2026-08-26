@@ -151,8 +151,6 @@ def create_app(
         environment=environment,
         mutations=configuration_mutations,
     )
-    python_package_instances_dir = configuration.python_package_instances_root
-    skill_package_instances_dir = configuration.skill_package_instances_root
     runtime_policy = RuntimePolicyStore(configuration)
     media_outputs = MediaOutputStore(
         application_database,
@@ -175,7 +173,7 @@ def create_app(
     config_store = AgentConfigStore(configuration, event_logger)
     workflow_store = WorkflowStore(configuration, event_logger)
     python_package_validation = PythonPackageValidationService(
-        packages_dir=lambda: configuration.python_package_instances_root,
+        packages_dir=lambda: configuration.python_packages_root,
         runtime_root=runtime_dir,
     )
     workflow_lifecycle = WorkflowLifecycleService(
@@ -186,12 +184,12 @@ def create_app(
     python_package_authoring = PythonPackageAuthoringService(
         templates_root=python_templates_dir,
         examples_root=application_home / "examples",
-        instances_root=lambda: configuration.python_package_instances_root,
+        instances_root=lambda: configuration.python_packages_root,
         runtime_root=runtime_dir,
     )
     skill_package_authoring = SkillPackageAuthoringService(
         templates_root=skill_templates_dir,
-        instances_root=lambda: configuration.skill_package_instances_root,
+        instances_root=lambda: configuration.skill_packages_root,
     )
     configuration_validation = ConfigurationValidationService(
         block_store,
@@ -214,8 +212,8 @@ def create_app(
     )
     configuration_bundles = ConfigurationBundleService(
         configuration,
-        packages_dir=lambda: configuration.python_package_instances_root,
-        skills_dir=lambda: configuration.skill_package_instances_root,
+        packages_dir=lambda: configuration.python_packages_root,
+        skills_dir=lambda: configuration.skill_packages_root,
         runtime_root=runtime_dir,
     )
     configuration_repository_management = (
@@ -282,9 +280,9 @@ def create_app(
     )
     agent_runtime = RequestSnapshotRuntime(
         configuration,
-        python_packages_dir=lambda: configuration.python_package_instances_root,
+        python_packages_dir=lambda: configuration.python_packages_root,
         runtime_dir=runtime_dir,
-        skills_dir=lambda: configuration.skill_package_instances_root,
+        skills_dir=lambda: configuration.skill_packages_root,
         provider_http_clients=provider_http_clients,
         media_outputs=media_outputs,
         workflow_checkpoints=workflow_checkpoints,

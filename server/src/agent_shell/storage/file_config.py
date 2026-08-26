@@ -32,9 +32,11 @@ from agent_shell.configuration.repositories import (
     configuration_repositories_root,
     create_configuration_repository,
     ensure_active_configuration_repository,
+    find_configuration_repository,
     list_configuration_repositories,
-    load_configuration_repository,
     normalize_repository_name,
+    PYTHON_PACKAGES_DIRECTORY,
+    SKILL_PACKAGES_DIRECTORY,
     write_active_configuration_repository,
 )
 from agent_shell.configuration.storage import validate_configuration_snapshot
@@ -223,11 +225,11 @@ class FileConfigRepository:
         return self.config_root / "workflows"
 
     @property
-    def python_package_instances_root(self) -> Path:
+    def python_packages_root(self) -> Path:
         return self._active_repository.python_packages_root
 
     @property
-    def skill_package_instances_root(self) -> Path:
+    def skill_packages_root(self) -> Path:
         return self._active_repository.skill_packages_root
 
     @property
@@ -424,13 +426,7 @@ class FileConfigRepository:
     def _repository_descriptor(
         self, repository_id: str
     ) -> ConfigurationRepositoryDescriptor:
-        repository_id = require_configuration_id(
-            repository_id,
-            label="configuration repository id",
-        )
-        return load_configuration_repository(
-            configuration_repositories_root(self.data_root) / repository_id
-        )
+        return find_configuration_repository(self.data_root, repository_id)
 
     def _copy_repository_assets(
         self,
@@ -448,20 +444,21 @@ class FileConfigRepository:
                 reference = entity.payload.get("python_package")
                 if (
                     not isinstance(reference, dict)
-                    or reference.get("folder") != entity.id
+                    or reference.get("folder") != entity.name
                 ):
                     raise ValueError(
-                        "Python package ownership does not match its Component UUID"
+                        "Python package folder does not match its Component name"
                     )
+                folder_name = str(reference["folder"])
                 source_folder = (
-                    source.python_packages_root / spec.adapter / entity.id
+                    source.python_packages_root / spec.directory / folder_name
                 )
                 files = snapshot_directory(
                     source_folder,
                     exclude_python_runtime=True,
                 )
                 target_folder = (
-                    target.python_packages_root / spec.adapter / target_id
+                    target.python_packages_root / spec.directory / folder_name
                 )
                 materialize_files(target_folder, files)
                 manifest_path = target_folder / "package.json"
@@ -489,14 +486,15 @@ class FileConfigRepository:
                 reference = entity.payload.get("skill_package")
                 if (
                     not isinstance(reference, dict)
-                    or reference.get("folder") != entity.id
+                    or reference.get("folder") != entity.name
                 ):
                     raise ValueError(
-                        "Skill package ownership does not match its Component UUID"
+                        "Skill package folder does not match its Component name"
                     )
+                folder_name = str(reference["folder"])
                 materialize_files(
-                    target.skill_packages_root / target_id,
-                    snapshot_directory(source.skill_packages_root / entity.id),
+                    target.skill_packages_root / folder_name,
+                    snapshot_directory(source.skill_packages_root / folder_name),
                 )
 
     def copy_repository(
@@ -537,9 +535,9 @@ class FileConfigRepository:
                     payload["enabled"] = False
                 if entity.kind == "component":
                     if entity.component_type in PACKAGE_COMPONENT_SPECS:
-                        payload["python_package"]["folder"] = target_id
+                        payload["python_package"]["folder"] = entity.name
                     if entity.component_type == "skill":
-                        payload["skill_package"]["folder"] = target_id
+                        payload["skill_package"]["folder"] = entity.name
                 target_entities.append(
                     ConfigurationEntity(
                         id=target_id,
@@ -560,8 +558,8 @@ class FileConfigRepository:
             while target_id in repository_ids:
                 target_id = generate_configuration_id()
             repositories_root = configuration_repositories_root(self.data_root)
-            final_root = repositories_root / target_id
-            staging_root = repositories_root / f".repository-copy-{target_id}"
+            final_root = repositories_root / normalized_name
+            staging_root = repositories_root / f".repository_copy_{target_id}"
             staging = ConfigurationRepositoryDescriptor(
                 id=target_id,
                 name=normalized_name,
@@ -625,7 +623,7 @@ class FileConfigRepository:
                     "the active configuration repository cannot be deleted"
                 )
             descriptor = self._repository_descriptor(repository_id)
-            tombstone = descriptor.root.parent / f".repository-delete-{descriptor.id}"
+            tombstone = descriptor.root.parent / f".repository_delete_{descriptor.id}"
             if tombstone.exists():
                 raise ValueError(
                     "configuration repository deletion staging already exists"
@@ -648,8 +646,8 @@ class FileConfigRepository:
                 "components",
                 "agents",
                 "workflows",
-                "python_package_instances",
-                "skill_package_instances",
+                PYTHON_PACKAGES_DIRECTORY,
+                SKILL_PACKAGES_DIRECTORY,
             ):
                 directory = descriptor.root / directory_name
                 if not directory.exists():
@@ -733,8 +731,9 @@ class FileConfigRepository:
 
     def switch_repository(self, repository_id: str) -> dict[str, object]:
         with self._mutations.mutation(), self._lock:
-            descriptor = load_configuration_repository(
-                self.data_root / "configuration-repositories" / repository_id
+            descriptor = find_configuration_repository(
+                self.data_root,
+                repository_id,
             )
             candidate = self._load_config_from(descriptor.root)
             self._normalize_config(candidate)
@@ -945,8 +944,8 @@ class FileConfigRepository:
         with self._lock:
             yield (
                 self.clone(),
-                self.python_package_instances_root,
-                self.skill_package_instances_root,
+                self.python_packages_root,
+                self.skill_packages_root,
                 self.repository_id,
             )
 

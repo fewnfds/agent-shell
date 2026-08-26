@@ -14,12 +14,12 @@ from agent_shell.runtime.capabilities.deepagents import DeepAgentsCapabilityErro
 def test_skill_requires_an_owned_private_package_reference() -> None:
     owner = "11111111-1111-4111-8111-111111111111"
     skill = SkillBlock.model_validate(
-        {"name": "Packaged skills", "skill_package": {"folder": owner}}
+        {"name": "Packaged skills", "skill_package": {"folder": "Packaged skills"}}
     )
-    assert skill.skill_package.folder == owner
+    assert skill.skill_package.folder == "Packaged skills"
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         SkillBlock.model_validate(
-            {"name": "Removed list", "skill_package": {"folder": owner}, "skills": ["old"]}
+            {"name": "Removed list", "skill_package": {"folder": "Removed list"}, "skills": ["old"]}
         )
 
 def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
@@ -27,7 +27,8 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
 ) -> None:
     skills_dir = tmp_path / "skills"
     owner = "11111111-1111-4111-8111-111111111111"
-    skill_dir = skills_dir / owner / "invalid-metadata"
+    package_name = "Invalid metadata"
+    skill_dir = skills_dir / package_name / "invalid-metadata"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: invalid-metadata\n---\n",
@@ -35,7 +36,7 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
     )
     filesystem = FilesystemBlock.model_validate({"name": "Thread files"})
     skill = SkillBlock.model_validate(
-        {"name": "Invalid metadata", "skill_package": {"folder": owner}}
+        {"name": package_name, "skill_package": {"folder": package_name}}
     )
 
     capabilities = build_deepagents_capabilities(
@@ -48,7 +49,8 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
 def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
     owner = "11111111-1111-4111-8111-111111111111"
-    skill_dir = skills_dir / owner / "linked"
+    package_name = "Linked Skill"
+    skill_dir = skills_dir / package_name / "linked"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: linked\ndescription: Linked instructions.\n---\n",
@@ -61,7 +63,7 @@ def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> N
     except OSError as exc:
         pytest.skip(f"symbolic links are unavailable in this environment: {exc}")
     skill = SkillBlock.model_validate(
-        {"name": "Linked Skill", "skill_package": {"folder": owner}}
+        {"name": package_name, "skill_package": {"folder": package_name}}
     )
 
     with pytest.raises(DeepAgentsCapabilityError, match="link, reparse point"):
@@ -76,7 +78,8 @@ def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> N
 def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
     owner = "11111111-1111-4111-8111-111111111111"
-    skill_dir = skills_dir / owner / "outline"
+    package_name = "Default skills"
+    skill_dir = skills_dir / package_name / "outline"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: outline\ndescription: Outline a document.\n---\n",
@@ -84,7 +87,7 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
     )
     filesystem = FilesystemBlock.model_validate({"name": "Thread files"})
     default_skill = SkillBlock.model_validate(
-        {"name": "Default skills", "skill_package": {"folder": owner}}
+        {"name": package_name, "skill_package": {"folder": package_name}}
     )
     custom_prompt = (
         "Locations: {skills_locations}\n"
@@ -93,23 +96,23 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
     )
     custom_skill = SkillBlock.model_validate(
         {
-            "name": "Custom skills",
-            "skill_package": {"folder": owner},
+            "name": package_name,
+            "skill_package": {"folder": package_name},
             "instruction_override": custom_prompt,
         }
     )
     disabled_skill = SkillBlock.model_validate(
         {
-            "name": "Silent skills",
-            "skill_package": {"folder": owner},
+            "name": package_name,
+            "skill_package": {"folder": package_name},
             "system_prompt_enabled": False,
         }
     )
     with pytest.raises(ValidationError, match="instruction_override must be null"):
         SkillBlock.model_validate(
             {
-                "name": "Ambiguous skills",
-                "skill_package": {"folder": owner},
+                "name": package_name,
+                "skill_package": {"folder": package_name},
                 "system_prompt_enabled": False,
                 "instruction_override": custom_prompt,
             }
@@ -149,18 +152,18 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
     skills_dir = tmp_path / "skills"
     alpha_owner = "11111111-1111-4111-8111-111111111111"
     beta_owner = "22222222-2222-4222-8222-222222222222"
-    for owner, name in ((alpha_owner, "alpha"), (beta_owner, "beta")):
-        folder = skills_dir / owner / name
+    for package_name, name in (("Alpha only", "alpha"), ("Beta only", "beta")):
+        folder = skills_dir / package_name / name
         folder.mkdir(parents=True)
         (folder / "SKILL.md").write_text(
             f"---\nname: {name}\ndescription: {name} instructions.\n---\n",
             encoding="utf-8",
         )
     alpha = SkillBlock.model_validate(
-        {"name": "Alpha only", "skill_package": {"folder": alpha_owner}}
+        {"name": "Alpha only", "skill_package": {"folder": "Alpha only"}}
     )
     beta = SkillBlock.model_validate(
-        {"name": "Beta only", "skill_package": {"folder": beta_owner}}
+        {"name": "Beta only", "skill_package": {"folder": "Beta only"}}
     )
 
     alpha_capabilities = build_deepagents_capabilities(
@@ -208,7 +211,7 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
         "/skills/alpha/created.md", "must not be written"
     )
     assert "read-only" in denied.error
-    assert not (skills_dir / alpha_owner / "alpha" / "created.md").exists()
+    assert not (skills_dir / "Alpha only" / "alpha" / "created.md").exists()
 
 def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
     tmp_path: Path,
@@ -217,7 +220,8 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
 
     skills_dir = tmp_path / "skills"
     owner = "11111111-1111-4111-8111-111111111111"
-    selected_folder = skills_dir / owner / "selected"
+    package_name = "Selected Skill"
+    selected_folder = skills_dir / package_name / "selected"
     selected_folder.mkdir(parents=True)
     manifest = selected_folder / "SKILL.md"
     manifest.write_text(
@@ -226,7 +230,7 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
     )
     filesystem = FilesystemBlock.model_validate({"name": "Shared workspace"})
     skill = SkillBlock.model_validate(
-        {"name": "Selected Skill", "skill_package": {"folder": owner}}
+        {"name": package_name, "skill_package": {"folder": package_name}}
     )
 
     capabilities = build_deepagents_capabilities(

@@ -6,7 +6,10 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from agent_shell.configuration.identity import require_configuration_id
+from agent_shell.configuration.identity import (
+    normalize_configuration_name,
+    require_configuration_id,
+)
 from agent_shell.registries.errors import ResourceScanError
 from agent_shell.registries.skills import (
     scan_private_skill_package,
@@ -90,20 +93,24 @@ class SkillPackageAuthoringService:
             ) from exc
         return folder
 
-    def _owner_root(self, owner_id: str) -> Path:
+    def _owner_root(self, owner_id: str, folder_name: str) -> Path:
         try:
             owner_id = require_configuration_id(owner_id, label="Skill package owner")
         except ValueError as exc:
             raise SkillPackageAuthoringError(
                 "skill_package_owner_invalid", "The Skill package owner is invalid."
             ) from exc
-        return self.instances_root / owner_id
+        normalized = normalize_configuration_name(
+            folder_name,
+            label="Skill package folder",
+        )
+        return self.instances_root / normalized
 
-    def inspect(self, owner_id: str) -> dict[str, Any]:
-        root = self._owner_root(owner_id)
+    def inspect(self, owner_id: str, folder_name: str) -> dict[str, Any]:
+        root = self._owner_root(owner_id, folder_name)
         report = scan_private_skill_package(root)
         return {
-            "folder": owner_id,
+            "folder": root.name,
             "path": str(root),
             "catalog": report["catalog"],
             "warnings": report["errors"],
@@ -135,13 +142,14 @@ class SkillPackageAuthoringService:
     def create(
         self,
         owner_id: str,
+        owner_name: str,
         template_paths: list[str],
     ) -> tuple[dict[str, str], StagedPathChange]:
         if not template_paths:
             raise SkillPackageAuthoringError(
                 "skill_templates_required", "Select at least one Skill Template."
             )
-        root = self._owner_root(owner_id)
+        root = self._owner_root(owner_id, owner_name)
         if os.path.lexists(root):
             raise SkillPackageAuthoringError(
                 "skill_package_exists", "The Skill package already exists.", status_code=409
@@ -160,13 +168,19 @@ class SkillPackageAuthoringService:
             shutil.rmtree(root, ignore_errors=True)
             raise
         return (
-            {"folder": owner_id},
+            {"folder": root.name},
             StagedPathChange(lambda: shutil.rmtree(root, ignore_errors=True)),
         )
 
-    def copy(self, source_owner_id: str, target_owner_id: str) -> StagedPathChange:
-        source = self._owner_root(source_owner_id)
-        target = self._owner_root(target_owner_id)
+    def copy(
+        self,
+        source_owner_id: str,
+        source_folder: str,
+        target_owner_id: str,
+        target_owner_name: str,
+    ) -> StagedPathChange:
+        source = self._owner_root(source_owner_id, source_folder)
+        target = self._owner_root(target_owner_id, target_owner_name)
         if not source.is_dir() or not is_plain_tree(source):
             raise SkillPackageAuthoringError(
                 "skill_package_not_found", "The source Skill package is unavailable.", status_code=404
@@ -178,8 +192,8 @@ class SkillPackageAuthoringService:
         shutil.copytree(source, target, symlinks=False)
         return StagedPathChange(lambda: shutil.rmtree(target, ignore_errors=True))
 
-    def stage_delete(self, owner_id: str) -> StagedPathChange:
-        root = self._owner_root(owner_id)
+    def stage_delete(self, owner_id: str, folder_name: str) -> StagedPathChange:
+        root = self._owner_root(owner_id, folder_name)
         if not os.path.lexists(root):
             return StagedPathChange(lambda: None)
         if not is_plain_tree(root):
@@ -202,8 +216,13 @@ class SkillPackageAuthoringService:
 
         return StagedPathChange(rollback, finalize)
 
-    def add(self, owner_id: str, template_path: str) -> StagedPathChange:
-        root = self._owner_root(owner_id)
+    def add(
+        self,
+        owner_id: str,
+        folder_name: str,
+        template_path: str,
+    ) -> StagedPathChange:
+        root = self._owner_root(owner_id, folder_name)
         source = self._template_folder(template_path)
         name = str(scan_skill_folder(source)["name"])
         if os.path.lexists(root) and not is_plain_tree(root):
@@ -221,7 +240,12 @@ class SkillPackageAuthoringService:
         self._copy_template(source, destination)
         return StagedPathChange(lambda: shutil.rmtree(destination, ignore_errors=True))
 
-    def remove(self, owner_id: str, folder_name: str) -> StagedPathChange:
+    def remove(
+        self,
+        owner_id: str,
+        package_folder: str,
+        folder_name: str,
+    ) -> StagedPathChange:
         try:
             folder_name = require_single_path_segment(
                 folder_name, label="Skill package folder"
@@ -230,7 +254,7 @@ class SkillPackageAuthoringService:
             raise SkillPackageAuthoringError(
                 "skill_folder_invalid", "The Skill package folder is invalid."
             ) from exc
-        root = self._owner_root(owner_id)
+        root = self._owner_root(owner_id, package_folder)
         target = root / folder_name
         if not target.is_dir() or is_reparse_point(target):
             raise SkillPackageAuthoringError(
@@ -251,6 +275,36 @@ class SkillPackageAuthoringService:
             shutil.rmtree(staging, ignore_errors=True)
 
         return StagedPathChange(rollback, finalize)
+
+    def stage_rename(
+        self,
+        owner_id: str,
+        folder_name: str,
+        owner_name: str,
+    ) -> tuple[dict[str, str], StagedPathChange]:
+        source = self._owner_root(owner_id, folder_name)
+        target = self._owner_root(owner_id, owner_name)
+        if source.name == target.name:
+            return {"folder": target.name}, StagedPathChange(lambda: None)
+        if not source.is_dir() or not is_plain_tree(source):
+            raise SkillPackageAuthoringError(
+                "skill_package_not_found",
+                "The Skill package is unavailable.",
+                status_code=404,
+            )
+        if target != source and os.path.lexists(target):
+            raise SkillPackageAuthoringError(
+                "skill_package_exists",
+                "A Skill package with this configuration name already exists.",
+                status_code=409,
+            )
+        os.replace(source, target)
+
+        def rollback() -> None:
+            if target.exists():
+                os.replace(target, source)
+
+        return {"folder": target.name}, StagedPathChange(rollback)
 
 
 __all__ = ["SkillPackageAuthoringError", "SkillPackageAuthoringService"]

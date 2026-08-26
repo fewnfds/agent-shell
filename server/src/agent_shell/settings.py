@@ -308,7 +308,7 @@ class Settings(BaseSettings):
     def resolved_python_templates_dir(self) -> Path:
         return self.data_root / "templates"
 
-    def resolved_python_package_instances_dir(self) -> Path:
+    def resolved_python_packages_dir(self) -> Path:
         return ensure_active_configuration_repository(
             self.data_root
         ).python_packages_root
@@ -316,7 +316,7 @@ class Settings(BaseSettings):
     def resolved_skill_templates_dir(self) -> Path:
         return self.data_root / "skills-template"
 
-    def resolved_skill_package_instances_dir(self) -> Path:
+    def resolved_skill_packages_dir(self) -> Path:
         return ensure_active_configuration_repository(
             self.data_root
         ).skill_packages_root
@@ -333,13 +333,13 @@ class Settings(BaseSettings):
             self.resolved_python_templates_dir() / "workflow" / "workflow_event_output",
             self.resolved_python_templates_dir() / "agent" / "custom_middleware",
             self.resolved_python_templates_dir() / "agent" / "agent_event_output",
-            self.resolved_python_package_instances_dir() / "command",
-            self.resolved_python_package_instances_dir() / "task-dispatcher",
-            self.resolved_python_package_instances_dir() / "agent-middleware",
-            self.resolved_python_package_instances_dir() / "agent-tool",
-            self.resolved_python_package_instances_dir() / "agent-event-output",
-            self.resolved_python_package_instances_dir() / "workflow-event-output",
-            self.resolved_skill_package_instances_dir(),
+            self.resolved_python_packages_dir() / "command",
+            self.resolved_python_packages_dir() / "task_dispatcher",
+            self.resolved_python_packages_dir() / "agent_middleware",
+            self.resolved_python_packages_dir() / "agent_tool",
+            self.resolved_python_packages_dir() / "agent_event_output",
+            self.resolved_python_packages_dir() / "workflow_event_output",
+            self.resolved_skill_packages_dir(),
             self.resolved_skill_templates_dir(),
             self.resolved_logs_dir(),
             self.resolved_runtime_dir() / "cache",

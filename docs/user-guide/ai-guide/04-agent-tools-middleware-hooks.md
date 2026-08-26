@@ -287,7 +287,7 @@ AAP 使用 `Overwrite(convert_to_messages(...))` 设置 invocation 的初始 `me
 
 ## 10. Package 与 dependency
 
-- private package 的 folder 与 `package.json.id` 等于 Component UUID；
+- private package 的 folder 等于 Component 配置名称，`package.json.id` 等于 Component UUID；
 - `package.json` 的 family 和 adapter 与 Custom Tool 或 Custom Middleware 类型一致；
 - local module 使用 relative import，例如 `from .helpers import build_value`；
 - Python 3.12 standard library、平台公开的 LangChain、LangGraph、Deep Agents 和 `agent_shell` helper 使用当前锁定版本；

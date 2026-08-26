@@ -61,4 +61,4 @@ def output(event):
 }
 ```
 
-endpoint 为 `POST /api/blocks/workflow-event-output`。新建时 folder 必须为空且 revision 必须与 catalog 一致；保存后 package folder 与 `package.json.id` 等于配置 UUID 且不可变，复制时自动跟随新 UUID。
+endpoint 为 `POST /api/blocks/workflow-event-output`。新建时 folder 必须为空且 revision 必须与 catalog 一致；保存后 package folder 等于配置名称，`package.json.id` 等于配置 UUID。重命名会同步移动目录，复制会生成新的名称目录和 manifest UUID。

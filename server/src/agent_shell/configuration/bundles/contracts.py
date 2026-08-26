@@ -5,11 +5,11 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent_shell.configuration.dependencies import ConfigurationEntityKind
-from agent_shell.configuration.identity import ConfigurationId
+from agent_shell.configuration.identity import ConfigurationId, ConfigurationName
 
 
 BUNDLE_FORMAT = "agent-shell.configuration-bundle"
-BUNDLE_FORMAT_VERSION = 3
+BUNDLE_FORMAT_VERSION = 4
 
 
 class BundleRoot(BaseModel):
@@ -31,7 +31,7 @@ class BundleRecord(BaseModel):
 
     kind: ConfigurationEntityKind
     source_id: ConfigurationId
-    name: str = Field(min_length=1)
+    name: ConfigurationName
     component_type: str | None = Field(default=None, alias="type")
     payload: dict[str, Any]
 
@@ -132,7 +132,7 @@ class ImportResolutions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_ids: dict[ConfigurationId, ConfigurationId]
-    names: dict[ConfigurationId, str] = Field(default_factory=dict)
+    names: dict[ConfigurationId, ConfigurationName] = Field(default_factory=dict)
     filesystem_bindings: dict[str, FilesystemBindingResolution] = Field(
         default_factory=dict
     )

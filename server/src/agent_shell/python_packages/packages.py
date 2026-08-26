@@ -310,10 +310,10 @@ def scan_python_package(
     runtime_root: Path | None = None,
 ) -> dict[str, object]:
     parsed = parse_package_folder(folder.name)
-    if parsed is None or parsed != owner_id:
+    if parsed is None:
         raise ResourceScanError(
             "resource.error.pythonPackage.ownerMismatch",
-            "The Python package folder does not belong to the component configuration.",
+            "The Python package folder name is invalid.",
         )
     entries = _inspect_folder(folder)
     _required_files(folder)
@@ -323,10 +323,10 @@ def scan_python_package(
         model=PythonPackageManifest,
     )
     assert isinstance(manifest, PythonPackageManifest)
-    if manifest.id != parsed:
+    if manifest.id != owner_id:
         raise ResourceScanError(
             "resource.error.pythonPackage.idMismatch",
-            "The manifest id must match the configuration UUID in the folder name.",
+            "The manifest id must match the owner configuration UUID.",
             {"declared_id": manifest.id},
         )
     if manifest.family != family or manifest.adapter != adapter:
@@ -354,11 +354,12 @@ def resolve_owned_python_package_folder(
     *,
     owner_id: str,
     adapter: PythonPackageAdapter,
+    adapter_directory: str | None = None,
 ) -> Path | None:
     parsed = parse_package_folder(folder_name)
-    if parsed is None or parsed != owner_id:
+    if parsed is None:
         return None
-    folder = directory / adapter / folder_name
+    folder = directory / (adapter_directory or adapter.replace("-", "_")) / parsed
     if not folder.is_dir() or _is_link(folder):
         return None
     return folder
@@ -375,10 +376,10 @@ def inspect_python_package_draft(
     runtime_root: Path | None = None,
 ) -> dict[str, object]:
     parsed = parse_package_folder(folder.name)
-    if parsed is None or parsed != owner_id:
+    if parsed is None:
         raise ResourceScanError(
             "resource.error.pythonPackage.ownerMismatch",
-            "The Python package folder does not belong to the component configuration.",
+            "The Python package folder name is invalid.",
         )
     entries = _inspect_folder(folder)
     revision = _directory_revision(folder, entries)
@@ -410,10 +411,10 @@ def inspect_python_package_draft(
             model=PythonPackageManifest,
         )
         assert isinstance(parsed_manifest, PythonPackageManifest)
-        if parsed_manifest.id != parsed:
+        if parsed_manifest.id != owner_id:
             raise ResourceScanError(
                 "resource.error.pythonPackage.idMismatch",
-                "The manifest id must match the configuration UUID in the folder name.",
+                "The manifest id must match the owner configuration UUID.",
                 {"declared_id": parsed_manifest.id},
             )
         if parsed_manifest.family != family or parsed_manifest.adapter != adapter:
@@ -445,6 +446,7 @@ def resolve_python_package(
     owner_id: str,
     family: PythonPackageFamily,
     adapter: PythonPackageAdapter,
+    adapter_directory: str | None = None,
     factory_name: str,
     factory_parameters: tuple[str, ...] | None,
     runtime_root: Path | None = None,
@@ -454,6 +456,7 @@ def resolve_python_package(
         directory,
         owner_id=owner_id,
         adapter=adapter,
+        adapter_directory=adapter_directory,
     )
     if folder is None:
         return None

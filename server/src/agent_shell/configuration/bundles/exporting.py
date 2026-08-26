@@ -236,6 +236,10 @@ class ConfigurationBundleExporter:
                     if isinstance(reference, dict)
                     else ""
                 )
+                if folder_name != entity.name:
+                    raise BundleExportError(
+                        "Python package folder does not match its Component name"
+                    )
                 folder = resolve_owned_python_package_folder(
                     folder_name,
                     self._packages_dir,
@@ -247,7 +251,7 @@ class ConfigurationBundleExporter:
                         f"Python package is missing for configuration {entity.id}"
                     )
                 files = self._stable_package_snapshot(entity, folder)
-                prefix = f"assets/python-packages/{entity.id}/"
+                prefix = f"assets/python_packages/{entity.id}/"
                 archive_files.update(
                     {f"{prefix}{path}": content for path, content in files.items()}
                 )
@@ -261,17 +265,17 @@ class ConfigurationBundleExporter:
                 )
             if entity.component_type == "skill":
                 reference = entity.payload.get("skill_package")
-                if not isinstance(reference, dict) or reference.get("folder") != entity.id:
+                if not isinstance(reference, dict) or reference.get("folder") != entity.name:
                     raise BundleExportError(
-                        "Skill package ownership does not match its Component UUID"
+                        "Skill package folder does not match its Component name"
                     )
-                folder = self._skills_dir / entity.id
+                folder = self._skills_dir / entity.name
                 if not folder.is_dir() or folder.is_symlink():
                     raise BundleExportError(
                         f"Skill package is missing for configuration {entity.id}"
                     )
                 files = self._stable_skill_snapshot(entity.id, folder)
-                prefix = f"assets/skill-packages/{entity.id}/"
+                prefix = f"assets/skill_packages/{entity.id}/"
                 archive_files.update(
                     {f"{prefix}{path}": content for path, content in files.items()}
                 )

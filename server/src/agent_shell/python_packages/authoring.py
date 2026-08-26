@@ -12,7 +12,10 @@ import tempfile
 from typing import Any, Callable
 from uuid import uuid4
 
-from agent_shell.configuration.identity import is_configuration_id
+from agent_shell.configuration.identity import (
+    is_configuration_id,
+    normalize_configuration_name,
+)
 from agent_shell.python_packages.packages import (
     PythonPackageManifest,
     inspect_python_package_draft,
@@ -37,6 +40,7 @@ class PackageAdapterSpec:
     example_parts: tuple[str, str]
     family: str
     adapter: str
+    directory: str
     factory_name: str
     factory_parameters: tuple[str, ...] | None
 
@@ -47,6 +51,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("agent-components", "custom-tool"),
         family="tool",
         adapter="agent-tool",
+        directory="agent_tool",
         factory_name="create_tool",
         factory_parameters=(),
     ),
@@ -55,6 +60,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("agent-components", "agent-event-output"),
         family="event-output",
         adapter="agent-event-output",
+        directory="agent_event_output",
         factory_name="output",
         factory_parameters=("event",),
     ),
@@ -63,6 +69,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("workflow-components", "workflow-event-output"),
         family="event-output",
         adapter="workflow-event-output",
+        directory="workflow_event_output",
         factory_name="output",
         factory_parameters=("event",),
     ),
@@ -71,6 +78,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("workflow-components", "command"),
         family="workflow-node",
         adapter="command",
+        directory="command",
         factory_name="create_command",
         factory_parameters=(),
     ),
@@ -79,6 +87,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("workflow-components", "task-dispatcher"),
         family="workflow-node",
         adapter="task-dispatcher",
+        directory="task_dispatcher",
         factory_name="create_dispatcher",
         factory_parameters=(),
     ),
@@ -87,6 +96,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         example_parts=("agent-components", "custom-middleware"),
         family="middleware",
         adapter="agent-middleware",
+        directory="agent_middleware",
         factory_name="create_middleware",
         factory_parameters=None,
     ),
@@ -146,7 +156,7 @@ class PythonPackageAuthoringService:
         return self._examples_root.joinpath(*spec.example_parts)
 
     def _adapter_root(self, spec: PackageAdapterSpec) -> Path:
-        return self._instances_root / spec.adapter
+        return self._instances_root / spec.directory
 
     def template_catalog(self, block_type: str) -> dict[str, object]:
         spec = self._spec(block_type)
@@ -198,6 +208,7 @@ class PythonPackageAuthoringService:
                 owner_id=owner_id,
                 family=spec.family,  # type: ignore[arg-type]
                 adapter=spec.adapter,  # type: ignore[arg-type]
+                adapter_directory=spec.directory,
                 factory_name=spec.factory_name,
                 factory_parameters=spec.factory_parameters,
                 runtime_root=self._runtime_root,
@@ -227,6 +238,7 @@ class PythonPackageAuthoringService:
             self._instances_root,
             owner_id=owner_id,
             adapter=spec.adapter,  # type: ignore[arg-type]
+            adapter_directory=spec.directory,
         )
         if folder is None:
             raise PythonPackageAuthoringError(
@@ -260,12 +272,17 @@ class PythonPackageAuthoringService:
         reference: dict[str, Any],
         *,
         repository_id: str,
+        repository_name: str,
     ) -> dict[str, object]:
         if not is_configuration_id(repository_id):
             raise PythonPackageAuthoringError(
                 "python_package_repository_invalid",
                 "The active configuration repository id is invalid.",
             )
+        repository_name = normalize_configuration_name(
+            repository_name,
+            label="configuration repository name",
+        )
         inspection, folder = self._inspect_instance(
             block_type, owner_id, str(reference.get("folder", ""))
         )
@@ -301,9 +318,8 @@ class PythonPackageAuthoringService:
                         {
                             "path": relative,
                             "file_manager_path": (
-                                "data/configuration-repositories/"
-                                f"{repository_id}/python_package_instances/"
-                                f"{spec.adapter}/{owner_id}/{relative}"
+                                f"data/config_repos/{repository_name}/python_packages/"
+                                f"{spec.directory}/{folder.name}/{relative}"
                             ),
                             "size": file_metadata.st_size,
                             "modified_at": datetime.fromtimestamp(
@@ -342,6 +358,7 @@ class PythonPackageAuthoringService:
         self,
         block_type: str,
         owner_id: str,
+        owner_name: str,
         *,
         template_key: str,
         template_revision: str,
@@ -379,13 +396,22 @@ class PythonPackageAuthoringService:
                 status_code=409,
             )
 
-        folder_name = owner_id
+        folder_name = normalize_configuration_name(
+            owner_name,
+            label="configuration name",
+        )
         adapter_root = self._adapter_root(spec)
         adapter_root.mkdir(parents=True, exist_ok=True)
         staging_root = Path(tempfile.mkdtemp(prefix=".authoring-", dir=adapter_root))
         staged = staging_root / folder_name
         final = adapter_root / folder_name
         try:
+            if os.path.lexists(final):
+                raise PythonPackageAuthoringError(
+                    "python_package_exists",
+                    "A Python extension directory with this configuration name already exists.",
+                    status_code=409,
+                )
             shutil.copytree(template, staged, symlinks=True)
             manifest = PythonPackageManifest.model_validate(
                 {
@@ -436,19 +462,29 @@ class PythonPackageAuthoringService:
         block_type: str,
         source_owner_id: str,
         target_owner_id: str,
+        target_owner_name: str,
         reference: dict[str, Any],
     ) -> tuple[dict[str, str], StagedPathChange]:
         _metadata, source = self._scan_instance(
             block_type, source_owner_id, str(reference.get("folder", ""))
         )
         spec = self._spec(block_type)
-        folder_name = target_owner_id
+        folder_name = normalize_configuration_name(
+            target_owner_name,
+            label="configuration name",
+        )
         final = self._adapter_root(spec) / folder_name
         staging_root = Path(
             tempfile.mkdtemp(prefix=".authoring-", dir=self._adapter_root(spec))
         )
         staged = staging_root / folder_name
         try:
+            if os.path.lexists(final):
+                raise PythonPackageAuthoringError(
+                    "python_package_exists",
+                    "A Python extension directory with this configuration name already exists.",
+                    status_code=409,
+                )
             shutil.copytree(source, staged, symlinks=True)
             manifest_path = staged / "package.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -497,6 +533,7 @@ class PythonPackageAuthoringService:
             self._instances_root,
             owner_id=owner_id,
             adapter=spec.adapter,  # type: ignore[arg-type]
+            adapter_directory=spec.directory,
         )
         if folder is None:
             logger.warning(
@@ -538,6 +575,48 @@ class PythonPackageAuthoringService:
             shutil.rmtree(tombstone_root, ignore_errors=True)
 
         return StagedPathChange(rollback, finalize)
+
+    def stage_rename(
+        self,
+        block_type: str,
+        owner_id: str,
+        reference: dict[str, Any],
+        owner_name: str,
+    ) -> tuple[dict[str, str], StagedPathChange]:
+        spec = self._spec(block_type)
+        source = resolve_owned_python_package_folder(
+            str(reference.get("folder", "")),
+            self._instances_root,
+            owner_id=owner_id,
+            adapter=spec.adapter,  # type: ignore[arg-type]
+            adapter_directory=spec.directory,
+        )
+        if source is None:
+            raise PythonPackageAuthoringError(
+                "python_package_not_found",
+                "The Python extension directory is missing or is not owned by this configuration.",
+                status_code=404,
+            )
+        folder_name = normalize_configuration_name(
+            owner_name,
+            label="configuration name",
+        )
+        target = source.parent / folder_name
+        if source.name == folder_name:
+            return {"folder": folder_name}, StagedPathChange(lambda: None)
+        if target != source and os.path.lexists(target):
+            raise PythonPackageAuthoringError(
+                "python_package_exists",
+                "A Python extension directory with this configuration name already exists.",
+                status_code=409,
+            )
+        os.replace(source, target)
+
+        def rollback() -> None:
+            if target.exists():
+                os.replace(target, source)
+
+        return {"folder": folder_name}, StagedPathChange(rollback)
 
 
 __all__ = [

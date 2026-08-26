@@ -54,9 +54,9 @@ def _create_command(client: TestClient, *, name: str = "Private router") -> dict
 
 def _private_folder(data_root: Path, created: dict) -> Path:
     return (
-        FileConfigRepository(data_root).python_package_instances_root
+        FileConfigRepository(data_root).python_packages_root
         / "command"
-        / created["id"]
+        / created["name"]
     )
 
 
@@ -93,7 +93,7 @@ def test_template_create_persists_identity_only_and_projects_recursive_paths(
             f"/api/blocks/command/{created['id']}/python-package"
         )
 
-    assert created["python_package"] == {"folder": created["id"]}
+    assert created["python_package"] == {"folder": created["name"]}
     private_folder = _private_folder(data_root, created)
     assert (private_folder / "main.py").read_text(encoding="utf-8") == (
         template / "main.py"
@@ -113,7 +113,9 @@ def test_template_create_persists_identity_only_and_projects_recursive_paths(
             / f"{created['id']}.yaml"
         ).read_text(encoding="utf-8")
     )
-    assert stored["payload"] == {"python_package": {"folder": created["id"]}}
+    assert stored["payload"] == {
+        "python_package": {"folder": created["name"]}
+    }
     assert package.status_code == 200, package.text
     projection = package.json()
     assert projection["owner_id"] == created["id"]
@@ -124,8 +126,7 @@ def test_template_create_persists_identity_only_and_projects_recursive_paths(
         "requirements.txt",
     ]
     prefix = (
-        f"data/configuration-repositories/{projection['repository_id']}"
-        f"/python_package_instances/command/{created['id']}/"
+        f"data/config_repos/Default/python_packages/command/{created['name']}/"
     )
     assert all(
         item["file_manager_path"] == f"{prefix}{item['path']}"
@@ -225,8 +226,8 @@ def test_loading_package_does_not_change_source_revision(
     with make_client(tmp_path, monkeypatch) as client:
         created = _create_command(client, name="Stable revision router")
 
-    packages_dir = FileConfigRepository(data_root).python_package_instances_root
-    package_dir = packages_dir / "command" / created["id"]
+    packages_dir = FileConfigRepository(data_root).python_packages_root
+    package_dir = packages_dir / "command" / created["name"]
     before = scan_command_package(package_dir, owner_id=created["id"])["revision"]
     runtime = CommandPackageRuntime(
         request_id="revision-test",
@@ -259,10 +260,59 @@ def test_copy_and_delete_follow_complete_private_package_ownership(
         )
         deleted = client.delete(f"/api/blocks/command/{copied['id']}")
 
-    assert copied["python_package"] == {"folder": copied["id"]}
+    assert copied["python_package"] == {"folder": copied["name"]}
     assert original_manifest["id"] == copied["id"]
     assert deleted.status_code == 200
     assert not copied_folder.exists()
+
+
+def test_component_rename_moves_private_package_without_changing_uuid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = tmp_path / "data"
+    _write_router_template(data_root)
+    with make_client(tmp_path, monkeypatch) as client:
+        created = _create_command(client, name="Original router")
+        original_folder = _private_folder(data_root, created)
+        renamed_response = client.put(
+            f"/api/blocks/command/{created['id']}",
+            json={
+                "name": "路由 Français",
+                "python_package": created["python_package"],
+            },
+        )
+
+    assert renamed_response.status_code == 200, renamed_response.text
+    renamed = renamed_response.json()
+    renamed_folder = _private_folder(data_root, renamed)
+    assert renamed["id"] == created["id"]
+    assert renamed["python_package"] == {"folder": renamed["name"]}
+    assert not original_folder.exists()
+    assert renamed_folder.is_dir()
+    assert json.loads(
+        (renamed_folder / "package.json").read_text(encoding="utf-8")
+    )["id"] == created["id"]
+
+    with make_client(tmp_path, monkeypatch) as client:
+        case_changed_response = client.put(
+            f"/api/blocks/command/{created['id']}",
+            json={
+                "name": "路由 FRANÇAIS",
+                "python_package": renamed["python_package"],
+            },
+        )
+
+    assert case_changed_response.status_code == 200, case_changed_response.text
+    case_changed = case_changed_response.json()
+    assert case_changed["id"] == created["id"]
+    assert case_changed["python_package"] == {"folder": "路由 FRANÇAIS"}
+    assert "路由 FRANÇAIS" in {
+        child.name for child in renamed_folder.parent.iterdir()
+    }
+    assert "路由 Français" not in {
+        child.name for child in renamed_folder.parent.iterdir()
+    }
 
 
 def test_component_record_create_failure_rolls_back_new_private_package(
@@ -276,7 +326,7 @@ def test_component_record_create_failure_rolls_back_new_private_package(
         ][0]
         package_root = FileConfigRepository(
             data_root
-        ).python_package_instances_root / "command"
+        ).python_packages_root / "command"
         before = set(package_root.iterdir())
 
         def fail_save(*args, **kwargs) -> None:

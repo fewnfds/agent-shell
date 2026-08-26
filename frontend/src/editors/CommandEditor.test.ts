@@ -62,13 +62,13 @@ describe('CommandEditor', () => {
       files: [
         {
           path: 'helpers/rules.py',
-          file_manager_path: `data/configuration-repositories/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/python_package_instances/command/${id}/helpers/rules.py`,
+          file_manager_path: `data/config_repos/Default/python_packages/command/Command config/helpers/rules.py`,
           size: 16,
           modified_at: '2026-08-21T00:00:00Z',
         },
         {
           path: 'package.json',
-          file_manager_path: `data/configuration-repositories/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/python_package_instances/command/${id}/package.json`,
+          file_manager_path: `data/config_repos/Default/python_packages/command/Command config/package.json`,
           size: 100,
           modified_at: '2026-08-21T00:00:00Z',
         },

@@ -193,6 +193,8 @@ class BlockStore:
         return self._repository.new_configuration_id()
     def repository_id(self) -> str:
         return self._repository.repository_id
+    def repository_name(self) -> str:
+        return self._repository.repository_name
 
     def repository_context(self) -> tuple[str, int]:
         return self._repository.repository_context()

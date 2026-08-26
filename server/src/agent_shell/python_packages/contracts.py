@@ -1,28 +1,34 @@
 from __future__ import annotations
 
-import re
 from pathlib import PurePosixPath
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from agent_shell.configuration.identity import (
     CONFIGURATION_ID_PATTERN,
     ConfigurationId,
+    normalize_configuration_name,
 )
 
 PACKAGE_ID_PATTERN = CONFIGURATION_ID_PATTERN
-_UUID_FRAGMENT = PACKAGE_ID_PATTERN.removeprefix("^").removesuffix("$")
-PACKAGE_FOLDER_PATTERN = rf"^{_UUID_FRAGMENT}$"
-_PACKAGE_FOLDER = re.compile(PACKAGE_FOLDER_PATTERN)
-
-
 PackageId = ConfigurationId
+
+
+def validate_package_folder(value: str) -> str:
+    normalized = normalize_configuration_name(
+        value,
+        label="Python package folder",
+    )
+    if value != normalized:
+        raise ValueError("Python package folder must be normalized")
+    return normalized
 
 
 PackageFolder = Annotated[
     str,
-    Field(min_length=36, max_length=36, pattern=PACKAGE_FOLDER_PATTERN),
+    Field(min_length=1, max_length=120),
+    AfterValidator(validate_package_folder),
 ]
 
 
@@ -49,15 +55,18 @@ def validate_package_relative_path(value: str) -> str:
 
 
 def parse_package_folder(folder: str) -> str | None:
-    return folder if _PACKAGE_FOLDER.fullmatch(folder) is not None else None
+    try:
+        return validate_package_folder(folder)
+    except ValueError:
+        return None
 
 
 __all__ = [
-    "PACKAGE_FOLDER_PATTERN",
     "PACKAGE_ID_PATTERN",
     "PackageFolder",
     "PackageId",
     "PythonPackageReference",
     "parse_package_folder",
+    "validate_package_folder",
     "validate_package_relative_path",
 ]

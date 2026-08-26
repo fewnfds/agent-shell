@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from agent_shell.api.errors import management_error
+from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.configuration_collections import (
     configuration_collection,
     configuration_collection_requested,
@@ -45,7 +46,7 @@ class WorkflowBulkDelete(BaseModel):
 class WorkflowCopy(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: str = Field(min_length=1, max_length=120)
+    name: ConfigurationName
 
 
 def _validated(payload: dict) -> dict:

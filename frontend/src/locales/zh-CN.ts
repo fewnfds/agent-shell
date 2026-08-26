@@ -1297,6 +1297,7 @@ export const zhCN = {
     mainAgentNotFound: 'Main Agent 配置不存在。',
     subagentNotFound: 'Subagent 实体不存在。',
     configurationNameConflict: '已经存在同名配置。',
+    configurationNameInvalid: '配置名称必须符合 Windows 文件名规则。',
     unknownConfigurationType: '未知配置类型：{type}',
     modelCatalogRequestInvalid: '模型目录请求包含无效字段。',
     modelEndpointInvalid: '模型服务地址必须是完整的 HTTP(S) URL。',
@@ -1633,7 +1634,8 @@ export const zhCN = {
       },
       storage: {
         credentialMetadataInvalid: '该模型配置保存的访问凭据状态已损坏。',
-        skillPackageOwnerMismatch: 'Skill 独立包目录与组件身份不一致。',
+        pythonPackageOwnerMismatch: 'Python 包目录与配置名称不一致。',
+        skillPackageOwnerMismatch: 'Skill 独立包目录与配置名称不一致。',
       },
       runtime: {
         configuration: '运行时无法加载这份配置。',

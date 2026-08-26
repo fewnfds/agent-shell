@@ -9,7 +9,7 @@ python_package:
 ```
 
 新建配置时，可以从 `data/templates/agent/custom_middleware/<template-key>/` 加载用户模板，也可以选择 `examples/agent-components/custom-middleware/<example-key>/` 提供的 `内置示例-<example-key>`。用户模板与内置示例可以同名。
-首次保存会复制所选模板的完整目录到 `data/configuration-repositories/<repository-uuid>/python_package_instances/agent-middleware/<configuration-uuid>/`，生成属于该配置的 `package.json` 和文件夹引用；文件夹名与 `package.json.id` 都等于配置 UUID。此后配置只读取、
+首次保存会复制所选模板的完整目录到 `data/config_repos/<repository-name>/python_packages/agent_middleware/<configuration-name>/`，生成属于该配置的 `package.json` 和文件夹引用；文件夹名等于配置名称，`package.json.id` 等于配置 UUID。此后配置只读取、
 编辑自己的扩展代码目录，模板修改不会传播。
 
 已保存配置会递归显示私有扩展目录中的全部文件。点击文件的编辑按钮会打开共享文件管理工作区，可继续创建、上传、下载、

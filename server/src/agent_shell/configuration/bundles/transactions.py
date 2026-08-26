@@ -96,11 +96,15 @@ def commit_prepared_import(
             JournalPackage(
                 adapter=PACKAGE_COMPONENT_SPECS[plan.component_type].adapter,
                 target_id=plan.target_id,
+                folder=plan.target_folder,
             )
             for plan in prepared.package_plans
         ],
         skill_packages=[
-            JournalSkillPackage(target_id=plan.target_id)
+            JournalSkillPackage(
+                target_id=plan.target_id,
+                folder=plan.target_folder,
+            )
             for plan in prepared.skill_plans
         ],
     )
@@ -130,6 +134,7 @@ def commit_prepared_import(
                     for plan in prepared.package_plans
                 },
                 prepared.target_ids,
+                {plan.source_id: plan.target_folder for plan in prepared.package_plans},
                 staged_packages,
                 runtime_root=runtime_root,
             )
@@ -137,22 +142,26 @@ def commit_prepared_import(
                 prepared.parsed,
                 skill_assets,
                 prepared.target_ids,
+                {plan.source_id: plan.target_folder for plan in prepared.skill_plans},
                 staged_skills,
             )
 
             for plan in prepared.package_plans:
                 spec = PACKAGE_COMPONENT_SPECS[plan.component_type]
                 claim_import_asset(
-                    staged_packages / spec.adapter / plan.target_id,
+                    staged_packages / spec.directory / plan.target_folder,
                     transaction_id,
                 )
             for plan in current_skill_plans:
-                claim_import_asset(staged_skills / plan.target_id, transaction_id)
+                claim_import_asset(
+                    staged_skills / plan.target_folder,
+                    transaction_id,
+                )
 
             for plan in prepared.package_plans:
                 spec = PACKAGE_COMPONENT_SPECS[plan.component_type]
-                source = staged_packages / spec.adapter / plan.target_id
-                destination = packages_dir / spec.adapter / plan.target_id
+                source = staged_packages / spec.directory / plan.target_folder
+                destination = packages_dir / spec.directory / plan.target_folder
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 if destination.exists():
                     raise BundleImportError(
@@ -160,8 +169,8 @@ def commit_prepared_import(
                     )
                 os.rename(source, destination)
             for plan in current_skill_plans:
-                source = staged_skills / plan.target_id
-                destination = skills_dir / plan.target_id
+                source = staged_skills / plan.target_folder
+                destination = skills_dir / plan.target_folder
                 skills_dir.mkdir(parents=True, exist_ok=True)
                 if destination.exists():
                     raise BundleImportError(

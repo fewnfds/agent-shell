@@ -13,7 +13,7 @@ from .app_support import make_client
 def _repository_path(client) -> str:
     response = client.get(
         "/api/file-manager",
-        params={"path": "data/configuration-repositories"},
+        params={"path": "data/config_repos"},
     )
     assert response.status_code == 200, response.text
     repositories = response.json()["items"]
@@ -77,7 +77,7 @@ def test_file_manager_uses_real_data_paths_for_common_file_workflows(
     assert root.status_code == 200
     assert root.json()["path"] == "data"
     assert [item["name"] for item in root.json()["items"]] == [
-        "configuration-repositories",
+        "config_repos",
         "files",
         "skills-template",
         "templates",
@@ -113,8 +113,8 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         repository_path = _repository_path(client)
-        repository_id = repository_path.rsplit("/", 1)[-1]
-        repository_root = tmp_path / "data" / "configuration-repositories" / repository_id
+        repository_name = repository_path.rsplit("/", 1)[-1]
+        repository_root = tmp_path / "data" / "config_repos" / repository_name
         config_file = repository_root / "components" / "example" / "record.yaml"
         config_file.parent.mkdir(parents=True)
         config_file.write_text("name: Managed\n", encoding="utf-8")
@@ -164,15 +164,15 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
             ),
             client.get(
                 "/api/file-manager",
-                params={"path": f"{repository_path}/configuration-imports"},
+                params={"path": f"{repository_path}/configuration_imports"},
             ),
         ]
 
     assert [item["name"] for item in repository.json()["items"]] == [
         "agents",
         "components",
-        "python_package_instances",
-        "skill_package_instances",
+        "python_packages",
+        "skill_packages",
         "workflows",
     ]
     assert config_text.status_code == 200

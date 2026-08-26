@@ -195,7 +195,8 @@ def build_router(
             return {
                 **block,
                 "skill_package_contents": skill_package_authoring.inspect(
-                    str(block.get("id", ""))
+                    str(block.get("id", "")),
+                    str(block.get("skill_package", {}).get("folder", "")),
                 ),
             }
         return block
@@ -354,14 +355,18 @@ def build_router(
 
     @router.get("/api/blocks/skill/{block_id}/skills")
     async def private_skills(block_id: str) -> dict:
-        if block_store.get_block_internal("skill", block_id) is None:
+        block = block_store.get_block_internal("skill", block_id)
+        if block is None:
             raise management_error(
                 404,
                 code="block_not_found",
                 message_key="errors.blockNotFound",
                 message="The Skill component configuration does not exist.",
             )
-        return skill_package_authoring.inspect(block_id)
+        return skill_package_authoring.inspect(
+            block_id,
+            str(block.get("skill_package", {}).get("folder", "")),
+        )
 
     @router.post("/api/blocks/skill/{block_id}/skills")
     async def add_private_skill(block_id: str, payload: dict) -> dict:
@@ -485,6 +490,7 @@ def build_router(
     ) -> dict:
         check_type(block_type)
         repository_id = block_store.repository_id()
+        repository_name = block_store.repository_name()
         block = block_store.get_block_internal(block_type, block_id)
         if block is None:
             raise management_error(
@@ -506,6 +512,7 @@ def build_router(
                 block_id,
                 package_reference(block),
                 repository_id=repository_id,
+                repository_name=repository_name,
             )
         except PythonPackageAuthoringError as exc:
             raise authoring_error(exc) from exc

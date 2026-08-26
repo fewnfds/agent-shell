@@ -14,9 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from agent_shell.configuration.dependencies import ConfigurationEntityKind
 from agent_shell.configuration.identity import ConfigurationId
 from agent_shell.configuration.repositories import list_configuration_repositories
+from agent_shell.configuration.repositories import (
+    CONFIGURATION_IMPORTS_DIRECTORY,
+    PYTHON_PACKAGES_DIRECTORY,
+    SKILL_PACKAGES_DIRECTORY,
+)
+from agent_shell.python_packages.contracts import PackageFolder
 
 
-_TRANSACTION_DIR = "configuration-imports"
+_TRANSACTION_DIR = CONFIGURATION_IMPORTS_DIRECTORY
 _RECOVERY_LOCK = threading.RLock()
 _ASSET_CLAIM_PREFIX = ".agent-shell-import-owner-"
 
@@ -54,18 +60,20 @@ class JournalPackage(BaseModel):
         "agent-tool",
     ]
     target_id: ConfigurationId
+    folder: PackageFolder
 
 
 class JournalSkillPackage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_id: ConfigurationId
+    folder: PackageFolder
 
 
 class ImportJournal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    format_version: Literal[2] = 2
+    format_version: Literal[3] = 3
     transaction_id: ConfigurationId
     bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     state: Literal["prepared", "committed"]
@@ -173,18 +181,18 @@ def cleanup_import_journal(repository_root: Path, journal: ImportJournal) -> Non
     if remove_assets:
         for record in journal.records:
             _configuration_path(repository_root, record).unlink(missing_ok=True)
-    packages_root = repository_root / "python_package_instances"
+    packages_root = repository_root / PYTHON_PACKAGES_DIRECTORY
     for package in journal.packages:
         _cleanup_claimed_asset(
-            packages_root / package.adapter / package.target_id,
-            packages_root / package.adapter,
+            packages_root / package.adapter.replace("-", "_") / package.folder,
+            packages_root / package.adapter.replace("-", "_"),
             journal.transaction_id,
             remove_asset=remove_assets,
         )
-    skills_root = repository_root / "skill_package_instances"
+    skills_root = repository_root / SKILL_PACKAGES_DIRECTORY
     for skill in journal.skill_packages:
         _cleanup_claimed_asset(
-            skills_root / skill.target_id,
+            skills_root / skill.folder,
             skills_root,
             journal.transaction_id,
             remove_asset=remove_assets,
