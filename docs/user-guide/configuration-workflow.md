@@ -45,8 +45,9 @@ Task Dispatcher Node 引用一份 `workflow-node` family / `task-dispatcher` ada
 
 在【代理 / Main Agent】选择模型要求和 Agent Event Output 等 capability。Main Agent 是完整 Agent 装配，由 Workflow 的 Agent Node 引用。需要同步委派时，先创建 Subagent 实体，再由 Main Agent 按顺序保存 `subagent_id` 引用并选择委派 capability。
 
-Main Agent 可选择 configured Filesystem 或 minimal Filesystem，Subagent 可继承、选择自己的 configured Filesystem 或回到 minimal Filesystem；Workflow metadata 不保存 Filesystem。
-每个 identity 也可以选择自己的 `filesystem-permissions`。权限配置同时控制 path permission 和该 identity 可见的 file Tool；runtime 按 Agent 的 effective Filesystem 与 permission 组合并冻结 backend routing view。
+Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。Backend 在 CompositeBackend 和 LocalShellBackend 中二选一；Tools 独立控制文件 Tool visibility、description 与参数。Subagent 对两者分别继承或替换，required capability 不能关闭；Workflow metadata 不保存 Filesystem。
+
+CompositeBackend 的每条映射或虚拟来源直接保存 `read-write|read-only|no-access` 权限，并可通过 `skill_package_id` 引用 Skill 独立包。Skill 引用、路径与权限随 Backend 一起被 Subagent 继承。LocalShellBackend 只使用固定真实工作区，不接受 Skill 包或 Composite 来源；`execute` 只有在 Tools 开启且 Backend 为 LocalShellBackend 时可见。
 
 Subagent settings 定义身份、说明、capability 覆写和自己的 ordered Middleware 引用。当前委派结构为一层同步 `Main -> Subagent`，运行时使用 Deep Agents 官方 dictionary-based CompiledSubAgent。Agent 内部通过 `SubAgentMiddleware`/`task` 委派；外层 Workflow 的节点和边负责多阶段、并行、条件和 join。
 
@@ -74,4 +75,4 @@ Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecyc
 
 Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。`PUT /api/workflows/{id}/draft` 只做 wire 解析并停用；
 `POST /api/workflows/{id}/validate` 返回正式静态问题；`PUT /api/workflows/{id}/graph` 重复完整校验并正式启用，metadata PUT 保留既有 enabled。真实 Chat 请求从一次文件配置快照读取 Workflow current Graph、
-Main Agent、Subagent、各自 Filesystem、组件和 Provider secret view，完成 Agent 构造后关闭配置快照。
+Main Agent、Subagent、各自 Filesystem Backend、Filesystem Tools、组件和 Provider secret view，完成 Agent 构造后关闭配置快照。

@@ -211,7 +211,7 @@ def scan_private_skill_package(skills_dir: Path) -> dict[str, Any]:
             "errors": {
                 ".": ResourceScanError(
                     "resource.error.skill.pathUnsupported",
-                    "The private Skill package path is unsupported.",
+                    "The Skill package path is unsupported.",
                 ).as_dict()
             },
         }
@@ -223,7 +223,7 @@ def scan_private_skill_package(skills_dir: Path) -> dict[str, Any]:
             "errors": {
                 ".": ResourceScanError(
                     "resource.error.skill.readFailed",
-                    "The private Skill package could not be read.",
+                    "The Skill package could not be read.",
                 ).as_dict()
             },
         }
@@ -248,7 +248,7 @@ def scan_private_skill_package(skills_dir: Path) -> dict[str, Any]:
         if previous is not None:
             errors[relative_path] = ResourceScanError(
                 "resource.error.skill.duplicateName",
-                f"The private Skill package contains duplicate Skill name {name!r}.",
+                f"The Skill package contains duplicate Skill name {name!r}.",
                 {"name": name, "other_folder": previous},
             ).as_dict()
             catalog.pop()

@@ -159,30 +159,25 @@ def block_cases(client: TestClient, tmp_path: Path) -> list[tuple[str, dict]]:
             "filesystem",
             {
                 "name": "Workspace",
+                "backend_type": "composite",
                 "mapped_directories": [
-                    {"virtual_path": "/workspace/", "local_path": str(mapped)}
+                    {
+                        "virtual_path": "/workspace/",
+                        "local_path": str(mapped),
+                        "permission": "read-only",
+                    }
                 ],
                 "system_prompt_override": "Use only the configured workspace.",
+            },
+        ),
+        (
+            "filesystem-tools",
+            {
+                "name": "Workspace tools",
                 "tool_token_limit_before_evict": 4096,
                 "tool_configs": {
                     "read_file": {"visible": True},
                     "write_file": {"visible": True},
-                },
-            },
-        ),
-        (
-            "filesystem-permissions",
-            {
-                "name": "Workspace permissions",
-                "permissions": [
-                    {"path": "/workspace/**", "permission": "read-only"}
-                ],
-                "system_prompt_override": {"value": "Review files without changing them."},
-                "tool_overrides": {
-                    "write_file": {
-                        "visible": False,
-                        "description_override": None,
-                    }
                 },
             },
         ),

@@ -267,7 +267,7 @@ import 后：
 1. 记录新 target UUID；
 2. 重新建立 Model Mapping；
 3. 完成 Filesystem path binding；
-4. 审查 Python source、`requirements.txt` 和 Skill private package；
+4. 审查 Python source、`requirements.txt` 和 Skill package；
 5. 回到本章执行 Repository validation；
 6. 对完整 Graph document执行 candidate validation；
 7. 显式 publish；

@@ -146,6 +146,24 @@ def _main_agent_references(
         )
 
 
+def _component_references(
+    owner: ConfigurationEntity,
+) -> Iterator[ConfigurationReference]:
+    if owner.component_type != "filesystem":
+        return
+    skill_package_id = owner.payload.get("skill_package_id")
+    if skill_package_id is None:
+        return
+    yield _reference(
+        owner,
+        path="skill_package_id",
+        target_id=skill_package_id,
+        target_kind="component",
+        target_component_type="skill",
+        location=("skill_package_id",),
+    )
+
+
 def _subagent_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
@@ -250,7 +268,9 @@ def _workflow_references(
 def iter_configuration_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
-    if owner.kind == "main_agent":
+    if owner.kind == "component":
+        yield from _component_references(owner)
+    elif owner.kind == "main_agent":
         yield from _main_agent_references(owner)
     elif owner.kind == "subagent":
         yield from _subagent_references(owner)

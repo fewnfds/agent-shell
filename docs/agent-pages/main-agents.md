@@ -10,6 +10,7 @@ Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中�
   "capability_refs": [
     {"type": "model-requirement", "block_id": "model-requirement-uuid"},
     {"type": "filesystem", "block_id": "filesystem-uuid"},
+    {"type": "filesystem-tools", "block_id": "filesystem-tools-uuid"},
     {"type": "agent-event-output", "block_id": "output-uuid"}
   ],
   "tool_refs": [
@@ -25,7 +26,7 @@ Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中�
 }
 ```
 
-`model-requirement` 与 `agent-event-output` 必选，其他 capability 可选。模型要求只描述所需能力，具体模型连接由【模型 / 模型映射】绑定。Main Agent 可选择自己的 configured Filesystem；未选择时自动使用空 StateBackend 与 `read_file` 组成的 minimal Filesystem。Main Agent 也可选择 `filesystem-permissions`；后者同时定义路径权限和文件 tool override。
+`model-requirement`、`filesystem`、`filesystem-tools` 与 `agent-event-output` 必选，其他 Agent-selectable capability 可选。模型要求只描述所需能力，具体模型连接由【模型 / 模型映射】绑定。Filesystem Backend 负责 CompositeBackend 或 LocalShellBackend 及其路径；Filesystem Tools 独立控制文件工具。Skill Component 不进入 `capability_refs`，CompositeBackend 通过自己的 `skill_package_id` 引用 Skill 独立包。
 
 Todo List、Summarization 与 Prompt Caching 通过 `capability_refs` 独立选择，并分别物化为 official Middleware；未选择时使用同名无行为 replacement，使最终 stack 保持显式。Custom Tool 通过有序 `tool_refs` 装配，Custom Middleware 通过有序 `middleware_refs` 装配；每个列表内 ID 唯一，每个引用对应一份独立配置。Agent 生命周期使用 LangChain Middleware hook。
 

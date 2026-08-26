@@ -13,7 +13,12 @@ from agent_shell.storage.owned_paths import (
 )
 
 
-BindingKind = Literal["mapped-directory", "virtual-directory", "virtual-file"]
+BindingKind = Literal[
+    "mapped-directory",
+    "local-shell-workspace",
+    "virtual-directory",
+    "virtual-file",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +65,26 @@ def collect_filesystem_bindings(
     bindings: list[FilesystemBinding] = []
     for source_id, (component_type, name, payload) in sorted(records.items()):
         if component_type != "filesystem":
+            continue
+        if payload.get("backend_type", "composite") == "local-shell":
+            workspace = payload.get("workspace")
+            if isinstance(workspace, dict):
+                value = str(workspace.get("local_path", ""))
+                origin = str(workspace.get("path_origin", "absolute"))
+                path = "workspace.local_path"
+                bindings.append(
+                    FilesystemBinding(
+                        binding_id=f"{source_id}:{path}",
+                        source_id=source_id,
+                        configuration_name=name,
+                        path=path,
+                        kind="local-shell-workspace",
+                        source_value=value,
+                        source_path_origin=origin,
+                        location=("workspace", "local_path"),
+                        required=origin == "absolute",
+                    )
+                )
             continue
         for index, item in enumerate(_records(payload.get("mapped_directories"))):
             value = str(item.get("local_path", ""))
@@ -136,12 +161,12 @@ def apply_filesystem_bindings(
                 )
             continue
         target = Path(resolution.value)
-        if binding.kind == "mapped-directory":
+        if binding.kind in {"mapped-directory", "local-shell-workspace"}:
             if resolution.path_origin is None:
                 errors.append(
                     bundle_issue(
                         "filesystem_path_origin_required",
-                        "A mapped directory binding must declare its path origin.",
+                        "A filesystem directory binding must declare its path origin.",
                         source_id=binding.source_id,
                         path=binding.path,
                     )
@@ -154,7 +179,7 @@ def apply_filesystem_bindings(
                     resolve_data_root_relative_path(
                         data_root,
                         resolution.value,
-                        label="mapped directory binding",
+                        label="filesystem directory binding",
                     )
                 except OwnedPathError:
                     valid = False
@@ -164,7 +189,7 @@ def apply_filesystem_bindings(
                 errors.append(
                     bundle_issue(
                         "filesystem_directory_invalid",
-                        "The target mapped directory binding is invalid.",
+                        "The target filesystem directory binding is invalid.",
                         source_id=binding.source_id,
                         path=binding.path,
                     )
@@ -216,7 +241,7 @@ def apply_validation_placeholders(
         else:
             target.mkdir(parents=True, exist_ok=True)
         _set_value(output[binding.source_id], binding.location, str(target.resolve()))
-        if binding.kind == "mapped-directory":
+        if binding.kind in {"mapped-directory", "local-shell-workspace"}:
             parent: Any = output[binding.source_id]
             for segment in binding.location[:-1]:
                 parent = parent[segment]

@@ -41,7 +41,7 @@ Provider credential、API Key、管理密码和 LangSmith API Key 保存在实�
 配置 Bundle 是 management-only 的 ZIP 导入/导出入口，用于迁移单个配置根及其声明式依赖闭包。它不承担实例备份；
 不会包含 `system.yaml`、`agent-shell.env`、credential value/environment reference、SQLite、运行历史、日志、媒体、普通文件、
 Python template、`skills-template` 公共素材或 runtime cache。模型要求会随配置导入，模型连接和 credential 需要在目标实例单独维护并完成模型映射。
-Skill Component 导出的是该 Component 已拥有的私有 Skill package。
+Skill Component 导出的是该 Component 已拥有的 Skill 独立包。
 
 平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
 
@@ -63,7 +63,7 @@ Middleware 包没有 sandbox，以 Agent Shell 服务进程权限运行。它可
 
 项目 filesystem 的 mapped directories 可读写宿主真实目录。只映射 Agent 确实需要的路径；写入、编辑和递归删除工具按最小权限启用。Agent 看到的 Skill namespace 始终只读。
 
-文件管理页面只接受允许列表内的软件根相对 `data/...` 路径。普通文件、Skill/Python 模板和配置私有包可编辑；
+文件管理页面只接受允许列表内的软件根相对 `data/...` 路径。普通文件、Skill/Python 模板、Python private package 和 Skill package 可编辑；
 Component、Agent 与 Workflow 配置树只读。`data/config/`、Repository metadata/import journal、state、logs、media、runtime、
 mapped host directory 和软件根目录外路径均不可达。此边界不限制受信任自定义代码或 Agent Filesystem mapping 自身的权限。
 

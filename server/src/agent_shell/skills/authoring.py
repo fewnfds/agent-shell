@@ -127,7 +127,7 @@ class SkillPackageAuthoringService:
         if destination.exists():
             raise SkillPackageAuthoringError(
                 "skill_name_conflict",
-                "A Skill with this name already exists in the private package.",
+                "A Skill with this name already exists in the Skill package.",
                 status_code=409,
             )
         shutil.copytree(source, destination, symlinks=False)
@@ -144,7 +144,7 @@ class SkillPackageAuthoringService:
         root = self._owner_root(owner_id)
         if os.path.lexists(root):
             raise SkillPackageAuthoringError(
-                "skill_package_exists", "The Skill private package already exists.", status_code=409
+                "skill_package_exists", "The Skill package already exists.", status_code=409
             )
         sources = [self._template_folder(path) for path in template_paths]
         names = [str(scan_skill_folder(source)["name"]) for source in sources]
@@ -169,11 +169,11 @@ class SkillPackageAuthoringService:
         target = self._owner_root(target_owner_id)
         if not source.is_dir() or not is_plain_tree(source):
             raise SkillPackageAuthoringError(
-                "skill_package_not_found", "The source Skill private package is unavailable.", status_code=404
+                "skill_package_not_found", "The source Skill package is unavailable.", status_code=404
             )
         if os.path.lexists(target):
             raise SkillPackageAuthoringError(
-                "skill_package_exists", "The target Skill private package already exists.", status_code=409
+                "skill_package_exists", "The target Skill package already exists.", status_code=409
             )
         shutil.copytree(source, target, symlinks=False)
         return StagedPathChange(lambda: shutil.rmtree(target, ignore_errors=True))
@@ -184,7 +184,7 @@ class SkillPackageAuthoringService:
             return StagedPathChange(lambda: None)
         if not is_plain_tree(root):
             raise SkillPackageAuthoringError(
-                "skill_package_owner_invalid", "The Skill private package path is unsafe."
+                "skill_package_owner_invalid", "The Skill package path is unsafe."
             )
         staging = Path(tempfile.mkdtemp(prefix=f".{owner_id}.", dir=root.parent))
         staged = staging / root.name
@@ -208,7 +208,7 @@ class SkillPackageAuthoringService:
         name = str(scan_skill_folder(source)["name"])
         if os.path.lexists(root) and not is_plain_tree(root):
             raise SkillPackageAuthoringError(
-                "skill_package_owner_invalid", "The Skill private package path is unsafe."
+                "skill_package_owner_invalid", "The Skill package path is unsafe."
             )
         root.mkdir(parents=True, exist_ok=True)
         if name in self._existing_names(root) or (root / name).exists():
@@ -224,17 +224,17 @@ class SkillPackageAuthoringService:
     def remove(self, owner_id: str, folder_name: str) -> StagedPathChange:
         try:
             folder_name = require_single_path_segment(
-                folder_name, label="private Skill folder"
+                folder_name, label="Skill package folder"
             )
         except OwnedPathError as exc:
             raise SkillPackageAuthoringError(
-                "skill_folder_invalid", "The private Skill folder is invalid."
+                "skill_folder_invalid", "The Skill package folder is invalid."
             ) from exc
         root = self._owner_root(owner_id)
         target = root / folder_name
         if not target.is_dir() or is_reparse_point(target):
             raise SkillPackageAuthoringError(
-                "skill_not_found", "The selected private Skill does not exist.", status_code=404
+                "skill_not_found", "The selected packaged Skill does not exist.", status_code=404
             )
         staging = Path(tempfile.mkdtemp(prefix=f".{owner_id}.", dir=root.parent))
         staged = staging / target.name

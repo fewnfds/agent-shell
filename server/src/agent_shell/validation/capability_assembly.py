@@ -9,8 +9,8 @@ from agent_shell.validation.models import ValidationIssue
 
 
 FilesystemMode = Literal[
-    "default-shared",
-    "configured-shared",
+    "composite",
+    "local-shell",
 ]
 
 
@@ -23,13 +23,6 @@ class CapabilityAssemblySubject:
     owner_id: str = ""
     owner_name: str = ""
     required_types: frozenset[str] = field(default_factory=frozenset)
-
-    @property
-    def filesystem_mode(self) -> FilesystemMode:
-        if "filesystem" in self.references:
-            return "configured-shared"
-        return "default-shared"
-
 
 def capability_assembly_issues(
     subject: CapabilityAssemblySubject,

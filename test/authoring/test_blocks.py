@@ -41,7 +41,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
     assert set(catalog["editor_defaults"]) == {
         "checkpointer",
         "filesystem",
-        "filesystem_permissions",
+        "filesystem_tools",
         "skill",
         "subagent",
         "todo_list",
@@ -75,12 +75,14 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "subagent_overrideable",
         "required",
         "subagent_policy",
+        "agent_selectable",
         "tool_names",
     }
     assert by_type["model-requirement"]["required"] is True
-    assert by_type["filesystem"]["required"] is False
+    assert by_type["filesystem"]["required"] is True
     assert by_type["agent-event-output"]["required"] is True
-    assert by_type["filesystem"]["tool_names"] == [
+    assert by_type["filesystem"]["tool_names"] == []
+    assert by_type["filesystem-tools"]["tool_names"] == [
         "ls",
         "read_file",
         "write_file",
@@ -258,17 +260,13 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
             assert created["durability"] == "async"
         if block_type == "filesystem":
             assert created["system_prompt_override"] == payload["system_prompt_override"]
+            assert created["mapped_directories"][0]["permission"] == "read-only"
+        if block_type == "filesystem-tools":
             assert created["tool_token_limit_before_evict"] == 4096
             assert all(
                 config["description_override"] is None
                 for config in created["tool_configs"].values()
             )
-        if block_type == "filesystem-permissions":
-            assert created["permissions"] == payload["permissions"]
-            assert created["system_prompt_override"] == payload[
-                "system_prompt_override"
-            ]
-            assert created["tool_overrides"]["write_file"]["visible"] is False
         if block_type == "skill":
             assert created["instruction_override"] is None
         if block_type == "subagent":
@@ -402,6 +400,7 @@ def test_filesystem_mapped_directory_modes_are_explicit(
             "local_path": "files/workspaces",
             "path_origin": "data-root-relative",
             "lifecycle_mode": "dynamic",
+            "permission": "read-write",
         }
     ]
 
@@ -462,22 +461,47 @@ def test_basic_payload_shape_errors_are_rejected(tmp_path: Path, monkeypatch) ->
     assert removed_subagent_switch.status_code == 422, removed_subagent_switch.text
 
 
-def test_filesystem_permissions_reject_invalid_or_duplicate_paths(
+def test_filesystem_backend_types_reject_incompatible_fields(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
+    workspace = tmp_path / "local-shell-workspace"
+    workspace.mkdir()
 
-    for permissions in (
-        [{"path": "relative/**", "permission": "read-only"}],
-        [{"path": "/workspace/~/secret", "permission": "no-access"}],
-        [
-            {"path": "/workspace/**", "permission": "read-only"},
-            {"path": "\\workspace\\**", "permission": "no-access"},
-        ],
+    for payload in (
+        {
+            "name": "Invalid permission",
+            "mapped_directories": [
+                {
+                    "virtual_path": "/workspace/",
+                    "local_path": str(workspace),
+                    "permission": "execute-only",
+                }
+            ],
+        },
+        {
+            "name": "LocalShell with Composite source",
+            "backend_type": "local-shell",
+            "workspace": {"local_path": str(workspace)},
+            "mapped_directories": [
+                {"virtual_path": "/workspace/", "local_path": str(workspace)}
+            ],
+        },
+        {
+            "name": "LocalShell with Skill package",
+            "backend_type": "local-shell",
+            "workspace": {"local_path": str(workspace)},
+            "skill_package_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        },
+        {
+            "name": "Composite with LocalShell workspace",
+            "backend_type": "composite",
+            "workspace": {"local_path": str(workspace)},
+        },
     ):
         response = client.post(
-            "/api/blocks/filesystem-permissions",
-            json={"name": "Invalid permissions", "permissions": permissions},
+            "/api/blocks/filesystem",
+            json=payload,
         )
         assert response.status_code == 422, response.text
 

@@ -133,7 +133,7 @@ def test_bundle_archive_rejects_path_traversal_unknown_version_and_asset_tamperi
         parse_bundle(unknown_version)
 
     raw_manifest = manifest.model_dump(mode="json", by_alias=True)
-    raw_manifest["root"]["type"] = "filesystem-permissions"
+    raw_manifest["root"]["type"] = "filesystem-tools"
     mismatched_root_type = _rewrite_entry(
         bundle,
         "manifest.json",

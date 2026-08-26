@@ -49,7 +49,7 @@ data/
 顶层【文件管理】使用相对软件根目录的真实路径，从 `data/` 开始显示允许访问的目录。页面支持浏览、新建、
 上传、下载、ZIP、重命名、UTF-8 文本编辑和递归删除。
 
-可见目录包括普通文件 `data/files/`、Skill 模板 `data/skills-template/`、Python 模板 `data/templates/`，以及每个 Configuration Repository 中的 Component、Agent、Workflow 和配置私有包。`components/`、`agents/`、`workflows/` 可以查看和下载，内容修改仍通过对应配置页面完成。Python 与 Skill 私有包支持文件操作。Python 私有包的结构和 factory contract 会在组件检查或运行装配时校验；Skill 私有包的问题只在 Skill 组件页载入或显式刷新时显示 warning，不阻塞保存、装配、Repository 切换或 Bundle 操作。
+可见目录包括普通文件 `data/files/`、Skill 模板 `data/skills-template/`、Python 模板 `data/templates/`，以及每个 Configuration Repository 中的 Component、Agent、Workflow、Python private package 与 Skill package。`components/`、`agents/`、`workflows/` 可以查看和下载，内容修改仍通过对应配置页面完成。两类 package 支持文件操作。Python package 的结构和 factory contract 会在组件检查或运行装配时校验；Skill 独立包的问题只在 Skill 组件页载入或显式刷新时显示 warning，不阻塞保存、Repository 切换或 Bundle 操作。
 
 - 路径和面包屑直接显示 `data/...` 的真实目录名；
 - 文本编辑默认上限为 2 MiB，可在【系统 / 系统配置】调整；
@@ -66,7 +66,7 @@ data/
 
 ## 配置管理
 
-【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python/Skill 私有包和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
+【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python private package、Skill package 和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
 
 【配置库 / 全局 / 模型连接】直接复用模型连接的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】；模型映射边界见[模型](models.md)。
 

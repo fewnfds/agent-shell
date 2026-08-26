@@ -14,12 +14,15 @@ from support import ScopedAuthTestClient, configure_scope_tokens
 
 PUBLIC_TYPES = tuple(manifest.type for manifest in CAPABILITY_MANIFESTS)
 MAIN_AGENT_TYPES = tuple(
-    capability_type
-    for capability_type in PUBLIC_TYPES
-    if capability_type not in {"filesystem", "custom-tool", "custom-middleware"}
+    manifest.type
+    for manifest in CAPABILITY_MANIFESTS
+    if manifest.agent_selectable
+    and manifest.type not in {"custom-tool", "custom-middleware"}
 )
 OVERRIDEABLE_TYPES = tuple(
-    manifest.type for manifest in CAPABILITY_MANIFESTS if manifest.subagent_overrideable
+    manifest.type
+    for manifest in CAPABILITY_MANIFESTS
+    if manifest.agent_selectable and manifest.subagent_overrideable
 )
 REQUIRED_TYPES = tuple(
     manifest.type for manifest in CAPABILITY_MANIFESTS if manifest.required
@@ -112,12 +115,7 @@ def block_payload(capability_type: str, name: str) -> dict:
         "custom-middleware": {"name": name},
         "agent-event-output": {"name": name},
         "filesystem": {"name": name},
-        "filesystem-permissions": {
-            "name": name,
-            "permissions": [
-                {"path": "/workspace/**", "permission": "read-only"}
-            ],
-        },
+        "filesystem-tools": {"name": name},
         "skill": {
             "name": name,
             "skill_template_paths": ["fixture-skill"],

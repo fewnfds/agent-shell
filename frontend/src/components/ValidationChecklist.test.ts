@@ -38,7 +38,7 @@ describe('ValidationChecklist', () => {
           scope: 'main_agent',
           owner_id: 'main-agent-id',
           owner_name: 'Writer',
-          path: 'capability_refs.filesystem-permissions.permissions[0].path',
+          path: 'capability_refs.filesystem.mapped_directories[0].permission',
           message: 'raw warning',
           message_key: 'validation.issue.assembly.filesystemPermissionPathUnmatched',
           message_args: { path: '/archive/**' },

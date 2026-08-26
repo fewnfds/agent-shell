@@ -11,7 +11,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template 和模型连接属于实例域，切换 Repository 时保持不变。模型映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置和模型资源视图，后续切换只影响新请求。
 
 - 编辑会跳转到对应页面，并以记录 UUID 确定更新目标；
-- 复制会创建新 UUID，副本名称经过当前校验；Python package 与 Skill private package 随 owner UUID 一起复制；
+- 复制会创建新 UUID，副本名称经过当前校验；Python private package 与 Skill package 随 owner UUID 一起复制；
 - 配置 UUID 是全部 Repository 间全局唯一的小写 UUID4；Component、Main Agent、Subagent、Workflow 之间也不能复用同一 UUID；
 - Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义，并继续作为公开 model ID；
 - 详情显示保存的完整 payload，包括当前版本无法识别或无法运行的记录；
@@ -26,7 +26,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 
 Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看和编辑，复制与运行会重新校验；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
-Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configuration-repositories/<repository-uuid>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python/Skill private package 位于同一 Repository 的 `python_package_instances/` 与 `skill_package_instances/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
+Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/configuration-repositories/<repository-uuid>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_package_instances/` 与 `skill_package_instances/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
 
 ## 原子配置 Bundle API
 
@@ -45,6 +45,6 @@ current backend 可以把一个 Component、Subagent、Main Agent 或 Workflow �
 
 未知或不受信任的配置可能包含以 Agent Shell 权限运行的 Python/Skill 代码、文件系统访问、网络访问或欺骗性引用。导入或分享前必须检查来源、提示词、Skill 文件、Python 源码、requirements、文件系统绑定与权限。preview 的 warning 使用稳定 `message_key/message_args` 本地化显示，不直接把后端英文作为普通界面文案。
 
-Python-backed Component 会携带完整 owner package，并在目标实例用新 UUID 重建 folder 和 `package.json.id`；导入过程只做静态扫描，不 import factory。Skill Component 携带完整 owner private package，目标实例始终用新 Component UUID 重建目录，不做全局 Skill 名称复用或冲突判断。
+Python-backed Component 会携带完整 owner package，并在目标实例用新 UUID 重建 folder 和 `package.json.id`；导入过程只做静态扫描，不 import factory。Skill Component 携带完整 Skill package，目标实例始终用新 Component UUID 重建目录，不做全局 Skill 名称复用或冲突判断。
 
 Filesystem 的 absolute mapped directory、virtual directory `source_path` 和 virtual file `source_path` 必须在目标实例显式重绑；mapped directory 还必须选择 `absolute` 或 `data-root-relative` path origin。data-root-relative mapped directory 可以保留源相对路径，它必须没有 drive、root、冒号和 `.`/`..` 段；合法目标不存在时 preview 只给出不阻塞提交的 warning。损坏 ZIP、manifest、hash、entry path 或请求格式返回 422；digest、preview plan、名称或目标实例状态冲突返回 409。

@@ -1372,7 +1372,7 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
                             main_agent={"id": main_agent_id, "name": "Repeated Agent"},
                             references={},
                             blocks={},
-                            filesystem_mode="configured-shared",
+                            filesystem_mode="composite",
                             disabled_capabilities=frozenset(),
                             subagents=(),
                             subagent_nodes={},

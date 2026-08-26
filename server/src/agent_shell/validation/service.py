@@ -10,7 +10,6 @@ from agent_shell.capability_manifest import (
     CAPABILITY_MANIFESTS,
     DEFAULT_MIDDLEWARE_CAPABILITY_TYPES,
     FILESYSTEM_TOOL_NAMES,
-    MINIMAL_FILESYSTEM_TOOL_NAMES,
 )
 from agent_shell.contracts import (
     BLOCK_MODELS,
@@ -35,9 +34,6 @@ from agent_shell.validation.capability_assembly import (
     capability_assembly_issues,
 )
 from agent_shell.validation.contracts import report_from_validation_error
-from agent_shell.validation.filesystem_permissions import (
-    filesystem_permission_warnings,
-)
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 from agent_shell.validation.subagent_references import subagent_reference_issues
 
@@ -273,6 +269,23 @@ class ConfigurationValidationService:
                 reference,
                 **arguments,
             )
+        if block_type == "filesystem":
+            skill_package_id = payload.get("skill_package_id")
+            if skill_package_id is not None and self._blocks.get_block_internal(
+                "skill", str(skill_package_id)
+            ) is None:
+                return [
+                    ValidationIssue(
+                        code="assembly.skill_package_not_found",
+                        scope="block",
+                        owner_id=owner_id,
+                        owner_name=str(payload.get("name", "")),
+                        path="skill_package_id",
+                        message="The selected Skill package does not exist.",
+                        message_key="validation.issue.assembly.skillPackageNotFound",
+                        message_args={},
+                    )
+                ]
         return []
 
     def validate_subagent(
@@ -670,7 +683,50 @@ class ConfigurationValidationService:
             block_overrides=block_overrides,
         )
         issues.extend(selected_issues)
-        return selected, issues, subject.filesystem_mode
+        filesystem = selected.get("filesystem")
+        filesystem_mode: FilesystemMode = (
+            "local-shell"
+            if filesystem is not None
+            and filesystem.get("backend_type") == "local-shell"
+            else "composite"
+        )
+        if filesystem is not None and filesystem_mode == "composite":
+            skill_package_id = filesystem.get("skill_package_id")
+            if isinstance(skill_package_id, str) and skill_package_id:
+                skill_override_key = ("skill", skill_package_id)
+                skill_package = (
+                    block_overrides[skill_override_key]
+                    if block_overrides and skill_override_key in block_overrides
+                    else self._blocks.get_block_internal("skill", skill_package_id)
+                )
+                if skill_package is None:
+                    issues.append(
+                        ValidationIssue(
+                            code="assembly.skill_package_not_found",
+                            scope=scope,
+                            owner_id=owner_id,
+                            owner_name=owner_name,
+                            path="capability_refs.filesystem.skill_package_id",
+                            message="The selected Skill package does not exist.",
+                            message_key=(
+                                "validation.issue.assembly.skillPackageNotFound"
+                            ),
+                            message_args={},
+                        )
+                    )
+                else:
+                    selected["_filesystem-skill-package"] = skill_package
+                    issue = self._block_contract_issue(
+                        "skill",
+                        skill_package,
+                        scope=scope,
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        path="capability_refs.filesystem.skill_package_id",
+                    )
+                    if issue is not None:
+                        issues.append(issue)
+        return selected, issues, filesystem_mode
 
     def _static_tool_issue(
         self,
@@ -695,7 +751,7 @@ class ConfigurationValidationService:
             if manifest is None or block is None:
                 continue
             names = list(manifest.tool_names)
-            if capability_type == "filesystem":
+            if capability_type == "filesystem-tools":
                 continue
             for name in names:
                 previous = seen.get(name)
@@ -725,31 +781,18 @@ class ConfigurationValidationService:
         blocks: dict[str, dict[str, Any]],
         filesystem_mode: FilesystemMode,
     ) -> tuple[str, ...]:
-        configs = (
-            FilesystemToolConfigs().model_dump(mode="json")
-            if filesystem_mode == "configured-shared"
-            else {
-                name: {
-                    "visible": name in MINIMAL_FILESYSTEM_TOOL_NAMES,
-                    "description_override": None,
-                }
-                for name in FILESYSTEM_TOOL_NAMES
-            }
-        )
-        filesystem = blocks.get("filesystem")
-        if filesystem is not None and isinstance(filesystem.get("tool_configs"), dict):
-            configs.update(filesystem["tool_configs"])
-        permissions = blocks.get("filesystem-permissions")
-        overrides = permissions.get("tool_overrides", {}) if permissions else {}
-        if isinstance(overrides, dict):
-            for name, override in overrides.items():
-                if name in configs and isinstance(override, dict):
-                    configs[name] = override
+        configs = FilesystemToolConfigs().model_dump(mode="json")
+        filesystem_tools = blocks.get("filesystem-tools")
+        if filesystem_tools is not None and isinstance(
+            filesystem_tools.get("tool_configs"), dict
+        ):
+            configs.update(filesystem_tools["tool_configs"])
         return tuple(
             name
             for name in FILESYSTEM_TOOL_NAMES
             if isinstance(configs.get(name), dict)
             and configs[name].get("visible") is True
+            and not (filesystem_mode == "composite" and name == "execute")
         )
 
     def _subagent_profile(
@@ -1024,24 +1067,6 @@ class ConfigurationValidationService:
             )
         )
 
-        issues.extend(
-            filesystem_permission_warnings(
-                selected,
-                scope="main_agent",
-                owner_id=owner_id,
-                owner_name=owner_name,
-            )
-        )
-        for node in subagent_nodes.values():
-            issues.extend(
-                filesystem_permission_warnings(
-                    node.blocks,
-                    scope="subagent",
-                    owner_id=node.key,
-                    owner_name=node.name,
-                )
-            )
-
         report = ValidationReport(stage=stage, issues=tuple(issues))
         if not report.valid:
             return report, None
@@ -1107,6 +1132,12 @@ class ConfigurationValidationService:
         stage: str,
     ) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
+        referencing_filesystem_ids = {
+            str(filesystem.get("id", ""))
+            for filesystem in self._blocks.list_blocks_internal("filesystem")
+            if block_type == "skill"
+            and filesystem.get("skill_package_id") == block_id
+        }
         for main_agent in self._agent_configs.list_items("main_agents"):
             references = main_agent.get("capability_refs", [])
             if not isinstance(references, list):
@@ -1137,6 +1168,19 @@ class ConfigurationValidationService:
             indirect = self._direct_subagents_reference_block(
                 subagent_references, block_type, block_id
             )
+            if referencing_filesystem_ids:
+                direct = direct or any(
+                    isinstance(item, dict)
+                    and item.get("type") == "filesystem"
+                    and item.get("block_id") in referencing_filesystem_ids
+                    for item in references
+                )
+                indirect = indirect or any(
+                    self._direct_subagents_reference_block(
+                        subagent_references, "filesystem", filesystem_id
+                    )
+                    for filesystem_id in referencing_filesystem_ids
+                )
             if direct or indirect:
                 issues.extend(
                     self._new_impact_issues(

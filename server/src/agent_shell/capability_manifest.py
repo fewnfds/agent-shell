@@ -14,8 +14,6 @@ DEFAULT_FILESYSTEM_TOOL_NAMES = (
     "grep",
 )
 
-MINIMAL_FILESYSTEM_TOOL_NAMES = ("read_file",)
-
 FILESYSTEM_TOOL_NAMES = (
     *DEFAULT_FILESYSTEM_TOOL_NAMES[:4],
     "delete",
@@ -44,6 +42,7 @@ class CapabilityManifest:
     subagent_overrideable: bool
     required: bool
     subagent_policy: Literal["inherit", "force-remove", "top-level-only"]
+    agent_selectable: bool = True
     tool_names: tuple[str, ...] = ()
 
     def public_dict(self) -> dict:
@@ -57,6 +56,7 @@ class CapabilityManifest:
             "subagent_overrideable": self.subagent_overrideable,
             "required": self.required,
             "subagent_policy": self.subagent_policy,
+            "agent_selectable": self.agent_selectable,
             "tool_names": list(self.tool_names),
         }
 
@@ -72,15 +72,15 @@ CAPABILITY_MANIFESTS = (
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
     CapabilityManifest(
-        "filesystem", "file-system", "文件系统", 3,
+        "filesystem", "file-system", "文件系统后端", 3,
         "folder", "filesystem",
-        subagent_overrideable=True, required=False, subagent_policy="inherit",
-        tool_names=FILESYSTEM_TOOL_NAMES,
+        subagent_overrideable=True, required=True, subagent_policy="inherit",
     ),
     CapabilityManifest(
-        "filesystem-permissions", "filesystem-permissions", "文件系统权限", 4,
-        "shield-lock", "filesystem_permissions",
-        subagent_overrideable=True, required=False, subagent_policy="inherit",
+        "filesystem-tools", "filesystem-tools", "文件系统工具", 4,
+        "wrench", "filesystem_tools",
+        subagent_overrideable=True, required=True, subagent_policy="inherit",
+        tool_names=FILESYSTEM_TOOL_NAMES,
     ),
     CapabilityManifest(
         "todo-list", "todo-list", "待办计划", 5,
@@ -94,9 +94,9 @@ CAPABILITY_MANIFESTS = (
         subagent_overrideable=False, required=False, subagent_policy="force-remove",
     ),
     CapabilityManifest(
-        "skill", "skill", "技能", 7, "sparkles",
-        "skill", subagent_overrideable=True, required=False,
-        subagent_policy="inherit",
+        "skill", "skill", "Skill 独立包", 7, "sparkles",
+        "skill", subagent_overrideable=False, required=False,
+        subagent_policy="top-level-only", agent_selectable=False,
     ),
     CapabilityManifest(
         "custom-middleware", "middleware", "自定义中间件", 8,

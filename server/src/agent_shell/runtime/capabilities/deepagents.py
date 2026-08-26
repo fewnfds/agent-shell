@@ -8,13 +8,10 @@ from pathlib import Path, PurePosixPath
 import stat
 from typing import Any, Mapping
 
-from agent_shell.capability_manifest import (
-    FILESYSTEM_TOOL_NAMES,
-    MINIMAL_FILESYSTEM_TOOL_NAMES,
-)
 from agent_shell.contracts import (
     FilesystemBlock,
-    FilesystemPermissionsBlock,
+    FilesystemPermissionValue,
+    FilesystemToolsBlock,
     SkillBlock,
 )
 from agent_shell.storage.owned_paths import is_plain_tree
@@ -221,7 +218,12 @@ class ScopedSkillsBackend(EmptyReadOnlyBackend):
 
 def _load_deepagents() -> tuple[Any, ...]:
     try:
-        from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+        from deepagents.backends import (
+            CompositeBackend,
+            FilesystemBackend,
+            LocalShellBackend,
+            StateBackend,
+        )
         from deepagents.backends.utils import create_file_data
         from deepagents.middleware import FilesystemMiddleware, SkillsMiddleware
     except ImportError as exc:
@@ -231,6 +233,7 @@ def _load_deepagents() -> tuple[Any, ...]:
     return (
         CompositeBackend,
         FilesystemBackend,
+        LocalShellBackend,
         StateBackend,
         create_file_data,
         FilesystemMiddleware,
@@ -400,11 +403,47 @@ def _route_paths_overlap(left: str, right: str) -> bool:
     return left.startswith(right) or right.startswith(left)
 
 
+def _permission_paths(path: str, *, is_directory: bool) -> list[str]:
+    if not is_directory:
+        return [path]
+    return [path, f"{path.rstrip('/')}/**"]
+
+
+def _append_permission(
+    materialized: list[Any],
+    permission_type: Any,
+    *,
+    path: str,
+    is_directory: bool,
+    permission: FilesystemPermissionValue,
+) -> None:
+    paths = _permission_paths(path, is_directory=is_directory)
+    if permission == "read-write":
+        materialized.append(
+            permission_type(
+                operations=["read", "write"], paths=paths, mode="allow"
+            )
+        )
+    elif permission == "read-only":
+        materialized.extend(
+            (
+                permission_type(operations=["read"], paths=paths, mode="allow"),
+                permission_type(operations=["write"], paths=paths, mode="deny"),
+            )
+        )
+    else:
+        materialized.append(
+            permission_type(
+                operations=["read", "write"], paths=paths, mode="deny"
+            )
+        )
+
+
 def build_deepagents_capabilities(
-    filesystem: FilesystemBlock | None,
+    filesystem: FilesystemBlock,
     skill: SkillBlock | None,
     *,
-    filesystem_permissions: FilesystemPermissionsBlock | None = None,
+    filesystem_tools: FilesystemToolsBlock | None = None,
     filesystem_mode: FilesystemMode,
     skills_dir: Path,
     skill_owner_id: str = "",
@@ -415,33 +454,22 @@ def build_deepagents_capabilities(
     (
         CompositeBackend,
         FilesystemBackend,
+        LocalShellBackend,
         StateBackend,
         create_file_data,
         FilesystemMiddleware,
         SkillsMiddleware,
     ) = _load_deepagents()
 
-    if filesystem_mode == "configured-shared" and filesystem is None:
-        raise DeepAgentsCapabilityError("configured filesystem mode requires a block")
-    if filesystem_mode == "default-shared" and filesystem is not None:
+    if filesystem.backend_type != filesystem_mode:
         raise DeepAgentsCapabilityError(
-            "default filesystem mode does not accept a filesystem block"
+            "filesystem mode does not match the selected backend block"
         )
 
-    if filesystem is not None:
-        tool_configs = filesystem.tool_configs.model_dump()
-    else:
-        tool_configs = {
-            name: {
-                "visible": name in MINIMAL_FILESYSTEM_TOOL_NAMES,
-                "description_override": None,
-            }
-            for name in FILESYSTEM_TOOL_NAMES
-        }
-    if filesystem_permissions is not None:
-        for name, override in filesystem_permissions.tool_overrides:
-            if override is not None:
-                tool_configs[name] = override.model_dump()
+    filesystem_tools = filesystem_tools or FilesystemToolsBlock(
+        name="Default filesystem tools"
+    )
+    tool_configs = filesystem_tools.tool_configs.model_dump()
     custom_tool_descriptions = {
         name: config["description_override"]
         for name, config in tool_configs.items()
@@ -480,158 +508,162 @@ def build_deepagents_capabilities(
             if selected_skills:
                 skill_sources.append("/skills/")
 
-    agent_routes: dict[str, Any] = {}
-    for route in filesystem.mapped_directories if filesystem is not None else ():
-        local_path = (
-            mapped_directory_paths.get(route.virtual_path)
+    shared_default_backend = (
+        workspace.default_backend if workspace is not None else StateBackend()
+    )
+    if filesystem_mode == "local-shell":
+        if skill is not None:
+            raise DeepAgentsCapabilityError(
+                "LocalShellBackend does not accept a Skill package"
+            )
+        assert filesystem.workspace is not None
+        workspace_root = (
+            mapped_directory_paths.get("/")
             if mapped_directory_paths is not None
-            else Path(route.local_path)
+            else Path(filesystem.workspace.local_path)
         )
-        if local_path is None:
+        if workspace_root is None or not workspace_root.is_dir():
             raise DeepAgentsCapabilityError(
-                "resolved mapped directory is missing: "
-                f"{route.virtual_path}"
+                "resolved LocalShellBackend workspace is unavailable"
             )
-        if not local_path.is_dir():
-            raise DeepAgentsCapabilityError(
-                f"mapped local_path is not a directory: {local_path}"
+        backend = LocalShellBackend(root_dir=workspace_root, virtual_mode=True)
+        workspace = workspace or DeepAgentsWorkspace(
+            default_backend=shared_default_backend,
+            routes={},
+            initial_files={},
+        )
+    else:
+        agent_routes: dict[str, Any] = {}
+        for route in filesystem.mapped_directories:
+            local_path = (
+                mapped_directory_paths.get(route.virtual_path)
+                if mapped_directory_paths is not None
+                else Path(route.local_path)
             )
-        agent_routes[route.virtual_path] = FilesystemBackend(
-            root_dir=local_path,
-            virtual_mode=True,
-        )
-    initial_files = (
-        _seed_virtual_sources(filesystem, create_file_data)
-        if filesystem is not None
-        else {}
-    )
-    workspace = DeepAgentsWorkspace(
-        default_backend=(
-            workspace.default_backend if workspace is not None else StateBackend()
-        ),
-        routes=agent_routes,
-        initial_files=initial_files,
-    )
-
-    conflicting_route = next(
-        (path for path in workspace.routes if _route_paths_overlap(path, "/skills/")),
-        None,
-    )
-    if conflicting_route is not None:
-        raise DeepAgentsCapabilityError(
-            "filesystem route conflicts with selected skill: "
-            f"{conflicting_route}, /skills/"
-        )
-    hidden_file = next(
-        (
-            path
-            for path in workspace.initial_files
-            if path.startswith("/skills/")
-        ),
-        None,
-    )
-    if hidden_file is not None:
-        raise DeepAgentsCapabilityError(
-            f"virtual file target conflicts with selected skill: {hidden_file}"
+            if local_path is None:
+                raise DeepAgentsCapabilityError(
+                    "resolved mapped directory is missing: "
+                    f"{route.virtual_path}"
+                )
+            if not local_path.is_dir():
+                raise DeepAgentsCapabilityError(
+                    f"mapped local_path is not a directory: {local_path}"
+                )
+            agent_routes[route.virtual_path] = FilesystemBackend(
+                root_dir=local_path,
+                virtual_mode=True,
+            )
+        initial_files = _seed_virtual_sources(filesystem, create_file_data)
+        workspace = DeepAgentsWorkspace(
+            default_backend=shared_default_backend,
+            routes=agent_routes,
+            initial_files=initial_files,
         )
 
-    skill_routes: dict[str, Any] = {}
-    if skill_package_root is not None:
-        skill_routes["/"] = FilesystemBackend(
-            root_dir=skill_package_root,
-            virtual_mode=True,
-        )
+        if skill_package_root is not None:
+            conflicting_route = next(
+                (
+                    path
+                    for path in workspace.routes
+                    if _route_paths_overlap(path, "/skills/")
+                ),
+                None,
+            )
+            if conflicting_route is not None:
+                raise DeepAgentsCapabilityError(
+                    "filesystem route conflicts with selected Skill package: "
+                    f"{conflicting_route}, /skills/"
+                )
+            hidden_file = next(
+                (
+                    path
+                    for path in workspace.initial_files
+                    if path.startswith("/skills/")
+                ),
+                None,
+            )
+            if hidden_file is not None:
+                raise DeepAgentsCapabilityError(
+                    "virtual file target conflicts with selected Skill package: "
+                    f"{hidden_file}"
+                )
 
-    routes = dict(workspace.routes)
-    routes["/skills/"] = ScopedSkillsBackend(
-        CompositeBackend(default=EmptyReadOnlyBackend(), routes=skill_routes)
-    )
-    backend = CompositeBackend(default=workspace.default_backend, routes=routes)
+        routes = dict(workspace.routes)
+        if skill_package_root is not None:
+            routes["/skills/"] = ScopedSkillsBackend(
+                CompositeBackend(
+                    default=EmptyReadOnlyBackend(),
+                    routes={
+                        "/": FilesystemBackend(
+                            root_dir=skill_package_root,
+                            virtual_mode=True,
+                        )
+                    },
+                )
+            )
+        backend = CompositeBackend(default=workspace.default_backend, routes=routes)
+
     filesystem_kwargs: dict[str, Any] = {
         "backend": backend,
         "custom_tool_descriptions": custom_tool_descriptions or None,
         "tool_token_limit_before_evict": (
-            filesystem.tool_token_limit_before_evict
-            if filesystem is not None
-            else None
+            filesystem_tools.tool_token_limit_before_evict
         ),
         "human_message_token_limit_before_evict": (
-            filesystem.human_message_token_limit_before_evict
-            if filesystem is not None
-            else None
+            filesystem_tools.human_message_token_limit_before_evict
         ),
-        "grep_max_count": filesystem.grep_max_count if filesystem is not None else 1_000,
-        "max_execute_timeout": (
-            filesystem.max_execute_timeout if filesystem is not None else 3_600
-        ),
+        "grep_max_count": filesystem_tools.grep_max_count,
+        "max_execute_timeout": filesystem_tools.max_execute_timeout,
     }
     filesystem_kwargs["tools"] = [
-        name for name, config in tool_configs.items() if config["visible"]
+        name
+        for name, config in tool_configs.items()
+        if config["visible"] and (name != "execute" or filesystem_mode == "local-shell")
     ]
-    if (
-        filesystem_permissions is not None
-        and filesystem_permissions.system_prompt_override is not None
-    ):
-        filesystem_kwargs["system_prompt"] = (
-            filesystem_permissions.system_prompt_override.value
-        )
-    elif filesystem is not None and filesystem.system_prompt_override is not None:
+    if filesystem.system_prompt_override is not None:
         filesystem_kwargs["system_prompt"] = filesystem.system_prompt_override
     materialized_permissions: list[Any] = []
-    if filesystem_permissions is not None:
+    if filesystem_mode == "composite":
         from deepagents.middleware.filesystem import FilesystemPermission
 
-        # Skill visibility is owned by the per-Agent skill route, not user rules.
-        materialized_permissions.extend(
-            (
-                FilesystemPermission(
-                    operations=["read"],
-                    paths=["/skills/**"],
-                    mode="allow",
-                ),
-                FilesystemPermission(
-                    operations=["write"],
-                    paths=["/skills/**"],
-                    mode="deny",
-                ),
+        for source in filesystem.mapped_directories:
+            _append_permission(
+                materialized_permissions,
+                FilesystemPermission,
+                path=source.virtual_path,
+                is_directory=True,
+                permission=source.permission,
             )
-        )
-        for entry in filesystem_permissions.permissions:
-            if entry.permission == "read-write":
-                materialized_permissions.append(
-                    FilesystemPermission(
-                        operations=["read", "write"],
-                        paths=[entry.path],
-                        mode="allow",
-                    )
-                )
-            elif entry.permission == "read-only":
-                materialized_permissions.extend(
-                    (
-                        FilesystemPermission(
-                            operations=["read"],
-                            paths=[entry.path],
-                            mode="allow",
-                        ),
-                        FilesystemPermission(
-                            operations=["write"],
-                            paths=[entry.path],
-                            mode="deny",
-                        ),
-                    )
-                )
-            else:
-                materialized_permissions.append(
-                    FilesystemPermission(
-                        operations=["read", "write"],
-                        paths=[entry.path],
-                        mode="deny",
-                    )
-                )
-        filesystem_kwargs["_permissions"] = materialized_permissions
+        for source in filesystem.virtual_directories:
+            _append_permission(
+                materialized_permissions,
+                FilesystemPermission,
+                path=source.virtual_path,
+                is_directory=True,
+                permission=source.permission,
+            )
+        for source in filesystem.virtual_files:
+            _append_permission(
+                materialized_permissions,
+                FilesystemPermission,
+                path=source.virtual_path,
+                is_directory=False,
+                permission=source.permission,
+            )
+        if skill_package_root is not None:
+            _append_permission(
+                materialized_permissions,
+                FilesystemPermission,
+                path="/skills/",
+                is_directory=True,
+                permission="read-only",
+            )
+        if materialized_permissions:
+            filesystem_kwargs["_permissions"] = materialized_permissions
     filesystem_middleware = FilesystemMiddleware(**filesystem_kwargs)
     middleware: list[Any] = []
     if skill_sources:
+        assert skill is not None
         skill_kwargs: dict[str, Any] = {
             "backend": backend,
             "sources": skill_sources,

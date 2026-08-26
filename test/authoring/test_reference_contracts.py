@@ -7,8 +7,8 @@ def test_main_agent_subagent_reference_only_stores_entity_id(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required_refs = references(
-        create_blocks(client, "binding-flags-required", ("model-requirement", "agent-event-output")),
-        ("model-requirement", "agent-event-output"),
+        create_blocks(client, "binding-flags-required", REQUIRED_TYPES),
+        REQUIRED_TYPES,
     )
     subagent = client.post(
         "/api/subagents",
@@ -30,9 +30,9 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
-    required = create_blocks(client, "validation", ("model-requirement", "agent-event-output"))
+    required = create_blocks(client, "validation", REQUIRED_TYPES)
     requirement = required["model-requirement"]
-    required_refs = references(required, ("model-requirement", "agent-event-output"))
+    required_refs = references(required, REQUIRED_TYPES)
 
     invalid_main_agent_refs = [
         [
@@ -42,12 +42,12 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
         [
             {"type": "model-requirement", "block_id": requirement["id"]},
             {"type": "model-requirement", "block_id": requirement["id"]},
-            required_refs[1],
+            *required_refs[1:],
         ],
         [
             required_refs[0],
             {"type": "filesystem", "block_id": requirement["id"]},
-            required_refs[1],
+            *required_refs[1:],
         ],
     ]
     for index, capability_refs in enumerate(invalid_main_agent_refs):
@@ -57,20 +57,17 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
         )
         assert response.status_code == 422, response.text
 
-    minimal_filesystem = client.post(
+    required_filesystem_disabled = client.post(
         "/api/subagents",
         json=subagent_payload(
-            "Minimal Filesystem Subagent",
+            "Disabled Filesystem Subagent",
             name="minimal_filesystem_subagent",
             capability_overrides=[
                 {"type": "filesystem", "mode": "disabled", "block_id": ""}
             ],
         ),
     )
-    assert minimal_filesystem.status_code == 200, minimal_filesystem.text
-    assert minimal_filesystem.json()["settings"]["capability_overrides"] == [
-        {"type": "filesystem", "mode": "disabled", "block_id": ""}
-    ]
+    assert required_filesystem_disabled.status_code == 422
 
     invalid_overrides = [
         [{"type": "unknown-capability", "mode": "inherit", "block_id": ""}],
@@ -78,6 +75,7 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
         [{"type": "model-requirement", "mode": "replace", "block_id": ""}],
         [{"type": "model-requirement", "mode": "disabled", "block_id": ""}],
         [{"type": "subagent", "mode": "disabled", "block_id": ""}],
+        [{"type": "skill", "mode": "replace", "block_id": requirement["id"]}],
         [
             {"type": "model-requirement", "mode": "inherit", "block_id": ""},
             {"type": "model-requirement", "mode": "disabled", "block_id": ""},
@@ -94,22 +92,19 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
         )
         assert response.status_code == 422, response.text
 
-def test_main_agent_save_enforces_required_and_delegation_contracts_with_skill_fallback(
+def test_main_agent_save_enforces_required_delegation_and_skill_package_contracts(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     blocks = create_blocks(
         client,
         "save-contract",
-        ("model-requirement", "agent-event-output", "filesystem", "skill", "subagent"),
+        (*REQUIRED_TYPES, "skill", "subagent"),
     )
-    required_refs = references(blocks, ("model-requirement", "agent-event-output"))
+    required_refs = references(blocks, REQUIRED_TYPES)
 
-    missing_required = [
-        [],
-        [required_refs[1]],
-        [required_refs[0]],
-    ]
+    missing_required = [required_refs[:index] + required_refs[index + 1 :]
+                        for index in range(len(required_refs))]
     for index, capability_refs in enumerate(missing_required):
         response = client.post(
             "/api/main-agents",
@@ -124,22 +119,36 @@ def test_main_agent_save_enforces_required_and_delegation_contracts_with_skill_f
         "/api/main-agents",
         json={
             "name": "No filesystem required",
-            "capability_refs": required_refs,
+            "capability_refs": [
+                item for item in required_refs if item["type"] != "filesystem"
+            ],
         },
     )
-    assert without_filesystem.status_code == 200, without_filesystem.text
+    assert without_filesystem.status_code == 422, without_filesystem.text
 
-    skill_without_filesystem = client.post(
+    direct_skill_selection = client.post(
         "/api/main-agents",
         json={
-            "name": "Skill without filesystem",
+            "name": "Direct Skill selection",
             "capability_refs": [
                 *required_refs,
                 {"type": "skill", "block_id": blocks["skill"]["id"]},
             ],
         },
     )
-    assert skill_without_filesystem.status_code == 200, skill_without_filesystem.text
+    assert direct_skill_selection.status_code == 422, direct_skill_selection.text
+
+    filesystem = blocks["filesystem"]
+    bound_filesystem = client.put(
+        f"/api/blocks/filesystem/{filesystem['id']}",
+        json={
+            "name": filesystem["name"],
+            "backend_type": "composite",
+            "skill_package_id": blocks["skill"]["id"],
+        },
+    )
+    assert bound_filesystem.status_code == 200, bound_filesystem.text
+    assert bound_filesystem.json()["skill_package_id"] == blocks["skill"]["id"]
 
     delegation = client.post(
         "/api/blocks/subagent",
@@ -176,21 +185,7 @@ def test_main_agent_save_enforces_required_and_delegation_contracts_with_skill_f
             ],
         ),
     )
-    assert child_skill_override.status_code == 200, child_skill_override.text
-    child_skill_without_filesystem = client.post(
-        "/api/main-agents",
-        json={
-            "name": "Child Skill fallback",
-            "capability_refs": [
-                *required_refs,
-                {"type": "subagent", "block_id": delegation["id"]},
-            ],
-            "subagents": [{"subagent_id": child_skill_override.json()["id"]}],
-        },
-    )
-    assert child_skill_without_filesystem.status_code == 200, (
-        child_skill_without_filesystem.text
-    )
+    assert child_skill_override.status_code == 422, child_skill_override.text
 
     complete_worker = client.post(
         "/api/subagents",
@@ -202,7 +197,6 @@ def test_main_agent_save_enforces_required_and_delegation_contracts_with_skill_f
             "name": "Complete required contract",
             "capability_refs": [
                 *required_refs,
-                {"type": "skill", "block_id": blocks["skill"]["id"]},
                 {"type": "subagent", "block_id": delegation["id"]},
             ],
             "subagents": [{"subagent_id": complete_worker["id"]}],

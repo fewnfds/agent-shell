@@ -6,11 +6,11 @@
 | --- | --- | --- | --- |
 | 模型要求 | 名称和能力说明 | 必选 | 继承或替换 |
 | 系统提示词 | 基础 system prompt | 可选 | 继承、替换或关闭 |
-| 文件系统 | Agent workspace、映射、初始文件和文件工具 | 自选；未选时使用 minimal Filesystem | 继承、自选或最小 |
-| 文件系统权限 | 路径权限与文件工具、提示词覆写 | 可选 | 继承、替换或关闭 |
+| 文件系统后端 | CompositeBackend 的映射、来源权限与 Skill 独立包，或 LocalShellBackend 的真实单工作区 | 必选 | 继承或替换 |
+| 文件系统工具 | 文件 Tool 可见性、说明与执行参数 | 必选 | 继承或替换 |
 | 待办计划 | `write_todos` 与规划提示 | 可选 | 继承、替换或关闭 |
 | Custom Tool | 一个 Python extension 导出一个 LangChain Tool | 通过有序引用装配 | Subagent 独立有序引用 |
-| Skill | 从 `data/skills-template/` 选择合法 Template，并复制到 Component 私有包 | 可选 | 继承、替换或关闭 |
+| Skill | 从 `data/skills-template/` 选择合法 Template，并制作 Skill 独立包 | 由 CompositeBackend 引用 | 随 Filesystem Backend 生效 |
 | Custom Middleware | 定义一个 LangChain Middleware | 通过有序引用装配 | Subagent 独立有序引用 |
 | Agent Event Output | 用文件化 Python 扩展把 v3 Agent 事件投影为响应文本 | 必选 | 只用于顶层 Main Agent |
 | 异常重试 | Provider 或 ModelRetryMiddleware 重试 | 可选 | 继承、替换或关闭 |
@@ -24,7 +24,7 @@
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
 
-Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到 owner UUID 的私有包，Template 与 Component 随后独立维护。私有包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。私有包问题在组件页载入或刷新时显示 warning，组件仍可保存和运行。
+Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到 owner UUID 的 Skill 独立包，Template 与 Component 随后独立维护。独立包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。独立包问题在组件页载入或刷新时显示 warning，组件仍可保存。Agent 不直接选择 Skill Component；CompositeBackend 通过 `skill_package_id` 引用独立包并只读挂载 `/skills/`，LocalShellBackend 不装配 Skill。
 
 详细字段见[组件说明](../wizard-pages/README.md)。Agent 组合方式见[装配 Main Agent 与 Subagent](configuration-workflow.md)。
 

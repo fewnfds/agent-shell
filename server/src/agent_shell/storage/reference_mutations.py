@@ -6,6 +6,19 @@ def detach_component_references(
     block_type: str,
     block_ids: set[str],
 ) -> None:
+    if block_type == "skill":
+        components = config.get("components", {})
+        filesystems = (
+            components.get("filesystem", [])
+            if isinstance(components, dict)
+            else []
+        )
+        for filesystem in filesystems if isinstance(filesystems, list) else ():
+            if (
+                isinstance(filesystem, dict)
+                and filesystem.get("skill_package_id") in block_ids
+            ):
+                filesystem["skill_package_id"] = None
     if block_type == "checkpointer":
         for workflow in config.get("workflows", []):
             if (

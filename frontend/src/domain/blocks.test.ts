@@ -8,12 +8,14 @@ import {
   customMiddlewareAdapter,
   customToolAdapter,
   filesystemAdapter,
+  filesystemToolsAdapter,
   modelAdapter,
   skillAdapter,
   subagentAdapter,
   systemPromptAdapter,
   todoListAdapter,
   type FilesystemDefaults,
+  type FilesystemToolsDefaults,
   type ModelApiRecord,
   type SkillDefaults,
   type SubagentDefaults,
@@ -23,11 +25,13 @@ import {
 
 const filesystemDefaults: FilesystemDefaults = {
   system_prompt: 'filesystem default',
+}
+const filesystemToolsDefaults: FilesystemToolsDefaults = {
   tool_token_limit_before_evict: 20_000,
   tools: [
     { name: 'read_file', configurable: false, visible: true, default_description: 'read default' },
     { name: 'delete', configurable: true, visible: false, default_description: 'delete default' },
-    { name: 'execute', configurable: false, visible: false, default_description: 'execute default' },
+    { name: 'execute', configurable: true, visible: false, default_description: 'execute default' },
   ],
 }
 
@@ -181,16 +185,11 @@ describe('block adapters', () => {
         local_path: 'H:\\kept',
         path_origin: 'absolute',
         lifecycle_mode: 'fixed',
+        permission: 'read-write',
       },
     ])
     expect(filesystem.virtual_directories).toEqual([])
     expect(filesystem.system_prompt_override).toBe(filesystemDefaults.system_prompt)
-    expect(filesystem.tool_configs.read_file).toEqual({
-      visible: true, description_override: 'read default',
-    })
-    expect(filesystem.tool_configs.delete).toEqual({
-      visible: false, description_override: 'delete default',
-    })
 
     expect(skillAdapter.fromApi({
       id: 'skill', name: 'Skill', skill_package: { folder: 'skill' },
@@ -219,19 +218,19 @@ describe('block adapters', () => {
 
   it('maps filesystem defaults and rows without enforcing path rules', () => {
     const blank = filesystemAdapter.blank(filesystemDefaults)
-    expect(blank.tool_configs.read_file?.description_override).toBe('read default')
-    expect(blank.tool_configs.execute?.visible).toBe(false)
+    expect(blank.backend_type).toBe('composite')
 
     blank.name = ' Files '
     blank.mapped_directories.push(
       {
-        virtual_path: '', local_path: '', path_origin: 'absolute', lifecycle_mode: 'fixed',
+        virtual_path: '', local_path: '', path_origin: 'absolute', lifecycle_mode: 'fixed', permission: 'read-write',
       },
       {
         virtual_path: ' /workspace/ ',
         local_path: ' workspaces ',
         path_origin: 'data-root-relative',
         lifecycle_mode: 'dynamic',
+        permission: 'read-only',
       },
     )
     const payload = filesystemAdapter.toPayload(blank, filesystemDefaults)
@@ -241,16 +240,15 @@ describe('block adapters', () => {
         local_path: 'workspaces',
         path_origin: 'data-root-relative',
         lifecycle_mode: 'dynamic',
+        permission: 'read-only',
       },
     ])
     expect(payload.system_prompt_override).toBeNull()
-    blank.tool_configs.read_file.visible = false
-    blank.tool_configs.execute.visible = true
-    expect(payload.tool_configs.read_file?.description_override).toBeNull()
-    const repairedPayload = filesystemAdapter.toPayload(blank, filesystemDefaults)
-    expect(repairedPayload.tool_configs.read_file?.visible).toBe(true)
-    expect(repairedPayload.tool_configs.delete?.visible).toBe(false)
-    expect(repairedPayload.tool_configs.execute?.visible).toBe(false)
+    const tools = filesystemToolsAdapter.blank(filesystemToolsDefaults)
+    tools.tool_configs.execute!.visible = true
+    const toolsPayload = filesystemToolsAdapter.toPayload(tools, filesystemToolsDefaults)
+    expect((toolsPayload.tool_configs as Record<string, { visible: boolean }>).read_file?.visible).toBe(true)
+    expect((toolsPayload.tool_configs as Record<string, { visible: boolean }>).execute?.visible).toBe(true)
   })
 
   it('round-trips the remaining simple editors and removes displayed defaults', () => {

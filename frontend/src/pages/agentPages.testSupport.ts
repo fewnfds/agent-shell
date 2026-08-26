@@ -68,17 +68,17 @@ export const filesystemManifest: CapabilityManifest = {
   terminology_key: 'file-system',
   order: 3,
   subagent_overrideable: true,
-  required: false,
+  required: true,
   subagent_policy: 'inherit',
 }
 
-export const filesystemPermissionsManifest: CapabilityManifest = {
+export const filesystemToolsManifest: CapabilityManifest = {
   ...modelManifest,
-  type: 'filesystem-permissions',
-  terminology_key: 'filesystem-permissions',
+  type: 'filesystem-tools',
+  terminology_key: 'filesystem-tools',
   order: 4,
   subagent_overrideable: true,
-  required: false,
+  required: true,
   subagent_policy: 'inherit',
 }
 
@@ -154,7 +154,7 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
         model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
         'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
         filesystem: [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem block' }],
-        'filesystem-permissions': [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem-permissions block' }],
+        'filesystem-tools': [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem-tools block' }],
       },
       main_agents: [mainAgent],
       subagents: [subagent],

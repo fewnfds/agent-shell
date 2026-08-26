@@ -16,7 +16,7 @@ from agent_shell.capability_manifest import (
 from agent_shell.contracts import (
     AgentEventOutputBlock,
     BLOCK_MODELS,
-    FilesystemBlock,
+    FilesystemToolsBlock,
 )
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 
@@ -26,7 +26,7 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
         "model-requirement",
         "system-prompt",
         "filesystem",
-        "filesystem-permissions",
+        "filesystem-tools",
         "todo-list",
         "custom-tool",
         "skill",
@@ -44,10 +44,11 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
     assert manifests["custom-middleware"].subagent_policy == "force-remove"
     assert manifests["filesystem"].subagent_overrideable is True
     assert manifests["filesystem"].subagent_policy == "inherit"
-    assert manifests["filesystem"].required is False
-    assert manifests["filesystem-permissions"].subagent_overrideable is True
-    assert manifests["filesystem-permissions"].subagent_policy == "inherit"
-    assert manifests["filesystem-permissions"].required is False
+    assert manifests["filesystem"].required is True
+    assert manifests["filesystem-tools"].subagent_overrideable is True
+    assert manifests["filesystem-tools"].subagent_policy == "inherit"
+    assert manifests["filesystem-tools"].required is True
+    assert manifests["skill"].agent_selectable is False
     assert manifests["agent-event-output"].subagent_overrideable is False
     assert manifests["agent-event-output"].required is True
     assert manifests["agent-event-output"].subagent_policy == "top-level-only"
@@ -77,31 +78,29 @@ def test_manifest_rejects_invalid_catalog_structure() -> None:
 def test_editor_defaults_are_derived_from_current_authoring_contracts() -> None:
     defaults = editor_defaults()
     filesystem = defaults["filesystem"]
-    filesystem_permissions = defaults["filesystem_permissions"]
+    filesystem_tools = defaults["filesystem_tools"]
     agent_event_output = defaults["agent_event_output"]
 
-    assert [tool["name"] for tool in filesystem["tools"]] == list(
-        CAPABILITY_BY_TYPE["filesystem"].tool_names
+    assert [tool["name"] for tool in filesystem_tools["tools"]] == list(
+        CAPABILITY_BY_TYPE["filesystem-tools"].tool_names
     )
-    tools = {tool["name"]: tool for tool in filesystem["tools"]}
+    tools = {tool["name"]: tool for tool in filesystem_tools["tools"]}
     assert tools["read_file"]["configurable"] is False
     assert tools["read_file"]["visible"] is True
     assert tools["delete"]["configurable"] is True
     assert tools["delete"]["visible"] is False
-    assert tools["execute"]["configurable"] is False
+    assert tools["execute"]["configurable"] is True
     assert tools["execute"]["visible"] is False
     assert filesystem["system_prompt"] == ""
-    assert filesystem_permissions["system_prompt"] == ""
-    assert filesystem_permissions["tools"] == filesystem["tools"]
     assert defaults["subagent"]["system_prompt"] == ""
     assert set(defaults["subagent"]) == {"system_prompt", "tool_description"}
     assert set(defaults["todo_list"]) == {"system_prompt", "tool_description"}
-    assert filesystem["tool_token_limit_before_evict"] == (
-        FilesystemBlock.model_fields["tool_token_limit_before_evict"].default
+    assert filesystem_tools["tool_token_limit_before_evict"] == (
+        FilesystemToolsBlock.model_fields["tool_token_limit_before_evict"].default
     )
-    assert filesystem["human_message_token_limit_before_evict"] == 50_000
-    assert filesystem["grep_max_count"] == 1_000
-    assert filesystem["max_execute_timeout"] == 3_600
+    assert filesystem_tools["human_message_token_limit_before_evict"] == 50_000
+    assert filesystem_tools["grep_max_count"] == 1_000
+    assert filesystem_tools["max_execute_timeout"] == 3_600
     assert defaults["summarization"]["trigger"] == {
         "type": "auto",
         "value": None,
@@ -146,7 +145,7 @@ def guarded(name, *args, **kwargs):
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
 from agent_shell.authoring import editor_defaults
-assert editor_defaults()['filesystem']['tools']
+assert editor_defaults()['filesystem_tools']['tools']
 """
     result = subprocess.run(
         [sys.executable, "-c", program],

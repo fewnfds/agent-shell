@@ -2,7 +2,7 @@ import { customMiddlewareAdapter } from './blocks/customMiddleware'
 import { customToolAdapter } from './blocks/customTool'
 import { exceptionRetryAdapter } from './blocks/exceptionRetry'
 import { filesystemAdapter } from './blocks/filesystem'
-import { filesystemPermissionsAdapter } from './blocks/filesystemPermissions'
+import { filesystemToolsAdapter } from './blocks/filesystemTools'
 import { modelRequirementAdapter } from './blocks/modelRequirement'
 import { agentEventOutputAdapter } from './blocks/agentEventOutput'
 import { promptCachingAdapter } from './blocks/promptCaching'
@@ -33,16 +33,18 @@ export type {
   FilesystemDefaults,
   FilesystemDraft,
   FilesystemImportSource,
-  FilesystemToolDefault,
+  FilesystemBackendType,
+  FilesystemPermissionValue,
+  FilesystemWorkspace,
   MappedDirectory,
+  SkillPackageSummary,
   VirtualSource,
 } from './blocks/filesystem'
 export type {
-  FilesystemPermissionEntryDraft,
-  FilesystemPermissionsDefaults,
-  FilesystemPermissionsDraft,
-  FilesystemPermissionValue,
-} from './blocks/filesystemPermissions'
+  FilesystemToolDefault,
+  FilesystemToolsDefaults,
+  FilesystemToolsDraft,
+} from './blocks/filesystemTools'
 export type { ModelRequirementDraft } from './blocks/modelRequirement'
 export type { ModelApiRecord, ModelDraft, ModelProviderSettingInput } from './blocks/model'
 export { modelAdapter } from './blocks/model'
@@ -89,7 +91,7 @@ export {
   customToolAdapter,
   exceptionRetryAdapter,
   filesystemAdapter,
-  filesystemPermissionsAdapter,
+  filesystemToolsAdapter,
   modelRequirementAdapter,
   agentEventOutputAdapter,
   promptCachingAdapter,
@@ -111,7 +113,7 @@ export const blockTypes = [
   'agent-event-output',
   'exception-retry',
   'filesystem',
-  'filesystem-permissions',
+  'filesystem-tools',
   'skill',
   'system-prompt',
   'subagent',
@@ -135,7 +137,7 @@ export const blockAdapters = {
   'agent-event-output': agentEventOutputAdapter,
   'exception-retry': exceptionRetryAdapter,
   filesystem: filesystemAdapter,
-  'filesystem-permissions': filesystemPermissionsAdapter,
+  'filesystem-tools': filesystemToolsAdapter,
   skill: skillAdapter,
   'system-prompt': systemPromptAdapter,
   subagent: subagentAdapter,

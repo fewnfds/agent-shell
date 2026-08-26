@@ -432,9 +432,17 @@ def test_model_requirement_binding_resolves_into_runtime_model(
     )
     builder = runtime_builder(tmp_path, repository, resources)
     profile = builder._materialize_profile(
-        {"model-requirement": requirement_id},
-        {"model-requirement": {"id": requirement_id, "name": "Reasoning", "description": "Use reasoning."}},
-        filesystem_mode="default-shared",
+        {
+            "model-requirement": requirement_id,
+            "filesystem": "filesystem-id",
+            "filesystem-tools": "filesystem-tools-id",
+        },
+        {
+            "model-requirement": {"id": requirement_id, "name": "Reasoning", "description": "Use reasoning."},
+            "filesystem": {"id": "filesystem-id", "name": "Workspace"},
+            "filesystem-tools": {"id": "filesystem-tools-id", "name": "Workspace tools"},
+        },
+        filesystem_mode="composite",
         scope="main_agent",
         owner_id="main-agent-id",
         owner_name="Main Agent",
@@ -465,7 +473,7 @@ def test_runtime_reports_structured_unbound_requirement_error(
         builder._materialize_profile(
             {"model-requirement": requirement_id},
             {"model-requirement": {"id": requirement_id, "name": "Reasoning", "description": "Use reasoning."}},
-            filesystem_mode="default-shared",
+            filesystem_mode="composite",
             scope="main_agent",
             owner_id="main-agent-id",
             owner_name="Main Agent",
@@ -497,7 +505,7 @@ def test_runtime_reports_structured_error_when_requirement_reference_is_missing(
                     "description": "Use reasoning.",
                 }
             },
-            filesystem_mode="default-shared",
+            filesystem_mode="composite",
             scope="main_agent",
             owner_id="main-agent-id",
             owner_name="Main Agent",
@@ -544,7 +552,7 @@ def test_runtime_reports_structured_error_for_missing_bound_connection(
                     "description": "Use reasoning.",
                 }
             },
-            filesystem_mode="default-shared",
+            filesystem_mode="composite",
             scope="main_agent",
             owner_id="main-agent-id",
             owner_name="Main Agent",

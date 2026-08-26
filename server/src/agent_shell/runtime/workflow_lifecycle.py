@@ -640,22 +640,42 @@ class WorkflowLifecycleService:
             records: list[dict[str, str]] = []
             resolved: dict[str, Path] = {}
             resolved_targets: set[str] = set()
-            for mapping in filesystem.mapped_directories:
+            configured_mappings = (
+                [
+                    (
+                        mapping.virtual_path,
+                        mapping.local_path,
+                        mapping.path_origin,
+                        mapping.lifecycle_mode,
+                    )
+                    for mapping in filesystem.mapped_directories
+                ]
+                if filesystem.backend_type == "composite"
+                else [
+                    (
+                        "/",
+                        filesystem.workspace.local_path,
+                        filesystem.workspace.path_origin,
+                        "fixed",
+                    )
+                ]
+            )
+            for virtual_path, local_path, path_origin, lifecycle_mode in configured_mappings:
                 root = self._configured_mapping_root(
-                    mapping.local_path,
-                    mapping.path_origin,
+                    local_path,
+                    path_origin,
                 )
                 if not root.is_dir():
                     raise ValueError(
-                        "mapped local_path must be an existing directory: "
-                        f"{mapping.local_path}"
+                        "configured filesystem root must be an existing directory: "
+                        f"{local_path}"
                     )
                 target = (
                     root / f"lifecycle-{lifecycle_id}"
-                    if mapping.lifecycle_mode == "dynamic"
+                    if lifecycle_mode == "dynamic"
                     else root
                 )
-                if mapping.lifecycle_mode == "dynamic":
+                if lifecycle_mode == "dynamic":
                     target.mkdir(exist_ok=True)
                 canonical = str(target.resolve()).casefold()
                 if canonical in resolved_targets:
@@ -663,14 +683,14 @@ class WorkflowLifecycleService:
                         "resolved mapped local directories must be unique"
                     )
                 resolved_targets.add(canonical)
-                resolved[mapping.virtual_path] = target.resolve()
+                resolved[virtual_path] = target.resolve()
                 records.append(
                     {
-                        "virtual_path": mapping.virtual_path,
+                        "virtual_path": virtual_path,
                         "resolved_local_path": str(target.resolve()),
                         "configured_root": str(root),
-                        "path_origin": mapping.path_origin,
-                        "lifecycle_mode": mapping.lifecycle_mode,
+                        "path_origin": path_origin,
+                        "lifecycle_mode": lifecycle_mode,
                     }
                 )
             await self.store.aput(

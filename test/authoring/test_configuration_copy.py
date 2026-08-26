@@ -12,7 +12,7 @@ def test_main_agent_and_subagent_copy_create_server_ids_and_preserve_sources(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required = create_blocks(
-        client, "copy-required", ("model-requirement", "agent-event-output")
+        client, "copy-required", REQUIRED_TYPES
     )
     subagent = client.post(
         "/api/subagents",
@@ -22,7 +22,7 @@ def test_main_agent_and_subagent_copy_create_server_ids_and_preserve_sources(
         "/api/main-agents",
         json={
             "name": "Copy source Main Agent",
-            "capability_refs": references(required, ("model-requirement", "agent-event-output")),
+            "capability_refs": references(required, REQUIRED_TYPES),
             "subagents": [{"subagent_id": subagent["id"]}],
         },
     ).json()
@@ -57,7 +57,7 @@ def test_component_bulk_delete_detaches_optional_references(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required = create_blocks(
-        client, "bulk-required", ("model-requirement", "agent-event-output", "system-prompt")
+        client, "bulk-required", (*REQUIRED_TYPES, "system-prompt")
     )
     second = client.post(
         "/api/blocks/system-prompt",
@@ -68,7 +68,7 @@ def test_component_bulk_delete_detaches_optional_references(
         json={
             "name": "Bulk owner",
             "capability_refs": references(
-                required, ("model-requirement", "agent-event-output", "system-prompt")
+                required, (*REQUIRED_TYPES, "system-prompt")
             ),
         },
     ).json()
@@ -92,7 +92,7 @@ def test_agent_configuration_bulk_delete_uses_one_command_per_category(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required = create_blocks(
-        client, "bulk-agents", ("model-requirement", "agent-event-output")
+        client, "bulk-agents", REQUIRED_TYPES
     )
     main_agent_ids = []
     subagent_ids = []
@@ -101,7 +101,7 @@ def test_agent_configuration_bulk_delete_uses_one_command_per_category(
             "/api/main-agents",
             json={
                 "name": f"Bulk Main Agent {index}",
-                "capability_refs": references(required, ("model-requirement", "agent-event-output")),
+                "capability_refs": references(required, REQUIRED_TYPES),
             },
         ).json()["id"])
         subagent_ids.append(client.post(
@@ -127,13 +127,13 @@ def test_agent_config_copy_rejects_duplicate_names_without_writing(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required = create_blocks(
-        client, "duplicate-copy", ("model-requirement", "agent-event-output")
+        client, "duplicate-copy", REQUIRED_TYPES
     )
     main_agent = client.post(
         "/api/main-agents",
         json={
             "name": "Duplicate Main Agent",
-            "capability_refs": references(required, ("model-requirement", "agent-event-output")),
+            "capability_refs": references(required, REQUIRED_TYPES),
         },
     ).json()
     subagent = client.post(
@@ -180,13 +180,13 @@ def test_agent_config_copy_revalidates_invalid_stored_sources_before_writing(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required = create_blocks(
-        client, "invalid-copy", ("model-requirement", "agent-event-output")
+        client, "invalid-copy", REQUIRED_TYPES
     )
     main_agent = client.post(
         "/api/main-agents",
         json={
             "name": "Invalid stored Main Agent",
-            "capability_refs": references(required, ("model-requirement", "agent-event-output")),
+            "capability_refs": references(required, REQUIRED_TYPES),
         },
     ).json()
     subagent = client.post(

@@ -10,7 +10,7 @@ export type BlockType =
   | 'model-requirement'
   | 'system-prompt'
   | 'filesystem'
-  | 'filesystem-permissions'
+  | 'filesystem-tools'
   | 'todo-list'
   | 'custom-tool'
   | 'skill'
@@ -38,6 +38,7 @@ export interface CapabilityManifest {
   subagent_overrideable: boolean
   required: boolean
   subagent_policy: 'force-remove' | 'inherit' | 'top-level-only'
+  agent_selectable: boolean
   tool_names: string[]
 }
 
@@ -313,7 +314,7 @@ export interface ConfigurationBundleFilesystemBinding {
   source_id: string
   configuration_name: string
   path: string
-  kind: 'mapped-directory' | 'virtual-directory' | 'virtual-file'
+  kind: 'mapped-directory' | 'local-shell-workspace' | 'virtual-directory' | 'virtual-file'
   source_value: string
   source_path_origin: 'absolute' | 'data-root-relative' | null
   required: boolean

@@ -104,16 +104,20 @@ def test_agent_builder_disabled_capabilities_override_deep_agents_default_stack(
         {
             "model-requirement": (
                 "11111111-1111-4111-8111-111111111111"
-            )
+            ),
+            "filesystem": "filesystem-id",
+            "filesystem-tools": "filesystem-tools-id",
         },
         {
             "model-requirement": {
                 "id": "11111111-1111-4111-8111-111111111111",
                 "name": "Harness requirement",
                 "description": "Use the harness model.",
-            }
+            },
+            "filesystem": {"id": "filesystem-id", "name": "Workspace"},
+            "filesystem-tools": {"id": "filesystem-tools-id", "name": "Workspace tools"},
         },
-        filesystem_mode="default-shared",
+        filesystem_mode="composite",
         scope="main_agent",
         owner_id="main-id",
         owner_name="Main Agent",

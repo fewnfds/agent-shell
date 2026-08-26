@@ -16,7 +16,7 @@
 | Edge 类别 | `Normal Edge`、`Branch Edge`、`Dispatch Edge` | 与 Graph wire handle 和 Catalog contract 对齐 |
 | Agent 角色 | `Main Agent`、`Subagent`、`target Agent`、`worker Agent` | `Main Agent` 和 `Subagent` 是产品实体名 |
 | 配置与扩展 | `Configuration Repository`、`Model Connection`、`Model Requirement`、`Custom Tool`、`Custom Middleware` | 与 API、catalog type 和源码 owner 对齐 |
-| Filesystem 选择 | `configured Filesystem`、`minimal Filesystem`、`effective Filesystem` | 分别表示显式引用的配置、未引用配置时的最小装配，以及继承或替换解析后的最终装配 |
+| Filesystem 选择 | `Filesystem Backend`、`Filesystem Tools`、`effective Filesystem` | 分别表示后端配置、工具配置，以及继承或替换解析后的最终组合 |
 | Graph 发布状态 | `candidate Graph`、`publishable Graph`、`published Graph` | 分别表示待校验文档、满足发布条件的文档，以及已通过 `PUT /graph` 原子保存并令 Workflow `enabled=true` 的文档 |
 
 `source`、`target`、`parent`、`child`、`upstream`、`downstream`、`background` 等容易产生歧义的关系词与领域对象一起写成完整英文短语。同一局部上下文已经建立对应关系后，可以使用自然中文继续说明。界面标签、普通业务说明和不对应代码对象的中文无需翻译。
@@ -25,7 +25,7 @@
 | --- | --- |
 | Workflow | 保存 UUID、唯一名称、角色、`enabled`、可选 Workflow Event Output、current Graph document/layout 与运行约束的图实体；只有启用的 parent Workflow 发布到 `/v1/models`，draft 与 child Workflow 不发布 |
 | Main Agent | 完整的 Deep Agents assembly，可被 Workflow canvas 中的 Agent Node 引用 |
-| Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其私有包；写入目标由 active Configuration Repository 决定 |
+| Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其 Python/Skill package；写入目标由 active Configuration Repository 决定 |
 | 配置库 | 使用通用列表查看和管理配置；系统组也列出实例私有、不可下载的模型连接 |
 | 模型连接 | 实例私有的 LangChain Provider、上游地址、具体 model、请求设置和 write-only API Key 配置；不属于 Configuration Repository，也不进入 Bundle |
 | 模型要求 | Configuration Repository 中描述所需模型能力的组件，只保存名称和说明 |
@@ -38,7 +38,7 @@
 | Subagent reference | Main Agent 保存的 `subagent_id`，运行时投影为官方 dictionary-based SubAgent |
 | Skill | 含 `SKILL.md` 的按需说明目录 |
 | Skill Template / 技能模板 | `data/skills-template/` 中可被选择并复制的 public Skill 素材，以规范相对路径区分同名模板 |
-| 私有 Skill package | Skill Component 创建后按 owner UUID 保存的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系 |
+| Skill package / Skill 独立包 | Skill Component 创建后按 owner UUID 保存的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
 | Custom Tool / 自定义工具 | 从 Python `@tool` 资源物化的 LangChain Tool |
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
 | Task Dispatcher | 从 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node 的 canvas Node |

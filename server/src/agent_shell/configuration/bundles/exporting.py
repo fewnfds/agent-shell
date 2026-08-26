@@ -196,7 +196,7 @@ class ConfigurationBundleExporter:
         after = snapshot_directory(folder)
         if canonical_tree_sha256(before) != canonical_tree_sha256(after):
             raise BundleExportError(
-                f"Skill private package changed while it was exported: {owner_id}"
+                f"Skill package changed while it was exported: {owner_id}"
             )
         return before
 
@@ -263,12 +263,12 @@ class ConfigurationBundleExporter:
                 reference = entity.payload.get("skill_package")
                 if not isinstance(reference, dict) or reference.get("folder") != entity.id:
                     raise BundleExportError(
-                        "Skill private package ownership does not match its Component UUID"
+                        "Skill package ownership does not match its Component UUID"
                     )
                 folder = self._skills_dir / entity.id
                 if not folder.is_dir() or folder.is_symlink():
                     raise BundleExportError(
-                        f"Skill private package is missing for configuration {entity.id}"
+                        f"Skill package is missing for configuration {entity.id}"
                     )
                 files = self._stable_skill_snapshot(entity.id, folder)
                 prefix = f"assets/skill-packages/{entity.id}/"

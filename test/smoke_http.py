@@ -113,12 +113,7 @@ def _payload(
             "description": "Use the model connection selected for this instance.",
         },
         "filesystem": {"name": name},
-        "filesystem-permissions": {
-            "name": name,
-            "permissions": [
-                {"path": "/workspace/**", "permission": "read-only"}
-            ],
-        },
+        "filesystem-tools": {"name": name},
         "skill": {
             "name": name,
             "skill_template_paths": ["fixture-skill"],

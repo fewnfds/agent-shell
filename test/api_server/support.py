@@ -141,12 +141,23 @@ def create_main_agent(
         )
         assert filesystem.status_code == 200, filesystem.text
         filesystem_id = filesystem.json()["id"]
+    filesystem_tools = client.post(
+        "/api/blocks/filesystem-tools",
+        json={"name": "Published Agent filesystem tools"},
+    )
+    assert filesystem_tools.status_code == 200, filesystem_tools.text
     capability_refs = [{"type": "model-requirement", "block_id": requirement["id"]}]
     capability_refs.append(
         {"type": "agent-event-output", "block_id": event_output["id"]}
     )
     capability_refs.append(
         {"type": "filesystem", "block_id": filesystem_id}
+    )
+    capability_refs.append(
+        {
+            "type": "filesystem-tools",
+            "block_id": filesystem_tools.json()["id"],
+        }
     )
     response = client.post(
         "/api/main-agents",

@@ -106,7 +106,7 @@ const recordOptions = computed(() => profiles.value.map((profile) => ({
 
 const obsoleteOverrides = computed(() => {
   const supported = new Set<string>(manifests.value
-    .filter((manifest) => manifest.type !== 'custom-middleware')
+    .filter((manifest) => manifest.agent_selectable !== false && manifest.type !== 'custom-middleware')
     .map((manifest) => manifest.type))
   return form.value.settings.capability_overrides
     .map((override, index) => ({ index, override }))
@@ -114,7 +114,7 @@ const obsoleteOverrides = computed(() => {
 })
 const nonGeneralCapabilityTypes = new Set<CapabilityType>([
   'filesystem',
-  'filesystem-permissions',
+  'filesystem-tools',
   'subagent',
   'custom-tool',
   'custom-middleware',
@@ -122,8 +122,8 @@ const nonGeneralCapabilityTypes = new Set<CapabilityType>([
 const generalManifests = computed(() => manifests.value.filter(
   (manifest) => !nonGeneralCapabilityTypes.has(manifest.type),
 ))
-const filesystemPermissionsManifest = computed(() => manifests.value.find(
-  (manifest) => manifest.type === 'filesystem-permissions',
+const filesystemToolsManifest = computed(() => manifests.value.find(
+  (manifest) => manifest.type === 'filesystem-tools',
 ))
 const filesystemManifest = computed(() => manifests.value.find(
   (manifest) => manifest.type === 'filesystem',
@@ -167,7 +167,7 @@ async function loadWorkspace(): Promise<void> {
       service.value!.getCatalog(),
       service.value!.getConfigurationOptions(),
     ])
-    manifests.value = [...catalog.block_types].sort((left, right) => left.order - right.order)
+    manifests.value = catalog.block_types.filter((item) => item.agent_selectable !== false).sort((left, right) => left.order - right.order)
     const entries = manifests.value
       .filter((manifest) => (
         manifest.subagent_overrideable
@@ -310,29 +310,27 @@ onMounted(() => {
                     @change="filesystemManifest && updateSelection(filesystemManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
-                    <option :value="DISABLED_VALUE">{{ t('agents.capability.minimal') }}</option>
                     <option v-for="block in capabilityBlocks('filesystem')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
               </section>
             </div>
             <div class="col-md-6">
-              <section class="card h-100" data-testid="subagent-filesystem-permissions-card">
+              <section class="card h-100" data-testid="subagent-filesystem-tools-card">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="subagent-capability-filesystem-permissions">{{ t('capabilities.filesystem-permissions.label') }}</label>
-                  <span class="badge text-bg-info ms-auto">{{ t('agents.capability.optional') }}</span>
+                  <label class="card-title mb-0" for="subagent-capability-filesystem-tools">{{ t('capabilities.filesystem-tools.label') }}</label>
+                  <span class="badge text-bg-primary ms-auto">{{ t('agents.capability.required') }}</span>
                 </header>
                 <div class="card-body">
                   <select
-                    id="subagent-capability-filesystem-permissions"
+                    id="subagent-capability-filesystem-tools"
                     class="form-select"
-                    data-testid="subagent-capability-filesystem-permissions"
-                    :value="selectionValue('filesystem-permissions')"
-                    @change="filesystemPermissionsManifest && updateSelection(filesystemPermissionsManifest, ($event.target as HTMLSelectElement).value)"
+                    data-testid="subagent-capability-filesystem-tools"
+                    :value="selectionValue('filesystem-tools')"
+                    @change="filesystemToolsManifest && updateSelection(filesystemToolsManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
-                    <option :value="DISABLED_VALUE">{{ t('agents.override.mode.disabled') }}</option>
-                    <option v-for="block in capabilityBlocks('filesystem-permissions')" :key="block.id" :value="block.id">{{ block.name }}</option>
+                    <option v-for="block in capabilityBlocks('filesystem-tools')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
               </section>

@@ -14,7 +14,7 @@ from agent_shell.runtime.capabilities.deepagents import DeepAgentsCapabilityErro
 def test_skill_requires_an_owned_private_package_reference() -> None:
     owner = "11111111-1111-4111-8111-111111111111"
     skill = SkillBlock.model_validate(
-        {"name": "Private skills", "skill_package": {"folder": owner}}
+        {"name": "Packaged skills", "skill_package": {"folder": owner}}
     )
     assert skill.skill_package.folder == owner
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
@@ -39,7 +39,7 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
     )
 
     capabilities = build_deepagents_capabilities(
-        filesystem, skill, filesystem_mode="configured-shared",
+        filesystem, skill, filesystem_mode="composite",
         skills_dir=skills_dir, skill_owner_id=owner,
     )
     assert capabilities.skill_sources == ("/skills/",)
@@ -66,9 +66,9 @@ def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> N
 
     with pytest.raises(DeepAgentsCapabilityError, match="link, reparse point"):
         build_deepagents_capabilities(
-            None,
+            FilesystemBlock.model_validate({"name": "Linked Skill workspace"}),
             skill,
-            filesystem_mode="default-shared",
+            filesystem_mode="composite",
             skills_dir=skills_dir,
             skill_owner_id=owner,
         )
@@ -118,21 +118,21 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
     default_capabilities = build_deepagents_capabilities(
         filesystem,
         default_skill,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=owner,
     )
     custom_capabilities = build_deepagents_capabilities(
         filesystem,
         custom_skill,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=owner,
     )
     disabled_capabilities = build_deepagents_capabilities(
         filesystem,
         disabled_skill,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=owner,
     )
@@ -164,24 +164,24 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
     )
 
     alpha_capabilities = build_deepagents_capabilities(
-        None,
+        FilesystemBlock.model_validate({"name": "Alpha workspace"}),
         alpha,
-        filesystem_mode="default-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=alpha_owner,
     )
     beta_capabilities = build_deepagents_capabilities(
-        None,
+        FilesystemBlock.model_validate({"name": "Beta workspace"}),
         beta,
-        filesystem_mode="default-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=beta_owner,
         workspace=alpha_capabilities.workspace,
     )
 
     alpha_filesystem = alpha_capabilities.middleware[-1]
-    assert [tool.name for tool in alpha_filesystem.tools] == ["read_file"]
-    assert alpha_filesystem._tool_token_limit_before_evict is None
+    assert "read_file" in {tool.name for tool in alpha_filesystem.tools}
+    assert alpha_filesystem._tool_token_limit_before_evict == 20_000
     assert isinstance(alpha_capabilities.backend.default, StateBackend)
     assert alpha_capabilities.backend is not beta_capabilities.backend
     assert alpha_capabilities.workspace is not beta_capabilities.workspace
@@ -232,7 +232,7 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
     capabilities = build_deepagents_capabilities(
         filesystem,
         skill,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         skill_owner_id=owner,
     )

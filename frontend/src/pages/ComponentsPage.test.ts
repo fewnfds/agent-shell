@@ -560,7 +560,7 @@ describe('ComponentsPage', () => {
     wrapper.unmount()
   })
 
-  it('ignores a private Skill inspection that finishes after another owner is selected', async () => {
+  it('ignores a Skill package inspection that finishes after another owner is selected', async () => {
     const firstId = '00000000-0000-4000-8000-000000000011'
     const secondId = '00000000-0000-4000-8000-000000000022'
     const first = deferred<SkillPackageInspection>()
@@ -596,7 +596,7 @@ describe('ComponentsPage', () => {
     wrapper.unmount()
   })
 
-  it('ignores a private Skill mutation response after switching owners', async () => {
+  it('ignores a Skill package mutation response after switching owners', async () => {
     const firstId = '00000000-0000-4000-8000-000000000033'
     const secondId = '00000000-0000-4000-8000-000000000044'
     const mutation = deferred<SkillPackageInspection>()

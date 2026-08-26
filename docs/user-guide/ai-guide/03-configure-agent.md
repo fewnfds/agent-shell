@@ -207,7 +207,7 @@ AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapsh
 
 详细 contract 见[Agent Additional Prompt](../agent-additional-prompt.md)。
 
-## 7. 选择可选能力
+## 7. 选择能力
 
 只为当前 Agent 的真实行为添加能力。
 
@@ -217,11 +217,13 @@ AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapsh
 
 使用 Custom Tool：能力应由模型在 Agent loop 中选择和调用。
 
-使用 Skill：Agent 需要按需读取一组领域知识或操作说明。
+使用 Skill：Agent 需要按需读取一组领域知识或操作说明；先制作 Skill 独立包，再由 CompositeBackend 引用。
 
-使用 Filesystem：Agent 需要 mapped route、initial file 或更多 Filesystem Tool。
+使用 CompositeBackend：Agent 需要 mapped route、initial file、来源权限或 Skill 独立包。
 
-使用 Filesystem Permissions：需要限制路径或控制 Filesystem Tool visibility。
+使用 LocalShellBackend：Agent 需要在一个真实固定 workspace 中使用 `execute`。
+
+使用 Filesystem Tools：控制文件 Tool visibility、description 和执行参数；该配置与 Backend 都是 required capability。
 
 使用 Todo List：Agent 内部任务足够复杂，需要 `write_todos` 管理计划。
 
@@ -237,9 +239,7 @@ required flag、inheritance 和 override policy 以 `/api/catalog` 为准。详�
 
 ## 8. Filesystem
 
-不选择 Filesystem Component 时，Agent 使用 current Run 的 minimal StateBackend，并只暴露 `read_file` Tool。这是合法配置。
-
-需要 mapped route、initial file 或更多 Filesystem Tool 时创建：
+Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。先创建 Backend：
 
 ```http
 POST /api/blocks/filesystem
@@ -247,15 +247,42 @@ POST /api/blocks/filesystem
 
 ```json
 {
-  "name": "AI workflow filesystem"
+  "name": "AI workflow filesystem",
+  "backend_type": "composite",
+  "mapped_directories": [
+    {
+      "virtual_path": "/workspace/",
+      "local_path": "H:\\projects\\my-app",
+      "path_origin": "absolute",
+      "lifecycle_mode": "fixed",
+      "permission": "read-write"
+    }
+  ],
+  "skill_package_id": null
 }
 ```
 
-保存 response UUID，并作为 Main Agent 的 Filesystem capability reference。
+再创建 Tools：
 
-Main Agent 和 synchronous Subagent 共享 current Run 的 Deep Agents StateBackend 文件状态，但可以使用不同的 effective Filesystem routing、permission 和 Tool visibility。独立 background Run 不自动复制该 StateBackend `files` channel。
+```http
+POST /api/blocks/filesystem-tools
+```
 
-路径和权限见[Filesystem 权限配置](../../wizard-pages/filesystem-permissions-config.md)。
+```json
+{
+  "name": "AI workflow filesystem tools",
+  "tool_configs": {
+    "read_file": {"visible": true},
+    "execute": {"visible": false}
+  }
+}
+```
+
+保存两个 response UUID，并分别作为 Main Agent 的 `filesystem` 与 `filesystem-tools` capability reference。需要执行命令时把 Backend 改为 `backend_type=local-shell`，只提交一个现有 `workspace`，并把 Tools 的 `execute.visible` 设为 `true`。CompositeBackend 会自动隐藏 execute。
+
+Main Agent 和 synchronous Subagent 共享 current Run 的 Deep Agents StateBackend 文件状态，但可以分别继承或替换 Backend 与 Tools。独立 background Run 不自动复制该 StateBackend `files` channel。
+
+路径、来源权限和 Skill package 见[Filesystem Backend](../../wizard-pages/filesystem-config.md)，工具字段见[Filesystem Tools](../../wizard-pages/filesystem-tools-config.md)。
 
 ## 9. Custom Tool、Custom Middleware 和 Skill
 
@@ -279,7 +306,7 @@ POST /api/blocks/skill
 }
 ```
 
-后端把所选 Skill Template 复制到该 Component 的私有 package，之后 Template 与 Component 独立。私有 package 内的 Skill 名称必须唯一。
+后端把所选 Skill Template 复制到该 Component 的 Skill 独立包，之后 Template 与 Component 独立。独立包内的 Skill 名称必须唯一。Skill Component 不直接装配到 Agent；保存后把它的 UUID 写入 CompositeBackend 的 `skill_package_id`。
 
 Python-backed Tool 和 Middleware 见[编写 Python extension](05-python-extensions.md)。Skill 见[Skill 配置](../../wizard-pages/skill-config.md)。
 
@@ -316,7 +343,7 @@ POST /api/subagents
 
 `name` 是模型可见的 task route。`description` 明确说明何时委派、负责什么和返回什么。
 
-Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem 或 Filesystem Permissions 时使用 capability override。required Model Requirement 不能 disabled。
+Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem Backend 或 Filesystem Tools 时使用 capability override。required Model Requirement、Filesystem Backend 与 Filesystem Tools 不能 disabled；Skill package 随 CompositeBackend 一起继承或替换。
 
 Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_refs` 和 `settings.middleware_refs` 装配。
 
@@ -334,7 +361,7 @@ Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_
 - Model Mapping 已完成，或明确列为运行前用户操作；
 - System Prompt 只保存稳定角色和规则；
 - 动态 request、task 和 upstream material 有明确输入入口；
-- Tool、Skill、Filesystem、Middleware 和 Subagent 都有当前调用方；
+- Tool、Filesystem Backend、Filesystem Tools、Middleware 和 Subagent 都有当前调用方，Skill 独立包由 CompositeBackend 引用；
 - 所有 Configuration reference 使用 API 返回的 UUID。
 
 下一步阅读[构建 Workflow Graph](04-build-workflow-graph.md)。

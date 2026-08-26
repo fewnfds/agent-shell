@@ -9,8 +9,8 @@ from agent_shell.contracts import (
     EXCEPTION_RETRY_CONDITIONS,
     EXCEPTION_RETRY_STRATEGIES,
     ExceptionRetryBlock,
-    FilesystemBlock,
     FilesystemToolConfigs,
+    FilesystemToolsBlock,
     PromptCachingBlock,
     SKILL_PROMPT_FIELDS,
     SummarizationBlock,
@@ -314,11 +314,11 @@ def _filesystem_tools() -> list[dict[str, object]]:
         {
             "name": name,
             "kind": _FILESYSTEM_TOOL_DESCRIPTIONS[name][0],
-            "configurable": name not in {"read_file", "execute"},
+            "configurable": name != "read_file",
             "visible": defaults[name]["visible"],
             "default_description": _FILESYSTEM_TOOL_DESCRIPTIONS[name][1],
         }
-        for name in CAPABILITY_BY_TYPE["filesystem"].tool_names
+        for name in CAPABILITY_BY_TYPE["filesystem-tools"].tool_names
     ]
 
 
@@ -329,20 +329,18 @@ _EDITOR_DEFAULTS = {
     ),
     "filesystem": {
         "system_prompt": FILESYSTEM_EDITOR_SYSTEM_PROMPT,
-        "tool_token_limit_before_evict": FilesystemBlock.model_fields[
+    },
+    "filesystem_tools": {
+        "tool_token_limit_before_evict": FilesystemToolsBlock.model_fields[
             "tool_token_limit_before_evict"
         ].default,
-        "human_message_token_limit_before_evict": FilesystemBlock.model_fields[
+        "human_message_token_limit_before_evict": FilesystemToolsBlock.model_fields[
             "human_message_token_limit_before_evict"
         ].default,
-        "grep_max_count": FilesystemBlock.model_fields["grep_max_count"].default,
-        "max_execute_timeout": FilesystemBlock.model_fields[
+        "grep_max_count": FilesystemToolsBlock.model_fields["grep_max_count"].default,
+        "max_execute_timeout": FilesystemToolsBlock.model_fields[
             "max_execute_timeout"
         ].default,
-        "tools": _filesystem_tools(),
-    },
-    "filesystem_permissions": {
-        "system_prompt": FILESYSTEM_EDITOR_SYSTEM_PROMPT,
         "tools": _filesystem_tools(),
     },
     "skill": {

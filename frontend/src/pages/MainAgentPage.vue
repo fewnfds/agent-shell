@@ -103,7 +103,7 @@ const subagentProfiles = ref<SubagentProfile[]>([])
 const obsoleteReferences = computed(() => {
   const supported = new Set<string>(
     manifests.value
-      .filter((manifest) => !['custom-middleware', 'custom-tool'].includes(manifest.type))
+      .filter((manifest) => manifest.agent_selectable !== false && !['custom-middleware', 'custom-tool'].includes(manifest.type))
       .map((manifest) => manifest.type),
   )
   return form.value.capability_refs
@@ -112,7 +112,7 @@ const obsoleteReferences = computed(() => {
 })
 const workspaceCapabilityTypes = new Set<CapabilityType>([
   'filesystem',
-  'filesystem-permissions',
+  'filesystem-tools',
   'custom-tool',
   'custom-middleware',
 ])
@@ -138,7 +138,7 @@ async function loadWorkspace(): Promise<void> {
       service.value!.getCatalog(),
       service.value!.getConfigurationOptions(),
     ])
-    manifests.value = [...catalog.block_types].sort((left, right) => left.order - right.order)
+    manifests.value = catalog.block_types.filter((item) => item.agent_selectable !== false).sort((left, right) => left.order - right.order)
     subagentProfiles.value = options.subagents.map(normalizeSubagent)
     blocks.value = Object.fromEntries(manifests.value.map((manifest) => [
       manifest.type,
@@ -246,32 +246,32 @@ onMounted(() => {
                     :value="referenceId(form, 'filesystem')"
                     @change="updateReference('filesystem', ($event.target as HTMLSelectElement).value)"
                   >
-                    <option value="">{{ t('agents.capability.minimal') }}</option>
+                    <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
                     <option v-for="block in capabilityBlocks('filesystem')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
               </section>
             </div>
             <div class="col-md-6">
-              <section class="card h-100" data-testid="main-agent-filesystem-permissions-card">
+              <section class="card h-100" data-testid="main-agent-filesystem-tools-card">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="main-agent-capability-filesystem-permissions">
-                    {{ t('capabilities.filesystem-permissions.label') }}
+                  <label class="card-title mb-0" for="main-agent-capability-filesystem-tools">
+                    {{ t('capabilities.filesystem-tools.label') }}
                   </label>
-                  <span class="badge text-bg-info ms-auto">
-                    {{ t('agents.capability.optional') }}
+                  <span class="badge text-bg-primary ms-auto">
+                    {{ t('agents.capability.required') }}
                   </span>
                 </header>
                 <div class="card-body">
                   <select
-                    id="main-agent-capability-filesystem-permissions"
+                    id="main-agent-capability-filesystem-tools"
                     class="form-select"
-                    data-testid="main-agent-capability-filesystem-permissions"
-                    :value="referenceId(form, 'filesystem-permissions')"
-                    @change="updateReference('filesystem-permissions', ($event.target as HTMLSelectElement).value)"
+                    data-testid="main-agent-capability-filesystem-tools"
+                    :value="referenceId(form, 'filesystem-tools')"
+                    @change="updateReference('filesystem-tools', ($event.target as HTMLSelectElement).value)"
                   >
-                    <option value="">{{ t('agents.capability.notAttached') }}</option>
-                    <option v-for="block in capabilityBlocks('filesystem-permissions')" :key="block.id" :value="block.id">{{ block.name }}</option>
+                    <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option v-for="block in capabilityBlocks('filesystem-tools')" :key="block.id" :value="block.id">{{ block.name }}</option>
                   </select>
                 </div>
               </section>

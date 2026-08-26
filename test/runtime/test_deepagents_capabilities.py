@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from agent_shell.contracts import (
     FilesystemBlock,
-    FilesystemPermissionsBlock,
+    FilesystemToolsBlock,
     SkillBlock,
 )
 from agent_shell.runtime.capabilities import (
@@ -19,19 +19,32 @@ from agent_shell.runtime.capabilities import (
 from agent_shell.runtime.capabilities import deepagents as deepagents_capability
 
 
-def test_default_workspace_exposes_only_required_read_tool(tmp_path: Path) -> None:
-    from deepagents.backends import StateBackend
+def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    filesystem = FilesystemBlock.model_validate({
+        "name": "Local workspace",
+        "backend_type": "local-shell",
+        "workspace": {"local_path": str(workspace)},
+    })
+    tools = FilesystemToolsBlock.model_validate({
+        "name": "Local tools",
+        "tool_configs": {"execute": {"visible": True}},
+    })
 
     capabilities = build_deepagents_capabilities(
-        None,
-        None,
-        filesystem_mode="default-shared",
-        skills_dir=tmp_path / "skills",
+        filesystem, None, filesystem_tools=tools,
+        filesystem_mode="local-shell", skills_dir=tmp_path / "skills",
+        mapped_directory_paths={"/": workspace},
     )
 
-    filesystem = capabilities.middleware[-1]
-    assert [tool.name for tool in filesystem.tools] == ["read_file"]
-    assert isinstance(capabilities.backend.default, StateBackend)
+    assert "execute" in {tool.name for tool in capabilities.middleware[-1].tools}
+    assert capabilities.permissions == ()
+    result = capabilities.backend.execute("cd")
+    assert result.exit_code == 0
+    assert os.path.normcase(result.output.strip()) == os.path.normcase(
+        str(workspace.resolve())
+    )
 
 
 def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Path) -> None:
@@ -46,6 +59,11 @@ def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Pat
                 {"virtual_path": "/workspace/", "local_path": str(mapped)}
             ],
             "system_prompt_override": "Use the configured workspace only.",
+        }
+    )
+    tools = FilesystemToolsBlock.model_validate(
+        {
+            "name": "Workspace tools",
             "tool_token_limit_before_evict": 4096,
             "human_message_token_limit_before_evict": 8192,
             "grep_max_count": 321,
@@ -67,7 +85,8 @@ def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Pat
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_tools=tools,
+        filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     middleware = capabilities.middleware[0]
@@ -93,6 +112,26 @@ def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Pat
     assert middleware._human_message_token_limit_before_evict == 8192
     assert middleware._grep_max_count == 321
     assert middleware._max_execute_timeout == 45
+
+
+def test_composite_backend_hides_selected_execute_tool(tmp_path: Path) -> None:
+    filesystem = FilesystemBlock.model_validate({"name": "Composite workspace"})
+    tools = FilesystemToolsBlock.model_validate({
+        "name": "Workspace tools",
+        "tool_configs": {"execute": {"visible": True}},
+    })
+
+    capabilities = build_deepagents_capabilities(
+        filesystem,
+        None,
+        filesystem_tools=tools,
+        filesystem_mode="composite",
+        skills_dir=tmp_path / "skills",
+    )
+
+    assert "execute" not in {
+        tool.name for tool in capabilities.middleware[-1].tools
+    }
 
 
 def test_agents_share_state_backend_but_keep_independent_mapped_routes(
@@ -132,14 +171,14 @@ def test_agents_share_state_backend_but_keep_independent_mapped_routes(
     main = build_deepagents_capabilities(
         main_filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         mapped_directory_paths={"/workspace/": main_root},
     )
     child = build_deepagents_capabilities(
         child_filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
         workspace=main.workspace,
         mapped_directory_paths={"/workspace/": child_root},
@@ -177,7 +216,7 @@ def test_configured_workspace_route_preserves_recursive_glob_contract(
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
     )
 
@@ -193,35 +232,27 @@ def test_configured_workspace_route_preserves_recursive_glob_contract(
     assert {match["path"] for match in top_level.matches} == {"/workspace/top.py"}
 
 
-def test_filesystem_permissions_atomically_override_tools_prompt_and_paths(
+def test_composite_sources_compile_atomic_path_permissions(
     tmp_path: Path,
 ) -> None:
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
+    (tmp_path / "source").mkdir()
+    (tmp_path / "private").mkdir()
     filesystem = FilesystemBlock.model_validate(
         {
             "name": "Workspace",
             "system_prompt_override": "Base filesystem prompt",
-            "tool_configs": {
-                "ls": {
-                    "visible": True,
-                    "description_override": "Base list description",
-                },
-                "write_file": {"visible": True},
-            },
+            "virtual_directories": [
+                {"virtual_path": "/source/", "source_path": str(tmp_path / "source"), "permission": "read-only"},
+                {"virtual_path": "/private/", "source_path": str(tmp_path / "private"), "permission": "no-access"},
+            ],
         }
     )
-    permissions = FilesystemPermissionsBlock.model_validate(
+    tools = FilesystemToolsBlock.model_validate(
         {
-            "name": "Reviewer",
-            "permissions": [
-                {"path": "/source/**", "permission": "read-only"},
-                {"path": "/output/**", "permission": "read-write"},
-                {"path": "/private/**", "permission": "no-access"},
-                {"path": "/skills/**", "permission": "no-access"},
-            ],
-            "system_prompt_override": {"value": "Policy prompt"},
-            "tool_overrides": {
+            "name": "Reviewer tools",
+            "tool_configs": {
                 "ls": {"visible": False, "description_override": None},
                 "write_file": {
                     "visible": True,
@@ -234,14 +265,14 @@ def test_filesystem_permissions_atomically_override_tools_prompt_and_paths(
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
-        filesystem_permissions=permissions,
-        filesystem_mode="configured-shared",
+        filesystem_tools=tools,
+        filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     middleware = capabilities.middleware[0]
 
     assert "ls" not in {tool.name for tool in middleware.tools}
-    assert middleware._custom_system_prompt == "Policy prompt"
+    assert middleware._custom_system_prompt == "Base filesystem prompt"
     assert middleware._custom_tool_descriptions == {
         "write_file": "Policy write description"
     }
@@ -250,26 +281,22 @@ def test_filesystem_permissions_atomically_override_tools_prompt_and_paths(
         for rule in capabilities.permissions
     ]
     assert rules == [
-        (("read",), ("/skills/**",), "allow"),
-        (("write",), ("/skills/**",), "deny"),
-        (("read",), ("/source/**",), "allow"),
-        (("write",), ("/source/**",), "deny"),
-        (("read", "write"), ("/output/**",), "allow"),
-        (("read", "write"), ("/private/**",), "deny"),
-        (("read", "write"), ("/skills/**",), "deny"),
+        (("read",), ("/source/", "/source/**"), "allow"),
+        (("write",), ("/source/", "/source/**"), "deny"),
+        (("read", "write"), ("/private/", "/private/**"), "deny"),
     ]
     assert middleware._permissions == list(capabilities.permissions)
     from deepagents.middleware.filesystem import _check_fs_permission
 
     assert (
         _check_fs_permission(
-            list(capabilities.permissions), "read", "/skills/demo/SKILL.md"
+            list(capabilities.permissions), "read", "/source/demo.md"
         )
         == "allow"
     )
     assert (
         _check_fs_permission(
-            list(capabilities.permissions), "write", "/skills/demo/SKILL.md"
+            list(capabilities.permissions), "write", "/source/demo.md"
         )
         == "deny"
     )
@@ -299,7 +326,7 @@ def test_request_seed_file_data_uses_string_content_for_text_and_binary(
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         skills_dir=skills_dir,
     )
 
@@ -342,7 +369,7 @@ def test_virtual_directory_rejects_links_before_reading_outside_source(
         build_deepagents_capabilities(
             filesystem,
             None,
-            filesystem_mode="configured-shared",
+            filesystem_mode="composite",
             skills_dir=skills_dir,
         )
 
@@ -374,14 +401,17 @@ def test_filesystem_runtime_options_keep_upstream_defaults_or_disable_eviction(
     filesystem = FilesystemBlock.model_validate(
         {
             "name": "Thread files",
-            "tool_token_limit_before_evict": None,
         }
+    )
+    tools = FilesystemToolsBlock.model_validate(
+        {"name": "Thread tools", "tool_token_limit_before_evict": None}
     )
 
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
-        filesystem_mode="configured-shared",
+        filesystem_tools=tools,
+        filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     middleware = capabilities.middleware[0]

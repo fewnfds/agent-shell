@@ -10,7 +10,7 @@ def test_main_agent_uses_ordered_custom_tool_references(
     blocks = create_blocks(
         client,
         "tool-list",
-        ("model-requirement", "agent-event-output", "custom-tool"),
+        (*REQUIRED_TYPES, "custom-tool"),
     )
     second = create_blocks(client, "second-tool", ("custom-tool",))["custom-tool"]
 
@@ -20,7 +20,7 @@ def test_main_agent_uses_ordered_custom_tool_references(
             "name": "Tool list",
             "capability_refs": references(
                 blocks,
-                ("model-requirement", "agent-event-output"),
+                REQUIRED_TYPES,
             ),
             "tool_refs": [
                 {"tool_id": second["id"]},
@@ -43,7 +43,7 @@ def test_custom_tool_is_not_a_single_capability_or_subagent_override(
     blocks = create_blocks(
         client,
         "tool-contract",
-        ("model-requirement", "agent-event-output", "custom-tool"),
+        (*REQUIRED_TYPES, "custom-tool"),
     )
 
     main_agent = client.post(
@@ -52,7 +52,7 @@ def test_custom_tool_is_not_a_single_capability_or_subagent_override(
             "name": "Old tool selection",
             "capability_refs": references(
                 blocks,
-                ("model-requirement", "agent-event-output", "custom-tool"),
+                (*REQUIRED_TYPES, "custom-tool"),
             ),
         },
     )
@@ -87,7 +87,7 @@ def test_missing_custom_tool_reference_is_reported(
     blocks = create_blocks(
         client,
         "missing-tool",
-        ("model-requirement", "agent-event-output"),
+        REQUIRED_TYPES,
     )
 
     response = client.post(
@@ -96,7 +96,7 @@ def test_missing_custom_tool_reference_is_reported(
             "name": "Missing tool",
             "capability_refs": references(
                 blocks,
-                ("model-requirement", "agent-event-output"),
+                REQUIRED_TYPES,
             ),
             "tool_refs": [
                 {"tool_id": "00000000-0000-4000-8000-000000000099"}
@@ -117,7 +117,7 @@ def test_main_agent_and_subagent_have_independent_tool_lists(
     blocks = create_blocks(
         client,
         "tool-owners",
-        ("model-requirement", "agent-event-output", "subagent", "custom-tool"),
+        (*REQUIRED_TYPES, "subagent", "custom-tool"),
     )
     child_tool = create_blocks(client, "child-tool", ("custom-tool",))["custom-tool"]
     child_payload = subagent_payload("Tool worker")
@@ -131,7 +131,7 @@ def test_main_agent_and_subagent_have_independent_tool_lists(
             "name": "Independent tools",
             "capability_refs": references(
                 blocks,
-                ("model-requirement", "agent-event-output", "subagent"),
+                (*REQUIRED_TYPES, "subagent"),
             ),
             "tool_refs": [{"tool_id": blocks["custom-tool"]["id"]}],
             "subagents": [{"subagent_id": child.json()["id"]}],

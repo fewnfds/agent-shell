@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buttonByText,
   filesystemManifest,
-  filesystemPermissionsManifest,
+  filesystemToolsManifest,
   middlewareManifest,
   modelManifest,
   mountMainAgentPage,
@@ -168,7 +168,7 @@ describe('Subagent authoring page', () => {
           modelManifest,
           promptManifest,
           filesystemManifest,
-          filesystemPermissionsManifest,
+          filesystemToolsManifest,
           agentEventOutputManifest,
           subagentManifest,
         ],
@@ -181,16 +181,15 @@ describe('Subagent authoring page', () => {
     const filesystem = wrapper.get('[data-testid="subagent-capability-filesystem"]')
     expect(filesystem.attributes('disabled')).toBeUndefined()
     expect((filesystem.element as HTMLSelectElement).value).toBe('__inherit__')
-    expect(filesystem.find('option[value="__disabled__"]').exists()).toBe(true)
+    expect(filesystem.find('option[value="__disabled__"]').exists()).toBe(false)
     expect(filesystem.text()).toContain('agents.override.mode.inherit')
-    expect(filesystem.text()).toContain('agents.capability.minimal')
     await filesystem.setValue('00000000-0000-0000-0000-000000000002')
 
-    const permissions = wrapper.get('[data-testid="subagent-capability-filesystem-permissions"]')
-    expect(permissions.attributes('disabled')).toBeUndefined()
-    expect((permissions.element as HTMLSelectElement).value).toBe('__inherit__')
-    expect(permissions.find('option[value="__disabled__"]').exists()).toBe(true)
-    await permissions.setValue('00000000-0000-0000-0000-000000000002')
+    const tools = wrapper.get('[data-testid="subagent-capability-filesystem-tools"]')
+    expect(tools.attributes('disabled')).toBeUndefined()
+    expect((tools.element as HTMLSelectElement).value).toBe('__inherit__')
+    expect(tools.find('option[value="__disabled__"]').exists()).toBe(false)
+    await tools.setValue('00000000-0000-0000-0000-000000000002')
 
     const eventOutput = wrapper.get('[data-testid="subagent-capability-agent-event-output"]')
     expect(eventOutput.attributes('disabled')).toBeDefined()
@@ -204,7 +203,7 @@ describe('Subagent authoring page', () => {
       settings: expect.objectContaining({
         capability_overrides: expect.arrayContaining([
           {
-            type: 'filesystem-permissions',
+            type: 'filesystem-tools',
             mode: 'replace',
             block_id: '00000000-0000-0000-0000-000000000002',
           },

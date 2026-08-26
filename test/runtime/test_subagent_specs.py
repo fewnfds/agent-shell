@@ -25,7 +25,7 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
         mapped_directory_paths_by_filesystem,
         disabled_capabilities,
     ):
-        assert filesystem_mode == "configured-shared"
+        assert filesystem_mode == "composite"
         assert scope == "subagent"
         assert owner_id in {"reader-id", "writer-id"}
         assert disabled_capabilities == frozenset()
@@ -62,7 +62,7 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
             description="Reads shared files.",
             references={},
             blocks={},
-            filesystem_mode="configured-shared",
+            filesystem_mode="composite",
         ),
         "writer-id": ResolvedSubagent(
             key="writer-id",
@@ -71,7 +71,7 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
             description="Writes shared files.",
             references={},
             blocks={},
-            filesystem_mode="configured-shared",
+            filesystem_mode="composite",
         ),
     }
 

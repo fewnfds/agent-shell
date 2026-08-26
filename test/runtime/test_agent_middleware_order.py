@@ -149,7 +149,7 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
         description="Handles delegated work.",
         references={},
         blocks={},
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
     )
     event_output = {
         "id": "55555555-5555-4555-8555-555555555555",
@@ -172,7 +172,7 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
                 "task_description_override": "Delegate work.",
             },
         },
-        filesystem_mode="configured-shared",
+        filesystem_mode="composite",
         disabled_capabilities=frozenset(),
         subagents=(ResolvedSubagentEdge(target_key=child.key),),
         subagent_nodes={child.key: child},

@@ -461,9 +461,12 @@ describe('ConfigLibraryPage', () => {
     expect(router.currentRoute.value.fullPath).toBe('/library/model')
   })
 
-  it('keeps Bundle import disabled until preview and path resolutions are ready', async () => {
+  it.each(['mapped-directory', 'local-shell-workspace'] as const)('keeps Bundle import disabled until a %s resolution is ready', async (bindingKind) => {
     const api = createApi()
     const file = new File(['bundle'], 'filesystem.zip', { type: 'application/zip' })
+    const bindingPath = bindingKind === 'mapped-directory'
+      ? 'mapped_directories[0].local_path'
+      : 'workspace.local_path'
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
@@ -471,8 +474,8 @@ describe('ConfigLibraryPage', () => {
       target_ids: { 'source-id': 'target-id' },
       records: [{ source_id: 'source-id', target_id: 'target-id', kind: 'component', type: 'filesystem', original_name: 'Files', suggested_name: 'Files', selected_name: 'Files', requires_confirmation: false }],
       filesystem_bindings: [{
-        binding_id: 'source-id:mapped_directories[0].local_path', source_id: 'source-id',
-        configuration_name: 'Files', path: 'mapped_directories[0].local_path', kind: 'mapped-directory',
+        binding_id: `source-id:${bindingPath}`, source_id: 'source-id',
+        configuration_name: 'Files', path: bindingPath, kind: bindingKind,
         source_value: 'C:/source', source_path_origin: 'absolute', required: true,
         status: 'binding-required', target_value: null,
       }],
@@ -480,7 +483,7 @@ describe('ConfigLibraryPage', () => {
       errors: [{
         code: 'filesystem_binding_required', message: 'Select a target path.',
         message_key: 'configurationBundle.issues.filesystem_binding_required', message_args: {},
-        source_id: 'source-id', path: 'mapped_directories[0].local_path',
+        source_id: 'source-id', path: bindingPath,
       }],
       warnings: [], ready: false,
     })

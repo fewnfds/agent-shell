@@ -104,7 +104,7 @@ def test_subagent_replace_references_are_detached_when_blocks_are_deleted(
             "block_id": "",
         }
         for index, capability_type in enumerate(OVERRIDEABLE_TYPES)
-        if index % 2 == 1
+        if index % 2 == 1 and capability_type not in REQUIRED_TYPES
     ]
     updated = client.put(
         f"/api/subagents/{subagent['id']}",
@@ -125,13 +125,35 @@ def test_subagent_replace_references_are_detached_when_blocks_are_deleted(
 
     assert client.delete(f"/api/subagents/{subagent['id']}").status_code == 200
 
+
+def test_skill_package_delete_detaches_composite_filesystem_reference(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client = make_client(tmp_path, monkeypatch)
+    skill = create_blocks(client, "filesystem-skill", ("skill",))["skill"]
+    filesystem_response = client.post(
+        "/api/blocks/filesystem",
+        json={
+            "name": "Skill package workspace",
+            "backend_type": "composite",
+            "skill_package_id": skill["id"],
+        },
+    )
+    assert filesystem_response.status_code == 200, filesystem_response.text
+    filesystem = filesystem_response.json()
+
+    deleted = client.delete(f"/api/blocks/skill/{skill['id']}")
+    assert deleted.status_code == 200, deleted.text
+    stored = client.get(f"/api/blocks/filesystem/{filesystem['id']}").json()
+    assert stored["skill_package_id"] is None
+
 def test_subagent_delete_detaches_entity_references(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     required_refs = references(
-        create_blocks(client, "binding-required", ("model-requirement", "agent-event-output")),
-        ("model-requirement", "agent-event-output"),
+        create_blocks(client, "binding-required", REQUIRED_TYPES),
+        REQUIRED_TYPES,
     )
     subagent_response = client.post(
         "/api/subagents",

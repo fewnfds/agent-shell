@@ -166,7 +166,7 @@ class RepositoryValidationService:
                             owner_name=str(block.get("name", "")),
                             owner_type="skill",
                             path="skill_package.folder",
-                            message="The Skill private package folder does not match its owner configuration.",
+                            message="The Skill package folder does not match its owner configuration.",
                             message_key="validation.issue.storage.skillPackageOwnerMismatch",
                             message_args={},
                         )

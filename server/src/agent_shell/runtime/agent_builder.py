@@ -15,7 +15,7 @@ from agent_shell.capability_manifest import FILESYSTEM_TOOL_NAMES
 from agent_shell.contracts import (
     AgentEventOutputBlock,
     FilesystemBlock,
-    FilesystemPermissionsBlock,
+    FilesystemToolsBlock,
     SkillBlock,
 )
 from agent_shell.provider_http import ProviderHttpClients, provider_http_timeout
@@ -345,19 +345,26 @@ class AgentBuilder:
         backend = None
         skill_sources: tuple[str, ...] = ()
         filesystem = selected_blocks.get("filesystem")
-        filesystem_permissions = selected_blocks.get("filesystem-permissions")
-        skill = selected_blocks.get("skill")
+        filesystem_tools = selected_blocks.get("filesystem-tools")
+        skill = selected_blocks.get("_filesystem-skill-package")
         try:
-            filesystem_block = (
-                FilesystemBlock.model_validate(
-                    {
-                        key: value
-                        for key, value in filesystem.items()
-                        if key != "id"
-                    }
+            if filesystem is None or filesystem_tools is None:
+                raise DeepAgentsCapabilityError(
+                    "Filesystem Backend and Filesystem Tools are required"
                 )
-                if filesystem is not None
-                else None
+            filesystem_block = FilesystemBlock.model_validate(
+                {
+                    key: value
+                    for key, value in filesystem.items()
+                    if key != "id"
+                }
+            )
+            filesystem_tools_block = FilesystemToolsBlock.model_validate(
+                {
+                    key: value
+                    for key, value in filesystem_tools.items()
+                    if key != "id"
+                }
             )
             skill_block = (
                 SkillBlock.model_validate(
@@ -366,21 +373,10 @@ class AgentBuilder:
                 if skill is not None
                 else None
             )
-            filesystem_permissions_block = (
-                FilesystemPermissionsBlock.model_validate(
-                    {
-                        key: value
-                        for key, value in filesystem_permissions.items()
-                        if key != "id"
-                    }
-                )
-                if filesystem_permissions is not None
-                else None
-            )
             deepagents = build_deepagents_capabilities(
                 filesystem_block,
                 skill_block,
-                filesystem_permissions=filesystem_permissions_block,
+                filesystem_tools=filesystem_tools_block,
                 filesystem_mode=filesystem_mode,
                 skills_dir=self._skills_dir,
                 skill_owner_id=str(skill.get("id", "")) if skill is not None else "",
@@ -397,13 +393,13 @@ class AgentBuilder:
         except DeepAgentsCapabilityError as exc:
             raise configuration_error(
                 "middleware_materialization_failed",
-                "The selected filesystem or Skill capability could not be constructed.",
+                "The selected filesystem configuration or Skill package could not be constructed.",
                 status_code=422,
                 scope=scope,
                 owner_id=owner_id,
                 owner_name=owner_name,
                 path=(
-                    "capability_refs.skill"
+                    "capability_refs.filesystem.skill_package_id"
                     if skill is not None
                     else "capability_refs.filesystem"
                 ),
@@ -417,7 +413,7 @@ class AgentBuilder:
                 owner_id=owner_id,
                 owner_name=owner_name,
                 path=(
-                    "capability_refs.skill"
+                    "capability_refs.filesystem.skill_package_id"
                     if skill is not None
                     else "capability_refs.filesystem"
                 ),

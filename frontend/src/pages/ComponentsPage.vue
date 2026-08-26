@@ -42,7 +42,7 @@ import {
   type BlockDraftBase,
   type CustomMiddlewareCatalogItem,
   type CustomToolCatalogItem,
-  type FilesystemImportSource,
+  type SkillPackageSummary,
   type ModelDraft,
   type SkillCatalogItem,
   type WorkflowEventOutputCatalogItem,
@@ -80,7 +80,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'model-requirement': () => import('@/editors/ModelRequirementEditor.vue'),
   'system-prompt': () => import('@/editors/SystemPromptEditor.vue'),
   filesystem: () => import('@/editors/FilesystemEditor.vue'),
-  'filesystem-permissions': () => import('@/editors/FilesystemPermissionsEditor.vue'),
+  'filesystem-tools': () => import('@/editors/FilesystemToolsEditor.vue'),
   'todo-list': () => import('@/editors/TodoListEditor.vue'),
   'custom-tool': () => import('@/editors/CustomToolEditor.vue'),
   skill: () => import('@/editors/SkillEditor.vue'),
@@ -156,7 +156,7 @@ const commandPackageErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const taskDispatcherPackages = ref<TaskDispatcherCatalogItem[]>([])
 const taskDispatcherPackageErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const skills = ref<SkillCatalogItem[]>([])
-const filesystems = ref<FilesystemImportSource[]>([])
+const skillPackages = ref<SkillPackageSummary[]>([])
 const skillErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const privateSkillPackage = ref<SkillPackageInspection | null>(null)
 const privateSkillLoading = ref(false)
@@ -284,7 +284,11 @@ const editorProps = computed<Record<string, unknown>>(() => {
         mutating: privateSkillMutating.value,
       }
     case 'filesystem':
-    case 'filesystem-permissions':
+      return {
+        defaults: activeDefaults.value,
+        skillPackages: skillPackages.value,
+      }
+    case 'filesystem-tools':
     case 'todo-list':
     case 'exception-retry':
     case 'subagent':
@@ -292,9 +296,6 @@ const editorProps = computed<Record<string, unknown>>(() => {
     case 'prompt-caching':
       return {
         defaults: activeDefaults.value,
-        ...(activeType.value === 'filesystem-permissions'
-          ? { filesystems: filesystems.value }
-          : {}),
       }
     default:
       return {}
@@ -422,14 +423,14 @@ async function loadRoute(): Promise<void> {
   saveValidation.value = null
   try {
     const collectionChanged = loadedCollectionType !== manifest.type
-    const [collection, filesystemCollection, modelProviders, editorModule] = await Promise.all([
+    const [collection, skillPackageCollection, modelProviders, editorModule] = await Promise.all([
       !collectionChanged
         ? Promise.resolve(null)
         : manifest.type === 'model-connection'
           ? managementApi.listModelConnections()
           : managementApi.listBlockSummaries(manifest.type),
-      manifest.type === 'filesystem-permissions'
-        ? managementApi.listBlockSummaries('filesystem')
+      manifest.type === 'filesystem'
+        ? managementApi.listBlockSummaries('skill')
         : Promise.resolve(null),
       manifest.type === 'model-connection'
         ? managementApi.listModelProviders()
@@ -485,7 +486,7 @@ async function loadRoute(): Promise<void> {
       }
       loadedCollectionType = manifest.type
     }
-    filesystems.value = (filesystemCollection?.items ?? []) as FilesystemImportSource[]
+    skillPackages.value = (skillPackageCollection?.items ?? []) as SkillPackageSummary[]
     providers.value = modelProviders
     draft.value = loadedDraft
     selectedId.value = loadedDraft.id

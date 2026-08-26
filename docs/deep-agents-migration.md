@@ -16,10 +16,11 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - enabled parent Workflow name 是公开 model ID；child Workflow name 不进入 `/v1`；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
 - Main Agent 必须有模型要求与 Agent Event Output；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
-- Main Agent 可选择 configured Filesystem 或 minimal Filesystem；Subagent 可继承、选择自己的 configured Filesystem 或回到 minimal Filesystem，Workflow 不保存 Filesystem ref；
+- Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别继承或替换，不能关闭 required capability，Workflow 不保存 Filesystem ref；
 - Subagent 能力按 inherit/replace/disabled 解析，并投影为官方 `CompiledSubAgent` 字典 spec；
-- 同一次 Workflow 请求共享 Deep Agents StateBackend 文件状态；每个 Main Agent/Subagent 按自己的 Filesystem、
-  `filesystem-permissions` 与 file-tool override 构造 backend 路由视图；选择 Skill 时还会建立独立只读的 `/skills/` 路由，并参与保留命名空间冲突校验；
+- 同一次 Workflow 请求共享 Deep Agents StateBackend 文件状态；每个 Main Agent/Subagent 按自己的 effective Backend 与 Tools 构造 FilesystemMiddleware。CompositeBackend 的每条来源直接声明权限，并可通过 `skill_package_id` 引用 Skill 独立包、建立只读 `/skills/` route；LocalShellBackend 直接使用一个固定真实 workspace，不接受 Composite 来源或 Skill 包；
+- Skill Component 只制作独立包，不进入 Agent capability refs。Skill 包引用随 CompositeBackend 一起被 Subagent 继承或替换；
+- `execute` 在 Filesystem Tools 中默认关闭；开启后仅 LocalShellBackend 提供该工具，CompositeBackend 由 Deep Agents 按 Backend 能力隐藏它；
 - Deep Agents 将摘要前的原始消息写入 default backend 的 reserved path `/conversation_history/{session_uuid}.md`；该 session UUID 只隔离 parallel Agent 的内部归档，Shell 不读取、命名或把它映射为 Lifecycle/thread conversation history；
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；

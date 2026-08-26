@@ -110,7 +110,7 @@ class ComponentMutationService:
         }:
             raise ComponentMutationError(
                 "skill_package_owner_invalid",
-                "The Skill private package folder must match its Component UUID.",
+                "The Skill package folder must match its Component UUID.",
                 message_key="errors.skillPackageOwnerInvalid",
             )
         report, validated = self._validation.validate_block(
@@ -271,7 +271,7 @@ class ComponentMutationService:
             ) != existing.get("skill_package"):
                 raise ComponentMutationError(
                     "skill_package_folder_immutable",
-                    "An existing Skill component cannot change its private package reference.",
+                    "An existing Skill component cannot change its Skill package reference.",
                     message_key="errors.skillPackageFolderImmutable",
                     status_code=409,
                 )

@@ -363,11 +363,15 @@ class SystemPromptBlock(StrictBlock):
     system_prompt: Annotated[str, Field(min_length=1, max_length=200_000)]
 
 
+FilesystemPermissionValue = Literal["read-write", "read-only", "no-access"]
+
+
 class VirtualDirectorySource(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     virtual_path: VirtualPath
     source_path: LocalPath
+    permission: FilesystemPermissionValue = "read-write"
 
     _virtual_path = field_validator("virtual_path")(_validate_virtual_directory_path)
     _source_path = field_validator("source_path")(_validate_required_local_path)
@@ -380,6 +384,7 @@ class MappedDirectory(BaseModel):
     local_path: LocalPath
     path_origin: Literal["absolute", "data-root-relative"] = "absolute"
     lifecycle_mode: Literal["fixed", "dynamic"] = "fixed"
+    permission: FilesystemPermissionValue = "read-write"
 
     _virtual_path = field_validator("virtual_path")(_validate_virtual_directory_path)
 
@@ -404,6 +409,7 @@ class VirtualFileSource(BaseModel):
 
     virtual_path: VirtualPath
     source_path: LocalPath
+    permission: FilesystemPermissionValue = "read-write"
 
     _virtual_path = field_validator("virtual_path")(_validate_virtual_file_path)
     _source_path = field_validator("source_path")(_validate_required_local_path)
@@ -424,10 +430,6 @@ class OptionalFilesystemToolConfig(FilesystemToolConfig):
     visible: bool = False
 
 
-class ExecuteFilesystemToolConfig(FilesystemToolConfig):
-    visible: Literal[False] = False
-
-
 class FilesystemToolConfigs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -442,82 +444,69 @@ class FilesystemToolConfigs(BaseModel):
     )
     glob: FilesystemToolConfig = Field(default_factory=FilesystemToolConfig)
     grep: FilesystemToolConfig = Field(default_factory=FilesystemToolConfig)
-    execute: ExecuteFilesystemToolConfig = Field(
-        default_factory=ExecuteFilesystemToolConfig
+    execute: OptionalFilesystemToolConfig = Field(
+        default_factory=OptionalFilesystemToolConfig
     )
 
 
-class FilesystemToolOverrides(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    ls: FilesystemToolConfig | None = None
-    read_file: RequiredFilesystemToolConfig | None = None
-    write_file: FilesystemToolConfig | None = None
-    edit_file: FilesystemToolConfig | None = None
-    delete: OptionalFilesystemToolConfig | None = None
-    glob: FilesystemToolConfig | None = None
-    grep: FilesystemToolConfig | None = None
-    execute: ExecuteFilesystemToolConfig | None = None
-
-
-FilesystemPermissionValue = Literal["read-write", "read-only", "no-access"]
-
-
-class FilesystemPermissionEntry(BaseModel):
+class FilesystemWorkspace(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    path: VirtualPath
-    permission: FilesystemPermissionValue
-
-    @field_validator("path")
-    @classmethod
-    def validate_path(cls, value: str) -> str:
-        value = value.replace("\\", "/")
-        if not value.startswith("/"):
-            raise ValueError("permission path must start with /")
-        if any(part == ".." for part in value.split("/")):
-            raise ValueError("permission path must not contain ..")
-        if any(part == "~" for part in value.split("/")):
-            raise ValueError("permission path must not contain ~")
-        if "\x00" in value:
-            raise ValueError("permission path must not contain NUL")
-        return value
-
-
-class FilesystemSystemPromptOverride(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
-
-    value: PromptOverrideText | None = None
-
-
-class FilesystemPermissionsBlock(StrictBlock):
-    permissions: list[FilesystemPermissionEntry] = Field(default_factory=list)
-    system_prompt_override: FilesystemSystemPromptOverride | None = None
-    tool_overrides: FilesystemToolOverrides = Field(
-        default_factory=FilesystemToolOverrides
-    )
+    local_path: LocalPath
+    path_origin: Literal["absolute", "data-root-relative"] = "absolute"
 
     @model_validator(mode="after")
-    def validate_permissions(self) -> "FilesystemPermissionsBlock":
-        paths = [item.path for item in self.permissions]
-        if len(paths) != len(set(paths)):
-            raise ValueError("permission paths must be unique")
+    def validate_local_path(self) -> "FilesystemWorkspace":
+        if not self.local_path:
+            raise ValueError("workspace local_path must not be empty")
+        local = Path(self.local_path)
+        if self.path_origin == "absolute":
+            if not local.is_absolute():
+                raise ValueError("absolute workspace local_path must be absolute")
+            if not local.is_dir():
+                raise ValueError(
+                    f"workspace local_path must be an existing directory: {local}"
+                )
+            return self
+        require_data_root_relative_path(
+            self.local_path,
+            label="data-root-relative workspace local_path",
+        )
         return self
 
 
 class FilesystemBlock(StrictBlock):
+    backend_type: Literal["composite", "local-shell"] = "composite"
     mapped_directories: list[MappedDirectory] = Field(default_factory=list)
     virtual_directories: list[VirtualDirectorySource] = Field(default_factory=list)
     virtual_files: list[VirtualFileSource] = Field(default_factory=list)
+    workspace: FilesystemWorkspace | None = None
+    skill_package_id: ConfigurationId | None = None
     system_prompt_override: PromptOverrideText | None = None
-    tool_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 20_000
-    human_message_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 50_000
-    grep_max_count: Annotated[int, Field(ge=1)] = 1_000
-    max_execute_timeout: Annotated[int, Field(ge=1)] = 3_600
-    tool_configs: FilesystemToolConfigs = Field(default_factory=FilesystemToolConfigs)
+
+    @model_validator(mode="after")
+    def validate_backend_type(self) -> "FilesystemBlock":
+        has_composite_sources = bool(
+            self.mapped_directories or self.virtual_directories or self.virtual_files
+        )
+        if self.backend_type == "local-shell":
+            if self.workspace is None:
+                raise ValueError("LocalShellBackend requires one workspace")
+            if has_composite_sources:
+                raise ValueError(
+                    "LocalShellBackend does not accept CompositeBackend sources"
+                )
+            if self.skill_package_id is not None:
+                raise ValueError("LocalShellBackend does not accept a Skill package")
+            return self
+        if self.workspace is not None:
+            raise ValueError("CompositeBackend does not accept a LocalShell workspace")
+        return self
 
     @model_validator(mode="after")
     def validate_filesystem_paths(self) -> "FilesystemBlock":
+        if self.backend_type == "local-shell":
+            return self
         directory_items = [*self.mapped_directories, *self.virtual_directories]
         for item in directory_items:
             namespace = _reserved_virtual_namespace(
@@ -650,6 +639,14 @@ class FilesystemBlock(StrictBlock):
         return self
 
 
+class FilesystemToolsBlock(StrictBlock):
+    tool_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 20_000
+    human_message_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 50_000
+    grep_max_count: Annotated[int, Field(ge=1)] = 1_000
+    max_execute_timeout: Annotated[int, Field(ge=1)] = 3_600
+    tool_configs: FilesystemToolConfigs = Field(default_factory=FilesystemToolConfigs)
+
+
 class SkillBlock(StrictBlock):
     class SkillPackageReference(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -766,6 +763,8 @@ class CapabilityReference(BaseModel):
         manifest = CAPABILITY_BY_TYPE.get(value)
         if manifest is None:
             raise ValueError(f"unknown Main Agent capability: {value}")
+        if not manifest.agent_selectable:
+            raise ValueError(f"capability is not selectable by an Agent: {value}")
         if value in {"custom-middleware", "custom-tool"}:
             raise ValueError(
                 f"{value} must be selected through its ordered reference list"
@@ -819,6 +818,7 @@ class CapabilityOverride(BaseModel):
         if (
             manifest is None
             or value in {"custom-middleware", "custom-tool"}
+            or not manifest.agent_selectable
             or not manifest.subagent_overrideable
         ):
             raise ValueError(f"capability is not overrideable by Subagent: {value}")
@@ -879,7 +879,7 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "model-requirement": ModelRequirementBlock,
     "system-prompt": SystemPromptBlock,
     "filesystem": FilesystemBlock,
-    "filesystem-permissions": FilesystemPermissionsBlock,
+    "filesystem-tools": FilesystemToolsBlock,
     "todo-list": TodoListBlock,
     "custom-tool": CustomToolBlock,
     "skill": SkillBlock,

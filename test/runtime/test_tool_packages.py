@@ -44,7 +44,7 @@ def _assembly(blocks: tuple[dict, ...]) -> StaticAssembly:
         main_agent={"id": "main", "name": "Main"},
         references={},
         blocks={},
-        filesystem_mode="default-shared",
+        filesystem_mode="composite",
         disabled_capabilities=frozenset(),
         subagents=(),
         subagent_nodes={},
