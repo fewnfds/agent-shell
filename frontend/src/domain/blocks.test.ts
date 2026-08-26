@@ -249,6 +249,17 @@ describe('block adapters', () => {
     const toolsPayload = filesystemToolsAdapter.toPayload(tools, filesystemToolsDefaults)
     expect((toolsPayload.tool_configs as Record<string, { visible: boolean }>).read_file?.visible).toBe(true)
     expect((toolsPayload.tool_configs as Record<string, { visible: boolean }>).execute?.visible).toBe(true)
+
+    tools.tool_token_limit_before_evict = ''
+    tools.human_message_token_limit_before_evict = ''
+    tools.grep_max_count = ''
+    tools.max_execute_timeout = ''
+    expect(filesystemToolsAdapter.toPayload(tools, filesystemToolsDefaults)).toMatchObject({
+      tool_token_limit_before_evict: null,
+      human_message_token_limit_before_evict: null,
+      grep_max_count: 1_000,
+      max_execute_timeout: 3_600,
+    })
   })
 
   it('round-trips the remaining simple editors and removes displayed defaults', () => {

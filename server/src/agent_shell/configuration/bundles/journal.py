@@ -19,6 +19,7 @@ from agent_shell.configuration.repositories import (
     PYTHON_PACKAGES_DIRECTORY,
     SKILL_PACKAGES_DIRECTORY,
 )
+from agent_shell.python_packages.authoring import PackageAdapterDirectory
 from agent_shell.python_packages.contracts import PackageFolder
 
 
@@ -51,14 +52,7 @@ class JournalRecord(BaseModel):
 class JournalPackage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    adapter: Literal[
-        "command",
-        "task-dispatcher",
-        "agent-middleware",
-        "agent-event-output",
-        "workflow-event-output",
-        "agent-tool",
-    ]
+    directory: PackageAdapterDirectory
     target_id: ConfigurationId
     folder: PackageFolder
 
@@ -73,7 +67,7 @@ class JournalSkillPackage(BaseModel):
 class ImportJournal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    format_version: Literal[3] = 3
+    format_version: Literal[4] = 4
     transaction_id: ConfigurationId
     bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     state: Literal["prepared", "committed"]
@@ -183,9 +177,10 @@ def cleanup_import_journal(repository_root: Path, journal: ImportJournal) -> Non
             _configuration_path(repository_root, record).unlink(missing_ok=True)
     packages_root = repository_root / PYTHON_PACKAGES_DIRECTORY
     for package in journal.packages:
+        adapter_root = packages_root / package.directory
         _cleanup_claimed_asset(
-            packages_root / package.adapter.replace("-", "_") / package.folder,
-            packages_root / package.adapter.replace("-", "_"),
+            adapter_root / package.folder,
+            adapter_root,
             journal.transaction_id,
             remove_asset=remove_assets,
         )

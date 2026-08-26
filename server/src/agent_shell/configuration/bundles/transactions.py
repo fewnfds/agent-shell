@@ -94,7 +94,7 @@ def commit_prepared_import(
         ],
         packages=[
             JournalPackage(
-                adapter=PACKAGE_COMPONENT_SPECS[plan.component_type].adapter,
+                directory=PACKAGE_COMPONENT_SPECS[plan.component_type].directory,
                 target_id=plan.target_id,
                 folder=plan.target_folder,
             )

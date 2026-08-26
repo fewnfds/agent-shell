@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import stat
 import tempfile
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from agent_shell.configuration.identity import (
@@ -34,13 +34,23 @@ from agent_shell.storage.staged_changes import StagedPathChange
 logger = logging.getLogger(__name__)
 
 
+PackageAdapterDirectory = Literal[
+    "command",
+    "task_dispatcher",
+    "agent_middleware",
+    "agent_event_output",
+    "workflow_event_output",
+    "agent_tool",
+]
+
+
 @dataclass(frozen=True, slots=True)
 class PackageAdapterSpec:
     template_parts: tuple[str, str]
     example_parts: tuple[str, str]
     family: str
     adapter: str
-    directory: str
+    directory: PackageAdapterDirectory
     factory_name: str
     factory_parameters: tuple[str, ...] | None
 
@@ -622,6 +632,7 @@ class PythonPackageAuthoringService:
 __all__ = [
     "BUILTIN_EXAMPLE_TEMPLATE_PREFIX",
     "PACKAGE_COMPONENT_SPECS",
+    "PackageAdapterDirectory",
     "PythonPackageAuthoringError",
     "PythonPackageAuthoringService",
 ]

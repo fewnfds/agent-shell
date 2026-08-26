@@ -584,7 +584,7 @@ def test_prepared_import_journal_recovery_removes_only_declared_new_paths(
         ],
         packages=[
             JournalPackage(
-                adapter="agent-tool",
+                directory="agent_tool",
                 target_id=target_id,
                 folder="Imported tool",
             )
