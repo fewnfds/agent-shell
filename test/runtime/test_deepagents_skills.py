@@ -12,7 +12,6 @@ from agent_shell.runtime.capabilities import deepagents as deepagents_capability
 from agent_shell.runtime.capabilities.deepagents import DeepAgentsCapabilityError
 
 def test_skill_requires_an_owned_private_package_reference() -> None:
-    owner = "11111111-1111-4111-8111-111111111111"
     skill = SkillBlock.model_validate(
         {"name": "Packaged skills", "skill_package": {"folder": "Packaged skills"}}
     )
@@ -26,7 +25,6 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
     tmp_path: Path,
 ) -> None:
     skills_dir = tmp_path / "skills"
-    owner = "11111111-1111-4111-8111-111111111111"
     package_name = "Invalid metadata"
     skill_dir = skills_dir / package_name / "invalid-metadata"
     skill_dir.mkdir(parents=True)
@@ -40,15 +38,16 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
     )
 
     capabilities = build_deepagents_capabilities(
-        filesystem, skill, filesystem_mode="composite",
-        skills_dir=skills_dir, skill_owner_id=owner,
+        filesystem,
+        skill,
+        filesystem_mode="composite",
+        skills_dir=skills_dir,
     )
     assert capabilities.skill_sources == ("/skills/",)
 
 
 def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
-    owner = "11111111-1111-4111-8111-111111111111"
     package_name = "Linked Skill"
     skill_dir = skills_dir / package_name / "linked"
     skill_dir.mkdir(parents=True)
@@ -72,12 +71,10 @@ def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> N
             skill,
             filesystem_mode="composite",
             skills_dir=skills_dir,
-            skill_owner_id=owner,
         )
 
 def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
-    owner = "11111111-1111-4111-8111-111111111111"
     package_name = "Default skills"
     skill_dir = skills_dir / package_name / "outline"
     skill_dir.mkdir(parents=True)
@@ -123,21 +120,18 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
         default_skill,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=owner,
     )
     custom_capabilities = build_deepagents_capabilities(
         filesystem,
         custom_skill,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=owner,
     )
     disabled_capabilities = build_deepagents_capabilities(
         filesystem,
         disabled_skill,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=owner,
     )
 
     assert default_capabilities.middleware[0].system_prompt_template != custom_prompt
@@ -150,8 +144,6 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
     from deepagents.backends import StateBackend
 
     skills_dir = tmp_path / "skills"
-    alpha_owner = "11111111-1111-4111-8111-111111111111"
-    beta_owner = "22222222-2222-4222-8222-222222222222"
     for package_name, name in (("Alpha only", "alpha"), ("Beta only", "beta")):
         folder = skills_dir / package_name / name
         folder.mkdir(parents=True)
@@ -171,14 +163,12 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
         alpha,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=alpha_owner,
     )
     beta_capabilities = build_deepagents_capabilities(
         FilesystemBlock.model_validate({"name": "Beta workspace"}),
         beta,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=beta_owner,
         workspace=alpha_capabilities.workspace,
     )
 
@@ -219,7 +209,6 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
     from deepagents.backends import StateBackend
 
     skills_dir = tmp_path / "skills"
-    owner = "11111111-1111-4111-8111-111111111111"
     package_name = "Selected Skill"
     selected_folder = skills_dir / package_name / "selected"
     selected_folder.mkdir(parents=True)
@@ -238,7 +227,6 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
         skill,
         filesystem_mode="composite",
         skills_dir=skills_dir,
-        skill_owner_id=owner,
     )
 
     assert isinstance(capabilities.backend.default, StateBackend)

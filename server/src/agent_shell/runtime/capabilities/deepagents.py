@@ -446,7 +446,6 @@ def build_deepagents_capabilities(
     filesystem_tools: FilesystemToolsBlock | None = None,
     filesystem_mode: FilesystemMode,
     skills_dir: Path,
-    skill_owner_id: str = "",
     workspace: DeepAgentsWorkspace | None = None,
     mapped_directory_paths: Mapping[str, Path] | None = None,
 ) -> DeepAgentsCapabilities:
@@ -626,37 +625,32 @@ def build_deepagents_capabilities(
     if filesystem_mode == "composite":
         from deepagents.middleware.filesystem import FilesystemPermission
 
+        permission_bindings: list[tuple[str, bool, FilesystemPermissionValue]] = []
         for source in filesystem.mapped_directories:
-            _append_permission(
-                materialized_permissions,
-                FilesystemPermission,
-                path=source.virtual_path,
-                is_directory=True,
-                permission=source.permission,
+            permission_bindings.append(
+                (source.virtual_path, True, source.permission)
             )
         for source in filesystem.virtual_directories:
-            _append_permission(
-                materialized_permissions,
-                FilesystemPermission,
-                path=source.virtual_path,
-                is_directory=True,
-                permission=source.permission,
+            permission_bindings.append(
+                (source.virtual_path, True, source.permission)
             )
         for source in filesystem.virtual_files:
-            _append_permission(
-                materialized_permissions,
-                FilesystemPermission,
-                path=source.virtual_path,
-                is_directory=False,
-                permission=source.permission,
+            permission_bindings.append(
+                (source.virtual_path, False, source.permission)
             )
         if skill_package_root is not None:
+            permission_bindings.append(("/skills/", True, "read-only"))
+        permission_bindings.sort(
+            key=lambda binding: len(PurePosixPath(binding[0]).parts),
+            reverse=True,
+        )
+        for path, is_directory, permission in permission_bindings:
             _append_permission(
                 materialized_permissions,
                 FilesystemPermission,
-                path="/skills/",
-                is_directory=True,
-                permission="read-only",
+                path=path,
+                is_directory=is_directory,
+                permission=permission,
             )
         if materialized_permissions:
             filesystem_kwargs["_permissions"] = materialized_permissions

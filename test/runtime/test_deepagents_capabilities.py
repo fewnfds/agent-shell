@@ -40,6 +40,11 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
 
     assert "execute" in {tool.name for tool in capabilities.middleware[-1].tools}
     assert capabilities.permissions == ()
+    from deepagents.backends import LocalShellBackend
+    from deepagents.middleware.filesystem import _route_host_path_prompt
+
+    assert isinstance(capabilities.backend, LocalShellBackend)
+    assert _route_host_path_prompt(capabilities.backend) == ""
     result = capabilities.backend.execute("cd")
     assert result.exit_code == 0
     assert os.path.normcase(result.output.strip()) == os.path.normcase(
@@ -301,6 +306,78 @@ def test_composite_sources_compile_atomic_path_permissions(
         == "deny"
     )
 
+
+def test_nested_source_permissions_override_broader_virtual_directory(
+    tmp_path: Path,
+) -> None:
+    for name in ("drafts", "private", "reference", "editable"):
+        (tmp_path / name).mkdir()
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("secret", encoding="utf-8")
+    filesystem = FilesystemBlock.model_validate(
+        {
+            "name": "Nested permissions",
+            "virtual_directories": [
+                {
+                    "virtual_path": "/drafts/",
+                    "source_path": str(tmp_path / "drafts"),
+                    "permission": "read-write",
+                },
+                {
+                    "virtual_path": "/drafts/private/",
+                    "source_path": str(tmp_path / "private"),
+                    "permission": "no-access",
+                },
+                {
+                    "virtual_path": "/reference/",
+                    "source_path": str(tmp_path / "reference"),
+                    "permission": "read-only",
+                },
+                {
+                    "virtual_path": "/reference/editable/",
+                    "source_path": str(tmp_path / "editable"),
+                    "permission": "read-write",
+                },
+            ],
+            "virtual_files": [
+                {
+                    "virtual_path": "/drafts/secret.txt",
+                    "source_path": str(secret_file),
+                    "permission": "no-access",
+                }
+            ],
+        }
+    )
+
+    capabilities = build_deepagents_capabilities(
+        filesystem,
+        None,
+        filesystem_mode="composite",
+        skills_dir=tmp_path / "skills",
+    )
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    permissions = list(capabilities.permissions)
+    assert (
+        _check_fs_permission(permissions, "read", "/drafts/private/a.md")
+        == "deny"
+    )
+    assert (
+        _check_fs_permission(permissions, "write", "/drafts/private/a.md")
+        == "deny"
+    )
+    assert _check_fs_permission(permissions, "read", "/drafts/secret.txt") == "deny"
+    assert _check_fs_permission(permissions, "write", "/drafts/secret.txt") == "deny"
+    assert (
+        _check_fs_permission(permissions, "read", "/reference/editable/a.md")
+        == "allow"
+    )
+    assert (
+        _check_fs_permission(permissions, "write", "/reference/editable/a.md")
+        == "allow"
+    )
+    assert _check_fs_permission(permissions, "write", "/reference/locked.md") == "deny"
+
 def test_request_seed_file_data_uses_string_content_for_text_and_binary(
     tmp_path: Path,
 ) -> None:
@@ -347,10 +424,6 @@ def test_virtual_directory_rejects_links_before_reading_outside_source(
     outside = tmp_path / "outside.txt"
     outside.write_text("outside sentinel", encoding="utf-8")
     link = source / "leak.txt"
-    try:
-        os.symlink(outside, link)
-    except OSError as exc:
-        pytest.skip(f"symbolic links are unavailable in this environment: {exc}")
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
     filesystem = FilesystemBlock.model_validate(
@@ -361,6 +434,10 @@ def test_virtual_directory_rejects_links_before_reading_outside_source(
             ],
         }
     )
+    try:
+        os.symlink(outside, link)
+    except OSError as exc:
+        pytest.skip(f"symbolic links are unavailable in this environment: {exc}")
 
     with pytest.raises(
         DeepAgentsCapabilityError,

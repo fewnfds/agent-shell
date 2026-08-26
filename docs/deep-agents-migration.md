@@ -21,7 +21,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - 同一次 Workflow 请求共享 Deep Agents StateBackend 文件状态；每个 Main Agent/Subagent 按自己的 effective Backend 与 Tools 构造 FilesystemMiddleware。CompositeBackend 的每条来源直接声明权限，并可通过 `skill_package_id` 引用 Skill 独立包、建立只读 `/skills/` route；LocalShellBackend 直接使用一个固定真实 workspace，不接受 Composite 来源或 Skill 包；
 - Skill Component 只制作独立包，不进入 Agent capability refs。Skill 包引用随 CompositeBackend 一起被 Subagent 继承或替换；
 - `execute` 在 Filesystem Tools 中默认关闭；开启后仅 LocalShellBackend 提供该工具，CompositeBackend 由 Deep Agents 按 Backend 能力隐藏它；
-- Deep Agents 将摘要前的原始消息写入 default backend 的 reserved path `/conversation_history/{session_uuid}.md`；该 session UUID 只隔离 parallel Agent 的内部归档，Shell 不读取、命名或把它映射为 Lifecycle/thread conversation history；
+- Deep Agents 将摘要前的原始消息写入 selected backend 的 `/conversation_history/{session_uuid}.md`。Composite 配置的 default backend 是请求级 StateBackend；LocalShell 配置直接使用真实 workspace，因此 conversation history 与 large tool result 会写入该 workspace。LocalShell 不叠加 StateBackend route，避免 Deep Agents 为 Composite + execute 无条件追加虚拟路径映射系统提示词；该 session UUID 只隔离 parallel Agent 的内部归档，Shell 不读取、命名或把它映射为 Lifecycle/thread conversation history；
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
 - Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
@@ -53,6 +53,7 @@ Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 mi
 
 Agent Filesystem 的 mapped directories 可接入 Deep Agents `FilesystemBackend`。LangChain 官方文档把 `FilesystemBackend` 列为不适合 Web server/HTTP API 的 backend，本项目按该上游限制管理使用场景。
 如果未来要消除该限制，应按官方建议改用 `StateBackend`、`StoreBackend` 或 sandbox backend，并另立需求，不在本次 ctx 迁移中偷偷替换。
+`LocalShellBackend` 还提供直接宿主命令执行，没有 sandbox；`virtual_mode=True` 只约束文件工具的路径解析，不能限制命令访问服务账号可达的其他文件、进程、网络或系统资源。
 
 Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。client `messages[]` 冻结在 application-level LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent active messages。选择 Agent Additional Prompt（AAP）Custom Middleware 时，已装配的官方 `before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取 input；Main Agent 未选择 AAP 时 initial `messages` 保持空。synchronous Subagent 默认从 delegated private `state.messages` 整理 input，不自动混入 root request。
 

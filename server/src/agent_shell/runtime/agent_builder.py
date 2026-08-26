@@ -383,7 +383,6 @@ class AgentBuilder:
                 filesystem_tools=filesystem_tools_block,
                 filesystem_mode=filesystem_mode,
                 skills_dir=self._skills_dir,
-                skill_owner_id=str(skill.get("id", "")) if skill is not None else "",
                 workspace=workspace,
                 mapped_directory_paths=(
                     mapped_directory_paths_by_filesystem.get(

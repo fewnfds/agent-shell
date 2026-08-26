@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+import agent_shell.contracts as contracts_module
 from agent_shell.contracts import (
     CustomMiddlewareBlock,
+    FilesystemBlock,
     FilesystemToolsBlock,
     MainAgentProfile,
     SubagentProfile,
@@ -67,6 +71,54 @@ def test_contract_errors_become_safe_structured_validation_issues() -> None:
     }
     assert all("private" not in issue["message"] for issue in payload["issues"])
     assert all("legacy.json" not in issue["message"] for issue in payload["issues"])
+
+
+def test_filesystem_contract_rejects_linked_virtual_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_file = source_dir / "note.txt"
+    source_file.write_text("source", encoding="utf-8")
+
+    cases = (
+        (
+            source_dir,
+            {
+                "name": "Linked directory",
+                "virtual_directories": [
+                    {"virtual_path": "/source/", "source_path": str(source_dir)}
+                ],
+            },
+        ),
+        (
+            source_file,
+            {
+                "name": "Linked file",
+                "virtual_files": [
+                    {"virtual_path": "/source/note.txt", "source_path": str(source_file)}
+                ],
+            },
+        ),
+        (
+            source_file,
+            {
+                "name": "Nested linked source",
+                "virtual_directories": [
+                    {"virtual_path": "/source/", "source_path": str(source_dir)}
+                ],
+            },
+        ),
+    )
+
+    for linked_path, payload in cases:
+        monkeypatch.setattr(
+            contracts_module,
+            "is_reparse_point",
+            lambda path, linked_path=linked_path: Path(path) == linked_path,
+        )
+        with pytest.raises(ValidationError, match="links? or reparse points?"):
+            FilesystemBlock.model_validate(payload)
 
 
 def test_validation_issue_redacts_user_controlled_owner_path_and_message() -> None:

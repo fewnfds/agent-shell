@@ -63,6 +63,8 @@ Middleware 包没有 sandbox，以 Agent Shell 服务进程权限运行。它可
 
 项目 filesystem 的 mapped directories 可读写宿主真实目录。只映射 Agent 确实需要的路径；写入、编辑和递归删除工具按最小权限启用。Agent 看到的 Skill namespace 始终只读。
 
+LocalShellBackend 的 `execute` 直接以 Agent Shell 服务账号权限在宿主机运行任意命令，没有 sandbox。`virtual_mode=True` 只约束文件工具的路径解析；workspace 只是命令的默认工作目录，不限制命令访问该账号可达的其他文件、进程、网络或系统资源。只在受控开发环境中为可信 Workflow 开启，并使用权限受限的专用服务账号和隔离主机。需要隔离执行时应使用 Deep Agents 官方 sandbox backend；Agent Shell 当前尚未接入该 backend，不能把 LocalShell workspace 当作安全边界。
+
 文件管理页面只接受允许列表内的软件根相对 `data/...` 路径。普通文件、Skill/Python 模板、Python private package 和 Skill package 可编辑；
 Component、Agent 与 Workflow 配置树只读。`data/config/`、Repository metadata/import journal、state、logs、media、runtime、
 mapped host directory 和软件根目录外路径均不可达。此边界不限制受信任自定义代码或 Agent Filesystem mapping 自身的权限。

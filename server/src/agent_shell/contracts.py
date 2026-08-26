@@ -28,7 +28,10 @@ from agent_shell.configuration.identity import ConfigurationId, ConfigurationNam
 from agent_shell.command import CommandBlock
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
-from agent_shell.storage.owned_paths import require_data_root_relative_path
+from agent_shell.storage.owned_paths import (
+    is_reparse_point,
+    require_data_root_relative_path,
+)
 from agent_shell.task_dispatcher import TaskDispatcherBlock
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 
@@ -555,6 +558,11 @@ class FilesystemBlock(StrictBlock):
 
         for item in self.virtual_directories:
             source = Path(item.source_path)
+            if is_reparse_point(source):
+                raise ValueError(
+                    "virtual directory source_path must not be a link or reparse point: "
+                    f"{source}"
+                )
             if not source.is_dir():
                 raise ValueError(
                     f"virtual directory source_path must be an existing directory: {source}"
@@ -579,6 +587,11 @@ class FilesystemBlock(StrictBlock):
                 )
             directory_origins[directory_key] = str(source)
             for filepath in sorted(source.rglob("*")):
+                if is_reparse_point(filepath):
+                    raise ValueError(
+                        "virtual directory source must not contain links or reparse points: "
+                        f"{filepath}"
+                    )
                 relative = filepath.relative_to(source).as_posix()
                 target = f"{item.virtual_path}{relative}"
                 if filepath.is_dir():
@@ -610,6 +623,11 @@ class FilesystemBlock(StrictBlock):
 
         for item in self.virtual_files:
             source = Path(item.source_path)
+            if is_reparse_point(source):
+                raise ValueError(
+                    "virtual file source_path must not be a link or reparse point: "
+                    f"{source}"
+                )
             if not source.is_file():
                 raise ValueError(
                     f"virtual file source_path must be an existing file: {source}"

@@ -45,7 +45,7 @@ CompositeBackend 组合请求级 `StateBackend`、真实目录映射、请求开
 }
 ```
 
-每条来源自己的 `permission` 可选 `read-write`、`read-only`、`no-access`，默认 `read-write`。权限只约束 Deep Agents FilesystemMiddleware 提供的文件操作；Custom Tool、Custom Middleware、外部程序和管理台文件管理使用各自的权限边界。
+每条来源自己的 `permission` 可选 `read-write`、`read-only`、`no-access`，默认 `read-write`。来源发生父子嵌套时，更具体的虚拟路径权限优先生效。权限只约束 Deep Agents FilesystemMiddleware 提供的文件操作；Custom Tool、Custom Middleware、外部程序和管理台文件管理使用各自的权限边界。
 
 来源类型：
 
@@ -75,13 +75,13 @@ LocalShellBackend 把一个已经存在的真实目录作为虚拟根 `/`：
 
 `workspace` 只包含 `local_path` 与 `path_origin=absolute|data-root-relative`。它是固定工作区，不提供 lifecycle dynamic 模式；运行时直接构造 `LocalShellBackend(root_dir=workspace, virtual_mode=True)`，不创建空执行目录，也没有对应的目录清理程序。Deep Agents 不需要为这个直接 Backend 追加虚拟路径到宿主路径的 mapping 提示。
 
-LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有来源级权限。需要 Skill、混合映射或路径权限时使用 CompositeBackend；需要在真实单工作区中执行命令时使用 LocalShellBackend，并在文件系统工具中显式开启 `execute`。
+LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有来源级权限。需要 Skill、混合映射或路径权限时使用 CompositeBackend；需要在真实单工作区中执行命令时使用 LocalShellBackend，并在文件系统工具中显式开启 `execute`。`execute` 直接以 Agent Shell 服务账号权限在宿主机运行命令，没有 sandbox；workspace 只是默认工作目录，命令仍可访问该账号有权访问的其他文件、进程、网络和系统资源。
 
 ## 路径与运行边界
 
 虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。不允许 `..`、重叠 route、重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：`/large_tool_results/`、`/conversation_history/`、`/skills/`、`/memory/`、`/memories/`。
 
-Deep Agents 在请求级默认 Backend 的 `/conversation_history/{session_uuid}.md` 保存摘要前的原始消息；该 UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
+Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为 Deep Agents 0.7.7 会为 Composite + execute 无条件追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
 
 同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。独立 background Run 不复制或合并请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
 
