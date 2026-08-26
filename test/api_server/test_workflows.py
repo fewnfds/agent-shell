@@ -219,6 +219,56 @@ def test_workflow_checkpointer_delete_preserves_references_for_each_owner(
             assert issues[0]["message_args"]["reference_id"] == reference_id
 
 
+def test_workflow_publish_rejects_a_deleted_checkpointer_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        workflow = create_workflow(client, name="Missing Checkpointer publish")
+        checkpointer = client.post(
+            "/api/blocks/checkpointer",
+            json={"name": "Publish checkpoints", "durability": "sync"},
+        ).json()
+        configured = client.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                "name": workflow["name"],
+                "workflow_role": workflow["workflow_role"],
+                "description": workflow["description"],
+                "checkpointer_id": checkpointer["id"],
+            },
+        )
+        assert configured.status_code == 200, configured.text
+        document = save_linear_workflow_graph(
+            client,
+            configured.json(),
+            main_agent,
+        )
+        deleted = client.delete(
+            f"/api/blocks/checkpointer/{checkpointer['id']}"
+        )
+        assert deleted.status_code == 200, deleted.text
+
+        validated = client.post(
+            f"/api/workflows/{workflow['id']}/validate",
+            json=document,
+        )
+        published = client.put(
+            f"/api/workflows/{workflow['id']}/graph",
+            json=document,
+        )
+
+    assert validated.status_code == 200, validated.text
+    issue = next(
+        item
+        for item in validated.json()["issues"]
+        if item["path"] == "checkpointer_id"
+    )
+    assert issue["code"] == "configuration.reference_not_found"
+    assert issue["message_args"]["reference_id"] == checkpointer["id"]
+    assert published.status_code == 422, published.text
+
+
 def test_workflow_rejects_missing_or_wrong_type_checkpointer_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -530,9 +580,53 @@ def test_repository_validation_includes_workflow_graph_admission(
     assert report.status_code == 200, report.text
     assert any(
         issue["code"] == "workflow.node_type_unsupported"
-        and issue["owner_id"] == "unsupported"
+        and issue["owner_id"] == workflow["id"]
+        and issue["path"] == "definition.nodes[0].type"
         for issue in report.json()["issues"]
     )
+
+
+def test_workflow_validation_reports_a_workflow_uuid_as_the_wrong_agent_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        workflow = create_workflow(client, name="Wrong Agent target")
+        other_workflow = create_workflow(client, name="Actual Workflow target")
+        document = {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "nodes": [
+                    {
+                        "id": "agent",
+                        "type": "agent",
+                        "type_version": 1,
+                        "config": {"main_agent_id": other_workflow["id"]},
+                    }
+                ],
+                "edges": [],
+            },
+            "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+        }
+
+        report = client.post(
+            f"/api/workflows/{workflow['id']}/validate",
+            json=document,
+        )
+
+    assert report.status_code == 200, report.text
+    issue = next(
+        item
+        for item in report.json()["issues"]
+        if item["path"] == "definition.nodes[0].config.main_agent_id"
+    )
+    assert issue["code"] == "configuration.reference_type_mismatch"
+    assert issue["message_args"] == {
+        "actual_type": "workflow",
+        "expected_type": "main_agent",
+        "reference_id": other_workflow["id"],
+    }
 
 
 def test_workflow_draft_publish_and_validation_share_one_graph(

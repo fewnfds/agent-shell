@@ -234,6 +234,7 @@ class RequestSnapshotRuntime:
             blocks,
             configs,
             python_package_validation,
+            repository=repository,
         )
         def runtime_factory() -> AgentRuntime:
             return AgentRuntime(

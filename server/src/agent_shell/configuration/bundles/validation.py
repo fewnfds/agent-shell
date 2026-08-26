@@ -29,6 +29,7 @@ def validate_bundle_snapshot(
         blocks,
         agent_configs,
         package_validation,
+        repository=repository,
     )
     return RepositoryValidationService(
         repository,

@@ -197,6 +197,7 @@ def create_app(
         block_store,
         config_store,
         python_package_validation,
+        repository=configuration,
     )
     component_mutations = ComponentMutationService(
         configuration,

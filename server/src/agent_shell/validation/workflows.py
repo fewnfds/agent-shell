@@ -7,10 +7,6 @@ from pydantic import Field, ValidationError
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
-from agent_shell.validation.references import (
-    reference_not_found_issue,
-    reference_type_mismatch_issue,
-)
 from agent_shell.workflow.catalog import (
     CommandNodeConfig,
     TaskDispatcherNodeConfig,
@@ -45,6 +41,18 @@ class WorkflowConfigurationValidator(Protocol):
         stage: str = "request_assembly",
     ) -> tuple[ValidationReport, object | None]: ...
 
+    def reference_issue(
+        self,
+        *,
+        scope: str,
+        owner_id: str,
+        owner_name: str,
+        owner_type: str,
+        path: str,
+        reference_id: str,
+        expected_type: str,
+    ) -> ValidationIssue: ...
+
 
 class StoredWorkflowConfiguration(WorkflowDefinition):
     enabled: Annotated[bool, Field(strict=True)]
@@ -53,28 +61,21 @@ class StoredWorkflowConfiguration(WorkflowDefinition):
 
 
 def _component_reference_issue(
-    blocks: BlockStore,
+    validation: WorkflowConfigurationValidator,
     *,
     workflow: dict[str, Any],
     path: str,
     reference_id: str,
     expected_type: str,
 ) -> ValidationIssue:
-    common = {
-        "scope": "workflow",
-        "owner_id": str(workflow.get("id", "")),
-        "owner_name": str(workflow.get("name", "")),
-        "owner_type": "workflow",
-        "path": path,
-        "reference_id": reference_id,
-        "expected_type": expected_type,
-    }
-    header = blocks.get_block_header(reference_id)
-    if header is None or header.get("block_type") == expected_type:
-        return reference_not_found_issue(**common)
-    return reference_type_mismatch_issue(
-        **common,
-        actual_type=str(header.get("block_type", "component")),
+    return validation.reference_issue(
+        scope="workflow",
+        owner_id=str(workflow.get("id", "")),
+        owner_name=str(workflow.get("name", "")),
+        owner_type="workflow",
+        path=path,
+        reference_id=reference_id,
+        expected_type=expected_type,
     )
 
 
@@ -90,6 +91,50 @@ def workflow_executable_report(
     referenced_issues: list[ValidationIssue] = []
     component_reports: dict[tuple[str, str], ValidationReport] = {}
 
+    def project_component_issues(path: str, report: ValidationReport) -> None:
+        for issue in report.issues:
+            referenced_issues.append(
+                ValidationIssue(
+                    code=issue.code,
+                    scope="workflow",
+                    owner_id=str(workflow.get("id", "")),
+                    owner_name=str(workflow.get("name", "")),
+                    owner_type="workflow",
+                    path=path,
+                    message=issue.message,
+                    message_key=issue.message_key,
+                    message_args=issue.message_args,
+                    severity=issue.severity,
+                )
+            )
+
+    checkpointer_id = workflow.get("checkpointer_id")
+    if checkpointer_id is not None:
+        stored_checkpointer = blocks.get_block_internal(
+            "checkpointer",
+            str(checkpointer_id),
+        )
+        if stored_checkpointer is None:
+            referenced_issues.append(
+                _component_reference_issue(
+                    configuration_validation,
+                    workflow=workflow,
+                    path="checkpointer_id",
+                    reference_id=str(checkpointer_id),
+                    expected_type="checkpointer",
+                )
+            )
+        else:
+            project_component_issues(
+                "checkpointer_id",
+                configuration_validation.validate_stored_block(
+                    "checkpointer",
+                    stored_checkpointer,
+                    stage=WORKFLOW_EXECUTABLE_STAGE,
+                    check_dependencies=True,
+                ),
+            )
+
     workflow_event_output_id = workflow.get("workflow_event_output_id")
     if workflow_event_output_id is not None:
         stored_output = blocks.get_block_internal(
@@ -99,7 +144,7 @@ def workflow_executable_report(
         if stored_output is None:
             referenced_issues.append(
                 _component_reference_issue(
-                    blocks,
+                    configuration_validation,
                     workflow=workflow,
                     path="workflow_event_output_id",
                     reference_id=str(workflow_event_output_id),
@@ -113,21 +158,7 @@ def workflow_executable_report(
                 stage=WORKFLOW_EXECUTABLE_STAGE,
                 check_dependencies=True,
             )
-            for issue in output_report.issues:
-                referenced_issues.append(
-                    ValidationIssue(
-                        code=issue.code,
-                        scope="workflow",
-                        owner_id=str(workflow.get("id", "")),
-                        owner_name=str(workflow.get("name", "")),
-                        owner_type="workflow",
-                        path="workflow_event_output_id",
-                        message=issue.message,
-                        message_key=issue.message_key,
-                        message_args=issue.message_args,
-                        severity=issue.severity,
-                    )
-                )
+            project_component_issues("workflow_event_output_id", output_report)
 
     def component_report(
         block_type: str,
@@ -188,7 +219,7 @@ def workflow_executable_report(
             else:
                 referenced_issues.append(
                     _component_reference_issue(
-                        blocks,
+                        configuration_validation,
                         workflow=workflow,
                         path=f"definition.nodes[{node_index}].config.command_id",
                         reference_id=reference,
@@ -214,7 +245,7 @@ def workflow_executable_report(
             else:
                 referenced_issues.append(
                     _component_reference_issue(
-                        blocks,
+                        configuration_validation,
                         workflow=workflow,
                         path=(
                             f"definition.nodes[{node_index}].config."

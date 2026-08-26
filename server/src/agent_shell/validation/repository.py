@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import threading
 
 from agent_shell.configuration.dependencies import (
@@ -138,15 +139,22 @@ class RepositoryValidationService:
             )
             issues.extend(self._semantic_issues(report))
         for workflow in config.get("workflows", []):
-            issues.extend(
-                self._semantic_issues(
-                    validate_stored_workflow(
-                        workflow,
-                        blocks=self._blocks,
-                        configuration_validation=self._configuration_validation,
-                        stage=stage,
-                    )
+            workflow_issues = self._semantic_issues(
+                validate_stored_workflow(
+                    workflow,
+                    blocks=self._blocks,
+                    configuration_validation=self._configuration_validation,
+                    stage=stage,
                 )
+            )
+            issues.extend(
+                replace(
+                    issue,
+                    owner_id=str(workflow.get("id", "")),
+                    owner_name=str(workflow.get("name", "")),
+                    owner_type="workflow",
+                )
+                for issue in workflow_issues
             )
         issues.extend(_dependency_issues(config))
         if self._model_resources is not None:

@@ -110,6 +110,24 @@ def test_missing_custom_tool_reference_is_reported(
     assert issue["path"] == "tool_refs[0].tool_id"
 
 
+def test_missing_subagent_custom_tool_reference_is_rejected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client = make_client(tmp_path, monkeypatch)
+    payload = subagent_payload("Missing tool worker")
+    payload["settings"]["tool_refs"] = [
+        {"tool_id": "00000000-0000-4000-8000-000000000098"}
+    ]
+
+    response = client.post("/api/subagents", json=payload)
+
+    assert response.status_code == 422, response.text
+    issue = response.json()["detail"]["validation"]["issues"][0]
+    assert issue["code"] == "configuration.reference_not_found"
+    assert issue["path"] == "settings.tool_refs[0].tool_id"
+    assert issue["message_args"]["expected_type"] == "custom-tool"
+
+
 def test_main_agent_and_subagent_have_independent_tool_lists(
     tmp_path: Path, monkeypatch
 ) -> None:

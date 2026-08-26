@@ -901,6 +901,15 @@ class FileConfigRepository:
                         }
         return None
 
+    def configuration_entity_type(self, record_id: str) -> str | None:
+        """Return the concrete Repository entity type for one UUID."""
+
+        with self._lock:
+            for entity in iter_configuration_entities(self._config):
+                if entity.id == record_id:
+                    return entity.component_type or entity.kind
+        return None
+
     def repository_context(self) -> tuple[str, int]:
         with self._lock:
             return self.repository_id, self._revision

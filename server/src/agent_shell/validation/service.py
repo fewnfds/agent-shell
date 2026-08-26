@@ -21,6 +21,7 @@ from agent_shell.contracts import (
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
+from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
@@ -58,10 +59,13 @@ class ConfigurationValidationService:
         blocks: BlockStore,
         agent_configs: AgentConfigStore,
         python_package_validation: PythonPackageValidationService,
+        *,
+        repository: FileConfigRepository,
     ) -> None:
         self._blocks = blocks
         self._agent_configs = agent_configs
         self._python_package_validation = python_package_validation
+        self._repository = repository
 
     def validate_main_agent(
         self,
@@ -279,7 +283,7 @@ class ConfigurationValidationService:
                 "skill", str(skill_package_id)
             ) is None:
                 return [
-                    self._reference_issue(
+                    self.reference_issue(
                         scope="block",
                         owner_id=owner_id,
                         owner_name=str(payload.get("name", "")),
@@ -340,6 +344,14 @@ class ConfigurationValidationService:
             path_prefix="settings.middleware_refs",
         )
         issues.extend(middleware_issues)
+        _, tool_issues = self._load_tool_references(
+            settings["tool_refs"],
+            scope="subagent",
+            owner_id=owner_id,
+            owner_name=validated["component_name"],
+            path_prefix="settings.tool_refs",
+        )
+        issues.extend(tool_issues)
         if owner_id and not issues:
             prospective = dict(validated)
             prospective["id"] = owner_id
@@ -360,11 +372,11 @@ class ConfigurationValidationService:
     ) -> tuple[ValidationReport, StaticAssembly | None]:
         main_agent = self._agent_configs.get_item("main_agents", main_agent_id)
         if main_agent is None:
-            issue = self._reference_issue(
+            issue = self.reference_issue(
                 scope="main_agent",
                 owner_id=main_agent_id,
                 owner_name="",
-                owner_type="",
+                owner_type="main_agent",
                 path="id",
                 reference_id=main_agent_id,
                 expected_type="main_agent",
@@ -482,17 +494,7 @@ class ConfigurationValidationService:
             },
         )
 
-    def _actual_reference_type(self, reference_id: str) -> str | None:
-        block = self._blocks.get_block_header(reference_id)
-        if block is not None:
-            return str(block.get("block_type", "component"))
-        if self._agent_configs.get_item("main_agents", reference_id) is not None:
-            return "main_agent"
-        if self._agent_configs.get_item("subagents", reference_id) is not None:
-            return "subagent"
-        return None
-
-    def _reference_issue(
+    def reference_issue(
         self,
         *,
         scope: str,
@@ -503,7 +505,7 @@ class ConfigurationValidationService:
         reference_id: str,
         expected_type: str,
     ) -> ValidationIssue:
-        actual_type = self._actual_reference_type(reference_id)
+        actual_type = self._repository.configuration_entity_type(reference_id)
         arguments = {
             "scope": scope,
             "owner_id": owner_id,
@@ -543,11 +545,11 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    self._reference_issue(
+                    self.reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
-                        owner_type="",
+                        owner_type=scope,
                         path=path,
                         reference_id=block_id,
                         expected_type=capability_type,
@@ -592,11 +594,11 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    self._reference_issue(
+                    self.reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
-                        owner_type="",
+                        owner_type=scope,
                         path=path,
                         reference_id=block_id,
                         expected_type="custom-tool",
@@ -652,11 +654,11 @@ class ConfigurationValidationService:
             )
             if block is None:
                 issues.append(
-                    self._reference_issue(
+                    self.reference_issue(
                         scope=scope,
                         owner_id=owner_id,
                         owner_name=owner_name,
-                        owner_type="",
+                        owner_type=scope,
                         path=path,
                         reference_id=block_id,
                         expected_type="custom-middleware",
@@ -736,11 +738,11 @@ class ConfigurationValidationService:
                 )
                 if skill_package is None:
                     issues.append(
-                        self._reference_issue(
+                        self.reference_issue(
                             scope=scope,
                             owner_id=owner_id,
                             owner_name=owner_name,
-                            owner_type="",
+                            owner_type=scope,
                             path="capability_refs.filesystem.skill_package_id",
                             reference_id=skill_package_id,
                             expected_type="skill",
@@ -842,11 +844,11 @@ class ConfigurationValidationService:
             else self._agent_configs.get_item("subagents", profile_id)
         )
         if profile is None:
-            return None, self._reference_issue(
+            return None, self.reference_issue(
                 scope="main_agent",
                 owner_id=owner_id,
                 owner_name=owner_name,
-                owner_type="",
+                owner_type="main_agent",
                 path=path,
                 reference_id=profile_id,
                 expected_type="subagent",
