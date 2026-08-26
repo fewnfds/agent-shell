@@ -2,7 +2,7 @@
 
 本章把配置工作收敛为一次有限验收。目标是证明 current Workflow 在当前实例中可以被发现并真实运行，然后停止。
 
-`/api/*` 使用 management token。`/v1/*` 使用独立 API Key。两类 credential 不能互换。
+`/api/*` 使用 AI 进程环境中的 `AGENT_SHELL_MANAGEMENT_TOKEN`。`/v1/*` 使用 `AGENT_SHELL_API_KEY`。两类 credential 不能互换，也不从实例 secret 文件读取。
 
 ## 1. 验收顺序
 
@@ -141,9 +141,11 @@ GET /api/api-server
 
 response 只返回 API Key 是否 configured，不返回 secret value。
 
-如果 API Key 已 configured，并且用户提供了现有 value，直接用于后续 `/v1/*` 调用。不要因为 GET 不回显 secret 就自动替换它。
+如果 API Key 已 configured，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY`，在 HTTP client 边界直接引用该变量完成后续 `/v1/*` 调用。不要读取或输出它的值，也不要因为 GET 不回显 secret 就自动替换它。
 
-如果用户明确要求替换或当前尚未配置，使用用户提供的新 API Key：
+如果 API Key 已 configured，但 `AGENT_SHELL_API_KEY` 缺失，报告缺少该环境变量并停止真实 `/v1/*` 验证。不要读取 `data/config/agent-shell.env`，不要要求用户在对话中粘贴 API Key。
+
+只有用户明确要求替换或当前尚未配置，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY` 时，才从该变量构造 write-only value：
 
 ```http
 PUT /api/api-server
@@ -154,10 +156,12 @@ Content-Type: application/json
 {
   "api_key": {
     "operation": "replace",
-    "value": "<user-provided printable ASCII value without spaces>"
+    "value": "<value injected from AGENT_SHELL_API_KEY>"
   }
 }
 ```
+
+`<value injected from AGENT_SHELL_API_KEY>` 只表示 client-side 注入位置，不能把这段占位文本按字面发送。构造和发送 request 时不记录 request body。变量缺失时，由用户在对话之外完成设置；AI 不生成、猜测或索取 secret。
 
 `api_key.operation` 支持：
 
@@ -181,7 +185,7 @@ API Key 只用于 `/v1/*`，不写入 Graph、Component、日志或交付报告�
 
 ```http
 GET /v1/models
-Authorization: Bearer <API Key>
+Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
 确认刚刚 publish 的 parent Workflow name 出现在 model list。
@@ -202,7 +206,7 @@ child Workflow 不出现在 `/v1/models`。
 
 ```http
 POST /v1/chat/completions
-Authorization: Bearer <API Key>
+Authorization: Bearer ${AGENT_SHELL_API_KEY}
 Content-Type: application/json
 ```
 
@@ -312,6 +316,7 @@ Not tested or user action
 以下情况可以记录为未验证项后交付：
 
 - 用户尚未提供 Model Connection 或 Provider credential；
+- AI 进程缺少 `AGENT_SHELL_MANAGEMENT_TOKEN` 或 `AGENT_SHELL_API_KEY`；
 - 外部 API、文件或业务环境不可访问；
 - 用户要求保持 Workflow draft；
 - 当前任务只授权文档或静态配置检查。

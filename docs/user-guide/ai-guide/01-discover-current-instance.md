@@ -16,16 +16,18 @@ Agent Shell 使用两类 credential：
 `GET /api/health` 是匿名存活探测。其他 `/api/*` 请求通常需要：
 
 ```http
-Authorization: Bearer <management token>
+Authorization: Bearer ${AGENT_SHELL_MANAGEMENT_TOKEN}
 ```
 
 `/v1/*` 请求需要：
 
 ```http
-Authorization: Bearer <API Key>
+Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-两类 credential 不能互换。management token 可以由用户提供，或者从用户授权访问的实例配置取得。读取 credential 后只在当前受控调用中使用，不把明文写入 Graph、State、日志、诊断说明或交付报告。
+`${...}` 在本指南中表示 HTTP client 从 AI 进程环境注入值，不是要按字面发送的 header 内容。两类 credential 不能互换：`AGENT_SHELL_MANAGEMENT_TOKEN` 只用于 `/api/*`，`AGENT_SHELL_API_KEY` 只用于 `/v1/*`。
+
+AI 只确认所需环境变量是 present 还是 missing，并在发出请求时直接引用它。不应打印、回显、转存或在命令参数中展开 secret；不应直接读取实例的 `agent-shell.env`；不应要求用户在对话、任务材料或交付报告中粘贴明文。登录失败时，应向用户报告，由用户配置后再继续。
 
 先调用：
 
@@ -114,15 +116,6 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
 
 Graph Node ID 和 Edge ID 是 Workflow-local identity，不加入全局 Configuration reference。
 
-## 6. 先复用，再创建
-
-读取现有对象后判断：
-
-- 现有对象的职责、字段和依赖完全满足当前需求时复用；
-- 修改会改变其他真实调用方行为时，新建独立对象；
-- 只有名称相似但 contract 不满足时，不强行复用；
-- 不为未来可能出现的调用方提前创建 Component 或抽象层。
-
 对象通常按依赖从叶到根创建：
 
 ```text
@@ -133,9 +126,7 @@ Component
   -> Graph document
 ```
 
-确定性 Workflow 没有 Agent Node 时，可以从 Command 或 Task Dispatcher Component 和 Workflow 开始。
-
-## 7. 修改现有对象
+## 6. 修改现有对象
 
 GET response 是读取 projection，可能包含 `id`、状态、masked credential、计算字段和其他只读字段。它不是 PUT payload。
 
@@ -156,11 +147,11 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 - Workflow Graph 使用 `/draft`、`/validate` 和 `/graph` endpoint，不通过 Workflow metadata PUT 保存；
 - API Server 的 API Key 使用 `keep`、`replace` 或 `clear` command，修改前先读取当前 configured 状态。
 
-## 8. Discovery 失败
+## 7. Discovery 失败
 
 读取 HTTP status、structured error code、`detail` 和 request ID。
 
-- `401` 或 `403`：检查 API domain、credential 和 Authorization header；
+- `401` 或 `403`：检查 API domain、所需环境变量是否存在和 Authorization header 的变量引用；不要输出 credential value；
 - `404`：检查 base URL、endpoint、active Repository 和 UUID；
 - `409`：检查 Repository 状态、名称或 identity 冲突；
 - `422`：检查 query、payload shape 或当前 contract；
@@ -168,7 +159,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 
 不要把 secret、完整用户消息或 host path 复制到诊断材料。
 
-## 9. 本章完成结果
+## 8. 本章完成结果
 
 进入下一章前确认：
 

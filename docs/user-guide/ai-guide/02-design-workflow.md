@@ -1,6 +1,6 @@
 # 设计 Workflow
 
-本章把用户需求转换为最小 topology、State ownership、Agent input 和结束条件。完成设计后再创建 Component、Agent 和 Workflow。
+本章把用户需求转换为 topology、State ownership、Agent input 和结束条件。完成设计后再创建 Component、Agent 和 Workflow。
 
 本章同时包含 Agent Shell 的运行约束和编排建议。标为“系统约束”的内容必须遵守；标为“建议”的内容可以根据业务调整。
 
@@ -8,24 +8,22 @@
 
 先判断是否需要 LLM。
 
-不需要语言理解、模型推理或模型选择 Tool 时，使用 Command 或 Task Dispatcher 组成确定性 Workflow。不要为了“像 Agent”而增加 Agent Node。
+不需要语言理解、模型推理或模型选择 Tool 时，使用 Command 或 Task Dispatcher 组成确定性 Workflow。不要为了“强行使用AI”而增加 Agent Node。
 
 需要模型能力时，为对应步骤使用 Agent Node。一个 Agent Node 表示一次完整 Main Agent invocation，包含该 Agent 内部的全部 model-tool loop。
 
 三个最小起点是：
 
 ```text
-验证 Graph 和 /v1 入口：
+验证通路：
 Start -> End
 
-确定性处理：
+脚本：
 Start -> Command -> End
 
-单 Agent：
+AI Agent：
 Start -> Agent -> End
 ```
-
-只增加当前用户结果真正需要的 Node 和 Component。
 
 ## 2. 选择执行机制
 
