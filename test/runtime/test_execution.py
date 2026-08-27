@@ -118,7 +118,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
     assert asyncio.run(scenario()) == (True, True)
 
 
-def test_workflow_execution_cancel_converges_run_before_stream_cleanup(
+def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
     tmp_path,
 ) -> None:
     async def scenario() -> tuple[str, str, bool]:
@@ -137,10 +137,14 @@ def test_workflow_execution_cancel_converges_run_before_stream_cleanup(
         )
         lifecycle.start_run("cancel-run")
         children_cancelled = False
+        child_cancel_started = asyncio.Event()
+        child_cancel_release = asyncio.Event()
 
         async def cancel_children() -> None:
             nonlocal children_cancelled
             children_cancelled = True
+            child_cancel_started.set()
+            await child_cancel_release.wait()
 
         execution = RunExecution(
             graph=None,
@@ -164,18 +168,23 @@ def test_workflow_execution_cancel_converges_run_before_stream_cleanup(
             cancel_background_children=cancel_children,
         )
         try:
-            await execution.cancel()
-            await execution.cancel()
+            cancellation = asyncio.create_task(execution.cancel())
+            await asyncio.wait_for(child_cancel_started.wait(), timeout=1)
             run = lifecycle.history.get_run("cancel-run")
             parent = await lifecycle.record(lifecycle_id)
             assert run is not None
             assert parent is not None
-            return (
+            converged = (
                 str(run["status"]),
                 str(parent["parent_status"]),
                 children_cancelled,
             )
+            child_cancel_release.set()
+            await cancellation
+            await execution.cancel()
+            return converged
         finally:
+            child_cancel_release.set()
             await lifecycle.close()
 
     assert asyncio.run(scenario()) == ("cancelled", "cancelled", True)

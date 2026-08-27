@@ -426,7 +426,10 @@ async def _completion_stream(
             pass
         if cancel_on_disconnect and not producer.done():
             if producer.cancel():
-                await execution.cancel()
+                background_tasks.create_detached_task(
+                    execution.cancel(),
+                    name=f"cancel-request-workflow:{run_id}",
+                )
 
 
 def build_api_server_router(

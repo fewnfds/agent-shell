@@ -221,6 +221,34 @@ class RunExecution:
         if not cancellation_recorded:
             return
 
+        if (
+            self.owns_lifecycle
+            and self.lifecycle_service is not None
+            and self.lifecycle_id
+            and not self._lifecycle_finished
+        ):
+            self._lifecycle_finished = True
+            try:
+                await self.lifecycle_service.finish_parent(
+                    self.lifecycle_id,
+                    "cancelled",
+                )
+            except Exception as exc:
+                if self.context is not None:
+                    try:
+                        self.lifecycle_service.mark_run_observation_partial(
+                            self.context.run_id
+                        )
+                    except Exception:
+                        pass
+                if self.runtime_diagnostics is not None:
+                    self.runtime_diagnostics.observation_error(
+                        exc,
+                        code="workflow_lifecycle_record_failed",
+                        component="persistence",
+                        context=self.diagnostic_context(),
+                    )
+
         if self.cancel_background_children is not None:
             try:
                 await self.cancel_background_children()
@@ -232,35 +260,6 @@ class RunExecution:
                         component="observability",
                         context=self.diagnostic_context(),
                     )
-
-        if (
-            not self.owns_lifecycle
-            or self.lifecycle_service is None
-            or not self.lifecycle_id
-            or self._lifecycle_finished
-        ):
-            return
-        self._lifecycle_finished = True
-        try:
-            await self.lifecycle_service.finish_parent(
-                self.lifecycle_id,
-                "cancelled",
-            )
-        except Exception as exc:
-            if self.context is not None:
-                try:
-                    self.lifecycle_service.mark_run_observation_partial(
-                        self.context.run_id
-                    )
-                except Exception:
-                    pass
-            if self.runtime_diagnostics is not None:
-                self.runtime_diagnostics.observation_error(
-                    exc,
-                    code="workflow_lifecycle_record_failed",
-                    component="persistence",
-                    context=self.diagnostic_context(),
-                )
 
     async def stream_text(self) -> AsyncIterator[str]:
         if self._started:

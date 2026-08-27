@@ -109,9 +109,13 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
             self.started = asyncio.Event()
             self.cleanup_started = asyncio.Event()
             self.cleanup_release = asyncio.Event()
+            self.cancel_started = asyncio.Event()
+            self.cancel_release = asyncio.Event()
             self.cancel_recorded = asyncio.Event()
 
         async def cancel(self) -> None:
+            self.cancel_started.set()
+            await self.cancel_release.wait()
             self.cancel_recorded.set()
 
         async def stream_text(self):
@@ -141,21 +145,15 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
             await execution.started.wait()
             pending.cancel()
             await execution.cleanup_started.wait()
-            try:
-                await asyncio.wait_for(
-                    execution.cancel_recorded.wait(),
-                    timeout=1,
-                )
-            except TimeoutError:
-                cancellation_recorded = False
-            else:
-                cancellation_recorded = True
+            await execution.cancel_started.wait()
             for _ in range(3):
                 await asyncio.sleep(0)
             response_closed = pending.done()
+            execution.cancel_release.set()
             execution.cleanup_release.set()
+            await asyncio.wait_for(execution.cancel_recorded.wait(), timeout=1)
             await asyncio.gather(pending, return_exceptions=True)
-            return response_closed, cancellation_recorded
+            return response_closed, execution.cancel_recorded.is_set()
 
         response_closed, cancellation_recorded = portal.call(scenario)
 
