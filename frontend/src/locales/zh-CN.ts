@@ -1353,6 +1353,7 @@ export const zhCN = {
         invalidEncoding: 'Python 包文件必须使用 UTF-8 编码。',
         readFailed: '无法读取 Python 包文件。',
         linkUnsupported: 'Python 包不支持符号链接或 reparse point。',
+        templateMainRequired: 'Python 扩展模板目录必须包含 main.py；package.json 会在保存配置时由系统生成。',
         filesRequired: '包目录必须同时包含 package.json 和 main.py。',
         manifestInvalid: 'package.json 不符合当前 Python 包清单格式。',
         idMismatch: 'package.json 中的 ID 必须与目录名一致。',

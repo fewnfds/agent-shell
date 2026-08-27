@@ -14,8 +14,7 @@ def output(event):
     return ""
 ```
 
-新建配置时可从 `GET /api/python-package-templates/agent-event-output` 加载内置示例。示例按事件选择 Agent 名称、工具名称、
-Subagent 名称或短状态组成 `details`；保存后源码复制到配置独占目录，与示例彻底解耦。
+新建配置时可从 `GET /api/python-package-templates/agent-event-output` 加载两个内置示例：`内置示例-default` 按事件选择 Agent 名称、工具名称、Subagent 名称或短状态组成 `details`；`内置示例-assistant-text-only` 只返回 `assistant_text` 的公开答复文本，并用空字符串过滤 reasoning、Tool、Subagent、custom 和 lifecycle 事件。保存后源码复制到配置独占目录，与示例彻底解耦。
 
 例如自行拼接工具结果：
 

@@ -457,3 +457,93 @@ def test_builtin_dispatcher_example_creates_owned_python_package(
         "adapter": "task-dispatcher",
         "id": created["id"],
     }
+
+
+def test_rainfall_dispatcher_example_materializes_and_routes_readings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repository = Path(__file__).parents[2]
+    shutil.copytree(
+        repository
+        / "examples"
+        / "workflow-components"
+        / "task-dispatcher"
+        / "rainfall-task-dispatcher",
+        tmp_path
+        / "examples"
+        / "workflow-components"
+        / "task-dispatcher"
+        / "rainfall-task-dispatcher",
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        catalog_response = client.get(
+            "/api/python-package-templates/task-dispatcher"
+        )
+        assert catalog_response.status_code == 200
+        selected = catalog_response.json()["catalog"][0]
+        assert selected["key"] == "内置示例-rainfall-task-dispatcher"
+
+        response = client.post(
+            "/api/blocks/task-dispatcher",
+            json={
+                "name": "Rainfall tasks",
+                "python_package": {"folder": ""},
+                "python_package_template": {
+                    "key": selected["key"],
+                    "revision": selected["revision"],
+                },
+            },
+        )
+        assert response.status_code == 200, response.text
+        created = response.json()
+
+    packages_dir = FileConfigRepository(tmp_path / "data").python_packages_root
+    package_dir = packages_dir / "task_dispatcher" / created["name"]
+    assert {path.name for path in package_dir.iterdir()} >= {
+        "main.py",
+        "package.json",
+    }
+    runtime = TaskDispatcherPackageRuntime(
+        request_id="rainfall-example",
+        packages_dir=packages_dir,
+        runtime_root=tmp_path / "runtime",
+    )
+
+    async def run_example():
+        try:
+            dispatch = runtime.dispatcher_for(
+                created["id"],
+                created["id"],
+                created["python_package"],
+            )
+            return await dispatch(
+                {
+                    "shared_vars": {
+                        "rainfall_readings": [
+                            {"station_id": "north-gauge", "millimeters": 18.5},
+                            {"station_id": "river-gauge", "millimeters": 72.0},
+                        ]
+                    }
+                },
+                object(),
+            )
+        finally:
+            await runtime.close()
+
+    result = asyncio.run(run_example())
+
+    assert [task["dispatch_key"] for task in result["tasks"]] == [
+        "rainfall-report",
+        "rainfall-alert",
+    ]
+    assert [task["task_id"] for task in result["tasks"]] == [
+        "rainfall:north-gauge",
+        "rainfall:river-gauge",
+    ]
+    assert result["update"] == {
+        "shared_vars": {
+            "rainfall_dispatched_count": 2,
+            "rainfall_alert_count": 1,
+        }
+    }

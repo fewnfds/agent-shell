@@ -425,8 +425,8 @@ async def _completion_stream(
         except asyncio.QueueEmpty:
             pass
         if cancel_on_disconnect and not producer.done():
-            producer.cancel()
-            await asyncio.gather(producer, return_exceptions=True)
+            if producer.cancel():
+                await execution.cancel()
 
 
 def build_api_server_router(

@@ -6,12 +6,14 @@ Task Dispatcher 是 Workflow canvas 上的 dynamic map Node。它从 current Wor
 ## 从内置示例创建
 
 1. 打开【Workflow 组件 / 任务分发】，新建配置。
-2. 选择 `内置示例-item-list-dispatcher` 并保存。
+2. 选择一个与演示目标匹配的内置示例并保存：
+   - `内置示例-item-list-dispatcher`：把 `shared_vars.items` 中的对象逐项发送到 `item` Dispatch Edge；
+   - `内置示例-rainfall-task-dispatcher`：按降雨量把读数发送到 `rainfall-report` 或 `rainfall-alert` Dispatch Edge。
 3. 按实际 Workflow State schema 修改 configuration-owned Python package 中的 `main.py`。
 4. 在 Workflow canvas 加入 Task Dispatcher，选择该配置。
-5. 建立 `dispatch_key=item` 到 target Agent 的 Dispatch Edge。
+5. 建立与示例 `dispatch_key` 完全匹配的 Dispatch Edge。
 
-示例读取：
+`item-list-dispatcher` 读取：
 
 ```python
 state["shared_vars"] = {
@@ -21,6 +23,21 @@ state["shared_vars"] = {
 
 并为每个 item 生成一个任务。字段和来源只是示例，Dispatcher 可以按场景读取完整 State、Runtime Context 或 Store。
 源码位于 `examples/workflow-components/task-dispatcher/item-list-dispatcher/`。
+
+`rainfall-task-dispatcher` 读取：
+
+```python
+state["shared_vars"] = {
+    "rainfall_readings": [
+        {"station_id": "north-gauge", "millimeters": 18.5},
+        {"station_id": "river-gauge", "millimeters": 72.0},
+    ],
+}
+```
+
+低于 50 mm 的读数进入 `rainfall-report`，达到或超过 50 mm 的读数进入 `rainfall-alert`，并在 parent State 写入分发总数和告警数。阈值、字段和 Edge key 都是可编辑的示例业务规则。源码位于 `examples/workflow-components/task-dispatcher/rainfall-task-dispatcher/`。
+
+内置示例目录是模板，只包含 `main.py`、可选 `requirements.txt` 和辅助文件。首次保存配置时，系统把模板复制到配置独占目录，并生成属于该配置 UUID 的 `package.json`。
 
 ## Package 与入口
 

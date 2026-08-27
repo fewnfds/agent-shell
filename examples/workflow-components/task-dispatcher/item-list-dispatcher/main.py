@@ -12,8 +12,8 @@ according to its own Agent Additional Prompt.
 The stable package contract is a synchronous no-argument
 ``create_dispatcher()`` factory returning an async ``dispatch(state, runtime)``.
 It may use Workflow State, ``runtime.context``, and ``runtime.store`` and must
-return 1-1000 tasks with unique IDs, a valid dispatch key, and JSON-object
-payloads, plus an optional State ``update``. It does not return LangGraph
+return at least one task with a unique ID, a valid dispatch key, and a
+JSON-object payload, plus an optional State ``update``. It does not return LangGraph
 ``Send`` or ``Command`` objects. This package uses only the standard library,
 so ``requirements.txt`` stays empty.
 """

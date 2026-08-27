@@ -3,7 +3,7 @@
 Workflow Event Output 是可复用的 Workflow 组件，不属于 Agent capability。每个 Workflow 通过 `workflow_event_output_id` 可绑定零或一个；不绑定时，Workflow-owned 的 non-Agent 事件不会写入 OpenAI 响应。canvas Agent Node 产生的事件仍使用各 Main Agent 的[Agent Event Output](agent-event-output-config.md)。
 
 它与 Agent Event Output 使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 必须只提供恰好一个同步单参 `def output(event)`，不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
-可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。
+可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。`内置示例-default` 展示全部 Workflow-owned 事件；`内置示例-lifecycle-progress` 只展示 lifecycle 和 custom 进度，过滤 State snapshot、task、checkpoint、debug 与其他事件。
 
 内置示例使用与 Agent Event Output 相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
 `checkpoints`、`input`、`input.requested`、`debug` 和 `other` 分别保留分支。各分支都在同一个 `output(event)` 中按需处理；

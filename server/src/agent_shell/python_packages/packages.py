@@ -227,7 +227,7 @@ def scan_python_package_template(
     entries = _inspect_folder(folder)
     if not (folder / "main.py").is_file():
         raise ResourceScanError(
-            "resource.error.pythonPackage.filesRequired",
+            "resource.error.pythonPackage.templateMainRequired",
             "The template folder must contain main.py.",
         )
     _source, tree = _parse_main(folder)

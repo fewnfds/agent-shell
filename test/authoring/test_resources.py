@@ -315,7 +315,7 @@ def test_custom_middleware_catalog_scans_recipes_without_executing_them(
     assert "dependency_status" not in item
     assert set(result["errors"]) == {"broken-package"}
     assert result["errors"]["broken-package"]["message_key"] == (
-        "resource.error.pythonPackage.filesRequired"
+        "resource.error.pythonPackage.templateMainRequired"
     )
     assert not marker.exists()
 

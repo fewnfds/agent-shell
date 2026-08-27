@@ -183,6 +183,85 @@ class RunExecution:
             node_invocation_id=context.invocation_id,
         )
 
+    async def cancel(self) -> None:
+        """Converge Shell-owned cancellation before graph cleanup completes."""
+
+        cancellation_recorded = True
+        if self.lifecycle_service is not None and self.context is not None:
+            try:
+                cancellation_recorded = self.lifecycle_service.finish_run(
+                    self.context.run_id,
+                    status="cancelled",
+                    error_code="request_cancelled",
+                    usage=self.usage,
+                )
+                if not cancellation_recorded:
+                    record = self.lifecycle_service.history.get_run(
+                        self.context.run_id
+                    )
+                    if record is None:
+                        raise RuntimeError("the Run registry record is unavailable")
+                    cancellation_recorded = record["status"] == "cancelled"
+            except Exception as exc:
+                cancellation_recorded = True
+                try:
+                    self.lifecycle_service.mark_run_observation_partial(
+                        self.context.run_id
+                    )
+                except Exception:
+                    pass
+                if self.runtime_diagnostics is not None:
+                    self.runtime_diagnostics.observation_error(
+                        exc,
+                        code="workflow_run_record_failed",
+                        component="observability",
+                        context=self.diagnostic_context(),
+                    )
+
+        if not cancellation_recorded:
+            return
+
+        if self.cancel_background_children is not None:
+            try:
+                await self.cancel_background_children()
+            except Exception as exc:
+                if self.runtime_diagnostics is not None:
+                    self.runtime_diagnostics.observation_error(
+                        exc,
+                        code="background_child_cancellation_failed",
+                        component="observability",
+                        context=self.diagnostic_context(),
+                    )
+
+        if (
+            not self.owns_lifecycle
+            or self.lifecycle_service is None
+            or not self.lifecycle_id
+            or self._lifecycle_finished
+        ):
+            return
+        self._lifecycle_finished = True
+        try:
+            await self.lifecycle_service.finish_parent(
+                self.lifecycle_id,
+                "cancelled",
+            )
+        except Exception as exc:
+            if self.context is not None:
+                try:
+                    self.lifecycle_service.mark_run_observation_partial(
+                        self.context.run_id
+                    )
+                except Exception:
+                    pass
+            if self.runtime_diagnostics is not None:
+                self.runtime_diagnostics.observation_error(
+                    exc,
+                    code="workflow_lifecycle_record_failed",
+                    component="persistence",
+                    context=self.diagnostic_context(),
+                )
+
     async def stream_text(self) -> AsyncIterator[str]:
         if self._started:
             raise RuntimeError("RunExecution can only be consumed once")
@@ -478,9 +557,7 @@ class RunExecution:
                 )
             self.normalizer.abort_main_agent_messages()
             self.rectifier.discard()
-            await cancel_background_children()
-            finish_run("cancelled", error_code="request_cancelled")
-            await finish_lifecycle("cancelled")
+            await self.cancel()
             raise
         except TimeoutError as exc:
             error = AgentRuntimeError(

@@ -118,6 +118,69 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
     assert asyncio.run(scenario()) == (True, True)
 
 
+def test_workflow_execution_cancel_converges_run_before_stream_cleanup(
+    tmp_path,
+) -> None:
+    async def scenario() -> tuple[str, str, bool]:
+        lifecycle = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "cancel.sqlite3"),
+            store_database=SQLiteFile(tmp_path / "cancel-workflow-store.sqlite3"),
+        )
+        await lifecycle.start()
+        lifecycle_id = await lifecycle.create(
+            [{"role": "user", "content": "cancel"}],
+            request_id="cancel-request",
+            run_id="cancel-run",
+            checkpoint_thread_id=None,
+            workflow_id="cancel-workflow",
+            workflow_name="Cancel Workflow",
+        )
+        lifecycle.start_run("cancel-run")
+        children_cancelled = False
+
+        async def cancel_children() -> None:
+            nonlocal children_cancelled
+            children_cancelled = True
+
+        execution = RunExecution(
+            graph=None,
+            input_state={},
+            rectifier=None,
+            normalizer=SimpleNamespace(usage={}),
+            middleware_runtime=noop_middleware_runtime(),
+            media_response=noop_media_response(),
+            context=WorkflowRuntimeContext.for_run(
+                request_id="cancel-request",
+                lifecycle_id=lifecycle_id,
+                run_id="cancel-run",
+                workflow={
+                    "id": "cancel-workflow",
+                    "name": "Cancel Workflow",
+                },
+            ),
+            lifecycle_service=lifecycle,
+            lifecycle_id=lifecycle_id,
+            owns_lifecycle=True,
+            cancel_background_children=cancel_children,
+        )
+        try:
+            await execution.cancel()
+            await execution.cancel()
+            run = lifecycle.history.get_run("cancel-run")
+            parent = await lifecycle.record(lifecycle_id)
+            assert run is not None
+            assert parent is not None
+            return (
+                str(run["status"]),
+                str(parent["parent_status"]),
+                children_cancelled,
+            )
+        finally:
+            await lifecycle.close()
+
+    assert asyncio.run(scenario()) == ("cancelled", "cancelled", True)
+
+
 def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
     async def scenario() -> bool:
         execution = RunExecution(

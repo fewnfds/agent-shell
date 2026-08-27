@@ -47,7 +47,11 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             self.started = asyncio.Event()
             self.release = asyncio.Event()
             self.cancelled = asyncio.Event()
+            self.cancel_recorded = asyncio.Event()
             self.completed = asyncio.Event()
+
+        async def cancel(self) -> None:
+            self.cancel_recorded.set()
 
         async def stream_text(self):
             self.started.set()
@@ -80,6 +84,7 @@ def test_completion_stream_applies_workflow_disconnect_policy(
                 await pending
             if cancel_on_disconnect:
                 await asyncio.wait_for(execution.cancelled.wait(), timeout=1)
+                await asyncio.wait_for(execution.cancel_recorded.wait(), timeout=1)
             else:
                 execution.release.set()
                 await asyncio.wait_for(execution.completed.wait(), timeout=1)
@@ -89,6 +94,73 @@ def test_completion_stream_applies_workflow_disconnect_policy(
 
     assert cancelled is cancel_on_disconnect
     assert completed is (not cancel_on_disconnect)
+
+
+def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Execution:
+        context = None
+        finish_reason = "stop"
+        usage: dict[str, int] = {}
+
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.cleanup_started = asyncio.Event()
+            self.cleanup_release = asyncio.Event()
+            self.cancel_recorded = asyncio.Event()
+
+        async def cancel(self) -> None:
+            self.cancel_recorded.set()
+
+        async def stream_text(self):
+            self.started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cleanup_started.set()
+                await self.cleanup_release.wait()
+                raise
+            yield "unreachable"
+
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def scenario() -> tuple[bool, bool]:
+            execution = Execution()
+            stream = api_server._completion_stream(
+                execution,
+                "Workflow",
+                background_tasks=client.app.state.background_tasks,
+                cancel_on_disconnect=True,
+            )
+            await anext(stream)
+            pending = asyncio.create_task(anext(stream))
+            await execution.started.wait()
+            pending.cancel()
+            await execution.cleanup_started.wait()
+            try:
+                await asyncio.wait_for(
+                    execution.cancel_recorded.wait(),
+                    timeout=1,
+                )
+            except TimeoutError:
+                cancellation_recorded = False
+            else:
+                cancellation_recorded = True
+            for _ in range(3):
+                await asyncio.sleep(0)
+            response_closed = pending.done()
+            execution.cleanup_release.set()
+            await asyncio.gather(pending, return_exceptions=True)
+            return response_closed, cancellation_recorded
+
+        response_closed, cancellation_recorded = portal.call(scenario)
+
+    assert response_closed is True
+    assert cancellation_recorded is True
 
 def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

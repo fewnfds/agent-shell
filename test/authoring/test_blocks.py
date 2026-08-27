@@ -128,28 +128,44 @@ def test_builtin_event_output_examples_are_loadable(
         shutil.copytree(source_path, target)
 
     client = make_client(tmp_path, monkeypatch)
-    for component_type, endpoint in (
-        ("agent-event-output", "agent-event-output"),
-        ("workflow-event-output", "workflow-event-output"),
+    for component_type, endpoint, expected_keys in (
+        (
+            "agent-event-output",
+            "agent-event-output",
+            {"内置示例-assistant-text-only", "内置示例-default"},
+        ),
+        (
+            "workflow-event-output",
+            "workflow-event-output",
+            {"内置示例-default", "内置示例-lifecycle-progress"},
+        ),
     ):
         catalog = client.get(
             f"/api/python-package-templates/{endpoint}"
         ).json()["catalog"]
-        example = next(
-            item for item in catalog if item["key"] == "内置示例-default"
-        )
-        response = client.post(
-            f"/api/blocks/{component_type}",
-            json={
-                "name": f"{component_type} example",
-                "python_package": {"folder": ""},
-                "python_package_template": {
-                    "key": example["key"],
-                    "revision": example["revision"],
+        assert {item["key"] for item in catalog} == expected_keys
+        for index, example in enumerate(catalog):
+            response = client.post(
+                f"/api/blocks/{component_type}",
+                json={
+                    "name": f"{component_type} example {index}",
+                    "python_package": {"folder": ""},
+                    "python_package_template": {
+                        "key": example["key"],
+                        "revision": example["revision"],
+                    },
                 },
-            },
-        )
-        assert response.status_code == 200, response.text
+            )
+            assert response.status_code == 200, response.text
+            created = response.json()
+            inspection = client.get(
+                f"/api/blocks/{component_type}/{created['id']}/python-package"
+            )
+            assert inspection.status_code == 200, inspection.text
+            assert {item["path"] for item in inspection.json()["files"]} >= {
+                "main.py",
+                "package.json",
+            }
 
 
 def test_command_uses_component_crud_storage_and_repository_validation(

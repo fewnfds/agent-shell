@@ -1355,6 +1355,7 @@ export const en: MessageSchema = {
         invalidEncoding: 'Python package files must use UTF-8 encoding.',
         readFailed: 'The Python package file could not be read.',
         linkUnsupported: 'Python packages do not support links or reparse points.',
+        templateMainRequired: 'The Python extension template folder must contain main.py; package.json is generated when the configuration is saved.',
         filesRequired: 'The package folder must contain package.json and main.py.',
         manifestInvalid: 'package.json does not satisfy the current package manifest.',
         idMismatch: 'The package.json id must match the folder name.',
