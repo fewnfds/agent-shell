@@ -72,12 +72,14 @@ data/
 
 ## 系统设置
 
-【系统 / 系统配置】页面聚合展示三类后端设置：系统网络、LangSmith 与代理设置（`PUT /api/system/settings`）；API Server 的 API Key 与 `max_initial_messages`（`PUT /api/api-server`）；9 项限制策略与配置校验去抖（`PUT /api/system/runtime-policy` 与 `PUT /api/validation/settings`）。页面管理监听地址、端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面聚合展示三类后端设置：系统网络、LangSmith 与代理设置（`PUT /api/system/settings`）；API Server 的 API Key 与 `max_initial_messages`（`PUT /api/api-server`）；Workflow Debug 采集、9 项限制策略与配置校验去抖（`PUT /api/system/runtime-policy` 与 `PUT /api/validation/settings`）。页面管理监听地址、端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。secret 只显示是否配置，不回显明文。
 
-“请求与限制策略”集中设置 `max_initial_messages`（默认 `1000`）、配置校验去抖（默认 `1000 ms`，最小值由后端返回）、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回 9 项 runtime-policy 的当前值、默认值和最小值；`max_initial_messages` 与去抖分别由 API Server 和 `/api/validation/settings` 返回。
+“请求与限制策略”集中设置 `workflow_debug_capture_enabled`（默认关闭）、`max_initial_messages`（默认 `1000`）、配置校验去抖（默认 `1000 ms`，最小值由后端返回）、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回 Debug 开关和 9 项数值 runtime-policy 的当前值与默认值，以及数值策略的最小值；`max_initial_messages` 与去抖分别由 API Server 和 `/api/validation/settings` 返回。
 9 项 runtime-policy 只有正数约束，没有额外产品最大值；默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
 
-系统配置页面按网络、请求与限制策略（含消息上限、校验去抖与 9 项 runtime-policy）、LangSmith 和代理设置分卡展示；管理密码与 API Key 均归入网络卡片，消息上限位于请求与限制策略卡片。
+Workflow Debug 采集在新 Run 创建执行对象时冻结设置值。开启后，Run Event Journal 不再对白名单外的 LangChain callback metadata 做字段过滤，而是保存经过 JSON 转换且 credential 字段脱敏的完整 metadata；每次 Chain、Model 和 Tool callback failure 都额外生成一条运行诊断及完整 exception chain/traceback 附件，包括被 Retry Middleware 恢复的中间失败。该模式显著增加 SQLite 运行历史和 `data/logs/diagnostics/` 的写入量，关闭后恢复轻量结构事件；切换不会改变已经启动的 Run。
+
+系统配置页面按网络、请求与限制策略（含 Debug 采集、消息上限、校验去抖与 9 项数值 runtime-policy）、LangSmith 和代理设置分卡展示；管理密码与 API Key 均归入网络卡片，Debug 开关和消息上限位于请求与限制策略卡片。
 
 限制策略中的容量字段以 MiB 展示（1 MiB = 1024² bytes），保存时仍按后端要求换算为 bytes。
 
@@ -89,7 +91,7 @@ LangSmith 配置项含义如下：
 - Workspace ID：API Key 可访问多个 Workspace 时填写，否则留空；
 - API Key：只写 secret；已配置的值不会回显，留空保存时保留原值。
 
-当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、消息上限、校验去抖和限制策略立即生效；host、端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
+当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、消息上限、校验去抖和限制策略立即生效，Debug 开关从下一个新 Run 起生效；host、端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
 
 【系统 / 拦截消息】管理 Chat Completions 入站拦截。开关立即生效并持久化；开启后，请求会在进入 Workflow 前直接收到 OpenAI-compatible 的“消息已拦截”回复。页面只暂存进程内最新一条原始 JSON，正文不写入 SQLite、
 系统日志或运行诊断；开关从关闭变为开启或服务重启时清空，关闭期间不捕获。已开启时重复保存不会清空当前原文。日志中心另见[日志中心与 Workflow 观测](runtime-observability.md)。

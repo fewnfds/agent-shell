@@ -232,10 +232,26 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
         captured["execution_timeout_seconds"] = kwargs.get(
             "execution_timeout_seconds"
         )
-        return original_execution(self, *args, **kwargs)
+        execution = original_execution(self, *args, **kwargs)
+        captured["workflow_debug_capture_enabled"] = (
+            execution.workflow_debug_capture_enabled
+        )
+        return execution
 
     monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
     with make_client(tmp_path, monkeypatch) as client:
+        current_policy = client.get("/api/system/runtime-policy").json()
+        updated_policy = {
+            key: value
+            for key, value in current_policy.items()
+            if key not in {"defaults", "minimums", "configurable"}
+        }
+        updated_policy["workflow_debug_capture_enabled"] = True
+        policy_reply = client.put(
+            "/api/system/runtime-policy",
+            json=updated_policy,
+        )
+        assert policy_reply.status_code == 200, policy_reply.text
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Configured limits")
         save_linear_workflow_graph(client, workflow, main_agent)
@@ -268,6 +284,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
         ).exists() is False
 
     assert captured["execution_timeout_seconds"] == 42
+    assert captured["workflow_debug_capture_enabled"] is True
     assert captured["run_config"]["recursion_limit"] == 321
     assert captured["run_config"]["max_concurrency"] == 7
     assert "configurable" not in captured["run_config"]

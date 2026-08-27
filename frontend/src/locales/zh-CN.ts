@@ -326,6 +326,8 @@ export const zhCN = {
     validationDebounceMs: '配置报警间隔',
     runtimePolicy: {
       title: '限制策略',
+      workflowDebugCapture: 'Workflow Debug 采集',
+      workflowDebugCaptureHelp: '新 Run 将保存完整 callback metadata，并为每次 Chain、Model 和 Tool 回调失败保存完整异常链与 traceback。运行历史和诊断附件会明显增大；Credential 字段仍脱敏。',
       chatBody: 'Chat 请求体',
       contentBlocks: 'Content block 数量',
       mediaBlock: '单个输入媒体',

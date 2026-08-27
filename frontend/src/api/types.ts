@@ -234,6 +234,7 @@ export interface ConfigurationValidationSettings {
 }
 
 export interface RuntimePolicyValues {
+  workflow_debug_capture_enabled: boolean
   chat_completion_body_bytes: number
   content_blocks: number
   decoded_block_bytes: number

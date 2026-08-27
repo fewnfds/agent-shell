@@ -8,6 +8,7 @@ from agent_shell.storage.file_config import FileConfigRepository
 
 @dataclass(frozen=True, slots=True)
 class RuntimePolicy:
+    workflow_debug_capture_enabled: bool = False
     chat_completion_body_bytes: int = 64 * 1024 * 1024
     content_blocks: int = 4096
     decoded_block_bytes: int = 24 * 1024 * 1024
@@ -21,6 +22,7 @@ class RuntimePolicy:
 
 RUNTIME_POLICY_DEFAULTS = RuntimePolicy()
 RUNTIME_POLICY_MINIMUMS = RuntimePolicy(
+    workflow_debug_capture_enabled=False,
     chat_completion_body_bytes=1,
     content_blocks=1,
     decoded_block_bytes=1,
@@ -42,7 +44,12 @@ class RuntimePolicyStore:
         self._repository = repository
 
     @staticmethod
-    def _validated_value(name: str, value: object) -> int:
+    def _validated_value(name: str, value: object) -> int | bool:
+        default = getattr(RUNTIME_POLICY_DEFAULTS, name)
+        if isinstance(default, bool):
+            if not isinstance(value, bool):
+                raise ValueError(f"runtime policy {name} must be a boolean")
+            return value
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"runtime policy {name} must be an integer")
         minimum = getattr(RUNTIME_POLICY_MINIMUMS, name)
@@ -73,7 +80,7 @@ class RuntimePolicyStore:
     def update(self, values: dict[str, Any]) -> dict[str, Any]:
         names = {item.name for item in fields(RuntimePolicy)}
         current = asdict(self.snapshot())
-        candidate: dict[str, int] = {}
+        candidate: dict[str, int | bool] = {}
         for name in names:
             candidate[name] = self._validated_value(
                 name, values.get(name, current[name])

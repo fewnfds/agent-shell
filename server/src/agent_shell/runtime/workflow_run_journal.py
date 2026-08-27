@@ -13,6 +13,7 @@ from langchain_core.messages import BaseMessage, message_to_dict
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
+from agent_shell.provider_http import ProviderStreamError
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
@@ -223,7 +224,14 @@ def _name(serialized: object, kwargs: dict[str, Any]) -> str:
     return "unknown"
 
 
-def _metadata(value: Mapping[str, Any] | None) -> dict[str, object]:
+def _metadata(
+    value: Mapping[str, Any] | None,
+    *,
+    debug_capture: bool = False,
+) -> dict[str, object]:
+    if debug_capture:
+        expanded = _json_safe(value or {})
+        return expanded if isinstance(expanded, dict) else {}
     allowed = {
         "langgraph_node",
         "langgraph_step",
@@ -299,10 +307,12 @@ class WorkflowRunJournal(BaseCallbackHandler):
         agent_names: Mapping[str, str] | None = None,
         agent_profile_ids: Mapping[str, str] | None = None,
         subagent_profile_ids: Mapping[str, Mapping[str, str]] | None = None,
+        debug_capture: bool = False,
     ) -> None:
         self._lifecycle = lifecycle
         self._diagnostics = diagnostics
         self._context = context
+        self._debug_capture = debug_capture
         self._node_kinds = dict(workflow_node_kinds or {})
         self._agent_names = {
             str(key): str(value) for key, value in (agent_names or {}).items()
@@ -359,13 +369,15 @@ class WorkflowRunJournal(BaseCallbackHandler):
         phase: str,
         event_type: str,
         metadata: Mapping[str, Any] | None = None,
+        metadata_additions: Mapping[str, object] | None = None,
         response: object = None,
         error_code: str = "",
         node_invocation_id: str = "",
     ) -> None:
         span_id = str(run_id)
         parent_span_id = str(parent_run_id) if parent_run_id else ""
-        safe_metadata = _metadata(metadata)
+        safe_metadata = _metadata(metadata, debug_capture=self._debug_capture)
+        safe_metadata.update(metadata_additions or {})
         node_id = str(safe_metadata.get("langgraph_node", ""))
         if subject_kind == "workflow_node":
             node_invocation_id = span_id
@@ -430,6 +442,38 @@ class WorkflowRunJournal(BaseCallbackHandler):
             if owner is not None:
                 return owner
         return self._span_agents.get(parent_span_id)
+
+    def _record_debug_callback_failure(
+        self,
+        error: BaseException,
+        *,
+        run_id: object,
+    ) -> None:
+        if not self._debug_capture or self._diagnostics is None:
+            return
+        span_id = str(run_id)
+        span = self._spans.get(span_id, {})
+        owner = self._span_agents.get(span_id)
+        try:
+            self._diagnostics.runtime_error(
+                error,
+                code="workflow_callback_failed",
+                component="workflow_debug_capture",
+                context=RuntimeDiagnosticContext(
+                    request_id=self._context.request_id,
+                    lifecycle_id=self._context.lifecycle_id,
+                    run_id=self._context.run_id,
+                    thread_id=self._context.checkpoint_thread_id,
+                    subject_kind=str(span.get("kind", "callback")),
+                    subject_id=span_id,
+                    subject_name=str(span.get("name", "unknown")),
+                    workflow_node_id=(
+                        owner.workflow_node_id if owner is not None else ""
+                    ),
+                ),
+            )
+        except Exception:
+            pass
 
     def _main_agent_owner(
         self,
@@ -659,6 +703,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
         self._finish(run_id, "completed")
 
     def on_chain_error(self, error, *, run_id, parent_run_id=None, **kwargs):
+        self._record_debug_callback_failure(error, run_id=run_id)
         self._finish(run_id, "failed", error_code=type(error).__name__)
 
     def on_chat_model_start(
@@ -750,7 +795,20 @@ class WorkflowRunJournal(BaseCallbackHandler):
         self._finish(run_id, "completed", response=response)
 
     def on_llm_error(self, error, *, run_id, parent_run_id=None, **kwargs):
-        self._finish(run_id, "failed", error_code=type(error).__name__)
+        self._record_debug_callback_failure(error, run_id=run_id)
+        failure_metadata: dict[str, object] = {}
+        if isinstance(error, ProviderStreamError):
+            failure_metadata = {
+                "transport": "curl",
+                "curl_code": error.curl_code,
+                "curl_error": error.curl_error,
+            }
+        self._finish(
+            run_id,
+            "failed",
+            error_code=type(error).__name__,
+            event_metadata=failure_metadata,
+        )
 
     on_chat_model_error = on_llm_error
 
@@ -791,6 +849,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
         self._finish(run_id, "completed")
 
     def on_tool_error(self, error, *, run_id, parent_run_id=None, **kwargs):
+        self._record_debug_callback_failure(error, run_id=run_id)
         self._finish(run_id, "failed", error_code=type(error).__name__)
 
     def finish_open_spans(self, phase: str, *, error_code: str = "") -> None:
@@ -807,6 +866,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
         *,
         response: object = None,
         error_code: str = "",
+        event_metadata: Mapping[str, object] | None = None,
     ) -> None:
         span_id = str(run_id)
         span = self._spans.pop(span_id, None)
@@ -849,6 +909,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
                 if isinstance(span.get("metadata"), Mapping)
                 else {}
             ),
+            metadata_additions=event_metadata,
             response=response,
             error_code=error_code,
         )

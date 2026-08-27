@@ -313,6 +313,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     current = client.get("/api/system/runtime-policy")
 
     assert current.status_code == 200
+    assert current.json()["workflow_debug_capture_enabled"] is False
     assert current.json()["chat_completion_body_bytes"] == 64 * 1024 * 1024
     assert current.json()["defaults"]["provider_timeout_seconds"] == 600
     assert current.json()["minimums"]["content_blocks"] == 1
@@ -328,6 +329,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
             "chat_completion_body_bytes": 256 * 1024 * 1024,
             "content_blocks": 100_000,
             "provider_timeout_seconds": 3600,
+            "workflow_debug_capture_enabled": True,
         }
     )
     saved = client.put("/api/system/runtime-policy", json=update)
@@ -336,10 +338,12 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
     assert saved.json()["content_blocks"] == 100_000
     assert saved.json()["provider_timeout_seconds"] == 3600
+    assert saved.json()["workflow_debug_capture_enabled"] is True
     document = yaml.safe_load(
         (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
     )
     assert document["runtime_policy"]["provider_timeout_seconds"] == 3600
+    assert document["runtime_policy"]["workflow_debug_capture_enabled"] is True
 
     invalid = {**update, "content_blocks": 0}
     rejected = client.put("/api/system/runtime-policy", json=invalid)
@@ -348,6 +352,10 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     boolean = {**update, "content_blocks": True}
     rejected_boolean = client.put("/api/system/runtime-policy", json=boolean)
     assert rejected_boolean.status_code == 422
+
+    invalid_debug = {**update, "workflow_debug_capture_enabled": "true"}
+    rejected_debug = client.put("/api/system/runtime-policy", json=invalid_debug)
+    assert rejected_debug.status_code == 422
 
 
 def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> None:

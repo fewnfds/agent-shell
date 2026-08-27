@@ -69,6 +69,7 @@ const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
 const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
+  workflow_debug_capture_enabled: false,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -79,8 +80,9 @@ const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
   provider_connect_timeout_seconds: 5,
   provider_catalog_timeout_seconds: 15,
 })
+type RuntimePolicyNumberKey = Exclude<keyof RuntimePolicyUpdate, 'workflow_debug_capture_enabled'>
 const runtimePolicyFields: Array<{
-  key: keyof RuntimePolicyUpdate
+  key: RuntimePolicyNumberKey
   labelKey: string
   unit: string
   step: number
@@ -183,6 +185,7 @@ function applyValidationSettings(value: ConfigurationValidationSettings): void {
 
 function applyRuntimePolicy(value: RuntimePolicySettings): void {
   runtimePolicy.value = value
+  runtimePolicyDraft.workflow_debug_capture_enabled = value.workflow_debug_capture_enabled
   for (const { key } of runtimePolicyFields) {
     runtimePolicyDraft[key] = value[key]
   }
@@ -432,6 +435,23 @@ onMounted(() => { void load() })
             </header>
             <div class="card-body">
               <div class="row g-3">
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input
+                      id="workflow-debug-capture-enabled"
+                      v-model="runtimePolicyDraft.workflow_debug_capture_enabled"
+                      class="form-check-input"
+                      role="switch"
+                      type="checkbox"
+                    >
+                    <label class="form-check-label" for="workflow-debug-capture-enabled">
+                      {{ fieldLabel('systemSettings.runtimePolicy.workflowDebugCapture', 'workflow_debug_capture_enabled') }}
+                    </label>
+                  </div>
+                  <div class="form-text">
+                    {{ t('systemSettings.runtimePolicy.workflowDebugCaptureHelp') }}
+                  </div>
+                </div>
                 <div class="col-lg-3 col-md-6">
                   <label class="form-label" for="max-initial-messages">
                     {{ fieldLabel('apiServer.request.maxInitialMessages', 'max_initial_messages') }}

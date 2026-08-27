@@ -328,6 +328,8 @@ export const en: MessageSchema = {
     validationDebounceMs: 'Configuration alert interval',
     runtimePolicy: {
       title: 'Restriction policy',
+      workflowDebugCapture: 'Workflow debug capture',
+      workflowDebugCaptureHelp: 'New Runs preserve complete callback metadata and a full exception chain and traceback for every Chain, Model, and Tool callback failure. Run history and diagnostic attachments can grow substantially; credential fields remain redacted.',
       chatBody: 'Chat request body',
       contentBlocks: 'Content block count',
       mediaBlock: 'Single input media',

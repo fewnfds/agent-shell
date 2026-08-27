@@ -61,6 +61,7 @@ class SystemSettingsUpdate(BaseModel):
 class RuntimePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    workflow_debug_capture_enabled: bool = Field(strict=True)
     chat_completion_body_bytes: int = Field(strict=True, ge=1)
     content_blocks: int = Field(strict=True, ge=1)
     decoded_block_bytes: int = Field(strict=True, ge=1)

@@ -136,6 +136,7 @@ class RunExecution:
     journal_agent_names: dict[str, str] | None = None
     journal_agent_profile_ids: dict[str, str] | None = None
     journal_subagent_profile_ids: dict[str, dict[str, str]] | None = None
+    workflow_debug_capture_enabled: bool = False
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
     cancel_background_children: Callable[[], Awaitable[None]] | None = None
     final_state: dict[str, Any] | None = None
@@ -461,6 +462,7 @@ class RunExecution:
                             subagent_profile_ids=(
                                 self.journal_subagent_profile_ids or {}
                             ),
+                            debug_capture=self.workflow_debug_capture_enabled,
                         )
                         callbacks.append(journal)
                         config["callbacks"] = callbacks
@@ -876,6 +878,7 @@ class AgentRuntime:
                 for node in nodes
                 if isinstance(node, Mapping)
             }
+        runtime_policy = self._input_policy()
         return RunExecution(
             graph=effective_graph,
             input_state=effective_input_state,
@@ -937,6 +940,9 @@ class AgentRuntime:
                 node_id: dict(agent.subagent_profile_ids)
                 for node_id, agent in workflow_agents
             },
+            workflow_debug_capture_enabled=(
+                runtime_policy.workflow_debug_capture_enabled
+            ),
             execution_timeout_seconds=execution_timeout_seconds,
             cancel_background_children=cancel_background_children,
         )

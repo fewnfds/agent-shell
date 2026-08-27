@@ -7,6 +7,7 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
+from agent_shell.provider_http import ProviderStreamError
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
@@ -25,9 +26,13 @@ def _lifecycle_service(database: SQLiteDatabase) -> WorkflowLifecycleService:
 class _Diagnostics:
     def __init__(self) -> None:
         self.errors: list[dict[str, object]] = []
+        self.runtime_errors: list[dict[str, object]] = []
 
     def observation_error(self, exc, **kwargs) -> None:
         self.errors.append({"error": exc, **kwargs})
+
+    def runtime_error(self, exc, **kwargs) -> None:
+        self.runtime_errors.append({"error": exc, **kwargs})
 
 
 def test_run_history_schema_uses_nullable_checkpoint_identity(tmp_path) -> None:
@@ -387,6 +392,119 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
     assert subagent_request["parent_agent_name"] == "Writer Agent"
     assert subagent_request["workflow_node_id"] == "agent-node"
     assert "subagent-system-sentinel" in json.dumps(subagent_request["request"])
+
+
+def test_model_failure_event_preserves_safe_provider_stream_evidence(tmp_path) -> None:
+    async def scenario() -> dict[str, object]:
+        database = SQLiteDatabase(tmp_path / "provider-stream.sqlite3")
+        lifecycle = _lifecycle_service(database)
+        await lifecycle.start()
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "input"}],
+                request_id="provider-stream-request",
+                run_id="provider-stream-run",
+                checkpoint_thread_id=None,
+                workflow_id="provider-stream-workflow",
+                workflow_name="Provider Stream Workflow",
+            )
+            assert lifecycle.start_run("provider-stream-run") is True
+            context = WorkflowRuntimeContext.for_run(
+                request_id="provider-stream-request",
+                lifecycle_id=lifecycle_id,
+                run_id="provider-stream-run",
+                checkpoint_thread_id=None,
+                workflow={"id": "provider-stream-workflow"},
+            )
+            journal = WorkflowRunJournal(lifecycle, None, context)
+            journal.on_chat_model_start(
+                {"name": "provider-model"},
+                [[HumanMessage(content="input")]],
+                run_id="provider-model-run",
+                metadata={"langgraph_node": "agent-node"},
+            )
+            journal.on_chat_model_error(
+                ProviderStreamError(curl_code=56),
+                run_id="provider-model-run",
+            )
+            return next(
+                event
+                for event in lifecycle.events(lifecycle_id, event_type="model")
+                if event["phase"] == "failed"
+            )
+        finally:
+            await lifecycle.close()
+
+    failed = asyncio.run(scenario())
+
+    assert failed["error_code"] == "ProviderStreamError"
+    assert failed["metadata"] == {
+        "langgraph_node": "agent-node",
+        "transport": "curl",
+        "curl_code": 56,
+        "curl_error": "RECV_ERROR",
+    }
+
+
+def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path) -> None:
+    async def scenario() -> tuple[list[dict[str, object]], _Diagnostics]:
+        database = SQLiteDatabase(tmp_path / "debug-capture.sqlite3")
+        lifecycle = _lifecycle_service(database)
+        await lifecycle.start()
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "input"}],
+                request_id="debug-capture-request",
+                run_id="debug-capture-run",
+                checkpoint_thread_id=None,
+                workflow_id="debug-capture-workflow",
+                workflow_name="Debug Capture Workflow",
+            )
+            assert lifecycle.start_run("debug-capture-run") is True
+            context = WorkflowRuntimeContext.for_run(
+                request_id="debug-capture-request",
+                lifecycle_id=lifecycle_id,
+                run_id="debug-capture-run",
+                checkpoint_thread_id=None,
+                workflow={"id": "debug-capture-workflow"},
+            )
+            diagnostics = _Diagnostics()
+            journal = WorkflowRunJournal(
+                lifecycle,
+                diagnostics,  # type: ignore[arg-type]
+                context,
+                debug_capture=True,
+            )
+            journal.on_chat_model_start(
+                {"name": "provider-model"},
+                [[HumanMessage(content="input")]],
+                run_id="debug-model-run",
+                metadata={
+                    "langgraph_node": "agent-node",
+                    "provider_debug": {"attempt": 2, "headers_seen": True},
+                    "api_key": "credential-sentinel",
+                },
+            )
+            journal.on_chat_model_error(
+                ProviderStreamError(curl_code=56),
+                run_id="debug-model-run",
+            )
+            return lifecycle.events(lifecycle_id, event_type="model"), diagnostics
+        finally:
+            await lifecycle.close()
+
+    events, diagnostics = asyncio.run(scenario())
+
+    failed = next(event for event in events if event["phase"] == "failed")
+    assert failed["metadata"]["provider_debug"] == {
+        "attempt": 2,
+        "headers_seen": True,
+    }
+    assert failed["metadata"]["api_key"] == "[REDACTED]"
+    assert failed["metadata"]["curl_error"] == "RECV_ERROR"
+    assert diagnostics.runtime_errors[0]["code"] == "workflow_callback_failed"
+    assert diagnostics.runtime_errors[0]["component"] == "workflow_debug_capture"
+    assert isinstance(diagnostics.runtime_errors[0]["error"], ProviderStreamError)
 
 
 def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
