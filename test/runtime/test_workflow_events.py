@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage
 
-from agent_shell.runtime.output_event_pool import OutputEventRectifier
 from agent_shell.runtime.output_projection import WorkflowOutputProjector
+from agent_shell.runtime.response_scheduler import ResponseEventInput
 from agent_shell.runtime.output_stream import OutputEvent, V3EventNormalizer
 from agent_shell.workflow.events import (
     WorkflowCustomEventV1,
@@ -11,7 +11,7 @@ from agent_shell.workflow.events import (
     emit_workflow_custom_event,
 )
 
-from .support import output_renderer
+from .support import output_renderer, response_scheduler
 
 
 MAIN_A = "11111111-1111-4111-8111-111111111111"
@@ -22,6 +22,22 @@ SUBAGENT_B = "44444444-4444-4444-8444-444444444444"
 
 def _workflow_output(event_name: str):
     return output_renderer({event_name: "{{message}}"})
+
+
+def _schedule(scheduler, event: OutputEvent) -> list[str]:
+    return [
+        frame.text
+        for frame in scheduler.submit(
+            ResponseEventInput(
+                lifecycle_id="",
+                origin_run_id="",
+                origin_workflow_id="",
+                event=event,
+            ),
+            now=float(event.sequence),
+        )
+        if frame.text
+    ]
 
 
 def _assistant_event(node_id: str, message: str, sequence: int) -> OutputEvent:
@@ -115,17 +131,17 @@ def test_custom_string_message_stays_plain_for_workflow_and_agent_sources() -> N
 def test_workflow_output_uses_the_policy_frozen_for_each_node() -> None:
     policy_a = output_renderer({"assistant_text": "A:{{message}}"})
     policy_b = output_renderer({"assistant_text": "B:{{message}}"})
-    rectifier = OutputEventRectifier(
+    scheduler = response_scheduler(
         WorkflowOutputProjector({"agent-a": policy_a, "agent-b": policy_b})
     )
 
-    assert rectifier.feed(_assistant_event("agent-a", "<first>", 1)) == [
+    assert _schedule(scheduler, _assistant_event("agent-a", "<first>", 1)) == [
         "A:<first>"
     ]
-    assert rectifier.feed(_assistant_event("agent-b", "<second>", 2)) == [
+    assert _schedule(scheduler, _assistant_event("agent-b", "<second>", 2)) == [
         "B:<second>"
     ]
-    assert rectifier.feed(_assistant_event("unknown", "must stay private", 3)) == []
+    assert _schedule(scheduler, _assistant_event("unknown", "must stay private", 3)) == []
 
 
 def test_v3_sources_keep_multiple_workflow_agents_distinct() -> None:
@@ -436,8 +452,8 @@ def test_script_custom_event_requires_the_workflow_event_output_component(
             },
         }
     )
-    blocked = OutputEventRectifier(WorkflowOutputProjector({}))
-    allowed = OutputEventRectifier(
+    blocked = response_scheduler(WorkflowOutputProjector({}))
+    allowed = response_scheduler(
         WorkflowOutputProjector(
             {}, workflow_output=_workflow_output("custom")
         )
@@ -445,8 +461,8 @@ def test_script_custom_event_requires_the_workflow_event_output_component(
 
     assert len(events) == 1
     assert isinstance(events[0], OutputEvent)
-    assert blocked.feed(events[0]) == []
-    assert allowed.feed(events[0]) == ['{"content":"finished"}']
+    assert _schedule(blocked, events[0]) == []
+    assert _schedule(allowed, events[0]) == ['{"content":"finished"}']
 
 
 def test_registered_script_custom_event_uses_the_workflow_component_script() -> None:
@@ -472,13 +488,13 @@ def test_registered_script_custom_event_uses_the_workflow_component_script() -> 
             },
         }
     )
-    rectifier = OutputEventRectifier(
+    scheduler = response_scheduler(
         WorkflowOutputProjector(
             {}, workflow_output=_workflow_output("custom")
         )
     )
 
-    assert rectifier.feed(events[0]) == ['{"content":"finished"}']
+    assert _schedule(scheduler, events[0]) == ['{"content":"finished"}']
 
     unregistered = normalizer.feed(
         {
@@ -505,18 +521,18 @@ def test_workflow_event_output_script_selects_and_renders_non_agent_events() -> 
         workflow_event_kind="custom",
         values={"channel": "progress"},
     )
-    blocked = OutputEventRectifier(
+    blocked = response_scheduler(
         WorkflowOutputProjector({}, workflow_output=_workflow_output("values"))
     )
-    allowed = OutputEventRectifier(
+    allowed = response_scheduler(
         WorkflowOutputProjector(
             {},
             workflow_output=lambda event: event["channel"] + ":" + event["message"],
         )
     )
 
-    assert blocked.feed(event) == []
-    assert allowed.feed(event) == ["progress:visible"]
+    assert _schedule(blocked, event) == []
+    assert _schedule(allowed, event) == ["progress:visible"]
 
 
 def test_non_agent_raw_channels_default_to_string_while_agent_state_stays_internal() -> None:
@@ -550,15 +566,15 @@ def test_non_agent_raw_channels_default_to_string_while_agent_state_stays_intern
             },
         }
     )
-    rectifier = OutputEventRectifier(WorkflowOutputProjector({}))
+    scheduler = response_scheduler(WorkflowOutputProjector({}))
 
     assert agent_state == []
     assert len(script_output) == 1
     assert isinstance(script_output[0], OutputEvent)
     assert script_output[0].source_type == "non_agent"
     assert script_output[0].source_key == "unknown|script-node:invocation"
-    assert rectifier.feed(script_output[0]) == []
-    configured = OutputEventRectifier(
+    assert _schedule(scheduler, script_output[0]) == []
+    configured = response_scheduler(
         WorkflowOutputProjector(
             {},
             workflow_output=lambda event: (
@@ -568,7 +584,7 @@ def test_non_agent_raw_channels_default_to_string_while_agent_state_stays_intern
             ),
         )
     )
-    assert configured.feed(script_output[0]) == ["ready"]
+    assert _schedule(configured, script_output[0]) == ["ready"]
 
 
 def test_workflow_event_output_script_receives_the_full_state_dict() -> None:

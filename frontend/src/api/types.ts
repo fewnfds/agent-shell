@@ -435,6 +435,55 @@ export interface PythonPackageInspection {
 
 export type WorkflowRole = 'parent' | 'child'
 
+export type ResponseQueueMode = 'fair_turns' | 'strict_source'
+export type ResponseContentDelivery = 'live' | 'complete' | 'activity' | 'hidden'
+export type ResponseEventDelivery = 'complete' | 'activity' | 'hidden'
+export type ResponseToolDelivery = 'paired' | 'activity' | 'hidden'
+export type ResponseSourceVisibility = 'activity_only' | 'hidden'
+
+export interface ResponseLiveWrapper {
+  start: string
+  end: string
+}
+
+export interface ResponseContentPolicy {
+  delivery: ResponseContentDelivery
+  live_wrapper: ResponseLiveWrapper
+}
+
+export interface ResponseContentVisibilityPolicy {
+  delivery: ResponseContentDelivery
+}
+
+export interface ResponseEventPolicy {
+  delivery: ResponseEventDelivery
+}
+
+export interface ResponseStreamPolicy {
+  queue: {
+    mode: ResponseQueueMode
+    successor_grace_seconds: number
+  }
+  assistant_text: ResponseContentPolicy
+  reasoning: ResponseContentPolicy
+  subagent_content: ResponseContentVisibilityPolicy
+  tools: { delivery: ResponseToolDelivery }
+  subagent_lifecycle: ResponseEventPolicy
+  workflow_custom: ResponseEventPolicy
+  workflow_lifecycle: ResponseEventPolicy
+  activity: {
+    announce_start: boolean
+    announce_queued: boolean
+    hidden_delta_pulse_seconds: number | null
+    quiet_notice_after_seconds: number | null
+    quiet_notice_repeat_seconds: number | null
+  }
+  source_overrides: Array<{
+    workflow_node_id: string
+    visibility: ResponseSourceVisibility
+  }>
+}
+
 export interface WorkflowPayload {
   name: string
   workflow_role: WorkflowRole
@@ -450,6 +499,7 @@ export interface WorkflowPayload {
 export interface Workflow extends WorkflowPayload {
   id: string
   enabled: boolean
+  response_stream_policy?: ResponseStreamPolicy
 }
 
 export interface WorkflowLifecycleSummary {

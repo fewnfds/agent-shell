@@ -71,6 +71,7 @@ function testRouter() {
       { path: '/workflows/parents', component: { template: '<div />' } },
       { path: '/workflows/children', component: { template: '<div />' } },
       { path: '/workflows/:id/editor', component: { template: '<div />' } },
+      { path: '/workflows/:id/response-stream', component: { template: '<div />' } },
     ],
   })
 }
@@ -108,6 +109,7 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Edit')
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
+    expect(wrapper.text()).toContain('Response Stream')
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await flushPromises()
 
@@ -210,6 +212,7 @@ describe('WorkflowsPage', () => {
 
     expect(managementApi.getConfigurationOptions).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('Terminate when the parent Run is cancelled or fails')
+    expect(wrapper.text()).not.toContain('Response Stream')
     expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await wrapper.get('[data-field="record-name"]').setValue('Child Workflow')

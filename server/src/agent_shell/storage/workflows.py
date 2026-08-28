@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
+from agent_shell.response_stream_policy import default_response_stream_policy
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.workflow.contracts import (
     WorkflowGraphDefinitionV1,
@@ -24,6 +25,7 @@ class WorkflowStore:
         "recursion_limit",
         "execution_timeout_seconds",
         "max_concurrency",
+        "response_stream_policy",
         "enabled",
     )
 
@@ -33,7 +35,7 @@ class WorkflowStore:
 
     @staticmethod
     def _public(record: dict) -> dict:
-        return {
+        public = {
             "id": str(record["id"]),
             "name": str(record["name"]),
             "workflow_role": str(record["workflow_role"]),
@@ -48,6 +50,14 @@ class WorkflowStore:
             "max_concurrency": int(record.get("max_concurrency", 100)),
             "enabled": bool(record["enabled"]),
         }
+        if public["workflow_role"] == "parent":
+            public["response_stream_policy"] = deepcopy(
+                record.get(
+                    "response_stream_policy",
+                    default_response_stream_policy(),
+                )
+            )
+        return public
 
     def list_items(
         self,
@@ -126,6 +136,16 @@ class WorkflowStore:
                 if item.get("id") == item_id:
                     stored["definition"] = deepcopy(item.get("definition", empty_definition))
                     stored["layout"] = deepcopy(item.get("layout", empty_layout))
+                    if stored.get("workflow_role") == "parent":
+                        if item.get("workflow_role") == "parent":
+                            stored["response_stream_policy"] = deepcopy(
+                                item.get(
+                                    "response_stream_policy",
+                                    default_response_stream_policy(),
+                                )
+                            )
+                    else:
+                        stored.pop("response_stream_policy", None)
                     records[index] = stored
                     break
             else:
@@ -166,6 +186,15 @@ class WorkflowStore:
                 source.get("definition", empty_definition)
             )
             stored["layout"] = deepcopy(source.get("layout", empty_layout))
+            if stored.get("workflow_role") == "parent":
+                stored["response_stream_policy"] = deepcopy(
+                    source.get(
+                        "response_stream_policy",
+                        default_response_stream_policy(),
+                    )
+                )
+            else:
+                stored.pop("response_stream_policy", None)
             records.append(stored)
             copied = True
 
@@ -180,6 +209,39 @@ class WorkflowStore:
                 entity_id=item_id,
             )
         return copied
+
+    def update_response_stream_policy(
+        self,
+        item_id: str,
+        policy: dict[str, object],
+        *,
+        expected_repository_id: str | None = None,
+    ) -> bool:
+        changed = False
+
+        def mutate(config: dict) -> None:
+            nonlocal changed
+            for item in config.setdefault("workflows", []):
+                if item.get("id") != item_id:
+                    continue
+                if item.get("workflow_role") != "parent":
+                    return
+                item["response_stream_policy"] = deepcopy(policy)
+                changed = True
+                return
+
+        self._repository.update_config(
+            mutate,
+            expected_repository_id=expected_repository_id,
+        )
+        if changed:
+            emit_configuration_events(
+                self._events,
+                action="updated",
+                entity="workflow",
+                entity_id=item_id,
+            )
+        return changed
 
     def get_graph(self, item_id: str) -> WorkflowGraphDocumentV1 | None:
         item = self._repository.get_record(

@@ -42,7 +42,7 @@ def test_workflow_run_completion_does_not_inherit_an_agent_finish_reason() -> No
     workflow = RunExecution(
         graph=None,
         input_state={},
-        rectifier=None,
+        response_scheduler=None,
         normalizer=normalizer,
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
@@ -98,7 +98,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
         execution = RunExecution(
             graph=Graph(run),
             input_state={"messages": [{"role": "user", "content": "cancel me"}]},
-            rectifier=OutputEventRectifier(OutputProjector(output)),
+            response_scheduler=response_scheduler(OutputProjector(output)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -149,7 +149,7 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
         execution = RunExecution(
             graph=None,
             input_state={},
-            rectifier=None,
+            response_scheduler=None,
             normalizer=SimpleNamespace(usage={}),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -197,24 +197,96 @@ def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
                 [message_envelope(AIMessageChunk(content="ready", id="message-1"))]
             ),
             input_state={"messages": []},
-            rectifier=OutputEventRectifier(
+            response_scheduler=response_scheduler(
                 OutputProjector(output_renderer())
             ),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
-            execution_timeout_seconds=0.01,
+            execution_timeout_seconds=0.1,
         )
         stream = execution.stream_text()
         assert await anext(stream) == "ready"
         try:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.2)
         except asyncio.CancelledError:
             return False
         _remaining = [part async for part in stream]
         return True
 
     assert asyncio.run(scenario()) is True
+
+
+def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
+    async def scenario() -> tuple[str, bool]:
+        class QuietRun:
+            def __init__(self) -> None:
+                self.pulling = asyncio.Event()
+                self.exited = False
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
+                self.exited = True
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                self.pulling.set()
+                await asyncio.Event().wait()
+                raise StopAsyncIteration
+
+            async def output(self):
+                return None
+
+        class Graph:
+            def __init__(self, run: QuietRun) -> None:
+                self.run = run
+
+            async def astream_events(
+                self, _input, *, config: dict, version: str, transformers: tuple = ()
+            ):
+                return self.run
+
+        payload = ResponseStreamPolicy().model_dump(mode="json")
+        payload["workflow_lifecycle"]["delivery"] = "complete"
+        payload["activity"] = {
+            "announce_start": False,
+            "announce_queued": False,
+            "hidden_delta_pulse_seconds": None,
+            "quiet_notice_after_seconds": 0.02,
+            "quiet_notice_repeat_seconds": None,
+        }
+        run = QuietRun()
+        execution = RunExecution(
+            graph=Graph(run),
+            input_state={},
+            response_scheduler=response_scheduler(
+                OutputProjector(output_renderer({"lifecycle": "{{message}}"})),
+                ResponseStreamPolicy.model_validate(payload),
+            ),
+            normalizer=V3EventNormalizer("Main Agent"),
+            middleware_runtime=noop_middleware_runtime(),
+            media_response=noop_media_response(),
+        )
+        stream = execution.stream_text()
+        assert await anext(stream) == "running"
+        notice_task = asyncio.create_task(anext(stream))
+        await asyncio.wait_for(run.pulling.wait(), timeout=1)
+        notice = await asyncio.wait_for(notice_task, timeout=1)
+        pending = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        return notice, run.exited
+
+    assert asyncio.run(scenario()) == (
+        "\n[Activity] Main Agent: waiting\n",
+        True,
+    )
 
 
 def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -> None:
@@ -290,7 +362,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
             execution = RunExecution(
                 graph=Graph(run),
                 input_state={"messages": [{"role": "user", "content": "wait"}]},
-                rectifier=OutputEventRectifier(OutputProjector(output)),
+                response_scheduler=response_scheduler(OutputProjector(output)),
                 normalizer=V3EventNormalizer("Main Agent"),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
@@ -361,7 +433,7 @@ def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [], "shared_vars": {}},
-            rectifier=OutputEventRectifier(OutputProjector(output_renderer())),
+            response_scheduler=response_scheduler(OutputProjector(output_renderer())),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -470,7 +542,7 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
         execution = RunExecution(
             graph=Graph(),
             input_state={"shared_vars": {}},
-            rectifier=OutputEventRectifier(ExplodingProjector()),  # type: ignore[arg-type]
+            response_scheduler=response_scheduler(ExplodingProjector()),  # type: ignore[arg-type]
             normalizer=SilentNormalizer(),  # type: ignore[arg-type]
             middleware_runtime=noop_middleware_runtime(),
             media_response=ExplodingMediaResponse(),  # type: ignore[arg-type]
@@ -497,7 +569,7 @@ def test_graph_recursion_failure_uses_step_limit_error() -> None:
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "loop"}]},
-            rectifier=OutputEventRectifier(
+            response_scheduler=response_scheduler(
                 OutputProjector(output_renderer())
             ),
             normalizer=V3EventNormalizer("Main Agent"),
@@ -580,7 +652,7 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "fail"}]},
-            rectifier=OutputEventRectifier(OutputProjector(output)),
+            response_scheduler=response_scheduler(OutputProjector(output)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -616,7 +688,7 @@ def test_classified_graph_failure_emits_matching_lifecycle_error() -> None:
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "fail"}]},
-            rectifier=OutputEventRectifier(OutputProjector(output)),
+            response_scheduler=response_scheduler(OutputProjector(output)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),

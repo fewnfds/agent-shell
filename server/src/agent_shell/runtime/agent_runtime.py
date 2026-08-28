@@ -38,7 +38,6 @@ from agent_shell.runtime.limits import (
     WORKFLOW_MAX_CONCURRENCY,
 )
 from agent_shell.runtime.media_response import MainAgentMediaResponse
-from agent_shell.runtime.output_event_pool import OutputEventRectifier
 from agent_shell.runtime.output_projection import (
     EventOutputError,
     OutputProjector,
@@ -50,6 +49,12 @@ from agent_shell.runtime.output_stream import (
     MainAgentMediaBlock,
     V3EventNormalizer,
 )
+from agent_shell.runtime.response_scheduler import (
+    LifecycleResponseScheduler,
+    PresentationFrame,
+    ResponseEventInput,
+)
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
@@ -110,7 +115,7 @@ def _workflow_run_config(
 class RunExecution:
     graph: Any
     input_state: dict[str, Any]
-    rectifier: OutputEventRectifier
+    response_scheduler: LifecycleResponseScheduler | None
     normalizer: V3EventNormalizer
     middleware_runtime: MiddlewarePackageRuntime | None
     media_response: MainAgentMediaResponse
@@ -292,6 +297,7 @@ class RunExecution:
                 await runtime.close()
 
     async def _stream_text_inner(self) -> AsyncIterator[str]:
+        loop = asyncio.get_running_loop()
 
         def observation_error(exc: BaseException, code: str) -> None:
             if self.lifecycle_service is not None and self.context is not None:
@@ -386,16 +392,49 @@ class RunExecution:
                     detail_exception=detail_exception,
                 )
 
-        def project_event(event: OutputEvent) -> list[str]:
+        def frame_text(frames: list[PresentationFrame]) -> list[str]:
+            return [frame.text for frame in frames if frame.text]
+
+        def project_input(
+            event: OutputEvent | ModelCallBoundary,
+        ) -> list[str]:
             if not self.public_output:
                 return []
-            for observer in self.event_observers:
-                observer(event)
-            return self.rectifier.feed(event)
+            if isinstance(event, OutputEvent):
+                for observer in self.event_observers:
+                    observer(event)
+            scheduler = self.response_scheduler
+            assert scheduler is not None
+            return frame_text(
+                scheduler.submit(
+                    ResponseEventInput(
+                        lifecycle_id=scheduler.lifecycle_id,
+                        origin_run_id=scheduler.origin_run_id,
+                        origin_workflow_id=scheduler.origin_workflow_id,
+                        event=event,
+                    ),
+                    now=loop.time(),
+                )
+            )
+
+        def project_event(event: OutputEvent) -> list[str]:
+            return project_input(event)
+
+        def project_deadline() -> list[str]:
+            if not self.public_output:
+                return []
+            scheduler = self.response_scheduler
+            assert scheduler is not None
+            return frame_text(scheduler.advance(now=loop.time()))
 
         def failure_output(error_code: str) -> list[str]:
             self.normalizer.abort_main_agent_messages()
-            parts = self.rectifier.abort()
+            scheduler = self.response_scheduler
+            parts = (
+                frame_text(scheduler.abort())
+                if self.public_output and scheduler is not None
+                else []
+            )
             try:
                 parts.extend(
                     project_event(
@@ -410,7 +449,8 @@ class RunExecution:
             except Exception:
                 # A broken user lifecycle projector must not replace the safe
                 # runtime error that is already crossing the public boundary.
-                self.rectifier.discard()
+                if scheduler is not None:
+                    scheduler.discard()
             return parts
 
         journal: WorkflowRunJournal | None = None
@@ -421,7 +461,6 @@ class RunExecution:
             ):
                 if rendered:
                     yield rendered
-            loop = asyncio.get_running_loop()
             remaining_timeout = float(self.execution_timeout_seconds)
             timeout_scope = asyncio.timeout(None)
 
@@ -488,52 +527,92 @@ class RunExecution:
                 # streaming client disconnects and this generator is cancelled.
                 async with stream:
                     envelopes = aiter(stream)
-                    while True:
-                        try:
-                            envelope = await anext(envelopes)
-                        except StopAsyncIteration:
-                            break
-                        for event in self.normalizer.feed(envelope):
-                            if isinstance(event, ModelCallBoundary):
-                                if not self.public_output:
-                                    projected = []
-                                elif event.source_key and event.cycle_key:
-                                    projected = self.rectifier.flush_cycle(
-                                        event.source_key, event.cycle_key
+                    next_event_task: asyncio.Task[object] | None = asyncio.create_task(
+                        anext(envelopes)
+                    )
+                    try:
+                        while next_event_task is not None:
+                            scheduler_deadline = (
+                                self.response_scheduler.next_deadline()
+                                if self.public_output
+                                and self.response_scheduler is not None
+                                else None
+                            )
+                            deadline_task: asyncio.Task[None] | None = None
+                            if scheduler_deadline is not None:
+                                deadline_task = asyncio.create_task(
+                                    asyncio.sleep(
+                                        max(0.0, scheduler_deadline - loop.time())
                                     )
-                                elif event.source_key:
-                                    projected = self.rectifier.flush_source(
-                                        event.source_key
-                                    )
-                                else:
-                                    projected = self.rectifier.flush()
-                            elif isinstance(event, MainAgentMediaBlock):
-                                notification = (
-                                    await self.media_response.project(event)
-                                    if self.public_output
-                                    else None
                                 )
-                                projected = (
-                                    project_event(
-                                        self.normalizer.media_notification(
-                                            event, notification
-                                        )
-                                    )
-                                    if notification is not None
-                                    else []
+                                done, _pending = await asyncio.wait(
+                                    {next_event_task, deadline_task},
+                                    return_when=asyncio.FIRST_COMPLETED,
                                 )
                             else:
-                                projected = project_event(event)
-                            for rendered in projected:
-                                if rendered:
+                                done, _pending = await asyncio.wait(
+                                    {next_event_task},
+                                    return_when=asyncio.FIRST_COMPLETED,
+                                )
+
+                            event_ready = next_event_task in done
+                            if event_ready:
+                                if deadline_task is not None and not deadline_task.done():
+                                    deadline_task.cancel()
+                                    await asyncio.gather(
+                                        deadline_task,
+                                        return_exceptions=True,
+                                    )
+                                try:
+                                    envelope = next_event_task.result()
+                                except StopAsyncIteration:
+                                    next_event_task = None
+                                    break
+                                next_event_task = asyncio.create_task(anext(envelopes))
+                                for event in self.normalizer.feed(envelope):
+                                    if isinstance(event, ModelCallBoundary):
+                                        projected = project_input(event)
+                                    elif isinstance(event, MainAgentMediaBlock):
+                                        notification = (
+                                            await self.media_response.project(event)
+                                            if self.public_output
+                                            else None
+                                        )
+                                        projected = (
+                                            project_event(
+                                                self.normalizer.media_notification(
+                                                    event, notification
+                                                )
+                                            )
+                                            if notification is not None
+                                            else []
+                                        )
+                                    else:
+                                        projected = project_event(event)
+                                    for rendered in projected:
+                                        with pause_execution_timeout():
+                                            yield rendered
+
+                            if deadline_task is not None and deadline_task.done():
+                                for rendered in project_deadline():
                                     with pause_execution_timeout():
                                         yield rendered
+                    finally:
+                        if next_event_task is not None and not next_event_task.done():
+                            next_event_task.cancel()
+                            await asyncio.gather(
+                                next_event_task,
+                                return_exceptions=True,
+                            )
                     output = await stream.output()
                     self.final_state = dict(output) if isinstance(output, Mapping) else None
                     self.normalizer.close_main_agent_messages()
                     final_parts = (
-                        self.rectifier.flush()
+                        frame_text(
+                            self.response_scheduler.finish(now=loop.time())
+                        )
                         if self.public_output
+                        and self.response_scheduler is not None
                         else []
                     )
                     for rendered in final_parts:
@@ -557,7 +636,8 @@ class RunExecution:
                     "cancelled", error_code="request_cancelled"
                 )
             self.normalizer.abort_main_agent_messages()
-            self.rectifier.discard()
+            if self.response_scheduler is not None:
+                self.response_scheduler.discard()
             await self.cancel()
             raise
         except TimeoutError as exc:
@@ -828,6 +908,7 @@ class AgentRuntime:
         public_output: bool = True,
         execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
         cancel_background_children: Callable[[], Awaitable[None]] | None = None,
+        response_stream_policy: ResponseStreamPolicy | None = None,
     ) -> RunExecution:
         if built is None:
             if graph is None or input_state is None:
@@ -878,14 +959,36 @@ class AgentRuntime:
                 for node in nodes
                 if isinstance(node, Mapping)
             }
+        for node_id, node_type in journal_node_kinds.items():
+            if node_type in {"command", "task-dispatcher"}:
+                workflow_sources[node_id] = WorkflowEventSourceV1(
+                    source_type="script",
+                    workflow_node_id=node_id,
+                )
         runtime_policy = self._input_policy()
+        scheduler_policy = (
+            response_stream_policy.model_copy(deep=True)
+            if response_stream_policy is not None
+            else ResponseStreamPolicy()
+        )
+        lifecycle_identity = context.lifecycle_id if context is not None else ""
+        run_identity = context.run_id if context is not None else ""
+        workflow_identity = (
+            str(context.workflow.get("id", "")) if context is not None else ""
+        )
         return RunExecution(
             graph=effective_graph,
             input_state=effective_input_state,
             middleware_runtime=(built.middleware_runtime if built is not None else None),
             tool_runtime=(built.tool_runtime if built is not None else None),
             media_response=MainAgentMediaResponse(self._media_outputs, request_id),
-            rectifier=OutputEventRectifier(projector),
+            response_scheduler=LifecycleResponseScheduler(
+                projector,
+                scheduler_policy,
+                lifecycle_id=lifecycle_identity,
+                origin_run_id=run_identity,
+                origin_workflow_id=workflow_identity,
+            ),
             normalizer=V3EventNormalizer(
                 built.agent_name if built is not None else "",
                 model_response_observers=(model_response_observer,)
@@ -1529,4 +1632,7 @@ class AgentRuntime:
             public_output=public_output,
             command_runtime=command_runtime,
             task_dispatcher_runtime=task_dispatcher_runtime,
+            response_stream_policy=ResponseStreamPolicy.model_validate(
+                (workflow_snapshot or {}).get("response_stream_policy", {})
+            ),
         )

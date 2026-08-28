@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LteAlert, LteTextarea } from '@adminlte/vue'
+import { LteAlert, LteButton, LteTextarea } from '@adminlte/vue'
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -180,6 +180,14 @@ function editGraph(): void {
   }
 }
 
+function editResponseStream(): void {
+  if (selectedId.value && props.workflowRole === 'parent') {
+    void router.push(
+      `/workflows/${encodeURIComponent(selectedId.value)}/response-stream`,
+    )
+  }
+}
+
 watch(() => props.workflowRole, () => { void loadWorkspace() })
 onMounted(() => { void loadWorkspace() })
 </script>
@@ -200,7 +208,18 @@ onMounted(() => { void loadWorkspace() })
         @edit="editGraph"
         @new="newWorkflow"
         @save="saveWorkflow"
-      />
+      >
+        <LteButton
+          v-if="props.workflowRole === 'parent'"
+          class="action-button"
+          :disabled="!selectedId || loading || saving || copying || deleting"
+          type="button"
+          @click="editResponseStream"
+        >
+          <i class="bi bi-broadcast" aria-hidden="true" />
+          {{ t('workflows.responseStream.action') }}
+        </LteButton>
+      </ConfigurationCrudActions>
     </template>
     <ConfigurationEditorLayout v-if="!loading" :loading="loading">
       <template #editor>

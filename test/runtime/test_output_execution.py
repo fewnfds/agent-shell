@@ -63,7 +63,7 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
         execution = RunExecution(
             graph=EventGraph(events),
             input_state={"messages": []},
-            rectifier=OutputEventRectifier(OutputProjector(output)),
+            response_scheduler=response_scheduler(OutputProjector(output)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -74,8 +74,8 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
     parts, usage = asyncio.run(scenario())
 
     assert parts == [
-        "[R]thought[/R]",
-        "[C]\"working\"[/C]",
+        "[R]partial[/R]",
+        "[C]working[/C]",
         "[T]answer[/T]",
     ]
     assert usage == {"input_tokens": 2, "output_tokens": 4, "total_tokens": 6}
@@ -86,7 +86,7 @@ def test_non_string_lifecycle_output_stays_behind_the_runtime_error_boundary() -
         execution = RunExecution(
             graph=EventGraph([]),
             input_state={"messages": []},
-            rectifier=OutputEventRectifier(OutputProjector(lambda event: event)),
+            response_scheduler=response_scheduler(OutputProjector(lambda event: event)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -119,7 +119,7 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
         execution = RunExecution(
             graph=EventGraph([]),
             input_state={"messages": []},
-            rectifier=OutputEventRectifier(OutputProjector(output)),
+            response_scheduler=response_scheduler(OutputProjector(output)),
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),

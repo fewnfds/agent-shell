@@ -86,7 +86,9 @@ def test_text_stream_keeps_v3_start_delta_finish_boundaries_without_rewriting() 
     ]
     assert events[0].timestamp == "1970-01-01T00:00:02.000Z"
     assert events[-1].timestamp == "1970-01-01T00:00:09.000Z"
-    assert events[-1].message == "<complete answer>"
+    assert events[-1].message == "".join(
+        f"partial-{index}" for index in range(100)
+    )
     assert "partial-0" in repr(events)
     assert "private state" not in repr(events)
     assert normalizer.usage == {
@@ -160,7 +162,12 @@ def test_usage_counts_main_and_subagent_model_runs_once_across_event_shapes() ->
     )
 
     assert any(isinstance(event, OutputEvent) for event in main_events)
-    assert subagent_events == []
+    subagent_output = next(
+        event for event in subagent_events if isinstance(event, OutputEvent)
+    )
+    assert subagent_output.event_type == "assistant_text"
+    assert subagent_output.source_type == "subagent"
+    assert subagent_output.subagent_profile_id == subagent_id
     assert normalizer.usage == {
         "input_tokens": 12,
         "output_tokens": 5,
@@ -203,6 +210,59 @@ def test_usage_applies_only_growth_from_later_run_snapshot() -> None:
         "output_tokens": 2,
         "total_tokens": 6,
     }
+
+
+def test_whole_ai_message_does_not_duplicate_an_already_streamed_model_run() -> None:
+    normalizer = V3EventNormalizer("Main Agent")
+    run_id = "model-duplicate-shape"
+    envelopes = [
+        message_envelope(
+            {"event": "message-start", "role": "ai", "id": "message-1"},
+            run_id=run_id,
+        ),
+        message_envelope(
+            {
+                "event": "content-block-start",
+                "index": 0,
+                "content": {"type": "text", "text": ""},
+            },
+            run_id=run_id,
+        ),
+        message_envelope(
+            {
+                "event": "content-block-delta",
+                "index": 0,
+                "delta": {"type": "text-delta", "text": "once"},
+            },
+            run_id=run_id,
+        ),
+        message_envelope(
+            {
+                "event": "content-block-finish",
+                "index": 0,
+                "content": {"type": "text", "text": "once"},
+            },
+            run_id=run_id,
+        ),
+        message_envelope(
+            {"event": "message-finish", "usage": {}},
+            run_id=run_id,
+        ),
+        message_envelope(
+            AIMessage(content="once"),
+            run_id=run_id,
+        ),
+    ]
+
+    events = _normalized(normalizer, envelopes)
+
+    assert [
+        (event.event_type, event.phase, event.message) for event in events
+    ] == [
+        ("assistant_text", "start", ""),
+        ("assistant_text", "delta", "once"),
+        ("assistant_text", "end", "once"),
+    ]
 
 
 def test_complete_blocks_and_atomic_events_keep_v3_arrival_order() -> None:
@@ -288,7 +348,7 @@ def test_complete_blocks_and_atomic_events_keep_v3_arrival_order() -> None:
     assert [event.message for event in events] == [
         "",
         "draft",
-        "final thought",
+        "draft",
         '{"status":"ready"}',
         "final answer",
         "{}",

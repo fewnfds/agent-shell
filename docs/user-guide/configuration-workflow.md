@@ -2,11 +2,15 @@
 
 ## Workflow
 
-【Workflow】通过【父图】（parent Workflow）和【子图】（child Workflow）两个子页面管理同一种实体。装配页选择已有 Workflow，或新建并保存名称、角色、说明、
-可选事件输出组件引用、默认开启的 `cancel_on_upstream_termination`、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`execution_timeout_seconds`（单个 Run 的实际执行超时，不包含把已生成 SSE 文本交给慢速调用方的等待；默认 `1,200` 秒）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。父图中该开关显示为【客户端断开时终止运行】；关闭后 OpenAI 流式连接提前断开时 Run 继续执行，只是不再向该连接发送输出。子图中显示为【父运行取消或失败时终止】；父 Run 取消或失败时默认一并取消 child，关闭后 child 独立继续。父图正常到达 End 不触发 child 取消。这些运行值只有正数约束，没有额外的产品上限；实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
+【Workflow】通过【Parent Run Workflow】和【Child Run Workflow】两个子页面管理同一种实体。装配页选择已有 Workflow，或新建并保存名称、角色、说明、
+可选事件输出组件引用、默认开启的 `cancel_on_upstream_termination`、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`execution_timeout_seconds`（单个 Run 的实际执行超时，不包含把已生成 SSE 文本交给慢速调用方的等待；默认 `1,200` 秒）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。Parent Run Workflow 中该开关显示为【客户端断开时终止运行】；关闭后 OpenAI 流式连接提前断开时 Run 继续执行，只是不再向该连接发送输出。Child Run Workflow 中显示为【父运行取消或失败时终止】；Parent Run 取消或失败时默认一并取消 child，关闭后 child 独立继续。Parent Run 正常到达 End 不触发 child 取消。这些运行值只有正数约束，没有额外的产品上限；实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
 只有 enabled parent Workflow 出现在 `/v1/models`；child Workflow 不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
 编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
+
+Parent Run Workflow 保存一份 `response_stream_policy`。在装配页选择已有记录后点击【响应流调度】，可以配置当前 Parent Run 的单 writer 排队方式、reasoning/assistant text/同步 Subagent/Tool/Workflow 事件输出方式、可见活动提示和 Node 可见性覆盖。Child Run Workflow 不拥有这份策略；independent child/background Run 继续静默消费自己的事件，不会自动写入 Parent Run 的 OpenAI response。
+
+默认 `fair_turns` 在一个实时片段内保持字符连续，慢 Tool 等待时让出 writer，Tool call 与 terminal outcome 完成后作为原子 pair 按完成顺序返回队列。`strict_source` 让一个 Node invocation 保持位置直到 terminal，其他来源可能长期积压。`assistant_text` 与 `reasoning` 的 live wrapper 只有原样 `start`/`end` 两段字符串，不支持模板、占位符、表达式、条件或逐 delta Python；完整 Python `output(event)` 只用于 complete 事件。
 
 每个 canvas Agent Node 使用私有 `messages` 运行自己的 Agent graph。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入 Lifecycle/Run Store；parent State 的 `agent_invocations` 保存 `invocation_id`、Workflow/Node/Agent identity、`invoked_at` 和 `result_ref`。Task Dispatcher worker 的 State reference 携带 task identity。Agent Additional Prompt 可以从 parent State 选择当前因果可见的 reference，再通过 `runtime.store` 读取、校验和转换完整 artifact；Workflow 启用 Checkpointer 时，历史 Checkpoint State 也保留当时可见的 reference。
 
@@ -70,6 +74,8 @@ AAP 可以读取 `state["workflow_task"]`，把当前任务材料编排进 worke
 
 Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecycle`、`values`、`updates`、`tasks` 等 Workflow-owned non-Agent v3 事件；
 每类事件由配置独占 Python package 中的同步 `output(event)` 处理，直接读取稳定 dict 和其中的原始 Python `data` 对象并返回字符串。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent Event Output。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
+
+响应流调度决定一个事件使用 live、complete、activity 或 hidden。Live reasoning/text 直接输出 LangGraph v3 delta，并使用 Workflow policy 的 literal wrapper；它不等待迟到的 content-block finish，也不调用完整 Python renderer。Complete reasoning/text 累加 delta 作为 canonical text；finish snapshot 只在没有 delta 时作为 fallback，二者不一致不会终止 Run。Activity 文案会成为流式与非流式响应的最终正文；waiting 只表示 Run 尚未 terminal 且暂时没有新上游事件，不声称模型或 Tool 仍在生成。
 
 ## 校验与生效
 

@@ -8,15 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from agent_shell.command import BranchKey
 from agent_shell.task_dispatcher import DispatchKey
+from agent_shell.workflow_identifiers import NodeId
 
 
 WORKFLOW_SCHEMA_VERSION = 1
 WORKFLOW_STATE_CONTRACT = "agent-shell.workflow.agent-invocations.v1"
 
-NodeId = Annotated[
-    str,
-    Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$"),
-]
 NodeType = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9-]*$"),

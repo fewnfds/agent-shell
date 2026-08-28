@@ -40,7 +40,9 @@ Workflow 通过可空 `checkpointer_id` 选择一个【检查点保存器】（C
 
 Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
 
-`stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。两种模式都消费同一次 LangGraph v3 事件流，并按 Workflow Node 对应 Main Agent 的 `agent-event-output` Python 扩展中的同步 `output(event)` 渲染；扩展可自行返回空字符串过滤事件。Workflow-owned 事件由 Workflow 可选绑定的 `workflow-event-output` 扩展处理。两类扩展都接收稳定 dict 并返回公开响应文本。
+`stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，当前 Parent Run 的规范化 LangGraph v3 事件通过 typed input 进入它；任一时刻只有一个 lane 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
+
+Parent Run Workflow 的响应流策略可以让 reasoning、assistant text 和同步 Subagent content 使用 live、complete、activity 或 hidden；Tool 使用 paired、activity 或 hidden。Live reasoning/text 直接使用 delta 与 literal start/end，不调用完整 Python event renderer。Complete Agent 事件由对应 Main Agent 的 `agent-event-output` 渲染；Workflow-owned complete 事件由可选 `workflow-event-output` 渲染。慢 Tool 等待不会在默认 fair 模式占住 writer，call/outcome 在 terminal 后原子输出。可见 activity 和 quiet waiting notice属于最终 assistant 正文。
 
 ## 拦截消息
 
@@ -56,6 +58,7 @@ Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume �
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
 - 每次请求执行一次完整运行；`run_id` 是所有 Run 的执行身份，只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
 - background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Task Dispatcher 在请求内生成动态 worker，多个 normal 出边、一次激活的多个 branch 目标和多个 Send task 按 LangGraph Super-step 语义执行；
+- independent child/background Run 使用自己的 `RunExecution` 并保持 `public_output=false`；其事件接入 Parent Run response scheduler 的来源层级和 Event Output owner 尚未定义；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
 - management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 一次清理完整匹配集中的已终止 Lifecycle，并返回删除数和保留的 active 记录数。详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。

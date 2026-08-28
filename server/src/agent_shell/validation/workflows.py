@@ -5,6 +5,10 @@ from typing import Annotated, Any, Protocol
 from pydantic import Field, ValidationError
 
 from agent_shell.storage.blocks import BlockStore
+from agent_shell.response_stream_policy import (
+    ResponseStreamPolicy,
+    missing_response_stream_source_ids,
+)
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 from agent_shell.workflow.catalog import (
@@ -90,6 +94,40 @@ def workflow_executable_report(
     task_dispatchers: dict[str, object] = {}
     referenced_issues: list[ValidationIssue] = []
     component_reports: dict[tuple[str, str], ValidationReport] = {}
+
+    response_stream_policy = ResponseStreamPolicy.model_validate(
+        workflow.get("response_stream_policy", {})
+    )
+    missing_response_sources = set(
+        missing_response_stream_source_ids(
+            response_stream_policy,
+            document.definition,
+        )
+    )
+    for override_index, override in enumerate(
+        response_stream_policy.source_overrides
+    ):
+        if override.workflow_node_id not in missing_response_sources:
+            continue
+        referenced_issues.append(
+            ValidationIssue(
+                code="workflow.response_stream_source_not_found",
+                scope="workflow",
+                owner_id=str(workflow.get("id", "")),
+                owner_name=str(workflow.get("name", "")),
+                owner_type="workflow",
+                path=(
+                    "response_stream_policy.source_overrides"
+                    f"[{override_index}].workflow_node_id"
+                ),
+                message=(
+                    "The Response Stream source override does not reference "
+                    "an executable Workflow Node."
+                ),
+                message_key="validation.workflow.responseStreamSourceNotFound",
+                message_args={"workflow_node_id": override.workflow_node_id},
+            )
+        )
 
     def project_component_issues(path: str, report: ValidationReport) -> None:
         for issue in report.issues:

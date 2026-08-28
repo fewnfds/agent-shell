@@ -53,7 +53,9 @@ def test_message_finish_records_the_call_without_fabricating_a_public_block_end(
         )
     )
 
-    assert events == []
+    assert len(events) == 1
+    assert isinstance(events[0], ModelCallBoundary)
+    assert events[0].phase == "end"
     assert responses[0].stream_diagnostics["incomplete_block_count"] == 1
     assert normalizer.main_agent_message_active is False
 
@@ -109,7 +111,7 @@ def test_message_error_fails_immediately_without_exposing_upstream_payload() -> 
     assert normalizer.main_agent_message_active is False
 
 
-def test_tool_finish_and_failure_are_complete_and_tool_delta_is_ignored() -> None:
+def test_tool_finish_and_failure_are_complete_and_tool_delta_is_activity_only() -> None:
     normalizer = V3EventNormalizer("Main Agent")
     normalizer.feed(
         message_envelope(
@@ -169,7 +171,10 @@ def test_tool_finish_and_failure_are_complete_and_tool_delta_is_ignored() -> Non
         }
     )
 
-    assert delta == []
+    assert len(delta) == 1
+    assert (delta[0].event_type, delta[0].phase) == ("tool_progress", "delta")
+    assert delta[0].message == ""
+    assert "partial secret" not in repr(delta[0])
     assert [(event.event_type, event.phase) for event in [*finished, *failed]] == [
         ("tool_result", "end"),
         ("tool_error", "error"),

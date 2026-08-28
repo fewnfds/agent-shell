@@ -18,6 +18,169 @@ def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     ]
 
 
+def test_parent_response_stream_policy_has_a_narrow_owner_and_preserves_literals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        parent = create_workflow(client, name="Stream owner")
+        child = create_workflow(
+            client,
+            name="Silent child",
+            workflow_role="child",
+        )
+        document = save_linear_workflow_graph(client, parent, main_agent)
+
+        default_policy = parent["response_stream_policy"]
+        assert default_policy["queue"] == {
+            "mode": "fair_turns",
+            "successor_grace_seconds": 2.0,
+        }
+        assert default_policy["assistant_text"]["delivery"] == "live"
+        assert default_policy["reasoning"]["live_wrapper"]["end"] == (
+            "</details>\n"
+        )
+        assert "response_stream_policy" not in child
+        assert client.get(
+            f"/api/workflows/{parent['id']}/response-stream-policy"
+        ).json() == default_policy
+        child_policy = client.get(
+            f"/api/workflows/{child['id']}/response-stream-policy"
+        )
+        assert child_policy.status_code == 409
+        assert child_policy.json()["detail"]["code"] == (
+            "workflow_response_stream_policy_parent_only"
+        )
+
+        configured = deepcopy(default_policy)
+        configured["queue"]["mode"] = "strict_source"
+        configured["assistant_text"]["live_wrapper"] = {
+            "start": "  BEGIN\n",
+            "end": "\nEND  ",
+        }
+        configured["source_overrides"] = [
+            {"workflow_node_id": "agent", "visibility": "activity_only"}
+        ]
+        saved = client.put(
+            f"/api/workflows/{parent['id']}/response-stream-policy",
+            json=configured,
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json() == configured
+
+        stale_metadata_payload = {
+            key: parent[key]
+            for key in (
+                "name",
+                "workflow_role",
+                "description",
+            )
+        }
+        stale_metadata_payload["description"] = "Metadata only."
+        stale_metadata_payload["response_stream_policy"] = default_policy
+        metadata = client.put(
+            f"/api/workflows/{parent['id']}",
+            json=stale_metadata_payload,
+        )
+        assert metadata.status_code == 200, metadata.text
+        assert metadata.json()["response_stream_policy"] == configured
+
+        copied = client.post(
+            f"/api/workflows/{parent['id']}/copy",
+            json={"name": "Copied stream owner"},
+        )
+        assert copied.status_code == 200, copied.text
+        assert copied.json()["response_stream_policy"] == configured
+
+        missing_source = deepcopy(configured)
+        missing_source["source_overrides"] = [
+            {"workflow_node_id": "missing", "visibility": "hidden"}
+        ]
+        rejected = client.put(
+            f"/api/workflows/{parent['id']}/response-stream-policy",
+            json=missing_source,
+        )
+        assert rejected.status_code == 422
+        assert rejected.json()["detail"]["code"] == (
+            "workflow_response_stream_source_not_found"
+        )
+
+        renamed = deepcopy(document)
+        agent_node = next(
+            node
+            for node in renamed["definition"]["nodes"]
+            if node["id"] == "agent"
+        )
+        agent_node["id"] = "agent-renamed"
+        for edge in renamed["definition"]["edges"]:
+            if edge["source"] == "agent":
+                edge["source"] = "agent-renamed"
+            if edge["target"] == "agent":
+                edge["target"] = "agent-renamed"
+        renamed["layout"]["nodes"]["agent-renamed"] = renamed["layout"][
+            "nodes"
+        ].pop("agent")
+        report = client.post(
+            f"/api/workflows/{parent['id']}/validate",
+            json=renamed,
+        )
+        assert report.status_code == 200, report.text
+        issue = next(
+            item
+            for item in report.json()["issues"]
+            if item["code"] == "workflow.response_stream_source_not_found"
+        )
+        assert issue["path"] == (
+            "response_stream_policy.source_overrides[0].workflow_node_id"
+        )
+        published = client.put(
+            f"/api/workflows/{parent['id']}/graph",
+            json=renamed,
+        )
+        assert published.status_code == 422
+
+
+def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        parent = create_workflow(client, name="Policy validation")
+        policy = parent["response_stream_policy"]
+        policy["queue"]["successor_grace_seconds"] = -1
+        invalid = client.put(
+            f"/api/workflows/{parent['id']}/response-stream-policy",
+            json=policy,
+        )
+        duplicate = deepcopy(parent["response_stream_policy"])
+        duplicate["source_overrides"] = [
+            {"workflow_node_id": "agent", "visibility": "hidden"},
+            {"workflow_node_id": "agent", "visibility": "activity_only"},
+        ]
+        duplicate_response = client.put(
+            f"/api/workflows/{parent['id']}/response-stream-policy",
+            json=duplicate,
+        )
+        child_create = client.post(
+            "/api/workflows",
+            json={
+                "name": "Invalid child owner",
+                "workflow_role": "child",
+                "response_stream_policy": parent["response_stream_policy"],
+            },
+        )
+
+    assert invalid.status_code == 422
+    assert invalid.json()["detail"]["code"] == (
+        "workflow_response_stream_policy_invalid"
+    )
+    assert duplicate_response.status_code == 422
+    assert duplicate_response.json()["detail"]["code"] == (
+        "workflow_response_stream_policy_invalid"
+    )
+    assert child_create.status_code == 422
+    assert child_create.json()["detail"]["code"] == "workflow_invalid"
+
+
 def test_workflow_runtime_boundaries_are_managed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

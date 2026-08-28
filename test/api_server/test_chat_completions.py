@@ -210,7 +210,11 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
-    assert message["content"] == "runtime reply"
+    assert message["content"] == (
+        "[Activity] Published Main Agent: started\n"
+        "runtime reply\n"
+        "[Activity] Published Main Agent: completed\n"
+    )
     for response in (child_reply, main_agent_name_reply, main_agent_id_reply):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "model_not_found"
@@ -440,7 +444,11 @@ def test_checkpointer_initialization_failure_isolated_to_configured_workflow(
     assert failed.status_code == 500
     assert failed.json()["error"]["code"] == "workflow_checkpointer_unavailable"
     assert succeeded.status_code == 200, succeeded.text
-    assert succeeded.json()["choices"][0]["message"]["content"] == "runtime reply"
+    assert succeeded.json()["choices"][0]["message"]["content"] == (
+        "[Activity] Published Main Agent: started\n"
+        "runtime reply\n"
+        "[Activity] Published Main Agent: completed\n"
+    )
 
 
 def test_incomplete_saved_workflow_draft_is_not_a_public_model(
@@ -562,7 +570,11 @@ def test_chat_materializes_command_package_before_compiling_workflow(
 
     assert graph.status_code == 200, graph.text
     assert response.status_code == 200, response.text
-    assert response.json()["choices"][0]["message"]["content"] == "runtime reply"
+    assert response.json()["choices"][0]["message"]["content"] == (
+        "[Activity] Published Main Agent: started\n"
+        "runtime reply\n"
+        "[Activity] Published Main Agent: completed\n"
+    )
 
 
 def test_chat_completion_stream_runs_current_graph(
@@ -591,7 +603,11 @@ def test_chat_completion_stream_runs_current_graph(
     content = "".join(
         chunk["choices"][0]["delta"].get("content", "") for chunk in chunks
     )
-    assert content == "runtime reply"
+    assert content == (
+        "[Activity] Published Main Agent: started\n"
+        "runtime reply\n"
+        "[Activity] Published Main Agent: completed\n"
+    )
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
 
 

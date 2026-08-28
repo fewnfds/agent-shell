@@ -9,12 +9,16 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
 from agent_shell.runtime.agent_runtime import RunExecution
-from agent_shell.runtime.output_event_pool import OutputEventRectifier
 from agent_shell.runtime.output_projection import OutputProjector, WorkflowOutputProjector
 from agent_shell.runtime.output_stream import V3EventNormalizer
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.workflow.events import WorkflowCustomEventV1, WorkflowEventSourceV1
-from .support import noop_media_response, noop_middleware_runtime, output_renderer
+from .support import (
+    noop_media_response,
+    noop_middleware_runtime,
+    output_renderer,
+    response_scheduler,
+)
 
 
 class _State(TypedDict, total=False):
@@ -99,7 +103,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
     execution = RunExecution(
         graph=graph,
         input_state={},
-        rectifier=OutputEventRectifier(
+        response_scheduler=response_scheduler(
             WorkflowOutputProjector(
                 {},
                 workflow_output=output_renderer({"custom": "{{message}}"}),
@@ -143,7 +147,7 @@ def test_agent_execution_projects_real_tool_result() -> None:
     execution = RunExecution(
         graph=graph,
         input_state={},
-        rectifier=OutputEventRectifier(OutputProjector(output)),
+        response_scheduler=response_scheduler(OutputProjector(output)),
         normalizer=V3EventNormalizer("Main Agent"),
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),

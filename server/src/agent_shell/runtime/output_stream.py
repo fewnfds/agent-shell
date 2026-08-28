@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Literal
 from datetime import datetime, timezone
 
 from agent_shell.runtime.errors import AgentRuntimeError
@@ -157,6 +158,7 @@ class ModelCallBoundary:
     source_key: str = ""
     cycle_key: str = ""
     raw_seq: int = 0
+    phase: Literal["start", "end"] = "start"
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +219,8 @@ class V3EventNormalizer:
         self._message_sources: dict[str, WorkflowEventSourceV1 | None] = {}
         self._main_agent_message_runs: set[str] = set()
         self._main_agent_ai_runs: dict[str, bool] = {}
+        self._public_ai_runs: dict[str, bool] = {}
+        self._streamed_message_runs: set[str] = set()
         self._responses = ModelResponseTracker(model_response_observers)
         self._tool_names: dict[tuple[str, str, str], str] = {}
         self._subagent_runs: dict[str, tuple[str, str]] = {}
@@ -608,6 +612,9 @@ class V3EventNormalizer:
         is_main_agent = self._is_main_agent_source(
             source, agent_name=agent_name, subagent_name=subagent_name
         )
+        is_public_agent = is_main_agent or (
+            source is not None and source.source_type == "subagent"
+        )
 
         if not isinstance(payload, dict):
             if not isinstance(payload, AIMessage):
@@ -624,30 +631,34 @@ class V3EventNormalizer:
             )
             content_blocks = getattr(payload, "content_blocks", None)
             self._merge_run_usage(run_key, usage_data)
-            if not is_main_agent:
+            if not is_public_agent:
                 return []
-            self._responses.record(
-                timestamp=timestamp,
-                namespace=namespace,
-                agent_name=agent_name,
-                node=node,
-                run_id=run_id,
-                run_key=run_key,
-                message_id=str(getattr(payload, "id", "") or ""),
-                is_main_agent=is_main_agent,
-                usage=usage_data,
-                response_metadata=metadata_data,
-                additional_kwargs=additional_data,
-                content_blocks=(
-                    [block for block in content_blocks if isinstance(block, dict)]
-                    if isinstance(content_blocks, list)
-                    else []
-                ),
+            if is_main_agent:
+                self._responses.record(
+                    timestamp=timestamp,
+                    namespace=namespace,
+                    agent_name=agent_name,
+                    node=node,
+                    run_id=run_id,
+                    run_key=run_key,
+                    message_id=str(getattr(payload, "id", "") or ""),
+                    is_main_agent=True,
+                    usage=usage_data,
+                    response_metadata=metadata_data,
+                    additional_kwargs=additional_data,
+                    content_blocks=(
+                        [block for block in content_blocks if isinstance(block, dict)]
+                        if isinstance(content_blocks, list)
+                        else []
+                    ),
+                )
+            boundary = ModelCallBoundary(
+                run_key, source_key, cycle_key, self._raw_seq
             )
+            if run_key in self._streamed_message_runs:
+                return [boundary, replace(boundary, phase="end")]
             return [
-                ModelCallBoundary(
-                    run_key, source_key, cycle_key, self._raw_seq
-                ),
+                boundary,
                 *self._whole_message_events(
                     payload,
                     run_key=run_key,
@@ -657,6 +668,7 @@ class V3EventNormalizer:
                     node=node,
                     source=source,
                 ),
+                replace(boundary, phase="end"),
             ]
 
         event_name = str(payload.get("event") or "")
@@ -665,15 +677,18 @@ class V3EventNormalizer:
             self._message_ids[run_key] = message_id
             self._message_sources[run_key] = source
             self._responses.begin(run_key, payload.get("metadata"))
+            self._streamed_message_runs.add(run_key)
             is_main_agent_ai = is_main_agent and str(payload.get("role") or "ai") == "ai"
+            is_public_ai = is_public_agent and str(payload.get("role") or "ai") == "ai"
             self._main_agent_ai_runs[run_key] = is_main_agent_ai
+            self._public_ai_runs[run_key] = is_public_ai
             if is_main_agent_ai:
                 self._main_agent_message_runs.add(run_key)
             return [
                 ModelCallBoundary(
                     run_key, source_key, cycle_key, self._raw_seq
                 )
-            ] if is_main_agent_ai else []
+            ] if is_public_ai else []
         if event_name == "message-finish":
             usage = payload.get("usage")
             usage_data = usage if isinstance(usage, dict) else {}
@@ -696,21 +711,34 @@ class V3EventNormalizer:
                 )
             self._merge_run_usage(run_key, usage_data)
             is_main_agent_message = self._main_agent_ai_runs.get(run_key, is_main_agent)
-            self._responses.record(
-                timestamp=timestamp,
-                namespace=namespace,
-                agent_name=agent_name,
-                node=node,
-                run_id=run_id,
-                run_key=run_key,
-                message_id=self._message_ids.get(run_key, ""),
-                is_main_agent=is_main_agent_message,
-                usage=usage_data,
-                response_metadata=metadata_data,
-                additional_kwargs=additional_data,
+            is_public_message = self._public_ai_runs.get(
+                run_key,
+                is_public_agent,
             )
+            if is_main_agent_message:
+                self._responses.record(
+                    timestamp=timestamp,
+                    namespace=namespace,
+                    agent_name=agent_name,
+                    node=node,
+                    run_id=run_id,
+                    run_key=run_key,
+                    message_id=self._message_ids.get(run_key, ""),
+                    is_main_agent=True,
+                    usage=usage_data,
+                    response_metadata=metadata_data,
+                    additional_kwargs=additional_data,
+                )
             self._discard_message(run_key)
-            return []
+            return [
+                ModelCallBoundary(
+                    run_key,
+                    source_key,
+                    cycle_key,
+                    self._raw_seq,
+                    phase="end",
+                )
+            ] if is_public_message else []
         if event_name == "error":
             is_main_agent_message = self._main_agent_ai_runs.get(run_key, is_main_agent)
             self._discard_message(run_key)
@@ -722,7 +750,7 @@ class V3EventNormalizer:
                 )
             return []
 
-        if not self._main_agent_ai_runs.get(run_key, is_main_agent):
+        if not self._public_ai_runs.get(run_key, is_public_agent):
             return []
 
         index = payload.get("index")
@@ -860,7 +888,7 @@ class V3EventNormalizer:
                         agent_name=block.agent_name,
                         node=block.node,
                         source=block.source,
-                        message=complete_text,
+                        message=block.streamed_text or complete_text,
                         message_id=block.message_id,
                         stream_id=f"{run_key}:{index}",
                         data=content,
@@ -1168,9 +1196,39 @@ class V3EventNormalizer:
         if call_id and name:
             self._tool_names[tool_key] = name
         if lifecycle == "tool-started":
-            return []
+            return [
+                self._event(
+                    "tool_progress",
+                    "start",
+                    timestamp=timestamp,
+                    namespace=namespace,
+                    agent_name=agent_name,
+                    node="tools",
+                    source=source,
+                    message="",
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    status="running",
+                    data=data,
+                )
+            ]
         if lifecycle == "tool-output-delta":
-            return []
+            return [
+                self._event(
+                    "tool_progress",
+                    "delta",
+                    timestamp=timestamp,
+                    namespace=namespace,
+                    agent_name=agent_name,
+                    node="tools",
+                    source=source,
+                    message="",
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    status="running",
+                    data=data,
+                )
+            ]
         if lifecycle == "tool-finished":
             self._tool_names.pop(tool_key, None)
             return [
@@ -1218,6 +1276,7 @@ class V3EventNormalizer:
         self._message_sources.pop(run_key, None)
         self._responses.discard(run_key)
         self._main_agent_ai_runs.pop(run_key, None)
+        self._public_ai_runs.pop(run_key, None)
         self._main_agent_message_runs.discard(run_key)
 
     def close_main_agent_messages(self) -> None:
