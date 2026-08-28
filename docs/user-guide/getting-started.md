@@ -32,7 +32,7 @@ Windows 源码 Clone 从项目根运行：
 1. 在【代理组件 / 文件系统后端】创建 CompositeBackend 或 LocalShellBackend，并在【代理组件 / 文件系统工具】创建工具配置。需要命令执行时选择真实单工作区的 LocalShellBackend，并在工具配置中开启 `execute`；需要映射、来源权限或 Skill 独立包时选择 CompositeBackend。
 2. 在【模型 / 模型连接】创建本机连接，在【代理组件 / 模型要求】创建名称和说明，再在【代理 / Main Agent】中选择模型要求、Filesystem Backend、Filesystem Tools、Agent Event Output 和其他能力；在【代理组件 / Custom Middleware】新建并选择
    `内置示例-agent-additional-prompt`，需要注入 Agent 初始提示词时在 Main Agent 的 `middleware_refs` 中装配。
-3. 在【模型 / 模型映射】为 Model Requirement 选择 Model Connection；未绑定时页面显示 warning，必须完成 binding 后才能运行。然后在【工作流 / Parent Run Workflow】新建记录；Workflow 默认不启用检查点保存器，需要 Debug 检查点时先在【工作流组件 / 检查点保存器】创建配置，再在 Workflow metadata 中选择。点击【编辑】进入 Workflow canvas；保存后可从装配页进入【响应流调度】，配置多来源输出顺序、实时正文和活动提示。
+3. 在【模型 / 模型映射】为 Model Requirement 选择 Model Connection；未绑定时页面显示 warning，必须完成 binding 后才能运行。然后在【工作流 / Parent Run Workflow】新建记录；Workflow 默认不启用检查点保存器，需要 Debug 检查点时先在【工作流组件 / 检查点保存器】创建配置，再在 Workflow metadata 中选择。响应流调度也直接位于同一 Parent Run Workflow 装配页，用于配置多来源输出顺序、实时正文和活动提示。点击【编辑】进入 Workflow canvas。
 4. 添加 Agent Node，选择 Main Agent，连接 `Start -> Agent -> End` 后点击【保存草稿】（草稿保持 disabled）。
 5. 点击【正式保存 Workflow】通过校验后启用 Workflow；只有 enabled parent Workflow 会出现在 `/v1/models`。
 6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认 Workflow 名称后以

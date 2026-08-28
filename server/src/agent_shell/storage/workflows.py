@@ -136,15 +136,7 @@ class WorkflowStore:
                 if item.get("id") == item_id:
                     stored["definition"] = deepcopy(item.get("definition", empty_definition))
                     stored["layout"] = deepcopy(item.get("layout", empty_layout))
-                    if stored.get("workflow_role") == "parent":
-                        if item.get("workflow_role") == "parent":
-                            stored["response_stream_policy"] = deepcopy(
-                                item.get(
-                                    "response_stream_policy",
-                                    default_response_stream_policy(),
-                                )
-                            )
-                    else:
+                    if stored.get("workflow_role") != "parent":
                         stored.pop("response_stream_policy", None)
                     records[index] = stored
                     break
@@ -209,39 +201,6 @@ class WorkflowStore:
                 entity_id=item_id,
             )
         return copied
-
-    def update_response_stream_policy(
-        self,
-        item_id: str,
-        policy: dict[str, object],
-        *,
-        expected_repository_id: str | None = None,
-    ) -> bool:
-        changed = False
-
-        def mutate(config: dict) -> None:
-            nonlocal changed
-            for item in config.setdefault("workflows", []):
-                if item.get("id") != item_id:
-                    continue
-                if item.get("workflow_role") != "parent":
-                    return
-                item["response_stream_policy"] = deepcopy(policy)
-                changed = True
-                return
-
-        self._repository.update_config(
-            mutate,
-            expected_repository_id=expected_repository_id,
-        )
-        if changed:
-            emit_configuration_events(
-                self._events,
-                action="updated",
-                entity="workflow",
-                entity_id=item_id,
-            )
-        return changed
 
     def get_graph(self, item_id: str) -> WorkflowGraphDocumentV1 | None:
         item = self._repository.get_record(

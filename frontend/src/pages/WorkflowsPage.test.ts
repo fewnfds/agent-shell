@@ -15,6 +15,7 @@ import {
   workflowCanvasToDocument,
   workflowDocumentToCanvas,
 } from '@/domain/workflowGraph'
+import { defaultResponseStreamPolicy } from '@/domain/responseStreamPolicy'
 import { en } from '@/locales/en'
 
 import WorkflowsPage from './WorkflowsPage.vue'
@@ -34,6 +35,7 @@ const workflow: Workflow = {
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,
+  response_stream_policy: defaultResponseStreamPolicy(),
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
@@ -60,6 +62,15 @@ function mockComponentLists(workflows: Workflow[] = []) {
     stage: 'repository_load',
     issues: [],
   })
+  vi.spyOn(managementApi, 'getWorkflowGraph').mockResolvedValue({
+    definition: {
+      schema_version: 1,
+      state_contract: 'agent-shell.workflow.agent-invocations.v1',
+      nodes: [],
+      edges: [],
+    },
+    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+  })
   return options
 }
 
@@ -71,7 +82,6 @@ function testRouter() {
       { path: '/workflows/parents', component: { template: '<div />' } },
       { path: '/workflows/children', component: { template: '<div />' } },
       { path: '/workflows/:id/editor', component: { template: '<div />' } },
-      { path: '/workflows/:id/response-stream', component: { template: '<div />' } },
     ],
   })
 }
@@ -110,6 +120,7 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
     expect(wrapper.text()).toContain('Response Stream')
+    expect(wrapper.find('[data-testid="response-stream-policy-editor"]').exists()).toBe(true)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await flushPromises()
 
@@ -126,6 +137,7 @@ describe('WorkflowsPage', () => {
     await runtimeLimits[0]!.setValue(250)
     await runtimeLimits[1]!.setValue(90_000)
     await runtimeLimits[2]!.setValue(300)
+    await wrapper.get('#response-queue-mode').setValue('strict_source')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
 
@@ -139,6 +151,10 @@ describe('WorkflowsPage', () => {
       recursion_limit: 250,
       execution_timeout_seconds: 90_000,
       max_concurrency: 300,
+      response_stream_policy: {
+        ...defaultResponseStreamPolicy(),
+        queue: { mode: 'strict_source', successor_grace_seconds: 2 },
+      },
     })
 
     wrapper.unmount()
@@ -268,6 +284,7 @@ describe('WorkflowsPage', () => {
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,
+      response_stream_policy: defaultResponseStreamPolicy(),
     })
     wrapper.unmount()
   })

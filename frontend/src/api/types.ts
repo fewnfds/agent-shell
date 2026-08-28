@@ -494,12 +494,12 @@ export interface WorkflowPayload {
   recursion_limit: number
   execution_timeout_seconds: number
   max_concurrency: number
+  response_stream_policy?: ResponseStreamPolicy
 }
 
 export interface Workflow extends WorkflowPayload {
   id: string
   enabled: boolean
-  response_stream_policy?: ResponseStreamPolicy
 }
 
 export interface WorkflowLifecycleSummary {

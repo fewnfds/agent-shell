@@ -42,7 +42,7 @@ Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume �
 
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，当前 Parent Run 的规范化 LangGraph v3 事件通过 typed input 进入它；任一时刻只有一个 lane 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
-Parent Run Workflow 的响应流策略可以让 reasoning、assistant text 和同步 Subagent content 使用 live、complete、activity 或 hidden；Tool 使用 paired、activity 或 hidden。Live reasoning/text 直接使用 delta 与 literal start/end，不调用完整 Python event renderer。Complete Agent 事件由对应 Main Agent 的 `agent-event-output` 渲染；Workflow-owned complete 事件由可选 `workflow-event-output` 渲染。慢 Tool 等待不会在默认 fair 模式占住 writer，call/outcome 在 terminal 后原子输出。可见 activity 和 quiet waiting notice属于最终 assistant 正文。
+响应流策略作用于整个 Lifecycle。每个 Lifecycle 只有一个 Parent Run Workflow，因此策略作为 Parent Run Workflow 字段保存并随启动快照冻结，这只是配置管理归属。策略可以让 reasoning、assistant text 和同步 Subagent content 使用 live、complete、activity 或 hidden；Tool 使用 paired、activity 或 hidden。Live reasoning/text 直接使用 delta 与 literal start/end，不调用完整 Python event renderer。Complete Agent 事件由对应 Main Agent 的 `agent-event-output` 渲染；Workflow-owned complete 事件由可选 `workflow-event-output` 渲染。慢 Tool 等待不会在默认 fair 模式占住 writer，call/outcome 在 terminal 后原子输出。可见 activity 和 quiet waiting notice属于最终 assistant 正文。
 
 ## 拦截消息
 

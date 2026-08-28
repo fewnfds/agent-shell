@@ -23,7 +23,10 @@ from agent_shell.validation.models import ValidationReport, validation_failure_d
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.workflows import workflow_executable_report
 from agent_shell.workflow.catalog import node_catalog_payload
-from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
+from agent_shell.workflow.contracts import (
+    WorkflowGraphDefinitionV1,
+    WorkflowGraphDocumentV1,
+)
 from agent_shell.workflow.validation import (
     WORKFLOW_ADMISSION_STAGE,
     admit_workflow_document,
@@ -53,19 +56,9 @@ class WorkflowCopy(BaseModel):
     name: ConfigurationName
 
 
-def _validated(payload: dict, *, existing: dict | None = None) -> dict:
-    candidate = dict(payload)
-    if existing is not None:
-        candidate.pop("response_stream_policy", None)
-        if (
-            existing["workflow_role"] == "parent"
-            and candidate.get("workflow_role") == "parent"
-        ):
-            candidate["response_stream_policy"] = existing[
-                "response_stream_policy"
-            ]
+def _validated(payload: dict) -> dict:
     try:
-        validated = WorkflowDefinition.model_validate(candidate).model_dump(mode="json")
+        validated = WorkflowDefinition.model_validate(payload).model_dump(mode="json")
         if validated["workflow_role"] == "child":
             validated.pop("response_stream_policy", None)
         return validated
@@ -88,7 +81,7 @@ def _save(
     expected_repository_id: str,
 ) -> dict:
     existing = store.get_item(item_id)
-    validated = _validated(payload, existing=existing)
+    validated = _validated(payload)
     validated["enabled"] = existing["enabled"] if existing is not None else False
     checkpointer_id = validated["checkpointer_id"]
     if (
@@ -112,6 +105,27 @@ def _save(
             message_key="errors.workflowEventOutputNotFound",
             message="The selected event output component does not exist.",
         )
+    if validated["workflow_role"] == "parent":
+        policy = ResponseStreamPolicy.model_validate(
+            validated["response_stream_policy"]
+        )
+        document = store.get_graph(item_id)
+        missing_sources = missing_response_stream_source_ids(
+            policy,
+            (
+                document.definition
+                if document is not None
+                else WorkflowGraphDefinitionV1()
+            ),
+        )
+        if missing_sources:
+            raise management_error(
+                422,
+                code="workflow_response_stream_source_not_found",
+                message_key="errors.workflowResponseStreamSourceNotFound",
+                message="A Response Stream source override does not reference an executable Workflow Node.",
+                message_args={"workflow_node_id": missing_sources[0]},
+            )
     try:
         store.save_item(
             item_id,
@@ -277,84 +291,6 @@ def build_workflow_router(
                 message="The Workflow does not exist.",
             )
         return item
-
-    @router.get("/api/workflows/{item_id}/response-stream-policy")
-    async def get_response_stream_policy(item_id: str) -> dict[str, object]:
-        item = store.get_item(item_id)
-        if item is None:
-            raise management_error(
-                404,
-                code="workflow_not_found",
-                message_key="errors.workflowNotFound",
-                message="The Workflow does not exist.",
-            )
-        if item["workflow_role"] != "parent":
-            raise management_error(
-                409,
-                code="workflow_response_stream_policy_parent_only",
-                message_key="errors.workflowResponseStreamPolicyParentOnly",
-                message="Response Stream policy is only available for a parent Workflow.",
-            )
-        return dict(item["response_stream_policy"])
-
-    @router.put("/api/workflows/{item_id}/response-stream-policy")
-    async def update_response_stream_policy(
-        item_id: str,
-        payload: dict,
-    ) -> dict[str, object]:
-        mutation_repository_id = store.repository_id()
-        item = store.get_item(item_id)
-        if item is None:
-            raise management_error(
-                404,
-                code="workflow_not_found",
-                message_key="errors.workflowNotFound",
-                message="The Workflow does not exist.",
-            )
-        if item["workflow_role"] != "parent":
-            raise management_error(
-                409,
-                code="workflow_response_stream_policy_parent_only",
-                message_key="errors.workflowResponseStreamPolicyParentOnly",
-                message="Response Stream policy is only available for a parent Workflow.",
-            )
-        try:
-            policy = ResponseStreamPolicy.model_validate(payload)
-        except ValidationError as exc:
-            raise management_error(
-                422,
-                code="workflow_response_stream_policy_invalid",
-                message_key="errors.workflowResponseStreamPolicyInvalid",
-                message="The Response Stream policy is invalid.",
-                message_args={"count": len(exc.errors())},
-            ) from exc
-        document = store.get_graph(item_id)
-        assert document is not None
-        missing_sources = missing_response_stream_source_ids(
-            policy,
-            document.definition,
-        )
-        if missing_sources:
-            raise management_error(
-                422,
-                code="workflow_response_stream_source_not_found",
-                message_key="errors.workflowResponseStreamSourceNotFound",
-                message="A Response Stream source override does not reference an executable Workflow Node.",
-                message_args={"workflow_node_id": missing_sources[0]},
-            )
-        saved = policy.model_dump(mode="json")
-        if not store.update_response_stream_policy(
-            item_id,
-            saved,
-            expected_repository_id=mutation_repository_id,
-        ):
-            raise management_error(
-                404,
-                code="workflow_not_found",
-                message_key="errors.workflowNotFound",
-                message="The Workflow does not exist.",
-            )
-        return saved
 
     @router.put("/api/workflows/{item_id}")
     async def update_workflow(item_id: str, payload: dict) -> dict:

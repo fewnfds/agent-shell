@@ -1,33 +1,40 @@
 <script setup lang="ts">
-import { LteAlert, LteButton, LteTextarea } from '@adminlte/vue'
-import { computed, onMounted, ref } from 'vue'
+import { LteAlert, LteTextarea } from '@adminlte/vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
 
 import {
-  managementApi,
   type ResponseContentDelivery,
   type ResponseEventDelivery,
   type ResponseSourceVisibility,
   type ResponseStreamPolicy,
   type ResponseToolDelivery,
-  type Workflow,
   type WorkflowGraphNode,
 } from '@/api'
-import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import FormField from '@/components/FormField.vue'
-import PageShell from '@/components/PageShell.vue'
+import { cloneResponseStreamPolicy } from '@/domain/responseStreamPolicy'
 
 const { t } = useI18n()
-const route = useRoute()
-const router = useRouter()
-const loading = ref(true)
-const saving = ref(false)
-const error = ref('')
-const saved = ref(false)
-const workflow = ref<Workflow | null>(null)
-const graphNodes = ref<WorkflowGraphNode[]>([])
-const form = ref<ResponseStreamPolicy>(defaultPolicy())
+const props = defineProps<{
+  graphNodes: WorkflowGraphNode[]
+  modelValue: ResponseStreamPolicy
+  sourcesError?: string
+}>()
+const emit = defineEmits<{
+  'update:modelValue': [value: ResponseStreamPolicy]
+}>()
+const form = ref(cloneResponseStreamPolicy(props.modelValue))
+let syncingFromParent = false
+
+watch(() => props.modelValue, (value) => {
+  syncingFromParent = true
+  form.value = cloneResponseStreamPolicy(value)
+  syncingFromParent = false
+}, { flush: 'sync' })
+
+watch(form, (value) => {
+  if (!syncingFromParent) emit('update:modelValue', cloneResponseStreamPolicy(value))
+}, { deep: true, flush: 'sync' })
 
 type ActivityTimingKey =
   | 'hidden_delta_pulse_seconds'
@@ -43,7 +50,7 @@ const contentDeliveries: ResponseContentDelivery[] = [
 const eventDeliveries: ResponseEventDelivery[] = ['complete', 'activity', 'hidden']
 const toolDeliveries: ResponseToolDelivery[] = ['paired', 'activity', 'hidden']
 
-const executableNodes = computed(() => graphNodes.value.filter((node) => (
+const executableNodes = computed(() => props.graphNodes.filter((node) => (
   ['agent', 'command', 'task-dispatcher'].includes(node.type)
 )))
 
@@ -61,82 +68,6 @@ const preview = computed(() => {
     `${reasoning.start}${t('workflows.responseStream.preview.continuation')}${reasoning.end}`,
   ].join('\n')
 })
-
-function defaultPolicy(): ResponseStreamPolicy {
-  return {
-    queue: { mode: 'fair_turns', successor_grace_seconds: 2 },
-    assistant_text: {
-      delivery: 'live',
-      live_wrapper: { start: '', end: '' },
-    },
-    reasoning: {
-      delivery: 'live',
-      live_wrapper: {
-        start: '<details type="agent"><summary>Reasoning</summary>',
-        end: '</details>\n',
-      },
-    },
-    subagent_content: { delivery: 'hidden' },
-    tools: { delivery: 'paired' },
-    subagent_lifecycle: { delivery: 'activity' },
-    workflow_custom: { delivery: 'complete' },
-    workflow_lifecycle: { delivery: 'activity' },
-    activity: {
-      announce_start: true,
-      announce_queued: true,
-      hidden_delta_pulse_seconds: 15,
-      quiet_notice_after_seconds: 30,
-      quiet_notice_repeat_seconds: 60,
-    },
-    source_overrides: [],
-  }
-}
-
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  saved.value = false
-  try {
-    const id = String(route.params.id ?? '')
-    const [loadedWorkflow, policy, graph] = await Promise.all([
-      managementApi.getWorkflow(id),
-      managementApi.getResponseStreamPolicy(id),
-      managementApi.getWorkflowGraph(id),
-    ])
-    if (loadedWorkflow.workflow_role !== 'parent') {
-      throw new Error(t('workflows.responseStream.parentOnly'))
-    }
-    workflow.value = loadedWorkflow
-    form.value = clonePolicy(policy)
-    graphNodes.value = graph.definition.nodes
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : t('workflows.responseStream.loadFailed')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function save(): Promise<void> {
-  if (!workflow.value || saving.value) return
-  saving.value = true
-  error.value = ''
-  saved.value = false
-  try {
-    form.value = await managementApi.updateResponseStreamPolicy(
-      workflow.value.id,
-      clonePolicy(form.value),
-    )
-    saved.value = true
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : t('workflows.responseStream.saveFailed')
-  } finally {
-    saving.value = false
-  }
-}
-
-function back(): void {
-  void router.push({ path: '/workflows/parents', query: workflow.value?.id ? { id: workflow.value.id } : {} })
-}
 
 function sourceVisibility(nodeId: string): ResponseSourceVisibility | 'inherit' {
   return form.value.source_overrides.find(
@@ -170,41 +101,13 @@ function nodeLabel(node: WorkflowGraphNode): string {
   return `${node.id} · ${t(`workflows.responseStream.nodeTypes.${node.type}`)}`
 }
 
-function clonePolicy(policy: ResponseStreamPolicy): ResponseStreamPolicy {
-  return JSON.parse(JSON.stringify(policy)) as ResponseStreamPolicy
-}
-
-onMounted(() => { void load() })
 </script>
 
 <template>
-  <PageShell>
-    <LteAlert
-      v-if="error"
-      data-testid="response-stream-error"
-      :title="t('workflows.responseStream.errorTitle')"
-      theme="danger"
-    >
-      {{ error }}
-    </LteAlert>
-    <LteAlert
-      v-if="saved"
-      data-testid="response-stream-saved"
-      :title="t('workflows.responseStream.saved')"
-      theme="success"
-    />
-
-    <ConfigurationEditorLayout
-      v-if="!loading"
-      :loading="loading"
-      layout-test-id="response-stream-layout"
-    >
-      <template #editor>
+  <section data-testid="response-stream-policy-editor">
         <div class="card">
           <header class="card-header">
-            <h1 class="card-title">
-              {{ t('workflows.responseStream.title') }} · {{ workflow?.name }}
-            </h1>
+            <h2 class="card-title">{{ t('workflows.responseStream.title') }}</h2>
           </header>
           <div class="card-body">
             <p class="text-body-secondary">
@@ -341,7 +244,14 @@ onMounted(() => { void load() })
         <div class="card mt-3">
           <header class="card-header"><h2 class="card-title">{{ t('workflows.responseStream.sourcesTitle') }}</h2></header>
           <div class="card-body">
-            <p v-if="!executableNodes.length" class="mb-0 text-body-secondary">{{ t('workflows.responseStream.noSources') }}</p>
+            <LteAlert
+              v-if="props.sourcesError"
+              :title="t('workflows.responseStream.sourcesLoadFailed')"
+              theme="danger"
+            >
+              {{ props.sourcesError }}
+            </LteAlert>
+            <p v-else-if="!executableNodes.length" class="mb-0 text-body-secondary">{{ t('workflows.responseStream.noSources') }}</p>
             <div v-else class="row g-3" data-ui-control-row>
               <div v-for="node in executableNodes" :key="node.id" class="col-lg-6">
                 <label class="form-label" :for="`source-${node.id}`">{{ nodeLabel(node) }}</label>
@@ -359,40 +269,23 @@ onMounted(() => { void load() })
             </div>
           </div>
         </div>
-      </template>
-
-      <template #aside>
-        <div class="card">
+        <div class="row g-3 mt-0">
+          <div class="col-xl-6">
+            <div class="card h-100">
           <header class="card-header"><h2 class="card-title">{{ t('workflows.responseStream.preview.title') }}</h2></header>
           <div class="card-body">
             <pre class="mb-0 text-wrap" data-testid="response-stream-preview">{{ preview }}</pre>
           </div>
         </div>
-        <LteAlert :title="t('workflows.responseStream.warnings.liveTitle')" theme="warning">
-          {{ t('workflows.responseStream.warnings.live') }}
-        </LteAlert>
-        <LteAlert :title="t('workflows.responseStream.warnings.activityTitle')" theme="warning">
-          {{ t('workflows.responseStream.warnings.activity') }}
-        </LteAlert>
-      </template>
-    </ConfigurationEditorLayout>
-
-    <template #actions>
-      <LteButton class="action-button" type="button" @click="back">
-        <i class="bi bi-arrow-left" aria-hidden="true" />
-        {{ t('workflows.responseStream.back') }}
-      </LteButton>
-      <LteButton
-        class="action-button"
-        data-testid="response-stream-save"
-        :disabled="loading || saving || !workflow"
-        type="button"
-        @click="save"
-      >
-        <span v-if="saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <i v-else class="bi bi-floppy" aria-hidden="true" />
-        {{ t('common.save') }}
-      </LteButton>
-    </template>
-  </PageShell>
+          </div>
+          <div class="col-xl-6">
+            <LteAlert :title="t('workflows.responseStream.warnings.liveTitle')" theme="warning">
+              {{ t('workflows.responseStream.warnings.live') }}
+            </LteAlert>
+            <LteAlert :title="t('workflows.responseStream.warnings.activityTitle')" theme="warning">
+              {{ t('workflows.responseStream.warnings.activity') }}
+            </LteAlert>
+          </div>
+        </div>
+  </section>
 </template>

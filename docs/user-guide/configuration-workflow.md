@@ -8,7 +8,7 @@
 只有 enabled parent Workflow 出现在 `/v1/models`；child Workflow 不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
 编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
-Parent Run Workflow 保存一份 `response_stream_policy`。在装配页选择已有记录后点击【响应流调度】，可以配置当前 Parent Run 的单 writer 排队方式、reasoning/assistant text/同步 Subagent/Tool/Workflow 事件输出方式、可见活动提示和 Node 可见性覆盖。Child Run Workflow 不拥有这份策略；independent child/background Run 继续静默消费自己的事件，不会自动写入 Parent Run 的 OpenAI response。
+响应流调度作用于一次公开 response 对应的整个 Lifecycle。每个 Lifecycle 只有一个 Parent Run Workflow，因此 `response_stream_policy` 绑定在 Parent Run Workflow 上作为配置管理归属，并随 Parent Run 启动快照冻结；这不把 scheduler 降为某个 Node 或 Graph 内部事务。Parent Run Workflow 装配页直接编辑该字段，并与名称、metadata 和运行约束使用同一个新建、保存、复制、删除流程，不建立独立配置实体或第二套 CRUD。配置包括单 writer 排队方式、reasoning/assistant text/同步 Subagent/Tool/Workflow 事件输出方式、可见活动提示和 Node 可见性覆盖。Child Run Workflow 不拥有这份策略；independent child/background Run 继续静默消费自己的事件，不会自动写入 Parent Run 的 OpenAI response。
 
 默认 `fair_turns` 在一个实时片段内保持字符连续，慢 Tool 等待时让出 writer，Tool call 与 terminal outcome 完成后作为原子 pair 按完成顺序返回队列。`strict_source` 让一个 Node invocation 保持位置直到 terminal，其他来源可能长期积压。`assistant_text` 与 `reasoning` 的 live wrapper 只有原样 `start`/`end` 两段字符串，不支持模板、占位符、表达式、条件或逐 delta Python；完整 Python `output(event)` 只用于 complete 事件。
 

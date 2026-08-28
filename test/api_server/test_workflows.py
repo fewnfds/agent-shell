@@ -18,7 +18,7 @@ def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     ]
 
 
-def test_parent_response_stream_policy_has_a_narrow_owner_and_preserves_literals(
+def test_parent_workflow_crud_owns_response_stream_policy_and_preserves_literals(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -41,17 +41,6 @@ def test_parent_response_stream_policy_has_a_narrow_owner_and_preserves_literals
             "</details>\n"
         )
         assert "response_stream_policy" not in child
-        assert client.get(
-            f"/api/workflows/{parent['id']}/response-stream-policy"
-        ).json() == default_policy
-        child_policy = client.get(
-            f"/api/workflows/{child['id']}/response-stream-policy"
-        )
-        assert child_policy.status_code == 409
-        assert child_policy.json()["detail"]["code"] == (
-            "workflow_response_stream_policy_parent_only"
-        )
-
         configured = deepcopy(default_policy)
         configured["queue"]["mode"] = "strict_source"
         configured["assistant_text"]["live_wrapper"] = {
@@ -61,29 +50,24 @@ def test_parent_response_stream_policy_has_a_narrow_owner_and_preserves_literals
         configured["source_overrides"] = [
             {"workflow_node_id": "agent", "visibility": "activity_only"}
         ]
-        saved = client.put(
-            f"/api/workflows/{parent['id']}/response-stream-policy",
-            json=configured,
-        )
-        assert saved.status_code == 200, saved.text
-        assert saved.json() == configured
-
-        stale_metadata_payload = {
+        workflow_payload = {
             key: parent[key]
             for key in (
                 "name",
                 "workflow_role",
                 "description",
+                "checkpointer_id",
+                "workflow_event_output_id",
+                "cancel_on_upstream_termination",
+                "recursion_limit",
+                "execution_timeout_seconds",
+                "max_concurrency",
             )
         }
-        stale_metadata_payload["description"] = "Metadata only."
-        stale_metadata_payload["response_stream_policy"] = default_policy
-        metadata = client.put(
-            f"/api/workflows/{parent['id']}",
-            json=stale_metadata_payload,
-        )
-        assert metadata.status_code == 200, metadata.text
-        assert metadata.json()["response_stream_policy"] == configured
+        workflow_payload["response_stream_policy"] = configured
+        saved = client.put(f"/api/workflows/{parent['id']}", json=workflow_payload)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["response_stream_policy"] == configured
 
         copied = client.post(
             f"/api/workflows/{parent['id']}/copy",
@@ -96,10 +80,9 @@ def test_parent_response_stream_policy_has_a_narrow_owner_and_preserves_literals
         missing_source["source_overrides"] = [
             {"workflow_node_id": "missing", "visibility": "hidden"}
         ]
-        rejected = client.put(
-            f"/api/workflows/{parent['id']}/response-stream-policy",
-            json=missing_source,
-        )
+        invalid_payload = deepcopy(workflow_payload)
+        invalid_payload["response_stream_policy"] = missing_source
+        rejected = client.put(f"/api/workflows/{parent['id']}", json=invalid_payload)
         assert rejected.status_code == 422
         assert rejected.json()["detail"]["code"] == (
             "workflow_response_stream_source_not_found"
@@ -148,8 +131,12 @@ def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
         policy = parent["response_stream_policy"]
         policy["queue"]["successor_grace_seconds"] = -1
         invalid = client.put(
-            f"/api/workflows/{parent['id']}/response-stream-policy",
-            json=policy,
+            f"/api/workflows/{parent['id']}",
+            json={
+                "name": parent["name"],
+                "workflow_role": "parent",
+                "response_stream_policy": policy,
+            },
         )
         duplicate = deepcopy(parent["response_stream_policy"])
         duplicate["source_overrides"] = [
@@ -157,8 +144,12 @@ def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
             {"workflow_node_id": "agent", "visibility": "activity_only"},
         ]
         duplicate_response = client.put(
-            f"/api/workflows/{parent['id']}/response-stream-policy",
-            json=duplicate,
+            f"/api/workflows/{parent['id']}",
+            json={
+                "name": parent["name"],
+                "workflow_role": "parent",
+                "response_stream_policy": duplicate,
+            },
         )
         child_create = client.post(
             "/api/workflows",
@@ -170,13 +161,9 @@ def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
         )
 
     assert invalid.status_code == 422
-    assert invalid.json()["detail"]["code"] == (
-        "workflow_response_stream_policy_invalid"
-    )
+    assert invalid.json()["detail"]["code"] == "workflow_invalid"
     assert duplicate_response.status_code == 422
-    assert duplicate_response.json()["detail"]["code"] == (
-        "workflow_response_stream_policy_invalid"
-    )
+    assert duplicate_response.json()["detail"]["code"] == "workflow_invalid"
     assert child_create.status_code == 422
     assert child_create.json()["detail"]["code"] == "workflow_invalid"
 

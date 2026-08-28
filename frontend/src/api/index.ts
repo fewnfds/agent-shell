@@ -46,7 +46,6 @@ import type {
   WorkflowNodeCatalogItem,
   WorkflowPayload,
   WorkflowRole,
-  ResponseStreamPolicy,
   ManagedArchivePreview,
   ManagedDirectory,
   ManagedFileUploadResult,
@@ -313,22 +312,6 @@ export const managementApi = {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
-  },
-
-  getResponseStreamPolicy(id: string): Promise<ResponseStreamPolicy> {
-    return managementRequest(
-      `${recordPath('/api/workflows', id)}/response-stream-policy`,
-    )
-  },
-
-  updateResponseStreamPolicy(
-    id: string,
-    payload: ResponseStreamPolicy,
-  ): Promise<ResponseStreamPolicy> {
-    return managementRequest(
-      `${recordPath('/api/workflows', id)}/response-stream-policy`,
-      { method: 'PUT', body: JSON.stringify(payload) },
-    )
   },
 
   deleteWorkflow(id: string): Promise<{ ok: boolean }> {

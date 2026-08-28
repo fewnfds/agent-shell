@@ -14,7 +14,6 @@ const TerminologyPage = () => import('@/pages/TerminologyPage.vue')
 const WorkflowsPage = () => import('@/pages/WorkflowsPage.vue')
 const WorkflowEditorPage = () => import('@/pages/WorkflowEditorPage.vue')
 const WorkflowLifecyclesPage = () => import('@/pages/WorkflowLifecyclesPage.vue')
-const WorkflowResponseStreamPage = () => import('@/pages/WorkflowResponseStreamPage.vue')
 const ModelMappingPage = () => import('@/pages/ModelMappingPage.vue')
 
 export const router = createRouter({
@@ -51,11 +50,6 @@ export const router = createRouter({
       path: '/workflows/:id/editor',
       component: WorkflowEditorPage,
       meta: { layout: 'workflow', titleKey: 'workflows.editor.title' },
-    },
-    {
-      path: '/workflows/:id/response-stream',
-      component: WorkflowResponseStreamPage,
-      meta: { titleKey: 'workflows.responseStream.title' },
     },
     { path: '/agents', redirect: '/agents/main' },
     { path: '/agents/main', component: MainAgentPage, meta: { titleKey: 'navigation.agents' } },

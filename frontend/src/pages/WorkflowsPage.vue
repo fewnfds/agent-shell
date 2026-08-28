@@ -1,25 +1,32 @@
 <script setup lang="ts">
-import { LteAlert, LteButton, LteTextarea } from '@adminlte/vue'
+import { LteAlert, LteTextarea } from '@adminlte/vue'
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { managementApi, type ConfigurationSummary, type ValidationReport, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
+import { managementApi, type ConfigurationSummary, type ResponseStreamPolicy, type ValidationReport, type Workflow, type WorkflowGraphNode, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
+import ResponseStreamPolicyEditor from '@/components/ResponseStreamPolicyEditor.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useConfigurationResource } from '@/composables/useConfigurationResource'
+import { useManagementError } from '@/composables/useManagementError'
+import { cloneResponseStreamPolicy, defaultResponseStreamPolicy } from '@/domain/responseStreamPolicy'
 
 const props = defineProps<{ workflowRole: WorkflowRole }>()
 const { t } = useI18n()
 const router = useRouter()
+const managementError = useManagementError()
 const checkpointers = ref<ConfigurationSummary[]>([])
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
+const responseStreamGraphNodes = ref<WorkflowGraphNode[]>([])
+const responseStreamSourcesError = ref('')
+let responseStreamGraphSequence = 0
 
 function pagePath(): string {
   return `/workflows/${props.workflowRole === 'parent' ? 'parents' : 'children'}`
@@ -31,10 +38,27 @@ function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: re
   ))
 }
 
-type WorkflowResource = WorkflowPayload & Pick<Workflow, 'id' | 'enabled'>
+type WorkflowResource = Omit<WorkflowPayload, 'response_stream_policy'>
+  & Pick<Workflow, 'id' | 'enabled'>
+  & { response_stream_policy: ResponseStreamPolicy | null }
 
 function blankWorkflow(): WorkflowResource {
-  return { id: '', name: '', workflow_role: props.workflowRole, description: '', checkpointer_id: null, workflow_event_output_id: null, cancel_on_upstream_termination: true, recursion_limit: 1_000_000, execution_timeout_seconds: 1_200, max_concurrency: 100, enabled: false }
+  return {
+    id: '',
+    name: '',
+    workflow_role: props.workflowRole,
+    description: '',
+    checkpointer_id: null,
+    workflow_event_output_id: null,
+    cancel_on_upstream_termination: true,
+    recursion_limit: 1_000_000,
+    execution_timeout_seconds: 1_200,
+    max_concurrency: 100,
+    response_stream_policy: props.workflowRole === 'parent'
+      ? defaultResponseStreamPolicy()
+      : null,
+    enabled: false,
+  }
 }
 
 function normalizeWorkflow(value: unknown): WorkflowResource {
@@ -51,12 +75,17 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
     execution_timeout_seconds: workflow.execution_timeout_seconds ?? defaults.execution_timeout_seconds,
     max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
+    response_stream_policy: props.workflowRole === 'parent'
+      ? cloneResponseStreamPolicy(
+          workflow.response_stream_policy ?? defaultResponseStreamPolicy(),
+        )
+      : null,
     enabled: workflow.enabled ?? false,
   }
 }
 
 function toPayload(workflow: WorkflowResource): WorkflowPayload {
-  return {
+  const payload: WorkflowPayload = {
     name: workflow.name.trim(),
     workflow_role: props.workflowRole,
     description: workflow.description.trim(),
@@ -67,6 +96,12 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     execution_timeout_seconds: Number(workflow.execution_timeout_seconds),
     max_concurrency: Number(workflow.max_concurrency),
   }
+  if (props.workflowRole === 'parent' && workflow.response_stream_policy) {
+    payload.response_stream_policy = cloneResponseStreamPolicy(
+      workflow.response_stream_policy,
+    )
+  }
+  return payload
 }
 
 const {
@@ -180,14 +215,25 @@ function editGraph(): void {
   }
 }
 
-function editResponseStream(): void {
-  if (selectedId.value && props.workflowRole === 'parent') {
-    void router.push(
-      `/workflows/${encodeURIComponent(selectedId.value)}/response-stream`,
-    )
+async function loadResponseStreamGraph(workflowId: string): Promise<void> {
+  const sequence = ++responseStreamGraphSequence
+  responseStreamGraphNodes.value = []
+  responseStreamSourcesError.value = ''
+  if (!workflowId || props.workflowRole !== 'parent') return
+  try {
+    const graph = await managementApi.getWorkflowGraph(workflowId)
+    if (sequence !== responseStreamGraphSequence) return
+    responseStreamGraphNodes.value = graph.definition.nodes
+  } catch (cause) {
+    if (sequence !== responseStreamGraphSequence) return
+    responseStreamSourcesError.value = managementError.describe(
+      cause,
+      'workflows.responseStream.sourcesLoadFailed',
+    ).display
   }
 }
 
+watch(selectedId, (workflowId) => { void loadResponseStreamGraph(workflowId) })
 watch(() => props.workflowRole, () => { void loadWorkspace() })
 onMounted(() => { void loadWorkspace() })
 </script>
@@ -208,18 +254,7 @@ onMounted(() => { void loadWorkspace() })
         @edit="editGraph"
         @new="newWorkflow"
         @save="saveWorkflow"
-      >
-        <LteButton
-          v-if="props.workflowRole === 'parent'"
-          class="action-button"
-          :disabled="!selectedId || loading || saving || copying || deleting"
-          type="button"
-          @click="editResponseStream"
-        >
-          <i class="bi bi-broadcast" aria-hidden="true" />
-          {{ t('workflows.responseStream.action') }}
-        </LteButton>
-      </ConfigurationCrudActions>
+      />
     </template>
     <ConfigurationEditorLayout v-if="!loading" :loading="loading">
       <template #editor>
@@ -297,6 +332,13 @@ onMounted(() => { void loadWorkspace() })
             </div>
           </div>
         </div>
+        <ResponseStreamPolicyEditor
+          v-if="props.workflowRole === 'parent' && form.response_stream_policy"
+          v-model="form.response_stream_policy"
+          class="mt-3"
+          :graph-nodes="responseStreamGraphNodes"
+          :sources-error="responseStreamSourcesError"
+        />
       </template>
       <template #aside>
         <ValidationChecklist
