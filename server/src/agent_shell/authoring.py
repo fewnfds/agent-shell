@@ -12,6 +12,7 @@ from agent_shell.contracts import (
     FilesystemToolConfigs,
     FilesystemToolsBlock,
     PromptCachingBlock,
+    ResponseStreamSchedulingBlock,
     SKILL_PROMPT_FIELDS,
     SummarizationBlock,
 )
@@ -327,6 +328,9 @@ _EDITOR_DEFAULTS = {
         mode="json",
         exclude={"name"},
     ),
+    "response_stream_scheduling": ResponseStreamSchedulingBlock(
+        name="Response Stream Scheduling"
+    ).model_dump(mode="json", exclude={"name"}),
     "filesystem": {
         "system_prompt": FILESYSTEM_EDITOR_SYSTEM_PROMPT,
     },

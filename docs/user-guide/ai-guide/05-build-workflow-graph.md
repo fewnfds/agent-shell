@@ -44,6 +44,7 @@ Workflow metadata 还可以保存：
 
 - `checkpointer_id`：可空 Checkpointer Component reference；
 - `workflow_event_output_id`：可空 Workflow Event Output reference；
+- `response_stream_scheduling_id`：仅 Parent Run Workflow 可用的 Response Stream Scheduling Component reference；
 - `cancel_on_upstream_termination`：默认 `true`；
 - `recursion_limit`：默认 `1000000`；
 - `execution_timeout_seconds`：默认 `1200`；
@@ -76,6 +77,26 @@ POST /api/blocks/checkpointer
 ```
 
 `durability` 可以是 `exit`、`async` 或 `sync`，默认是 `async`。保存 response UUID，再把它写入 Workflow metadata 的 `checkpointer_id`。该选择会增加 checkpoint 持久化和存储成本。
+
+需要调整公开响应的排队和排水时，先创建 Response Stream Scheduling Component：
+
+```http
+POST /api/blocks/response-stream-scheduling
+```
+
+```json
+{
+  "name": "Fair response stream",
+  "queue": {
+    "strategy": "request",
+    "idle_timeout_seconds": 2,
+    "max_batch_kb": 64,
+    "send_interval_seconds": 0.05
+  }
+}
+```
+
+把 response UUID 写入 Parent Workflow metadata 的 `response_stream_scheduling_id`。省略或提交 `null` 时使用内置默认；Child Run Workflow 不接受该引用。该组件只排序和节流 Event Output 已批准的文本，不决定事件可见性或文本修饰。
 
 需要公开 Command、Task Dispatcher 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
 

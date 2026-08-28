@@ -41,6 +41,8 @@ Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选
 
 检查点保存器也是 Workflow-owned 组件。Workflow 通过可空 `checkpointer_id` 选择一个配置，默认【无】；组件只有 `name` 和 `durability=exit|async|sync`，默认 `async`。选择后，Workflow root 使用官方 `AsyncSqliteSaver`，其 Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承 saver；parent 与 background child Workflow 分别读取自己的配置。未选择时最终 State、Store、Lifecycle、Run/Event/Model Request History、background Run、Tracing、Diagnostics 和 usage 继续工作，只缺少 Checkpoint State 与 Checkpoint Thread。当前软件不提供 Resume 或灾难恢复入口。字段见[检查点保存器](../wizard-pages/checkpointer-config.md)。
 
+Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。引用挂在每个 Lifecycle 唯一的 Parent Workflow 上，但调度语义覆盖该 Lifecycle 的公开响应。Child Run Workflow 不装配该组件。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
+
 Command 组件保存一个 `workflow-node/command` Python 扩展引用和普通 config。扩展通过同步 `create_command()` 工厂物化 `async command(state, runtime)`；用户在画布 Branch Edge 上直接填写业务分支 key，command 通过 `activate` 返回零个、一个或多个完全匹配的 key，并可通过 `update` 返回 State 局部更新；空列表表示当前路径自然结束，平台不保留任何兜底 key 语义。
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。
 

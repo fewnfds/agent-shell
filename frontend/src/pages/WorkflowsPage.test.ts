@@ -15,7 +15,6 @@ import {
   workflowCanvasToDocument,
   workflowDocumentToCanvas,
 } from '@/domain/workflowGraph'
-import { defaultResponseStreamPolicy } from '@/domain/responseStreamPolicy'
 import { en } from '@/locales/en'
 
 import WorkflowsPage from './WorkflowsPage.vue'
@@ -31,23 +30,30 @@ const workflow: Workflow = {
   description: 'Runs the research agent.',
   checkpointer_id: null,
   workflow_event_output_id: null,
+  response_stream_scheduling_id: null,
   cancel_on_upstream_termination: true,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,
-  response_stream_policy: defaultResponseStreamPolicy(),
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
 const checkpointer: SavedBlock = {
   id: 'checkpointer-1', name: 'Async checkpoints', durability: 'async',
 }
+const responseStreamScheduling: SavedBlock = {
+  id: 'response-stream-scheduling-1', name: 'Fair response stream',
+}
 
 function mockComponentLists(workflows: Workflow[] = []) {
   const options = vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
     repository_id: '00000000-0000-4000-8000-000000000099',
     repository_revision: 1,
-    components: { checkpointer: [checkpointer], 'workflow-event-output': [eventOutput] },
+    components: {
+      checkpointer: [checkpointer],
+      'workflow-event-output': [eventOutput],
+      'response-stream-scheduling': [responseStreamScheduling],
+    },
     main_agents: [],
     subagents: [],
     workflows,
@@ -61,15 +67,6 @@ function mockComponentLists(workflows: Workflow[] = []) {
     valid: true,
     stage: 'repository_load',
     issues: [],
-  })
-  vi.spyOn(managementApi, 'getWorkflowGraph').mockResolvedValue({
-    definition: {
-      schema_version: 1,
-      state_contract: 'agent-shell.workflow.agent-invocations.v1',
-      nodes: [],
-      edges: [],
-    },
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
   })
   return options
 }
@@ -119,8 +116,11 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Edit')
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
-    expect(wrapper.text()).toContain('Response Stream')
-    expect(wrapper.find('[data-testid="response-stream-policy-editor"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Response Stream Scheduling')
+    expect(wrapper.find('[data-editor="response-stream-scheduling"]').exists()).toBe(false)
+    const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
+    expect(assemblyColumns).toHaveLength(3)
+    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-4'))).toBe(true)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await flushPromises()
 
@@ -128,6 +128,7 @@ describe('WorkflowsPage', () => {
     await wrapper.get('textarea').setValue('New description')
     await wrapper.get('#workflow-checkpointer').setValue(checkpointer.id)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
+    await wrapper.get('#workflow-response-stream-scheduling').setValue(responseStreamScheduling.id)
     const terminateWithUpstream = wrapper.get('#workflow-cancel-on-upstream-termination')
     expect(wrapper.text()).toContain('Terminate when the client disconnects')
     expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
@@ -137,7 +138,6 @@ describe('WorkflowsPage', () => {
     await runtimeLimits[0]!.setValue(250)
     await runtimeLimits[1]!.setValue(90_000)
     await runtimeLimits[2]!.setValue(300)
-    await wrapper.get('#response-queue-mode').setValue('strict_source')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
 
@@ -147,14 +147,11 @@ describe('WorkflowsPage', () => {
       description: 'New description',
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
+      response_stream_scheduling_id: responseStreamScheduling.id,
       cancel_on_upstream_termination: false,
       recursion_limit: 250,
       execution_timeout_seconds: 90_000,
       max_concurrency: 300,
-      response_stream_policy: {
-        ...defaultResponseStreamPolicy(),
-        queue: { mode: 'strict_source', successor_grace_seconds: 2 },
-      },
     })
 
     wrapper.unmount()
@@ -228,7 +225,10 @@ describe('WorkflowsPage', () => {
 
     expect(managementApi.getConfigurationOptions).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('Terminate when the parent Run is cancelled or fails')
-    expect(wrapper.text()).not.toContain('Response Stream')
+    expect(wrapper.find('#workflow-response-stream-scheduling').exists()).toBe(false)
+    const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
+    expect(assemblyColumns).toHaveLength(2)
+    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-6'))).toBe(true)
     expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await wrapper.get('[data-field="record-name"]').setValue('Child Workflow')
@@ -254,6 +254,7 @@ describe('WorkflowsPage', () => {
       ...workflow,
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
+      response_stream_scheduling_id: null,
       cancel_on_upstream_termination: true,
     }
     mockComponentLists([configured])
@@ -280,11 +281,11 @@ describe('WorkflowsPage', () => {
       description: workflow.description,
       checkpointer_id: null,
       workflow_event_output_id: eventOutput.id,
+      response_stream_scheduling_id: null,
       cancel_on_upstream_termination: true,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,
-      response_stream_policy: defaultResponseStreamPolicy(),
     })
     wrapper.unmount()
   })
@@ -394,7 +395,11 @@ describe('WorkflowsPage', () => {
     options.mockResolvedValue({
       repository_id: '00000000-0000-4000-8000-000000000099',
       repository_revision: 1,
-      components: { checkpointer: [checkpointer], 'workflow-event-output': [eventOutput] },
+      components: {
+        checkpointer: [checkpointer],
+        'workflow-event-output': [eventOutput],
+        'response-stream-scheduling': [responseStreamScheduling],
+      },
       main_agents: [],
       subagents: [],
       workflows: [],

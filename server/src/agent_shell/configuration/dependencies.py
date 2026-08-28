@@ -227,6 +227,16 @@ def _workflow_references(
             target_component_type="workflow-event-output",
             location=("workflow_event_output_id",),
         )
+    scheduling_id = payload.get("response_stream_scheduling_id")
+    if scheduling_id is not None:
+        yield _reference(
+            owner,
+            path="response_stream_scheduling_id",
+            target_id=scheduling_id,
+            target_kind="component",
+            target_component_type="response-stream-scheduling",
+            location=("response_stream_scheduling_id",),
+        )
     definition = payload.get("definition", {})
     if not isinstance(definition, dict):
         return

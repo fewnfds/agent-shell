@@ -77,6 +77,7 @@ type EditorModule = { default: Component }
 
 const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   checkpointer: () => import('@/editors/CheckpointerEditor.vue'),
+  'response-stream-scheduling': () => import('@/editors/ResponseStreamSchedulingEditor.vue'),
   'model-requirement': () => import('@/editors/ModelRequirementEditor.vue'),
   'system-prompt': () => import('@/editors/SystemPromptEditor.vue'),
   filesystem: () => import('@/editors/FilesystemEditor.vue'),

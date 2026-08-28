@@ -14,10 +14,6 @@ from agent_shell.api.configuration_collections import (
 )
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.workflows import WorkflowStore
-from agent_shell.response_stream_policy import (
-    ResponseStreamPolicy,
-    missing_response_stream_source_ids,
-)
 from agent_shell.validation import report_from_validation_error
 from agent_shell.validation.models import ValidationReport, validation_failure_detail
 from agent_shell.validation.service import ConfigurationValidationService
@@ -60,7 +56,7 @@ def _validated(payload: dict) -> dict:
     try:
         validated = WorkflowDefinition.model_validate(payload).model_dump(mode="json")
         if validated["workflow_role"] == "child":
-            validated.pop("response_stream_policy", None)
+            validated.pop("response_stream_scheduling_id", None)
         return validated
     except ValidationError as exc:
         raise management_error(
@@ -105,27 +101,17 @@ def _save(
             message_key="errors.workflowEventOutputNotFound",
             message="The selected event output component does not exist.",
         )
-    if validated["workflow_role"] == "parent":
-        policy = ResponseStreamPolicy.model_validate(
-            validated["response_stream_policy"]
+    scheduling_id = validated.get("response_stream_scheduling_id")
+    if (
+        scheduling_id is not None
+        and blocks.get_block("response-stream-scheduling", scheduling_id) is None
+    ):
+        raise management_error(
+            422,
+            code="workflow_response_stream_scheduling_not_found",
+            message_key="errors.workflowResponseStreamSchedulingNotFound",
+            message="The selected Response Stream Scheduling component does not exist.",
         )
-        document = store.get_graph(item_id)
-        missing_sources = missing_response_stream_source_ids(
-            policy,
-            (
-                document.definition
-                if document is not None
-                else WorkflowGraphDefinitionV1()
-            ),
-        )
-        if missing_sources:
-            raise management_error(
-                422,
-                code="workflow_response_stream_source_not_found",
-                message_key="errors.workflowResponseStreamSourceNotFound",
-                message="A Response Stream source override does not reference an executable Workflow Node.",
-                message_args={"workflow_node_id": missing_sources[0]},
-            )
     try:
         store.save_item(
             item_id,

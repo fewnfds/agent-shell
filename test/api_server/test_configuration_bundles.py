@@ -79,6 +79,19 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             json={"name": "Portable checkpoints", "durability": "sync"},
         )
         assert checkpointer_response.status_code == 200, checkpointer_response.text
+        scheduling_response = source.post(
+            "/api/blocks/response-stream-scheduling",
+            json={
+                "name": "Portable response scheduling",
+                "queue": {
+                    "strategy": "node_invocation",
+                    "idle_timeout_seconds": 1.5,
+                    "max_batch_kb": 48,
+                    "send_interval_seconds": 0.1,
+                },
+            },
+        )
+        assert scheduling_response.status_code == 200, scheduling_response.text
         configured_workflow = source.put(
             f"/api/workflows/{workflow['id']}",
             json={
@@ -95,6 +108,7 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
                     )
                 },
                 "checkpointer_id": checkpointer_response.json()["id"],
+                "response_stream_scheduling_id": scheduling_response.json()["id"],
             },
         )
         assert configured_workflow.status_code == 200, configured_workflow.text
@@ -215,6 +229,14 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
     imported_checkpointer = target_config["components"]["checkpointer"][0]
     assert imported_workflow["checkpointer_id"] == imported_checkpointer["id"]
     assert imported_checkpointer["durability"] == "sync"
+    assert imported_workflow["response_stream_scheduling_id"] in target_ids
+    imported_scheduling = target_config["components"][
+        "response-stream-scheduling"
+    ][0]
+    assert imported_workflow["response_stream_scheduling_id"] == (
+        imported_scheduling["id"]
+    )
+    assert imported_scheduling["queue"]["strategy"] == "node_invocation"
     imported_main_id = next(
         node["config"]["main_agent_id"]
         for node in imported_workflow["definition"]["nodes"]

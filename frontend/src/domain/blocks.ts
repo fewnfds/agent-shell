@@ -15,6 +15,7 @@ import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
 import { taskDispatcherAdapter } from './blocks/taskDispatcher'
 import { checkpointerAdapter } from './blocks/checkpointer'
+import { responseStreamSchedulingAdapter } from './blocks/responseStreamScheduling'
 
 export type {
   CustomMiddlewareCatalogItem,
@@ -85,6 +86,10 @@ export type {
   CheckpointDurability,
   CheckpointerDraft,
 } from './blocks/checkpointer'
+export type {
+  ResponseStreamSchedulingDefaults,
+  ResponseStreamSchedulingDraft,
+} from './blocks/responseStreamScheduling'
 
 export {
   customMiddlewareAdapter,
@@ -104,6 +109,7 @@ export {
   commandAdapter,
   taskDispatcherAdapter,
   checkpointerAdapter,
+  responseStreamSchedulingAdapter,
 }
 
 export const blockTypes = [
@@ -126,6 +132,7 @@ export const managedComponentTypes = [
   ...blockTypes,
   'checkpointer',
   'workflow-event-output',
+  'response-stream-scheduling',
   'command',
   'task-dispatcher',
 ] as const
@@ -146,6 +153,7 @@ export const blockAdapters = {
   'prompt-caching': promptCachingAdapter,
   checkpointer: checkpointerAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
+  'response-stream-scheduling': responseStreamSchedulingAdapter,
   'command': commandAdapter,
   'task-dispatcher': taskDispatcherAdapter,
 } as const

@@ -18,38 +18,37 @@ def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     ]
 
 
-def test_parent_workflow_crud_owns_response_stream_policy_and_preserves_literals(
+def test_response_stream_scheduling_component_is_referenced_by_parent_workflow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
         parent = create_workflow(client, name="Stream owner")
         child = create_workflow(
             client,
             name="Silent child",
             workflow_role="child",
         )
-        document = save_linear_workflow_graph(client, parent, main_agent)
-
-        default_policy = parent["response_stream_policy"]
-        assert default_policy["queue"] == {
-            "mode": "fair_turns",
-            "successor_grace_seconds": 2.0,
-        }
-        assert default_policy["assistant_text"]["delivery"] == "live"
-        assert default_policy["reasoning"]["live_wrapper"]["end"] == (
-            "</details>\n"
+        assert parent["response_stream_scheduling_id"] is None
+        assert "response_stream_scheduling_id" not in child
+        component = client.post(
+            "/api/blocks/response-stream-scheduling",
+            json={
+                "name": "Fair lifecycle stream",
+                "queue": {
+                    "strategy": "node_invocation",
+                    "idle_timeout_seconds": 1.5,
+                    "max_batch_kb": 32,
+                    "send_interval_seconds": 0.1,
+                },
+            },
         )
-        assert "response_stream_policy" not in child
-        configured = deepcopy(default_policy)
-        configured["queue"]["mode"] = "strict_source"
-        configured["assistant_text"]["live_wrapper"] = {
-            "start": "  BEGIN\n",
-            "end": "\nEND  ",
+        assert component.status_code == 200, component.text
+        assert component.json()["queue"] == {
+            "strategy": "node_invocation",
+            "idle_timeout_seconds": 1.5,
+            "max_batch_kb": 32.0,
+            "send_interval_seconds": 0.1,
         }
-        configured["source_overrides"] = [
-            {"workflow_node_id": "agent", "visibility": "activity_only"}
-        ]
         workflow_payload = {
             key: parent[key]
             for key in (
@@ -64,91 +63,44 @@ def test_parent_workflow_crud_owns_response_stream_policy_and_preserves_literals
                 "max_concurrency",
             )
         }
-        workflow_payload["response_stream_policy"] = configured
+        workflow_payload["response_stream_scheduling_id"] = component.json()["id"]
         saved = client.put(f"/api/workflows/{parent['id']}", json=workflow_payload)
         assert saved.status_code == 200, saved.text
-        assert saved.json()["response_stream_policy"] == configured
+        assert saved.json()["response_stream_scheduling_id"] == component.json()["id"]
 
         copied = client.post(
             f"/api/workflows/{parent['id']}/copy",
             json={"name": "Copied stream owner"},
         )
         assert copied.status_code == 200, copied.text
-        assert copied.json()["response_stream_policy"] == configured
-
-        missing_source = deepcopy(configured)
-        missing_source["source_overrides"] = [
-            {"workflow_node_id": "missing", "visibility": "hidden"}
-        ]
-        invalid_payload = deepcopy(workflow_payload)
-        invalid_payload["response_stream_policy"] = missing_source
-        rejected = client.put(f"/api/workflows/{parent['id']}", json=invalid_payload)
-        assert rejected.status_code == 422
-        assert rejected.json()["detail"]["code"] == (
-            "workflow_response_stream_source_not_found"
-        )
-
-        renamed = deepcopy(document)
-        agent_node = next(
-            node
-            for node in renamed["definition"]["nodes"]
-            if node["id"] == "agent"
-        )
-        agent_node["id"] = "agent-renamed"
-        for edge in renamed["definition"]["edges"]:
-            if edge["source"] == "agent":
-                edge["source"] = "agent-renamed"
-            if edge["target"] == "agent":
-                edge["target"] = "agent-renamed"
-        renamed["layout"]["nodes"]["agent-renamed"] = renamed["layout"][
-            "nodes"
-        ].pop("agent")
-        report = client.post(
-            f"/api/workflows/{parent['id']}/validate",
-            json=renamed,
-        )
-        assert report.status_code == 200, report.text
-        issue = next(
-            item
-            for item in report.json()["issues"]
-            if item["code"] == "workflow.response_stream_source_not_found"
-        )
-        assert issue["path"] == (
-            "response_stream_policy.source_overrides[0].workflow_node_id"
-        )
-        published = client.put(
-            f"/api/workflows/{parent['id']}/graph",
-            json=renamed,
-        )
-        assert published.status_code == 422
+        assert copied.json()["response_stream_scheduling_id"] == component.json()["id"]
 
 
-def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
+def test_response_stream_scheduling_rejects_invalid_component_and_workflow_ownership(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         parent = create_workflow(client, name="Policy validation")
-        policy = parent["response_stream_policy"]
-        policy["queue"]["successor_grace_seconds"] = -1
-        invalid = client.put(
-            f"/api/workflows/{parent['id']}",
+        invalid = client.post(
+            "/api/blocks/response-stream-scheduling",
             json={
-                "name": parent["name"],
-                "workflow_role": "parent",
-                "response_stream_policy": policy,
+                "name": "Invalid scheduling",
+                "queue": {"idle_timeout_seconds": -1},
             },
         )
-        duplicate = deepcopy(parent["response_stream_policy"])
-        duplicate["source_overrides"] = [
-            {"workflow_node_id": "agent", "visibility": "hidden"},
-            {"workflow_node_id": "agent", "visibility": "activity_only"},
-        ]
-        duplicate_response = client.put(
+        configured = client.post(
+            "/api/blocks/response-stream-scheduling",
+            json={"name": "Child forbidden scheduling"},
+        )
+        assert configured.status_code == 200, configured.text
+        missing_reference = client.put(
             f"/api/workflows/{parent['id']}",
             json={
                 "name": parent["name"],
                 "workflow_role": "parent",
-                "response_stream_policy": duplicate,
+                "response_stream_scheduling_id": (
+                    "00000000-0000-4000-8000-000000000099"
+                ),
             },
         )
         child_create = client.post(
@@ -156,16 +108,27 @@ def test_response_stream_policy_rejects_invalid_shapes_and_child_ownership(
             json={
                 "name": "Invalid child owner",
                 "workflow_role": "child",
-                "response_stream_policy": parent["response_stream_policy"],
+                "response_stream_scheduling_id": configured.json()["id"],
+            },
+        )
+        removed_inline_owner = client.put(
+            f"/api/workflows/{parent['id']}",
+            json={
+                "name": parent["name"],
+                "workflow_role": "parent",
+                "response_stream_policy": {"queue": {"strategy": "request"}},
             },
         )
 
     assert invalid.status_code == 422
-    assert invalid.json()["detail"]["code"] == "workflow_invalid"
-    assert duplicate_response.status_code == 422
-    assert duplicate_response.json()["detail"]["code"] == "workflow_invalid"
+    assert missing_reference.status_code == 422
+    assert missing_reference.json()["detail"]["code"] == (
+        "workflow_response_stream_scheduling_not_found"
+    )
     assert child_create.status_code == 422
     assert child_create.json()["detail"]["code"] == "workflow_invalid"
+    assert removed_inline_owner.status_code == 422
+    assert removed_inline_owner.json()["detail"]["code"] == "workflow_invalid"
 
 
 def test_workflow_runtime_boundaries_are_managed(

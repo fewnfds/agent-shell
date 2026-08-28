@@ -13,29 +13,49 @@
 # data is the complete Python payload. Use message / output / arguments / data_json for
 # bounded, normalized text and check event_type before reading optional fields.
 #
-# This example renders every supported Agent event as an HTML
-# <details type="agent"> block. Edit the branches to format or filter events;
-# returning an empty string filters an event. The complete event contract is
-# documented in docs/wizard-pages/agent-event-output-config.md.
+# This example renders every supported Agent event as HTML. assistant_text and
+# reasoning use additive start/delta/end phases, so the same code handles a
+# token stream and a non-streaming whole message without repeating wrappers.
+# Edit the branches to format or filter events; returning an empty string
+# filters an event. The complete contract is documented in
+# docs/wizard-pages/agent-event-output-config.md.
 # Return an empty string from a branch to filter that event.
 
 def _details(summary, message):
     return f'<details type="agent"><summary>*{summary}*</summary>{message}</details>\n'
+
+def _stream(event, summary):
+    if event["phase"] == "start":
+        return f'<details type="agent"><summary>*{summary}*</summary>'
+    if event["phase"] == "delta":
+        return event["message"]
+    if event["phase"] == "end":
+        return "</details>\n"
+    return ""
 
 def output(event):
     event_type = event["event_type"]
     agent_name = event["agent_name"]
     message = event["message"]
     if event_type == "assistant_text":
-        return _details(f"{agent_name} response", message)
+        if isinstance(event["data"], dict) and event["data"].get("type") in {
+            "image", "audio", "video", "file",
+        }:
+            return _details(f"{agent_name} response", message)
+        return _stream(event, f"{agent_name} response")
     if event_type == "reasoning":
-        return _details(f"{agent_name} reasoning", message)
+        return _stream(event, f"{agent_name} reasoning")
     if event_type == "tool_call":
         return _details(f'{agent_name} Tool {event["tool_name"]} call', message)
     if event_type == "tool_result":
         return _details(f'{agent_name} Tool {event["tool_name"]} result', message)
     if event_type == "tool_error":
         return _details(f'{agent_name} Tool {event["tool_name"]} error', message)
+    if event_type == "tool_progress":
+        return _details(
+            f'{agent_name} Tool {event["tool_name"]} {event["status"]}',
+            message,
+        )
     if event_type == "subagent":
         return _details(
             f'Subagent {event["subagent_name"]} {event["status"]}',

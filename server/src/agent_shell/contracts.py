@@ -28,6 +28,7 @@ from agent_shell.configuration.identity import ConfigurationId, ConfigurationNam
 from agent_shell.command import CommandBlock
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
+from agent_shell.response_stream_policy import ResponseQueuePolicy
 from agent_shell.storage.owned_paths import (
     is_reparse_point,
     require_data_root_relative_path,
@@ -187,6 +188,10 @@ CheckpointDurability = Literal["exit", "async", "sync"]
 
 class CheckpointerBlock(StrictBlock):
     durability: CheckpointDurability = "async"
+
+
+class ResponseStreamSchedulingBlock(StrictBlock):
+    queue: ResponseQueuePolicy = Field(default_factory=ResponseQueuePolicy)
 
 
 CredentialValue = Annotated[
@@ -914,6 +919,7 @@ BLOCK_CATALOG = PUBLIC_CAPABILITY_MANIFESTS
 WORKFLOW_COMPONENT_MODELS = {
     "checkpointer": CheckpointerBlock,
     "workflow-event-output": WorkflowEventOutputBlock,
+    "response-stream-scheduling": ResponseStreamSchedulingBlock,
     "command": CommandBlock,
     "task-dispatcher": TaskDispatcherBlock,
 }

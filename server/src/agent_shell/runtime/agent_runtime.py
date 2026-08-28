@@ -14,6 +14,7 @@ from agent_shell.contracts import (
     CheckpointerBlock,
     CheckpointDurability,
     FilesystemBlock,
+    ResponseStreamSchedulingBlock,
 )
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
@@ -40,6 +41,7 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.runtime.output_projection import (
     EventOutputError,
+    EventOutputProjectionStream,
     OutputProjector,
     WorkflowOutputProjector,
 )
@@ -393,7 +395,8 @@ class RunExecution:
                 )
 
         def frame_text(frames: list[PresentationFrame]) -> list[str]:
-            return [frame.text for frame in frames if frame.text]
+            text = "".join(frame.text for frame in frames if frame.text)
+            return [text] if text else []
 
         def project_input(
             event: OutputEvent | ModelCallBoundary,
@@ -405,17 +408,20 @@ class RunExecution:
                     observer(event)
             scheduler = self.response_scheduler
             assert scheduler is not None
-            return frame_text(
-                scheduler.submit(
+            frames: list[PresentationFrame] = []
+            for projected in scheduler.projection_stream.project(event):
+                frames.extend(scheduler.submit(
                     ResponseEventInput(
                         lifecycle_id=scheduler.lifecycle_id,
                         origin_run_id=scheduler.origin_run_id,
                         origin_workflow_id=scheduler.origin_workflow_id,
-                        event=event,
+                        event=projected.event,
+                        text=projected.text,
+                        segment_end_text=projected.segment_end_text,
                     ),
                     now=loop.time(),
-                )
-            )
+                ))
+            return frame_text(frames)
 
         def project_event(event: OutputEvent) -> list[str]:
             return project_input(event)
@@ -430,6 +436,8 @@ class RunExecution:
         def failure_output(error_code: str) -> list[str]:
             self.normalizer.abort_main_agent_messages()
             scheduler = self.response_scheduler
+            if scheduler is not None:
+                scheduler.projection_stream.discard()
             parts = (
                 frame_text(scheduler.abort())
                 if self.public_output and scheduler is not None
@@ -607,14 +615,24 @@ class RunExecution:
                     output = await stream.output()
                     self.final_state = dict(output) if isinstance(output, Mapping) else None
                     self.normalizer.close_main_agent_messages()
-                    final_parts = (
-                        frame_text(
-                            self.response_scheduler.finish(now=loop.time())
-                        )
-                        if self.public_output
-                        and self.response_scheduler is not None
-                        else []
-                    )
+                    final_parts: list[str] = []
+                    if self.public_output and self.response_scheduler is not None:
+                        scheduler = self.response_scheduler
+                        frames: list[PresentationFrame] = []
+                        for projected in scheduler.projection_stream.finish():
+                            frames.extend(scheduler.submit(
+                                ResponseEventInput(
+                                    lifecycle_id=scheduler.lifecycle_id,
+                                    origin_run_id=scheduler.origin_run_id,
+                                    origin_workflow_id=scheduler.origin_workflow_id,
+                                    event=projected.event,
+                                    text=projected.text,
+                                    segment_end_text=projected.segment_end_text,
+                                ),
+                                now=loop.time(),
+                            ))
+                        frames.extend(scheduler.finish(now=loop.time()))
+                        final_parts = frame_text(frames)
                     for rendered in final_parts:
                         if rendered:
                             with pause_execution_timeout():
@@ -630,6 +648,22 @@ class RunExecution:
             ):
                 if rendered:
                     yield rendered
+            while (
+                self.public_output
+                and self.response_scheduler is not None
+                and self.response_scheduler.has_pending_output
+            ):
+                deadline = self.response_scheduler.next_deadline()
+                if deadline is None:
+                    break
+                delay = max(0.0, deadline - loop.time())
+                if delay:
+                    await asyncio.sleep(delay)
+                for rendered in frame_text(
+                    self.response_scheduler.advance(now=loop.time())
+                ):
+                    if rendered:
+                        yield rendered
         except asyncio.CancelledError:
             if journal is not None:
                 journal.finish_open_spans(
@@ -637,6 +671,7 @@ class RunExecution:
                 )
             self.normalizer.abort_main_agent_messages()
             if self.response_scheduler is not None:
+                self.response_scheduler.projection_stream.discard()
                 self.response_scheduler.discard()
             await self.cancel()
             raise
@@ -983,8 +1018,8 @@ class AgentRuntime:
             tool_runtime=(built.tool_runtime if built is not None else None),
             media_response=MainAgentMediaResponse(self._media_outputs, request_id),
             response_scheduler=LifecycleResponseScheduler(
-                projector,
                 scheduler_policy,
+                projection_stream=EventOutputProjectionStream(projector),
                 lifecycle_id=lifecycle_identity,
                 origin_run_id=run_identity,
                 origin_workflow_id=workflow_identity,
@@ -1243,6 +1278,40 @@ class AgentRuntime:
                 "workflow_checkpoint_thread_unexpected",
                 "A checkpoint thread cannot be supplied when the Workflow has no Checkpointer.",
                 status_code=422,
+            )
+        response_stream_policy = ResponseStreamPolicy()
+        scheduling_id = workflow_identity.get("response_stream_scheduling_id")
+        if scheduling_id is not None:
+            stored_scheduling = (
+                self._blocks.get_block_internal(
+                    "response-stream-scheduling",
+                    str(scheduling_id),
+                )
+                if self._blocks is not None
+                else None
+            )
+            if stored_scheduling is None:
+                raise AgentRuntimeError(
+                    "workflow_response_stream_scheduling_not_found",
+                    "The selected Response Stream Scheduling component does not exist.",
+                    status_code=422,
+                )
+            try:
+                scheduling = ResponseStreamSchedulingBlock.model_validate(
+                    {
+                        key: value
+                        for key, value in stored_scheduling.items()
+                        if key != "id"
+                    }
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow_response_stream_scheduling_invalid",
+                    "The selected Response Stream Scheduling configuration is invalid.",
+                    status_code=422,
+                ) from exc
+            response_stream_policy = ResponseStreamPolicy(
+                queue=scheduling.queue.model_copy(deep=True)
             )
         owns_lifecycle = lifecycle_id is None
         if owns_lifecycle:
@@ -1632,7 +1701,5 @@ class AgentRuntime:
             public_output=public_output,
             command_runtime=command_runtime,
             task_dispatcher_runtime=task_dispatcher_runtime,
-            response_stream_policy=ResponseStreamPolicy.model_validate(
-                (workflow_snapshot or {}).get("response_stream_policy", {})
-            ),
+            response_stream_policy=response_stream_policy,
         )

@@ -40,6 +40,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
     }
     assert set(catalog["editor_defaults"]) == {
         "checkpointer",
+        "response_stream_scheduling",
         "filesystem",
         "filesystem_tools",
         "skill",
@@ -58,11 +59,20 @@ def test_health_catalog_and_readiness_are_small_and_current(
     assert [item["type"] for item in catalog["workflow_component_types"]] == [
         "checkpointer",
         "workflow-event-output",
+        "response-stream-scheduling",
         "command",
         "task-dispatcher",
     ]
     assert catalog["editor_defaults"]["checkpointer"] == {
         "durability": "async",
+    }
+    assert catalog["editor_defaults"]["response_stream_scheduling"] == {
+        "queue": {
+            "strategy": "request",
+            "idle_timeout_seconds": 2.0,
+            "max_batch_kb": 64.0,
+            "send_interval_seconds": 0.05,
+        }
     }
     by_type = {item["type"]: item for item in catalog["block_types"]}
     assert set(by_type["model-requirement"]) == {

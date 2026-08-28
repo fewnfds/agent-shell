@@ -16,3 +16,4 @@ export { default as WorkflowEventOutputEditor } from './WorkflowEventOutputEdito
 export { default as CommandEditor } from './CommandEditor.vue'
 export { default as TaskDispatcherEditor } from './TaskDispatcherEditor.vue'
 export { default as CheckpointerEditor } from './CheckpointerEditor.vue'
+export { default as ResponseStreamSchedulingEditor } from './ResponseStreamSchedulingEditor.vue'

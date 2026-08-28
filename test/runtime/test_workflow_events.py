@@ -25,19 +25,22 @@ def _workflow_output(event_name: str):
 
 
 def _schedule(scheduler, event: OutputEvent) -> list[str]:
-    return [
-        frame.text
-        for frame in scheduler.submit(
-            ResponseEventInput(
-                lifecycle_id="",
-                origin_run_id="",
-                origin_workflow_id="",
-                event=event,
-            ),
-            now=float(event.sequence),
+    frames = []
+    for projected in scheduler.projection_stream.project(event):
+        frames.extend(
+            scheduler.submit(
+                ResponseEventInput(
+                    lifecycle_id="",
+                    origin_run_id="",
+                    origin_workflow_id="",
+                    event=projected.event,
+                    text=projected.text,
+                    segment_end_text=projected.segment_end_text,
+                ),
+                now=float(event.sequence),
+            )
         )
-        if frame.text
-    ]
+    return [frame.text for frame in frames if frame.text]
 
 
 def _assistant_event(node_id: str, message: str, sequence: int) -> OutputEvent:

@@ -5,9 +5,11 @@ Workflow Event Output 是可复用的 Workflow 组件，不属于 Agent capabili
 它与 Agent Event Output 使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 必须只提供恰好一个同步单参 `def output(event)`，不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
 可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。`内置示例-default` 展示全部 Workflow-owned 事件；`内置示例-lifecycle-progress` 只展示 lifecycle 和 custom 进度，过滤 State snapshot、task、checkpoint、debug 与其他事件。
 
+非空返回值在这里确定后携带原事件的 request/invocation身份进入 Response Stream scheduler。调度器只排序和节流发送，不能再次按事件类型或 Workflow Node隐藏、替换、包装该文本，也不会自行生成 queued、waiting或 producing文案。需要可见运行状态时，由本组件对真实 lifecycle/custom等事件返回状态文本。
+
 内置示例使用与 Agent Event Output 相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
 `checkpoints`、`input`、`input.requested`、`debug` 和 `other` 分别保留分支。各分支都在同一个 `output(event)` 中按需处理；
-返回空字符串只过滤 OpenAI 响应投影，不改变已经产生的 LangGraph v3 event；该 event 是否出现在运行历史或 checkpoint 取决于独立观测与持久化边界。
+返回空字符串只过滤 OpenAI 响应投影，不改变已经产生的 LangGraph v3 event，也不会刷新当前输出原子的空闲倒计时；该 event 是否出现在运行历史或 checkpoint 取决于独立观测与持久化边界。
 
 下面是只投影 `values` 的最小示例；完整 10 分支源码位于 `examples/workflow-components/workflow-event-output/default/main.py`：
 

@@ -14,7 +14,7 @@ from agent_shell.runtime.agent_builder import _build_chat_model
 from agent_shell.runtime.agent_runtime import RunExecution
 
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.output_projection import OutputProjector
+from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
 from agent_shell.runtime.limits import (
@@ -48,6 +48,15 @@ def output_renderer(
         event_type = str(event["event_type"])
         if event_type not in resolved_enabled:
             return ""
+        if (
+            event_type in {"assistant_text", "reasoning"}
+            and event["phase"] != "delta"
+            and not (
+                isinstance(event["data"], dict)
+                and event["data"].get("type") in {"image", "audio", "video", "file"}
+            )
+        ):
+            return ""
         return _render_template(
             resolved_templates.get(event_type, "{{message}}"),
             event,
@@ -60,24 +69,9 @@ def response_scheduler(
     projector,
     policy: ResponseStreamPolicy | None = None,
 ) -> LifecycleResponseScheduler:
-    if policy is None:
-        policy_payload = ResponseStreamPolicy().model_dump(mode="json")
-        policy_payload["assistant_text"]["delivery"] = "complete"
-        policy_payload["reasoning"]["delivery"] = "complete"
-        policy_payload["subagent_content"]["delivery"] = "hidden"
-        policy_payload["subagent_lifecycle"]["delivery"] = "hidden"
-        policy_payload["workflow_lifecycle"]["delivery"] = "complete"
-        policy_payload["activity"] = {
-            "announce_start": False,
-            "announce_queued": False,
-            "hidden_delta_pulse_seconds": None,
-            "quiet_notice_after_seconds": None,
-            "quiet_notice_repeat_seconds": None,
-        }
-        policy = ResponseStreamPolicy.model_validate(policy_payload)
     return LifecycleResponseScheduler(
-        projector,
-        policy,
+        policy or ResponseStreamPolicy(),
+        projection_stream=EventOutputProjectionStream(projector),
         lifecycle_id="",
         origin_run_id="",
         origin_workflow_id="",

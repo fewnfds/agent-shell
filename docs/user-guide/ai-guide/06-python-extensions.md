@@ -216,7 +216,10 @@ Agent Event Output 和 Workflow Event Output 都只有一个同步 entry：
 
 ```python
 def output(event):
-    if event["event_type"] == "assistant_text":
+    if (
+        event["event_type"] == "assistant_text"
+        and event["phase"] == "delta"
+    ):
         return event["message"]
     return ""
 ```
@@ -226,6 +229,7 @@ def output(event):
 - `output(event)` 必须返回 `str`；
 - 所属 scope 的所有 event type 都进入同一个 function；
 - 读取 event-specific field 前先判断 `event_type`；
+- `assistant_text`和`reasoning`按`start / delta / end`投影，首尾修饰只放在 start/end分支；
 - 空字符串只过滤公开渲染文本；
 - Event Output 不更新 State、不选择 successor，也不处理顶层 HTTP error。
 

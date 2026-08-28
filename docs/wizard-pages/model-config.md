@@ -15,6 +15,8 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。`google_vertexai` 使用无 credential 配置。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
 `name` 去除首尾空白后必须包含 1 到 120 个字符，并在实例内按大小写不敏感规则保持唯一。空白或超长名称返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
+`provider_settings.streaming`首先决定模型调用是否提供 token delta。显式设为`false`时，运行时同时设置 LangChain BaseChatModel的`disable_streaming=true`，因此 LangGraph application streaming不会通过 auto-streaming重新开启该模型。Exception Retry的`force_non_streaming=true`可以在 Agent装配时把最终设置单向覆盖为关闭。这个上游设置只改变 delta何时可用；Agent Event Output仍统一接收 additive `start / delta / end`，非流式完整正文会成为一个合成 delta。
+
 ## Model Requirement
 
 模型要求是代理组件中的可迁移 Component type `model-requirement`，payload 只包含名称和多行 `description`。`name` 去空白后为 1-120 个字符且在作用域内大小写不敏感唯一，`description` 为必填的 1-100000 字符文本；Main Agent 必须引用模型要求，Subagent 只能继承或替换，不能禁用该必选能力：

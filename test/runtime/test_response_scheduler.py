@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 import pytest
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.output_projection import OutputProjector
+from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
 from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
@@ -22,13 +20,6 @@ WORKFLOW_ID = "workflow-parent"
 
 def _policy(**updates: object) -> ResponseStreamPolicy:
     payload = ResponseStreamPolicy().model_dump(mode="json")
-    payload["activity"] = {
-        "announce_start": False,
-        "announce_queued": False,
-        "hidden_delta_pulse_seconds": None,
-        "quiet_notice_after_seconds": None,
-        "quiet_notice_repeat_seconds": None,
-    }
     for key, value in updates.items():
         if isinstance(value, dict) and isinstance(payload.get(key), dict):
             payload[key].update(value)
@@ -40,21 +31,37 @@ def _policy(**updates: object) -> ResponseStreamPolicy:
 def _scheduler(
     policy: ResponseStreamPolicy | None = None,
 ) -> LifecycleResponseScheduler:
-    projector = OutputProjector(
-        output_renderer(
-            {
-                "assistant_text": "<text>{{message}}</text>",
-                "reasoning": "<reasoning>{{message}}</reasoning>",
-                "tool_call": "<call id={{tool_call_id}}>{{message}}</call>",
-                "tool_result": "<result id={{tool_call_id}}>{{message}}</result>",
-                "tool_error": "<error id={{tool_call_id}}>{{message}}</error>",
-                "custom": "<custom>{{message}}</custom>",
-            }
-        )
-    )
+    def output(event: dict[str, object]) -> str:
+        event_type = str(event["event_type"])
+        phase = str(event["phase"])
+        message = str(event["message"])
+        if event_type == "assistant_text":
+            if isinstance(event["data"], dict) and event["data"].get("type") in {
+                "image", "audio", "video", "file",
+            }:
+                return f"<text>{message}</text>"
+            return message if phase == "delta" else ""
+        if event_type == "reasoning":
+            if phase == "start":
+                return '<details type="agent"><summary>Reasoning</summary>'
+            if phase == "delta":
+                return message
+            if phase == "end":
+                return "</details>\n"
+            return ""
+        templates = {
+            "tool_call": "<call id={{tool_call_id}}>{{message}}</call>",
+            "tool_result": "<result id={{tool_call_id}}>{{message}}</result>",
+            "tool_error": "<error id={{tool_call_id}}>{{message}}</error>",
+            "custom": "<custom>{{message}}</custom>",
+        }
+        template = templates.get(event_type)
+        return output_renderer({event_type: template})(event) if template else ""
+
+    projector = OutputProjector(output)
     return LifecycleResponseScheduler(
-        projector,
         policy or _policy(),
+        projection_stream=EventOutputProjectionStream(projector),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
@@ -70,15 +77,17 @@ def _event(
     message: str = "",
     stream_id: str = "",
     turn_id: str = "turn-1",
+    invocation_id: str = "",
     source_type: str = "agent",
     **values: str,
 ) -> OutputEvent:
+    cycle_key = invocation_id or f"{node_id}:invocation"
     return OutputEvent(
         event_type=event_type,
         phase=phase,
         sequence=sequence,
         timestamp="2026-08-28T00:00:00Z",
-        namespace=f"{node_id}:invocation",
+        namespace=cycle_key,
         agent_name=node_id,
         node="model",
         source_type=source_type,
@@ -88,7 +97,7 @@ def _event(
         values=values,
         stream_id=(f"{turn_id}:{stream_id}" if stream_id else ""),
         source_key=f"{source_type}|{node_id}|profile-{node_id}|",
-        cycle_key=f"{node_id}:invocation",
+        cycle_key=cycle_key,
     )
 
 
@@ -113,26 +122,28 @@ def _submit(
 ) -> list[str]:
     return [
         frame.text
+        for projected in scheduler.projection_stream.project(event)
         for frame in scheduler.submit(
             ResponseEventInput(
                 lifecycle_id=LIFECYCLE_ID,
                 origin_run_id=RUN_ID,
                 origin_workflow_id=WORKFLOW_ID,
-                event=event,
-            ),
-            now=now,
+                event=projected.event,
+                text=projected.text,
+                segment_end_text=projected.segment_end_text,
+            ), now=now,
         )
     ]
 
 
-def test_live_delta_is_immediate_and_competing_lane_never_interleaves() -> None:
+def test_request_atom_holds_competing_request_until_idle_timeout() -> None:
     scheduler = _scheduler()
     assert _submit(scheduler, _boundary("agent-a", "turn-a"), 0) == []
     assert _submit(
         scheduler,
         _event("agent-a", "reasoning", "start", 1, stream_id="0", turn_id="turn-a"),
         0,
-    ) == []
+    ) == ['<details type="agent"><summary>Reasoning</summary>']
     assert _submit(
         scheduler,
         _event(
@@ -145,7 +156,7 @@ def test_live_delta_is_immediate_and_competing_lane_never_interleaves() -> None:
             message="A1",
         ),
         0.1,
-    ) == ['<details type="agent"><summary>Reasoning</summary>', "A1"]
+    ) == ["A1"]
 
     assert _submit(scheduler, _boundary("agent-b", "turn-b"), 0.2) == []
     assert _submit(
@@ -192,7 +203,9 @@ def test_live_delta_is_immediate_and_competing_lane_never_interleaves() -> None:
         ),
         0.5,
     )
-    assert released == ["</details>\n", "", "B"]
+    assert released == ["</details>\n"]
+    assert scheduler.advance(now=2.49) == []
+    assert [frame.text for frame in scheduler.advance(now=2.5)] == ["", "B"]
     assert _submit(
         scheduler,
         _event(
@@ -204,11 +217,278 @@ def test_live_delta_is_immediate_and_competing_lane_never_interleaves() -> None:
             turn_id="turn-b",
             message="B",
         ),
-        0.6,
+        2.6,
     ) == [""]
 
 
-def test_successor_grace_closes_only_presentation_and_late_delta_continues() -> None:
+def test_filtered_content_does_not_refresh_request_atom_idle_deadline() -> None:
+    scheduler = _scheduler()
+    _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "reasoning",
+            "start",
+            1,
+            stream_id="0",
+            turn_id="turn-a",
+        ),
+        0,
+    ) == ['<details type="agent"><summary>Reasoning</summary>']
+    assert scheduler.next_deadline() == pytest.approx(2)
+
+    _submit(scheduler, _boundary("agent-b", "turn-b"), 0.1)
+    _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "start",
+            2,
+            stream_id="0",
+            turn_id="turn-b",
+        ),
+        0.1,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "delta",
+            3,
+            stream_id="0",
+            turn_id="turn-b",
+            message="B",
+        ),
+        0.2,
+    ) == []
+
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "reasoning",
+            "delta",
+            4,
+            stream_id="0",
+            turn_id="turn-a",
+            message="",
+        ),
+        1.9,
+    ) == []
+    assert scheduler.next_deadline() == pytest.approx(2)
+    assert [
+        frame.text
+        for frame in scheduler.advance(now=2)
+        if frame.text
+    ] == ["</details>\n", "B"]
+
+
+def test_model_boundary_end_does_not_refresh_or_terminate_request_atom() -> None:
+    scheduler = _scheduler()
+    _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            1,
+            stream_id="0",
+            turn_id="turn-a",
+        ),
+        0,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            2,
+            stream_id="0",
+            turn_id="turn-a",
+            message="A",
+        ),
+        0,
+    ) == ["", "A"]
+
+    _submit(scheduler, _boundary("agent-b", "turn-b"), 0.1)
+    _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "start",
+            3,
+            stream_id="0",
+            turn_id="turn-b",
+        ),
+        0.1,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "delta",
+            4,
+            stream_id="0",
+            turn_id="turn-b",
+            message="B",
+        ),
+        0.2,
+    ) == []
+
+    assert [
+        text
+        for text in _submit(
+            scheduler,
+            _boundary("agent-a", "turn-a", phase="end"),
+            0.3,
+        )
+        if text
+    ] == []
+    assert scheduler.next_deadline() == pytest.approx(2)
+    assert [
+        frame.text
+        for frame in scheduler.advance(now=2)
+        if frame.text
+    ] == ["B"]
+
+
+def test_next_model_request_releases_the_previous_request_atom() -> None:
+    scheduler = _scheduler(_policy(queue={"idle_timeout_seconds": 30}))
+    _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            1,
+            stream_id="0",
+            turn_id="turn-a",
+        ),
+        0,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            2,
+            stream_id="0",
+            turn_id="turn-a",
+            message="first",
+        ),
+        0.1,
+    ) == ["", "first"]
+    _submit(scheduler, _boundary("agent-a", "turn-a", phase="end"), 0.2)
+
+    assert _submit(scheduler, _boundary("agent-a", "turn-b"), 0.3) == []
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            3,
+            stream_id="0",
+            turn_id="turn-b",
+        ),
+        0.3,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            4,
+            stream_id="0",
+            turn_id="turn-b",
+            message="second",
+        ),
+        0.4,
+    ) == ["", "second"]
+
+
+def test_node_terminal_releases_the_last_request_atom() -> None:
+    scheduler = _scheduler(_policy(queue={"idle_timeout_seconds": 30}))
+    _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            1,
+            stream_id="0",
+            turn_id="turn-a",
+        ),
+        0,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            2,
+            stream_id="0",
+            turn_id="turn-a",
+            message="A",
+        ),
+        0.1,
+    ) == ["", "A"]
+    _submit(scheduler, _boundary("agent-a", "turn-a", phase="end"), 0.2)
+
+    _submit(scheduler, _boundary("agent-b", "turn-b"), 0.3)
+    _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "start",
+            3,
+            stream_id="0",
+            turn_id="turn-b",
+        ),
+        0.3,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "delta",
+            4,
+            stream_id="0",
+            turn_id="turn-b",
+            message="B",
+        ),
+        0.4,
+    ) == []
+
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "lifecycle",
+            "end",
+            5,
+            message="completed",
+            status="completed",
+        ),
+        0.5,
+    ) == ["", "B"]
+
+
+def test_idle_timeout_closes_only_presentation_and_late_delta_continues() -> None:
     scheduler = _scheduler()
     _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
     _submit(
@@ -235,7 +515,7 @@ def test_successor_grace_closes_only_presentation_and_late_delta_continues() -> 
     assert scheduler.advance(now=2.29) == []
     switched = scheduler.advance(now=2.3)
     assert [frame.text for frame in switched] == ["</details>\n", "", "T"]
-    assert switched[0].close_reason == "successor_grace"
+    assert switched[0].close_reason == "idle_timeout"
 
     assert _submit(
         scheduler,
@@ -245,20 +525,14 @@ def test_successor_grace_closes_only_presentation_and_late_delta_continues() -> 
     continued = scheduler.advance(now=4.4)
     assert [frame.text for frame in continued] == [
         "",
-        "[Continued: agent-a]\n<details type=\"agent\"><summary>Reasoning</summary>",
+        '<details type="agent"><summary>Reasoning</summary>',
         "R2",
     ]
     assert continued[1].continuation is True
 
 
-def test_complete_delivery_uses_delta_canonical_text_and_media_is_atomic() -> None:
-    policy = _policy(
-        assistant_text={
-            "delivery": "complete",
-            "live_wrapper": {"start": "", "end": ""},
-        }
-    )
-    scheduler = _scheduler(policy)
+def test_content_projection_is_additive_and_media_remains_atomic() -> None:
+    scheduler = _scheduler()
     assert _submit(
         scheduler,
         _event("agent-a", "assistant_text", "start", 1, stream_id="0"),
@@ -268,17 +542,17 @@ def test_complete_delivery_uses_delta_canonical_text_and_media_is_atomic() -> No
         scheduler,
         _event("agent-a", "assistant_text", "delta", 2, stream_id="0", message="delta "),
         0.1,
-    ) == []
+    ) == ["", "delta "]
     assert _submit(
         scheduler,
         _event("agent-a", "assistant_text", "delta", 3, stream_id="0", message="wins"),
         0.2,
-    ) == []
+    ) == ["wins"]
     assert _submit(
         scheduler,
         _event("agent-a", "assistant_text", "end", 4, stream_id="0", message="different snapshot"),
         0.3,
-    ) == ["<text>delta wins</text>"]
+    ) == [""]
 
     media = _event(
         "agent-a",
@@ -292,21 +566,61 @@ def test_complete_delivery_uses_delta_canonical_text_and_media_is_atomic() -> No
     assert _submit(scheduler, media, 0.4) == ["<text>[image]</text>"]
 
 
-def test_message_finish_is_a_strong_boundary_before_content_finish_arrives() -> None:
-    policy = _policy(
-        assistant_text={
-            "delivery": "complete",
-            "live_wrapper": {"start": "", "end": ""},
-        }
+def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
+    calls: list[tuple[str, str]] = []
+
+    def output(event: dict[str, object]) -> str:
+        if event["event_type"] != "assistant_text":
+            return ""
+        phase = str(event["phase"])
+        message = str(event["message"])
+        calls.append((phase, message))
+        if phase == "start":
+            return "<answer>"
+        if phase == "delta":
+            return message
+        if phase == "end":
+            return "</answer>"
+        return ""
+
+    scheduler = LifecycleResponseScheduler(
+        _policy(queue={"send_interval_seconds": 0}),
+        projection_stream=EventOutputProjectionStream(OutputProjector(output)),
+        lifecycle_id=LIFECYCLE_ID,
+        origin_run_id=RUN_ID,
+        origin_workflow_id=WORKFLOW_ID,
     )
-    scheduler = _scheduler(policy)
+
+    rendered = _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "end",
+            1,
+            stream_id="whole",
+            message="complete response",
+        ),
+        0,
+    )
+
+    assert rendered == ["<answer>", "complete response", "</answer>"]
+    assert calls == [
+        ("start", ""),
+        ("delta", "complete response"),
+        ("end", ""),
+    ]
+
+
+def test_message_finish_is_a_strong_boundary_before_content_finish_arrives() -> None:
+    scheduler = _scheduler()
     _submit(scheduler, _boundary("agent-a", "turn-a"), 0)
-    _submit(
+    assert _submit(
         scheduler,
         _event("agent-a", "assistant_text", "start", 1, stream_id="0", turn_id="turn-a"),
         0,
-    )
-    _submit(
+    ) == []
+    assert _submit(
         scheduler,
         _event(
             "agent-a",
@@ -318,16 +632,54 @@ def test_message_finish_is_a_strong_boundary_before_content_finish_arrives() -> 
             message="available now",
         ),
         0.1,
-    )
+    ) == ["", "available now"]
 
     assert _submit(
         scheduler,
         _boundary("agent-a", "turn-a", phase="end"),
         0.2,
-    ) == ["<text>available now</text>"]
+    ) == [""]
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "end",
+            3,
+            stream_id="0",
+            turn_id="turn-a",
+            message="available now",
+        ),
+        0.3,
+    ) == []
 
 
-def test_slow_tools_yield_and_completed_pairs_use_completion_order() -> None:
+def test_scheduler_preserves_nonempty_projected_content_error() -> None:
+    scheduler = _scheduler()
+    event = _event(
+        "agent-a",
+        "assistant_text",
+        "error",
+        1,
+        stream_id="0",
+        message="upstream details remain private",
+    )
+
+    frames = scheduler.submit(
+        ResponseEventInput(
+            lifecycle_id=LIFECYCLE_ID,
+            origin_run_id=RUN_ID,
+            origin_workflow_id=WORKFLOW_ID,
+            event=event,
+            text="visible failure",
+        ),
+        now=0,
+    )
+
+    assert [frame.text for frame in frames] == ["", "visible failure", ""]
+
+
+def test_slow_tools_resume_at_queue_tail_in_completion_order() -> None:
     scheduler = _scheduler()
     for sequence, call_id in ((1, "call-a"), (2, "call-b")):
         assert _submit(
@@ -365,29 +717,20 @@ def test_slow_tools_yield_and_completed_pairs_use_completion_order() -> None:
         scheduler,
         _event("agent-a", "tool_result", "end", 6, message="result-b", tool_call_id="call-b", tool_name="tool"),
         4,
-    ) == [
-        "<call id=call-b>args-call-b</call><result id=call-b>result-b</result>"
-    ]
+    ) == []
     assert _submit(
         scheduler,
         _event("agent-a", "tool_result", "end", 7, message="result-a", tool_call_id="call-a", tool_name="tool"),
         5,
-    ) == [
+    ) == []
+    assert [frame.text for frame in scheduler.advance(now=5.2)] == [
+        "<call id=call-b>args-call-b</call><result id=call-b>result-b</result>",
         "<call id=call-a>args-call-a</call><result id=call-a>result-a</result>"
     ]
 
 
-def test_quiet_notice_closes_live_segment_and_resume_is_continuation() -> None:
-    policy = _policy(
-        activity={
-            "announce_start": False,
-            "announce_queued": False,
-            "hidden_delta_pulse_seconds": None,
-            "quiet_notice_after_seconds": 3,
-            "quiet_notice_repeat_seconds": None,
-        }
-    )
-    scheduler = _scheduler(policy)
+def test_idle_timeout_does_not_synthesize_activity_output() -> None:
+    scheduler = _scheduler()
     _submit(
         scheduler,
         _event("agent-a", "assistant_text", "start", 1, stream_id="0"),
@@ -398,21 +741,20 @@ def test_quiet_notice_closes_live_segment_and_resume_is_continuation() -> None:
         _event("agent-a", "assistant_text", "delta", 2, stream_id="0", message="hello"),
         1,
     )
-    assert scheduler.next_deadline() == pytest.approx(4)
-    waiting = scheduler.advance(now=4)
-    assert [frame.text for frame in waiting] == ["", "\n[Activity] agent-a: waiting\n"]
+    assert scheduler.next_deadline() == pytest.approx(3)
+    assert [frame.text for frame in scheduler.advance(now=3)] == [""]
+    assert scheduler.advance(now=4) == []
     resumed = _submit(
         scheduler,
         _event("agent-a", "assistant_text", "delta", 3, stream_id="0", message=" again"),
         5,
     )
-    assert resumed == ["[Continued: agent-a]\n", " again"]
+    assert resumed == ["", " again"]
 
 
-def test_strict_source_holds_other_lanes_until_node_terminal() -> None:
+def test_node_invocation_atom_releases_other_invocation_at_terminal() -> None:
     policy = _policy(
-        queue={"mode": "strict_source", "successor_grace_seconds": 2},
-        workflow_lifecycle={"delivery": "hidden"},
+        queue={"strategy": "node_invocation"},
     )
     scheduler = _scheduler(policy)
     _submit(
@@ -447,6 +789,196 @@ def test_strict_source_holds_other_lanes_until_node_terminal() -> None:
     ) == ["", "B"]
 
 
+def test_empty_node_terminal_closes_content_and_releases_invocation() -> None:
+    scheduler = _scheduler(_policy(queue={"strategy": "node_invocation"}))
+    assert _submit(
+        scheduler,
+        _event("agent-a", "reasoning", "start", 1, stream_id="0"),
+        0,
+    ) == ['<details type="agent"><summary>Reasoning</summary>']
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "reasoning",
+            "delta",
+            2,
+            stream_id="0",
+            message="A",
+        ),
+        0.1,
+    ) == ["A"]
+    _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "start",
+            3,
+            stream_id="0",
+            turn_id="turn-b",
+        ),
+        0.2,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-b",
+            "assistant_text",
+            "delta",
+            4,
+            stream_id="0",
+            turn_id="turn-b",
+            message="B",
+        ),
+        0.3,
+    ) == []
+
+    assert [
+        text
+        for text in _submit(
+            scheduler,
+            _event(
+                "agent-a",
+                "lifecycle",
+                "end",
+                5,
+                message="completed",
+                status="completed",
+            ),
+            0.4,
+        )
+        if text
+    ] == ["</details>\n", "B"]
+
+
+def test_reentering_the_same_node_uses_a_distinct_invocation_atom() -> None:
+    policy = _policy(
+        queue={"strategy": "node_invocation"},
+    )
+    scheduler = _scheduler(policy)
+    first = "agent-a:invocation-1"
+    second = "agent-a:invocation-2"
+
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            1,
+            stream_id="0",
+            invocation_id=first,
+        ),
+        0,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            2,
+            message="first",
+            stream_id="0",
+            invocation_id=first,
+        ),
+        0.1,
+    ) == ["", "first"]
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "end",
+            3,
+            message="first",
+            stream_id="0",
+            invocation_id=first,
+        ),
+        0.2,
+    ) == [""]
+
+    _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "start",
+            4,
+            stream_id="0",
+            invocation_id=second,
+        ),
+        0.3,
+    )
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "assistant_text",
+            "delta",
+            5,
+            message="second",
+            stream_id="0",
+            invocation_id=second,
+        ),
+        0.4,
+    ) == []
+    assert _submit(
+        scheduler,
+        _event(
+            "agent-a",
+            "lifecycle",
+            "end",
+            6,
+            message="completed",
+            invocation_id=first,
+            status="completed",
+        ),
+        0.5,
+    ) == ["", "second"]
+
+
+def test_soft_batch_size_groups_small_events_and_keeps_oversized_event_whole() -> None:
+    policy = _policy(
+        queue={
+            "max_batch_kb": 0.04,
+            "send_interval_seconds": 0.05,
+        },
+    )
+    scheduler = _scheduler(policy)
+
+    assert _submit(
+        scheduler,
+        _event("script", "custom", "end", 1, message="first"),
+        0,
+    ) == ["<custom>first</custom>"]
+    for sequence, message in ((2, "aa"), (3, "bb"), (4, "cc")):
+        assert _submit(
+            scheduler,
+            _event("script", "custom", "end", sequence, message=message),
+            0.01,
+        ) == []
+
+    assert [frame.text for frame in scheduler.advance(now=0.05)] == [
+        "<custom>aa</custom>",
+        "<custom>bb</custom>",
+    ]
+    assert [frame.text for frame in scheduler.advance(now=0.1)] == [
+        "<custom>cc</custom>",
+    ]
+
+    oversized = _policy(
+        queue={"max_batch_kb": 0.001, "send_interval_seconds": 0},
+    )
+    oversized_scheduler = _scheduler(oversized)
+    assert _submit(
+        oversized_scheduler,
+        _event("script", "custom", "end", 5, message="larger-than-soft-limit"),
+        0,
+    ) == ["<custom>larger-than-soft-limit</custom>"]
+
+
 def test_input_port_rejects_unregistered_run_identity() -> None:
     scheduler = _scheduler()
     with pytest.raises(ValueError, match="does not belong"):
@@ -461,7 +993,7 @@ def test_input_port_rejects_unregistered_run_identity() -> None:
         )
 
 
-def test_unresolved_tool_is_safely_closed_at_run_terminal() -> None:
+def test_unresolved_tool_declaration_remains_withheld_at_run_terminal() -> None:
     scheduler = _scheduler()
     assert _submit(
         scheduler,
@@ -478,7 +1010,4 @@ def test_unresolved_tool_is_safely_closed_at_run_terminal() -> None:
         0,
     ) == []
 
-    assert [frame.text for frame in scheduler.finish(now=10)] == [
-        "<call id=call-unresolved>args</call>"
-        "<error id=call-unresolved>Tool execution did not produce a terminal outcome.</error>"
-    ]
+    assert scheduler.finish(now=10) == []

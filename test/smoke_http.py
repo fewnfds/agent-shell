@@ -239,7 +239,8 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     output_template.mkdir(parents=True, exist_ok=True)
     (output_template / "main.py").write_text(
         'def output(event):\n'
-        '    if event["event_type"] == "assistant_text":\n'
+        '    if (event["event_type"] == "assistant_text"\n'
+        '            and event["phase"] == "delta"):\n'
         '        return event["message"]\n'
         '    return ""\n',
         encoding="utf-8",

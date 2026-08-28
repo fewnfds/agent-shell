@@ -21,6 +21,6 @@
 
 `retry_on` 只对 `model_retry_middleware` 生效，可选 transport、timeout、rate limit、server error 和 authentication error，且不能重复；`provider_native` 完全使用 Provider integration 的重试判定。认证错误默认不选，只有确认第三方网关会把瞬时故障错误报告为认证失败时才应开启，真实凭据错误不会因重试恢复。
 
-`force_non_streaming` 对两种策略都生效，同时关闭通用与 Provider streaming，使失败尝试能在正文公开前重试，但会增加首字延迟。
+`force_non_streaming` 对两种策略都生效，在 Model Connection设置之后把 Provider `streaming`和 LangChain `disable_streaming`统一覆盖为关闭，使失败尝试能在正文公开前重试，但会增加首字延迟。它不选择哪些事件公开，也不绕过 Agent Event Output；完成的正文仍按同一 additive phase contract投影。
 
 该组件只处理模型调用异常，不判断回复内容、不实现 fallback model。达到 `max_retries` 后仍失败时，错误继续交给上层 Agent/Workflow 错误边界，不改变终止语义。

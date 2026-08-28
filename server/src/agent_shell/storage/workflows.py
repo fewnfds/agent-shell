@@ -3,7 +3,6 @@ from __future__ import annotations
 from copy import deepcopy
 
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
-from agent_shell.response_stream_policy import default_response_stream_policy
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.workflow.contracts import (
     WorkflowGraphDefinitionV1,
@@ -21,11 +20,11 @@ class WorkflowStore:
         "description",
         "checkpointer_id",
         "workflow_event_output_id",
+        "response_stream_scheduling_id",
         "cancel_on_upstream_termination",
         "recursion_limit",
         "execution_timeout_seconds",
         "max_concurrency",
-        "response_stream_policy",
         "enabled",
     )
 
@@ -51,11 +50,8 @@ class WorkflowStore:
             "enabled": bool(record["enabled"]),
         }
         if public["workflow_role"] == "parent":
-            public["response_stream_policy"] = deepcopy(
-                record.get(
-                    "response_stream_policy",
-                    default_response_stream_policy(),
-                )
+            public["response_stream_scheduling_id"] = record.get(
+                "response_stream_scheduling_id"
             )
         return public
 
@@ -130,14 +126,14 @@ class WorkflowStore:
                 raise ValueError("workflow name already exists")
             stored = deepcopy(data)
             stored["id"] = item_id
+            if stored.get("workflow_role") != "parent":
+                stored.pop("response_stream_scheduling_id", None)
             stored.setdefault("definition", deepcopy(empty_definition))
             stored.setdefault("layout", deepcopy(empty_layout))
             for index, item in enumerate(records):
                 if item.get("id") == item_id:
                     stored["definition"] = deepcopy(item.get("definition", empty_definition))
                     stored["layout"] = deepcopy(item.get("layout", empty_layout))
-                    if stored.get("workflow_role") != "parent":
-                        stored.pop("response_stream_policy", None)
                     records[index] = stored
                     break
             else:
@@ -178,15 +174,8 @@ class WorkflowStore:
                 source.get("definition", empty_definition)
             )
             stored["layout"] = deepcopy(source.get("layout", empty_layout))
-            if stored.get("workflow_role") == "parent":
-                stored["response_stream_policy"] = deepcopy(
-                    source.get(
-                        "response_stream_policy",
-                        default_response_stream_policy(),
-                    )
-                )
-            else:
-                stored.pop("response_stream_policy", None)
+            if stored.get("workflow_role") != "parent":
+                stored.pop("response_stream_scheduling_id", None)
             records.append(stored)
             copied = True
 

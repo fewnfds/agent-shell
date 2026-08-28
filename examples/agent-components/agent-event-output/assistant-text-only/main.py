@@ -11,8 +11,15 @@ Shell. No third-party dependency is required.
 
 
 def output(event):
-    """Return assistant response chunks and filter every other event type."""
+    """Return Main Agent response fragments and filter every other event."""
 
-    if event["event_type"] != "assistant_text":
+    if (
+        event["event_type"] != "assistant_text"
+        or event["source_type"] != "agent"
+    ):
         return ""
-    return event["message"]
+    if isinstance(event["data"], dict) and event["data"].get("type") in {
+        "image", "audio", "video", "file",
+    }:
+        return event["message"]
+    return event["message"] if event["phase"] == "delta" else ""

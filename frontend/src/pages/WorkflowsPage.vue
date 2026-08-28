@@ -4,29 +4,23 @@ import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { managementApi, type ConfigurationSummary, type ResponseStreamPolicy, type ValidationReport, type Workflow, type WorkflowGraphNode, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
+import { managementApi, type ConfigurationSummary, type ValidationReport, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
-import ResponseStreamPolicyEditor from '@/components/ResponseStreamPolicyEditor.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useConfigurationResource } from '@/composables/useConfigurationResource'
-import { useManagementError } from '@/composables/useManagementError'
-import { cloneResponseStreamPolicy, defaultResponseStreamPolicy } from '@/domain/responseStreamPolicy'
 
 const props = defineProps<{ workflowRole: WorkflowRole }>()
 const { t } = useI18n()
 const router = useRouter()
-const managementError = useManagementError()
 const checkpointers = ref<ConfigurationSummary[]>([])
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
-const responseStreamGraphNodes = ref<WorkflowGraphNode[]>([])
-const responseStreamSourcesError = ref('')
-let responseStreamGraphSequence = 0
+const responseStreamSchedulingComponents = ref<ConfigurationSummary[]>([])
 
 function pagePath(): string {
   return `/workflows/${props.workflowRole === 'parent' ? 'parents' : 'children'}`
@@ -38,9 +32,9 @@ function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: re
   ))
 }
 
-type WorkflowResource = Omit<WorkflowPayload, 'response_stream_policy'>
+type WorkflowResource = Omit<WorkflowPayload, 'response_stream_scheduling_id'>
   & Pick<Workflow, 'id' | 'enabled'>
-  & { response_stream_policy: ResponseStreamPolicy | null }
+  & { response_stream_scheduling_id: string | null }
 
 function blankWorkflow(): WorkflowResource {
   return {
@@ -50,13 +44,11 @@ function blankWorkflow(): WorkflowResource {
     description: '',
     checkpointer_id: null,
     workflow_event_output_id: null,
+    response_stream_scheduling_id: null,
     cancel_on_upstream_termination: true,
     recursion_limit: 1_000_000,
     execution_timeout_seconds: 1_200,
     max_concurrency: 100,
-    response_stream_policy: props.workflowRole === 'parent'
-      ? defaultResponseStreamPolicy()
-      : null,
     enabled: false,
   }
 }
@@ -71,15 +63,13 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     description: workflow.description ?? '',
     checkpointer_id: workflow.checkpointer_id ?? null,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
+    response_stream_scheduling_id: props.workflowRole === 'parent'
+      ? workflow.response_stream_scheduling_id ?? null
+      : null,
     cancel_on_upstream_termination: workflow.cancel_on_upstream_termination ?? true,
     recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
     execution_timeout_seconds: workflow.execution_timeout_seconds ?? defaults.execution_timeout_seconds,
     max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
-    response_stream_policy: props.workflowRole === 'parent'
-      ? cloneResponseStreamPolicy(
-          workflow.response_stream_policy ?? defaultResponseStreamPolicy(),
-        )
-      : null,
     enabled: workflow.enabled ?? false,
   }
 }
@@ -96,10 +86,8 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     execution_timeout_seconds: Number(workflow.execution_timeout_seconds),
     max_concurrency: Number(workflow.max_concurrency),
   }
-  if (props.workflowRole === 'parent' && workflow.response_stream_policy) {
-    payload.response_stream_policy = cloneResponseStreamPolicy(
-      workflow.response_stream_policy,
-    )
+  if (props.workflowRole === 'parent') {
+    payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
   }
   return payload
 }
@@ -196,6 +184,7 @@ async function loadWorkspace(): Promise<void> {
     const options = await managementApi.getConfigurationOptions()
     checkpointers.value = options.components.checkpointer ?? []
     workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
+    responseStreamSchedulingComponents.value = options.components['response-stream-scheduling'] ?? []
     return options.workflows.filter((item) => item.workflow_role === props.workflowRole)
   })
 }
@@ -215,25 +204,6 @@ function editGraph(): void {
   }
 }
 
-async function loadResponseStreamGraph(workflowId: string): Promise<void> {
-  const sequence = ++responseStreamGraphSequence
-  responseStreamGraphNodes.value = []
-  responseStreamSourcesError.value = ''
-  if (!workflowId || props.workflowRole !== 'parent') return
-  try {
-    const graph = await managementApi.getWorkflowGraph(workflowId)
-    if (sequence !== responseStreamGraphSequence) return
-    responseStreamGraphNodes.value = graph.definition.nodes
-  } catch (cause) {
-    if (sequence !== responseStreamGraphSequence) return
-    responseStreamSourcesError.value = managementError.describe(
-      cause,
-      'workflows.responseStream.sourcesLoadFailed',
-    ).display
-  }
-}
-
-watch(selectedId, (workflowId) => { void loadResponseStreamGraph(workflowId) })
 watch(() => props.workflowRole, () => { void loadWorkspace() })
 onMounted(() => { void loadWorkspace() })
 </script>
@@ -262,32 +232,6 @@ onMounted(() => { void loadWorkspace() })
         <div class="card mt-3">
           <header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header>
           <div class="card-body">
-            <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
-              <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
-                <option :value="null">{{ t('common.none') }}</option>
-                <option
-                  v-if="form.checkpointer_id && !hasConfiguration(checkpointers, form.checkpointer_id)"
-                  disabled
-                  :value="form.checkpointer_id"
-                >
-                  {{ t('common.missingConfiguration', { id: form.checkpointer_id }) }}
-                </option>
-                <option v-for="checkpointer in checkpointers" :key="checkpointer.id" :value="checkpointer.id">{{ checkpointer.name }}</option>
-              </select>
-            </FormField>
-            <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
-              <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
-                <option :value="null">{{ t('common.none') }}</option>
-                <option
-                  v-if="form.workflow_event_output_id && !hasConfiguration(workflowEventOutputs, form.workflow_event_output_id)"
-                  disabled
-                  :value="form.workflow_event_output_id"
-                >
-                  {{ t('common.missingConfiguration', { id: form.workflow_event_output_id }) }}
-                </option>
-                <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
-              </select>
-            </FormField>
             <FormField field-path="description" label-key="workflows.fields.description">
               <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
             </FormField>
@@ -310,6 +254,53 @@ onMounted(() => { void loadWorkspace() })
                 </div>
               </template>
             </FormField>
+            <div class="row g-3" data-testid="workflow-component-assembly-row" data-ui-control-row>
+              <div :class="props.workflowRole === 'parent' ? 'col-lg-4' : 'col-lg-6'">
+                <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
+                  <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
+                    <option :value="null">{{ t('common.none') }}</option>
+                    <option
+                      v-if="form.checkpointer_id && !hasConfiguration(checkpointers, form.checkpointer_id)"
+                      disabled
+                      :value="form.checkpointer_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.checkpointer_id }) }}
+                    </option>
+                    <option v-for="checkpointer in checkpointers" :key="checkpointer.id" :value="checkpointer.id">{{ checkpointer.name }}</option>
+                  </select>
+                </FormField>
+              </div>
+              <div :class="props.workflowRole === 'parent' ? 'col-lg-4' : 'col-lg-6'">
+                <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
+                  <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
+                    <option :value="null">{{ t('common.none') }}</option>
+                    <option
+                      v-if="form.workflow_event_output_id && !hasConfiguration(workflowEventOutputs, form.workflow_event_output_id)"
+                      disabled
+                      :value="form.workflow_event_output_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.workflow_event_output_id }) }}
+                    </option>
+                    <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
+                  </select>
+                </FormField>
+              </div>
+              <div v-if="props.workflowRole === 'parent'" class="col-lg-4">
+                <FormField control-id="workflow-response-stream-scheduling" field-path="response_stream_scheduling_id" label-key="workflows.fields.responseStreamScheduling">
+                  <select id="workflow-response-stream-scheduling" v-model="form.response_stream_scheduling_id" class="form-select">
+                    <option :value="null">{{ t('common.none') }}</option>
+                    <option
+                      v-if="form.response_stream_scheduling_id && !hasConfiguration(responseStreamSchedulingComponents, form.response_stream_scheduling_id)"
+                      disabled
+                      :value="form.response_stream_scheduling_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.response_stream_scheduling_id }) }}
+                    </option>
+                    <option v-for="scheduling in responseStreamSchedulingComponents" :key="scheduling.id" :value="scheduling.id">{{ scheduling.name }}</option>
+                  </select>
+                </FormField>
+              </div>
+            </div>
             <div class="row g-3" data-ui-control-row>
               <div class="col-lg-4">
                 <FormField field-path="recursion_limit" label-key="workflows.fields.recursionLimit">
@@ -332,13 +323,6 @@ onMounted(() => { void loadWorkspace() })
             </div>
           </div>
         </div>
-        <ResponseStreamPolicyEditor
-          v-if="props.workflowRole === 'parent' && form.response_stream_policy"
-          v-model="form.response_stream_policy"
-          class="mt-3"
-          :graph-nodes="responseStreamGraphNodes"
-          :sources-error="responseStreamSourcesError"
-        />
       </template>
       <template #aside>
         <ValidationChecklist

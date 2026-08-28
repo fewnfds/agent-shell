@@ -87,6 +87,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (
     category === 'checkpointer'
     || category === 'workflow-event-output'
+    || category === 'response-stream-scheduling'
     || category === 'command'
     || category === 'task-dispatcher'
   ) {

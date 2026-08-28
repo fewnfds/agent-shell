@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from agent_shell.runtime.output_stream import OutputEvent
+from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
+from agent_shell.runtime.response_presentation import PresentationFrame
+
 from .support import *
 
 
@@ -75,10 +79,67 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
 
     assert parts == [
         "[R]partial[/R]",
-        "[C]working[/C]",
-        "[T]answer[/T]",
+        "[T]answer[/T][C]working[/C]",
     ]
     assert usage == {"input_tokens": 2, "output_tokens": 4, "total_tokens": 6}
+
+
+def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:
+    class FinalLifecycleScheduler:
+        lifecycle_id = ""
+        origin_run_id = ""
+        origin_workflow_id = ""
+
+        def __init__(self) -> None:
+            self.pending = False
+            self.projection_stream = EventOutputProjectionStream(
+                OutputProjector(lambda _event: "")
+            )
+
+        @property
+        def has_pending_output(self) -> bool:
+            return self.pending
+
+        def submit(self, item, *, now: float) -> list[PresentationFrame]:
+            event = item.event
+            if not isinstance(event, OutputEvent) or event.event_type != "lifecycle":
+                return []
+            if event.phase == "start":
+                return [self._frame("started")]
+            self.pending = True
+            return []
+
+        def finish(self, *, now: float) -> list[PresentationFrame]:
+            return []
+
+        def next_deadline(self) -> float | None:
+            return 0.0 if self.pending else None
+
+        def advance(self, *, now: float) -> list[PresentationFrame]:
+            self.pending = False
+            return [self._frame("finished")]
+
+        @staticmethod
+        def _frame(text: str) -> PresentationFrame:
+            return PresentationFrame(
+                kind="content",
+                phase="atomic",
+                text=text,
+                lane_id="workflow",
+            )
+
+    async def scenario() -> list[str]:
+        execution = RunExecution(
+            graph=EventGraph([]),
+            input_state={"messages": []},
+            response_scheduler=FinalLifecycleScheduler(),  # type: ignore[arg-type]
+            normalizer=V3EventNormalizer("Main Agent"),
+            middleware_runtime=noop_middleware_runtime(),
+            media_response=noop_media_response(),
+        )
+        return [part async for part in execution.stream_text()]
+
+    assert asyncio.run(scenario()) == ["started", "finished"]
 
 
 def test_non_string_lifecycle_output_stays_behind_the_runtime_error_boundary() -> None:

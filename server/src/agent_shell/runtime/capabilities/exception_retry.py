@@ -32,14 +32,6 @@ def model_block_with_retry_overrides(
     return configured
 
 
-def configure_model_for_retry(model: Any, capability: dict[str, Any]) -> Any:
-    """Disable LangGraph auto-streaming when the user selects complete calls."""
-
-    if capability["force_non_streaming"]:
-        model.disable_streaming = True
-    return model
-
-
 def _exception_chain(exc: Exception):
     current: BaseException | None = exc
     for _depth in range(6):
@@ -124,7 +116,6 @@ def materialize_exception_retry(capability: dict[str, Any]) -> ExceptionRetryRun
 
 __all__ = [
     "ExceptionRetryRuntime",
-    "configure_model_for_retry",
     "materialize_exception_retry",
     "model_block_with_retry_overrides",
 ]

@@ -94,7 +94,9 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
     "agent_event_output": null,
     "command": null,
     "task_dispatcher": null,
-    "checkpointer": null
+    "checkpointer": null,
+    "workflow_event_output": null,
+    "response_stream_scheduling": null
   },
   "agents": {
     "main": null,

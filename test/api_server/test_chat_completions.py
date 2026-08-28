@@ -210,11 +210,7 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
-    assert message["content"] == (
-        "[Activity] Published Main Agent: started\n"
-        "runtime reply\n"
-        "[Activity] Published Main Agent: completed\n"
-    )
+    assert message["content"] == "runtime reply"
     for response in (child_reply, main_agent_name_reply, main_agent_id_reply):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "model_not_found"
@@ -294,6 +290,69 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
     assert "configurable" not in captured["run_config"]
     assert captured["durability"] is None
     assert captured["context"].checkpoint_thread_id is None
+
+
+def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_shell.runtime.agent_runtime import AgentRuntime
+
+    captured: dict[str, object] = {}
+    original_execution = AgentRuntime._execution
+
+    def observe_execution(self, *args, **kwargs):
+        captured["response_stream_policy"] = kwargs.get(
+            "response_stream_policy"
+        )
+        return original_execution(self, *args, **kwargs)
+
+    monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
+    with make_client(tmp_path, monkeypatch) as client:
+        scheduling = client.post(
+            "/api/blocks/response-stream-scheduling",
+            json={
+                "name": "Snapshot scheduling",
+                "queue": {
+                    "strategy": "node_invocation",
+                    "idle_timeout_seconds": 1.25,
+                    "max_batch_kb": 24,
+                    "send_interval_seconds": 0.2,
+                },
+            },
+        )
+        assert scheduling.status_code == 200, scheduling.text
+        main_agent = create_main_agent(client)
+        workflow = create_workflow(client, name="Scheduled response")
+        configured = client.put(
+            f"/api/workflows/{workflow['id']}",
+            json={
+                "name": workflow["name"],
+                "workflow_role": "parent",
+                "response_stream_scheduling_id": scheduling.json()["id"],
+            },
+        )
+        assert configured.status_code == 200, configured.text
+        save_linear_workflow_graph(client, configured.json(), main_agent)
+
+        reply = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": workflow["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        )
+
+    assert reply.status_code == 200, reply.text
+    policy = captured["response_stream_policy"]
+    assert policy.model_dump(mode="json") == {
+        "queue": {
+            "strategy": "node_invocation",
+            "idle_timeout_seconds": 1.25,
+            "max_batch_kb": 24.0,
+            "send_interval_seconds": 0.2,
+        }
+    }
 
 
 def test_workflow_checkpointer_durability_is_passed_mechanically(
@@ -444,11 +503,7 @@ def test_checkpointer_initialization_failure_isolated_to_configured_workflow(
     assert failed.status_code == 500
     assert failed.json()["error"]["code"] == "workflow_checkpointer_unavailable"
     assert succeeded.status_code == 200, succeeded.text
-    assert succeeded.json()["choices"][0]["message"]["content"] == (
-        "[Activity] Published Main Agent: started\n"
-        "runtime reply\n"
-        "[Activity] Published Main Agent: completed\n"
-    )
+    assert succeeded.json()["choices"][0]["message"]["content"] == "runtime reply"
 
 
 def test_incomplete_saved_workflow_draft_is_not_a_public_model(
@@ -570,11 +625,7 @@ def test_chat_materializes_command_package_before_compiling_workflow(
 
     assert graph.status_code == 200, graph.text
     assert response.status_code == 200, response.text
-    assert response.json()["choices"][0]["message"]["content"] == (
-        "[Activity] Published Main Agent: started\n"
-        "runtime reply\n"
-        "[Activity] Published Main Agent: completed\n"
-    )
+    assert response.json()["choices"][0]["message"]["content"] == "runtime reply"
 
 
 def test_chat_completion_stream_runs_current_graph(
@@ -603,11 +654,7 @@ def test_chat_completion_stream_runs_current_graph(
     content = "".join(
         chunk["choices"][0]["delta"].get("content", "") for chunk in chunks
     )
-    assert content == (
-        "[Activity] Published Main Agent: started\n"
-        "runtime reply\n"
-        "[Activity] Published Main Agent: completed\n"
-    )
+    assert content == "runtime reply"
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
 
 

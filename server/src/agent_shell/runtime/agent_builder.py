@@ -26,7 +26,6 @@ from agent_shell.runtime.capabilities import (
     build_deepagents_capabilities,
 )
 from agent_shell.runtime.capabilities.exception_retry import (
-    configure_model_for_retry,
     materialize_exception_retry,
     model_block_with_retry_overrides,
 )
@@ -85,6 +84,8 @@ def _build_chat_model(
             "base_url": block["base_url"],
             **dict(block["provider_settings"]),
         }
+        if kwargs.get("streaming") is False:
+            kwargs["disable_streaming"] = True
         if provider == "google_vertexai":
             if credential:
                 raise ValueError(
@@ -131,7 +132,6 @@ def _build_chat_model(
             "The selected model configuration cannot construct its Provider adapter.",
             status_code=422,
         ) from exc
-
 
 @dataclass(frozen=True, slots=True)
 class BuiltAgent:
@@ -293,8 +293,6 @@ class AgentBuilder:
                 credential,
                 self._provider_http_clients,
             )
-            if exception_retry is not None:
-                model = configure_model_for_retry(model, exception_retry)
         except AgentRuntimeError as exc:
             raise reported_error(
                 exc,

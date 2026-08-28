@@ -223,6 +223,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
             def __init__(self) -> None:
                 self.pulling = asyncio.Event()
                 self.exited = False
+                self.sent = False
 
             async def __aenter__(self):
                 return self
@@ -234,6 +235,11 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
                 return self
 
             async def __anext__(self):
+                if not self.sent:
+                    self.sent = True
+                    return message_envelope(
+                        AIMessageChunk(content="ready", id="message-1")
+                    )
                 self.pulling.set()
                 await asyncio.Event().wait()
                 raise StopAsyncIteration
@@ -251,20 +257,20 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
                 return self.run
 
         payload = ResponseStreamPolicy().model_dump(mode="json")
-        payload["workflow_lifecycle"]["delivery"] = "complete"
-        payload["activity"] = {
-            "announce_start": False,
-            "announce_queued": False,
-            "hidden_delta_pulse_seconds": None,
-            "quiet_notice_after_seconds": 0.02,
-            "quiet_notice_repeat_seconds": None,
-        }
+        payload["queue"]["send_interval_seconds"] = 0.1
         run = QuietRun()
         execution = RunExecution(
             graph=Graph(run),
             input_state={},
             response_scheduler=response_scheduler(
-                OutputProjector(output_renderer({"lifecycle": "{{message}}"})),
+                OutputProjector(
+                    output_renderer(
+                        {
+                            "lifecycle": "{{message}}",
+                            "assistant_text": "{{message}}",
+                        }
+                    )
+                ),
                 ResponseStreamPolicy.model_validate(payload),
             ),
             normalizer=V3EventNormalizer("Main Agent"),
@@ -275,7 +281,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
         assert await anext(stream) == "running"
         notice_task = asyncio.create_task(anext(stream))
         await asyncio.wait_for(run.pulling.wait(), timeout=1)
-        notice = await asyncio.wait_for(notice_task, timeout=1)
+        notice = await asyncio.wait_for(notice_task, timeout=2)
         pending = asyncio.create_task(anext(stream))
         await asyncio.sleep(0)
         pending.cancel()
@@ -284,7 +290,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
         return notice, run.exited
 
     assert asyncio.run(scenario()) == (
-        "\n[Activity] Main Agent: waiting\n",
+        "ready",
         True,
     )
 

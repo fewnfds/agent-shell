@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import httpx
 import pytest
 from deepagents import create_deep_agent
@@ -12,6 +14,8 @@ from agent_shell.runtime.capabilities.exception_retry import (
     materialize_exception_retry,
     model_block_with_retry_overrides,
 )
+from agent_shell.runtime import agent_builder
+from agent_shell.runtime.agent_builder import _build_chat_model
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.limits import ProviderErrorBoundaryMiddleware
 
@@ -113,6 +117,46 @@ def test_retry_owner_overrides_current_provider_parameter_names() -> None:
     assert materialize_exception_retry(
         capability(strategy="provider_native")
     ).after_provider_boundary == ()
+
+
+def test_model_connection_and_retry_override_share_the_streaming_boundary(
+    monkeypatch,
+) -> None:
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        agent_builder,
+        "init_chat_model",
+        lambda **kwargs: captured.append(kwargs) or kwargs,
+    )
+    clients = SimpleNamespace(
+        sync_client=object(),
+        async_client=object(),
+        timeout=lambda: 30,
+    )
+
+    def build(provider_settings: dict[str, object]) -> None:
+        _build_chat_model(
+            {
+                "provider": "openai",
+                "model": "test-model",
+                "base_url": "https://example.invalid/v1",
+                "provider_settings": provider_settings,
+            },
+            "test-credential",
+            clients,
+        )
+
+    build({"streaming": False})
+    build({"streaming": True})
+    overridden = model_block_with_retry_overrides(
+        {"provider": "openai", "provider_settings": {"streaming": True}},
+        capability(force_non_streaming=True),
+    )
+    build(overridden["provider_settings"])
+
+    assert captured[0]["disable_streaming"] is True
+    assert "disable_streaming" not in captured[1]
+    assert captured[2]["disable_streaming"] is True
 
 
 def test_official_model_retry_handles_transient_provider_failure() -> None:

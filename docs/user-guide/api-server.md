@@ -40,9 +40,11 @@ Workflow 通过可空 `checkpointer_id` 选择一个【检查点保存器】（C
 
 Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
 
+Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作流组件】中的 Response Stream Scheduling 配置。未装配时使用内置默认；装配后从当前请求冻结的 Configuration Repository 快照读取 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Child Run Workflow 不接受该引用。组件只调度 Agent/Workflow Event Output 已批准的文本，不拥有事件可见性或修饰规则。
+
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，当前 Parent Run 的规范化 LangGraph v3 事件通过 typed input 进入它；任一时刻只有一个 lane 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
-响应流策略作用于整个 Lifecycle。每个 Lifecycle 只有一个 Parent Run Workflow，因此策略作为 Parent Run Workflow 字段保存并随启动快照冻结，这只是配置管理归属。策略可以让 reasoning、assistant text 和同步 Subagent content 使用 live、complete、activity 或 hidden；Tool 使用 paired、activity 或 hidden。Live reasoning/text 直接使用 delta 与 literal start/end，不调用完整 Python event renderer。Complete Agent 事件由对应 Main Agent 的 `agent-event-output` 渲染；Workflow-owned complete 事件由可选 `workflow-event-output` 渲染。慢 Tool 等待不会在默认 fair 模式占住 writer，call/outcome 在 terminal 后原子输出。可见 activity 和 quiet waiting notice属于最终 assistant 正文。
+响应流策略作用于整个 Lifecycle。每个 Lifecycle 只有一个 Parent Run Workflow，因此 Parent Workflow只保存组件引用并随启动快照冻结，这只是配置管理归属。策略只配置 request/node invocation 输出原子、空闲让位时间、批次软大小和最小发送间隔。所有规范化事件先经过所属 Agent Event Output 或 Workflow Event Output；脚本返回空字符串时不进入响应且不刷新writer lease，返回非空字符串时才作为公开文本交给scheduler排队。无正文的content/request/Node terminal控制边界仍可关闭segment或释放atom。reasoning与assistant text使用统一的additive `start / delta / end`投影：流式delta实时进入脚本，非流式完整正文机械展开为单个delta，已有真实delta时finish snapshot不重复正文。Tool call与terminal outcome分别投影，再作为不可插队的原子项输出；`message-finish`不代表关联Tool已经完成，慢Tool等待超过空闲时间后只释放当前位置。同一invocation的下一次model request开始或Node terminal是前一个request的确定结束边界，不等待idle timeout才让位。
 
 ## 拦截消息
 
