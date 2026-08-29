@@ -25,7 +25,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "checkpointer": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         "scheduling": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
         "command": "99999999-9999-4999-8999-999999999999",
-        "dispatcher": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     }
     config = {
         "components": {
@@ -100,13 +99,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                             "id": "command",
                             "type": "command",
                             "config": {"command_id": ids["command"]},
-                        },
-                        {
-                            "id": "dispatcher",
-                            "type": "task-dispatcher",
-                            "config": {
-                                "task_dispatcher_id": ids["dispatcher"]
-                            },
                         },
                     ]
                 },
@@ -199,13 +191,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             "component",
             "command",
             ids["command"],
-        ),
-        (
-            "workflow",
-            "definition.nodes[2].config.task_dispatcher_id",
-            "component",
-            "task-dispatcher",
-            ids["dispatcher"],
         ),
     }
 

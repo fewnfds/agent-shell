@@ -52,8 +52,8 @@ def test_agent_invocation_reducer_replaces_the_same_logical_slots() -> None:
             "invocation_id": "old-task",
             "workflow_node_id": "worker",
             "workflow_task": {
-                "dispatcher_node_id": "dispatcher-1",
-                "dispatcher_invocation_id": "dispatch-old",
+                "command_node_id": "command-1",
+                "command_invocation_id": "command-old",
                 "task_id": "task-1",
                 "dispatch_key": "work",
             },
@@ -68,8 +68,8 @@ def test_agent_invocation_reducer_replaces_the_same_logical_slots() -> None:
             "invocation_id": "new-task",
             "workflow_node_id": "worker",
             "workflow_task": {
-                "dispatcher_node_id": "dispatcher-1",
-                "dispatcher_invocation_id": "dispatch-new",
+                "command_node_id": "command-1",
+                "command_invocation_id": "command-new",
                 "task_id": "task-1",
                 "dispatch_key": "work",
             },

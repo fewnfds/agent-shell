@@ -257,12 +257,6 @@ def _workflow_references(
                 "component",
                 "command",
             )
-        elif node_type == "task-dispatcher":
-            field, target_kind, component_type = (
-                "task_dispatcher_id",
-                "component",
-                "task-dispatcher",
-            )
         else:
             continue
         yield _reference(

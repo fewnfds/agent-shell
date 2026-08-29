@@ -39,7 +39,7 @@ git pull --ff-only
 停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
 `runtime/cache` 保存可重建的下载缓存；安装位置由启动器根据当前 Clone 解析。
 
-文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。启用 Workflow 可达集包含 Command、Task Dispatcher、Main Agent/Subagent 引用的 Custom Tool、Custom Middleware、Agent Event Output 和 Workflow Event Output 扩展；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层只能增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
+文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。启用 Workflow 可达集包含 Command、Main Agent/Subagent 引用的 Custom Tool、Custom Middleware、Agent Event Output 和 Workflow Event Output 扩展；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层只能增加与核心锁兼容的二进制 wheel，不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
 
 依赖准备开始时终端先显示当前 requirements，随后直接显示 uv 原生的解析、下载、安装进度和错误；完成后才显示服务启动阶段。启动器不为扩展依赖安装设置主动超时，操作者根据终端中的真实进度决定继续等待、换网络或中止重启。
 

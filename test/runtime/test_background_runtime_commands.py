@@ -12,7 +12,6 @@ from langgraph.runtime import Runtime
 from agent_shell.command import run_command
 from agent_shell.runtime.background_commands import BackgroundRunCaller
 from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.task_dispatcher import run_task_dispatcher
 
 
 class _CommandRuntime:
@@ -50,7 +49,7 @@ def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
     )
 
 
-def test_command_and_dispatcher_receive_the_official_runtime_commands() -> None:
+def test_commands_receive_the_official_runtime_commands() -> None:
     async def scenario() -> None:
         service = _CommandRuntime()
         official_runtime = Runtime(context=_context(service))
@@ -62,12 +61,12 @@ def test_command_and_dispatcher_receive_the_official_runtime_commands() -> None:
             await runtime.context.background_runs.list()
             return {"activate": [], "update": {}}
 
-        async def dispatch(state, runtime):
+        async def dispatching_command(state, runtime):
             seen.append(runtime)
             assert runtime.context.background_runs is not None
             await runtime.context.background_runs.check(["task-1"])
             return {
-                "tasks": [
+                "dispatch": [
                     {
                         "task_id": "task-1",
                         "dispatch_key": "work",
@@ -83,10 +82,11 @@ def test_command_and_dispatcher_receive_the_official_runtime_commands() -> None:
             runtime=official_runtime,
             allowed_branches=set(),
         )
-        await run_task_dispatcher(
-            dispatch,
+        await run_command(
+            dispatching_command,
             state={"shared_vars": {}, "agent_invocations": {}, "files": {}},
             runtime=official_runtime,
+            allowed_branches=set(),
             allowed_dispatch_keys={"work"},
         )
 

@@ -25,7 +25,6 @@ from agent_shell.event_output_packages import (
     EventOutputCallable,
     EventOutputPackageRuntime,
 )
-from agent_shell.task_dispatcher_packages import TaskDispatcherPackageRuntime
 from agent_shell.tool_packages import ToolPackageRuntime
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.diagnostics import (
@@ -125,7 +124,6 @@ class RunExecution:
     middleware_runtimes: tuple[MiddlewarePackageRuntime, ...] = ()
     tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
     command_runtime: CommandPackageRuntime | None = None
-    task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None
     event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = ()
     event_observers: tuple[Callable[[OutputEvent], None], ...] = ()
     context: WorkflowRuntimeContext | None = None
@@ -293,8 +291,6 @@ class RunExecution:
                 await runtime.close()
             if self.command_runtime is not None:
                 await self.command_runtime.close()
-            if self.task_dispatcher_runtime is not None:
-                await self.task_dispatcher_runtime.close()
             for runtime in self.event_output_runtimes:
                 await runtime.close()
 
@@ -934,7 +930,6 @@ class AgentRuntime:
         workflow_event_output: EventOutputCallable | None = None,
         event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = (),
         command_runtime: CommandPackageRuntime | None = None,
-        task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None,
         context: WorkflowRuntimeContext | None = None,
         run_config: dict[str, Any] | None = None,
         durability: str | None = None,
@@ -995,7 +990,7 @@ class AgentRuntime:
                 if isinstance(node, Mapping)
             }
         for node_id, node_type in journal_node_kinds.items():
-            if node_type in {"command", "task-dispatcher"}:
+            if node_type == "command":
                 workflow_sources[node_id] = WorkflowEventSourceV1(
                     source_type="script",
                     workflow_node_id=node_id,
@@ -1054,7 +1049,6 @@ class AgentRuntime:
                 for _, agent in workflow_agents[1:]
             ),
             command_runtime=command_runtime,
-            task_dispatcher_runtime=task_dispatcher_runtime,
             event_output_runtimes=event_output_runtimes,
             context=context,
             run_config=run_config,
@@ -1110,7 +1104,6 @@ class AgentRuntime:
         from agent_shell.workflow.catalog import (
             AgentNodeConfig,
             CommandNodeConfig,
-            TaskDispatcherNodeConfig,
         )
         from agent_shell.workflow.compiler import compile_workflow
 
@@ -1121,11 +1114,6 @@ class AgentRuntime:
             node
             for node in document.definition.nodes
             if node.type == "command"
-        ]
-        task_dispatcher_nodes = [
-            node
-            for node in document.definition.nodes
-            if node.type == "task-dispatcher"
         ]
         messages = validate_client_messages(raw_messages, self._input_policy())
         messages_sha = client_messages_sha(messages)
@@ -1143,7 +1131,6 @@ class AgentRuntime:
             return ValidationReport(stage="workflow_publish")
 
         from agent_shell.command import CommandBlock
-        from agent_shell.task_dispatcher import TaskDispatcherBlock
 
         command_blocks: dict[str, tuple[str, CommandBlock]] = {}
         for command_node in command_nodes:
@@ -1173,55 +1160,13 @@ class AgentRuntime:
                     status_code=422,
                 ) from exc
 
-        task_dispatcher_blocks: dict[
-            str,
-            tuple[str, TaskDispatcherBlock],
-        ] = {}
-        for dispatcher_node in task_dispatcher_nodes:
-            dispatcher_id = str(
-                TaskDispatcherNodeConfig.model_validate(
-                    dispatcher_node.config
-                ).task_dispatcher_id
-            )
-            stored_dispatcher = (
-                self._blocks.get_block_internal(
-                    "task-dispatcher",
-                    dispatcher_id,
-                )
-                if self._blocks is not None
-                else None
-            )
-            if stored_dispatcher is None:
-                continue
-            try:
-                task_dispatcher_blocks[dispatcher_node.id] = (
-                    dispatcher_id,
-                    TaskDispatcherBlock.model_validate(
-                        {
-                            key: value
-                            for key, value in stored_dispatcher.items()
-                            if key != "id"
-                        }
-                    ),
-                )
-            except Exception as exc:
-                raise AgentRuntimeError(
-                    "workflow.task_dispatcher_invalid",
-                    "The selected Task Dispatcher configuration is invalid.",
-                    status_code=422,
-                ) from exc
-
         resolved_command_nodes: dict[str, Any] = {
             node_id: block for node_id, (_command_id, block) in command_blocks.items()
-        }
-        resolved_task_dispatcher_nodes: dict[str, Any] = {
-            node_id: block for node_id, (_dispatcher_id, block) in task_dispatcher_blocks.items()
         }
         executable = validate_workflow_executable(
             document,
             validate_main_agent=validate_main_agent,
             commands=resolved_command_nodes,
-            task_dispatchers=resolved_task_dispatcher_nodes,
             workflow_role=(workflow_snapshot or {}).get("workflow_role"),
         )
         if not executable.valid:
@@ -1369,17 +1314,13 @@ class AgentRuntime:
         agent_event_outputs: dict[str, EventOutputCallable] = {}
         workflow_event_output: EventOutputCallable | None = None
         command_runtime: CommandPackageRuntime | None = None
-        task_dispatcher_runtime: TaskDispatcherPackageRuntime | None = None
         commands: dict[str, Any] = {}
-        task_dispatchers: dict[str, Any] = {}
         workspace = None
         checkpoint_binding: WorkflowCheckpointBinding | None = None
 
         async def close_workflow_package_runtimes() -> None:
             if command_runtime is not None:
                 await command_runtime.close()
-            if task_dispatcher_runtime is not None:
-                await task_dispatcher_runtime.close()
             if agent_event_output_runtime is not None:
                 await agent_event_output_runtime.close()
             if workflow_event_output_runtime is not None:
@@ -1434,7 +1375,6 @@ class AgentRuntime:
             output_id = (workflow_snapshot or {}).get("workflow_event_output_id")
             if (
                 command_blocks
-                or task_dispatcher_blocks
                 or (public_output and (resolved_agents or output_id is not None))
             ):
                 if self._python_packages_dir is None or self._runtime_dir is None:
@@ -1466,24 +1406,6 @@ class AgentRuntime:
                     )
                     for node_id, (command_id, block) in command_blocks.items()
                 }
-            if task_dispatcher_blocks:
-                task_dispatcher_runtime = TaskDispatcherPackageRuntime(
-                    request_id=request_id,
-                    packages_dir=self._python_packages_dir,
-                    runtime_root=self._runtime_dir,
-                )
-                task_dispatchers = {
-                    node_id: task_dispatcher_runtime.dispatcher_for(
-                        node_id,
-                        dispatcher_id,
-                        block.model_dump(mode="python")["python_package"],
-                    )
-                    for node_id, (
-                        dispatcher_id,
-                        block,
-                    ) in task_dispatcher_blocks.items()
-                }
-
             if public_output and output_id is not None:
                 stored_output = (
                     self._blocks.get_block_internal(
@@ -1568,7 +1490,6 @@ class AgentRuntime:
                 document,
                 node_agents=dict(built_agents),
                 commands=commands,
-                task_dispatchers=task_dispatchers,
                 workflow_role=(workflow_snapshot or {}).get("workflow_role"),
                 checkpointer=(
                     checkpoint_binding.checkpointer
@@ -1700,6 +1621,5 @@ class AgentRuntime:
             owns_lifecycle=owns_lifecycle,
             public_output=public_output,
             command_runtime=command_runtime,
-            task_dispatcher_runtime=task_dispatcher_runtime,
             response_stream_policy=response_stream_policy,
         )

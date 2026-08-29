@@ -183,10 +183,6 @@ export const managementApi = {
     return managementRequest('/api/python-package-templates/command')
   },
 
-  listTaskDispatcherTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/task-dispatcher')
-  },
-
   listSkills(): Promise<ResourceCatalog<SkillResource>> {
     return managementRequest('/api/skills')
   },

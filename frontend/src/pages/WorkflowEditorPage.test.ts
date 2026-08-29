@@ -146,18 +146,10 @@ const nodeCatalog: WorkflowNodeCatalogItem[] = [
     config_schema: {},
     workflow_roles: ['parent', 'child'],
     input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-    output_handles: [{ id: 'branch', kind: 'control', edge_type: 'branch', max_connections: null }],
-  },
-  {
-    type: 'task-dispatcher',
-    type_version: 1,
-    runtime_kind: 'send_dispatcher',
-    title_key: '',
-    description_key: '',
-    config_schema: {},
-    workflow_roles: ['parent', 'child'],
-    input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-    output_handles: [{ id: 'dispatch', kind: 'control', edge_type: 'dispatch', max_connections: null }],
+    output_handles: [
+      { id: 'branch', kind: 'control', edge_type: 'branch', max_connections: null },
+      { id: 'dispatch', kind: 'control', edge_type: 'dispatch', max_connections: null },
+    ],
   },
   {
     type: 'end',
@@ -240,7 +232,7 @@ beforeEach(() => {
   vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
     repository_id: '00000000-0000-4000-8000-000000000099',
     repository_revision: 1,
-    components: { command: [], 'task-dispatcher': [] },
+    components: { command: [] },
     main_agents: [agent],
     subagents: [],
     workflows: [childWorkflow],

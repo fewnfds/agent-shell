@@ -2,7 +2,7 @@
 
 本章说明 independent child Workflow Run 的启动、State isolation、检查、取消和 result handoff。
 
-background Run 为 child 创建独立 `run_id`、Workflow State 和终态。async Node、parallel Node、synchronous Subagent 和 Task Dispatcher worker 在 current Run 内完成。
+background Run 为 child 创建独立 `run_id`、Workflow State 和终态。async Node、parallel Node、synchronous Subagent 和 Command dispatch worker 在 current Run 内完成。
 
 ## 1. 选择条件
 
@@ -10,7 +10,7 @@ Normal Edge 激活设计时已知的固定 successor，执行仍属于 current R
 
 synchronous Subagent 由 Main Agent model 委派给 specialist，并在取得结果后继续同一个 Agent loop。
 
-Task Dispatcher 根据运行时数据生成 Agent worker task，这些 worker 属于 current Workflow Run。
+Command 根据运行时数据生成 Agent worker task，这些 worker 属于 current Workflow Run。
 
 background Run 的 child 拥有独立 `run_id`、Workflow State 和终态；launcher 在 start 后立即取得 handle，并自行决定 check、cancel、继续其他逻辑或结束自己的 path。
 

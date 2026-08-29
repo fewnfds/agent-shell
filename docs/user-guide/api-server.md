@@ -31,8 +31,8 @@ Chat 请求体、content block、输入媒体单项/合计和输出媒体边界�
 `GET /api/system/runtime-policy` 返回后端当前值、默认值、最小值和可配置字段，前端不复制隐藏上限。策略只有后端返回的正数最小值约束，没有额外产品最大值，实际仍受 Provider、
 内存、磁盘和网络能力影响。
 
-当前可执行 Node class 为 Start、Agent、Command、Task Dispatcher 和 End，Edge class 为 normal、branch 与 dispatch；一张图可以包含多个 Agent Node，并可串联、
-fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接映射 LangGraph 官方 `START/END`，Normal Edge 映射 `StateGraph.add_edge()`；Command 脚本读取完整 Workflow State 和 Runtime Context，返回 State partial update 与零个、一个或多个分支 key；候选 key 直接由画布具名 Branch Edge 声明，runtime 将非空激活结果映射为 `Command(update=..., goto=[...])`。Task Dispatcher 脚本从 State/Context 生成具名 JSON 任务，runtime 将每项映射为 LangGraph `Send`，并把 `workflow_task` 放入 target Agent 的私有 State。Start 不注入客户端消息。规范化后的 `messages[]` 保存在 Lifecycle Store；Runtime Context 只携带定位输入所需的 lifecycle/run/invocation 身份。只有已装配的 `before_agent`/`abefore_agent` Middleware 决定如何读取、切割并写入 Agent state。
+当前可执行 Node class 为 Start、Agent、Command 和 End，Edge class 为 normal、branch 与 dispatch；一张图可以包含多个 Agent Node，并可串联、
+fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接映射 LangGraph 官方 `START/END`，Normal Edge 映射 `StateGraph.add_edge()`；Command 脚本读取完整 Workflow State 和 Runtime Context，可同时返回 State partial update、Branch key 与具名 JSON dispatch task。runtime 把 Branch target 与每个 LangGraph `Send` 放入同一个 `Command.goto`，并把 `workflow_task` 放入 target Agent 的私有 State。Start 不注入客户端消息。规范化后的 `messages[]` 保存在 Lifecycle Store；Runtime Context 只携带定位输入所需的 lifecycle/run/invocation 身份。只有已装配的 `before_agent`/`abefore_agent` Middleware 决定如何读取、切割并写入 Agent state。
 
 每个 Workflow 显式配置 `cancel_on_upstream_termination`、`recursion_limit`、`execution_timeout_seconds` 和 `max_concurrency`。终止传播开关默认开启：parent 的 OpenAI 流连接提前断开时取消 Run；background child 的 parent Run 取消或失败时取消 child。关闭后对应 Run 独立继续；正常 End 不触发 child 取消。三个运行值默认分别是 `1,000,000`、`1,200` 秒和 `100`，只有正数约束，没有额外的产品上限。`recursion_limit` 与 `max_concurrency` 传给 LangGraph Runnable config；`execution_timeout_seconds` 限制单个 parent 或 child Run 的实际执行时间，不包含生成器停在 `yield` 等待慢速调用方消费已生成 SSE 文本的时间。
 
@@ -59,7 +59,7 @@ Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
 - 每次请求执行一次完整运行；`run_id` 是所有 Run 的执行身份，只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
-- background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Task Dispatcher 在请求内生成动态 worker，多个 normal 出边、一次激活的多个 branch 目标和多个 Send task 按 LangGraph Super-step 语义执行；
+- background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Command Dispatch 在请求内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
 - independent child/background Run 使用自己的 `RunExecution` 并保持 `public_output=false`；其事件接入 Parent Run response scheduler 的来源层级和 Event Output owner 尚未定义；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；

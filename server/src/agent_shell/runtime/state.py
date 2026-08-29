@@ -21,16 +21,16 @@ def merge_shared_vars(
 
 
 class WorkflowTaskContext(TypedDict):
-    dispatcher_node_id: str
-    dispatcher_invocation_id: str
+    command_node_id: str
+    command_invocation_id: str
     task_id: str
     dispatch_key: str
     payload: dict[str, JsonValue]
 
 
 class WorkflowTaskReference(TypedDict):
-    dispatcher_node_id: str
-    dispatcher_invocation_id: str
+    command_node_id: str
+    command_invocation_id: str
     task_id: str
     dispatch_key: str
 
@@ -60,7 +60,7 @@ def _agent_invocation_slot(record: AgentInvocationRecord) -> tuple[str, ...]:
     if workflow_task is not None:
         return (
             "task",
-            workflow_task["dispatcher_node_id"],
+            workflow_task["command_node_id"],
             workflow_task["task_id"],
         )
     workflow_node_id = record.get("workflow_node_id")
@@ -73,7 +73,7 @@ def merge_agent_invocations(
     current: dict[str, AgentInvocationRecord] | None,
     update: dict[str, AgentInvocationRecord] | None,
 ) -> dict[str, AgentInvocationRecord]:
-    """Keep the latest reference for each logical Agent or dispatcher task slot."""
+    """Keep the latest reference for each logical Agent or Command task slot."""
 
     by_slot: dict[tuple[str, ...], AgentInvocationRecord] = {}
     order: list[tuple[str, ...]] = []

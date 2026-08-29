@@ -1,6 +1,6 @@
 # 编写 Python extension
 
-本章说明六类 Python-backed Component 共用的 package 生命周期、dependency 与 runtime 边界，并给出 Command、Task Dispatcher 和 Event Output 的 callable contract。
+本章说明五类 Python-backed Component 共用的 package 生命周期、dependency 与 runtime 边界，并给出 Command 和 Event Output 的 callable contract。
 
 Python extension 在 Agent Shell service process 的 trusted boundary 中执行，没有 sandbox。扩展使用 LangChain、LangGraph 和 Deep Agents public API。
 
@@ -10,9 +10,7 @@ Custom Tool：让模型在 Agent loop 中选择并调用能力。固定 entry �
 
 Custom Middleware：在 Agent lifecycle、model call 或 Tool call 周围增加行为。模块提供同步 `create_middleware(...)` factory，返回一个 `AgentMiddleware`。factory 可以按参数名请求当前可用的构造数据，或使用 `**kwargs` 接收全部可用值。hook 与 ordered ref 见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。
 
-Command：执行确定性 State transition 和 Branch Edge selection。同步 `create_command()` 返回 async Node callable。
-
-Task Dispatcher：运行时生成一批 Agent worker task。同步 `create_dispatcher()` 返回 async dispatcher callable。
+Command：执行确定性 State transition、Branch Edge selection 和运行时 Agent task dispatch。同步 `create_command()` 返回 async Node callable。
 
 Agent Event Output：过滤和渲染 Agent event。同步 `output(event)` 返回 `str`。
 
@@ -21,7 +19,7 @@ Workflow Event Output：过滤和渲染 Workflow-owned event。同步 `output(ev
 各接口的行为 owner：
 
 - State update 属于 Node、Tool 或 Middleware contract；
-- successor selection 属于 Command 或 Task Dispatcher；
+- successor selection 属于 Command；
 - 公开文本 projection 属于 Event Output；
 - long-lived artifact 属于 Store 或 Filesystem。
 
@@ -81,8 +79,7 @@ Component type 与 template kind 的常用对应关系是：
 - `custom-middleware` 使用 `middleware` template；
 - `agent-event-output` 使用 `agent-event-output` template；
 - `workflow-event-output` 使用 `workflow-event-output` template；
-- `command` 使用 `command` template；
-- `task-dispatcher` 使用 `task-dispatcher` template。
+- `command` 使用 `command` template。
 
 以当前 Catalog 和 endpoint response 为准。不要根据这个列表构造当前实例不存在的 type。
 
@@ -112,7 +109,7 @@ factory 在 Agent 或 Graph materialization 时运行，只负责创建 callable
 
 Runtime callable 在 Node、Tool 或 Agent hook 真正执行时运行，才拥有 State、Runtime Context、Store 和 stream writer。下一节的 Command 示例展示这两个阶段的边界。
 
-`create_tool()`、`create_command()`、`create_dispatcher()` 和 `create_middleware(...)` 中没有某次 invocation 的 Runtime。
+`create_tool()`、`create_command()` 和 `create_middleware(...)` 中没有某次 invocation 的 Runtime。
 
 需要 `runtime.context`、`runtime.store`、`ToolRuntime` 或 `get_stream_writer()` 的代码必须放在对应 runtime callable 或 Middleware hook 中。
 
@@ -125,13 +122,24 @@ def create_command():
     async def command(state, runtime):
         shared_vars = state.get("shared_vars", {})
         branch = "review" if shared_vars.get("requires_review") else "continue"
+        items = shared_vars.get("items", [])
+        tasks = [
+            {
+                "task_id": f'item:{item["id"]}',
+                "dispatch_key": "item",
+                "payload": {"item": item},
+            }
+            for item in items
+        ]
         return {
             "activate": [branch],
+            "dispatch": tasks,
             "update": {
                 "shared_vars": {
-                    "last_route": branch
+                    "last_route": branch,
+                    "dispatched_count": len(tasks),
                 }
-            }
+            },
         }
 
     return command
@@ -142,63 +150,22 @@ def create_command():
 - factory 返回 async callable；
 - callable 接收完整 Workflow `state` 和 LangGraph `runtime`；
 - `activate` 是零个、一个或多个 Branch Edge key；
+- `dispatch` 是零个、一个或多个 Agent task；
 - `update` 是当前 Workflow State 的 partial update；
-- 非空 key 必须与同源 Graph `branch_key` 完全匹配；
-- package 不读取 Edge ID、target Node ID、layout 或完整 topology；
-- package 不 import 或直接返回 LangGraph `Command`。
-
-业务字段、condition、key 和 update shape 根据当前 design record修改。
-
-## 7. Task Dispatcher contract
-
-Task Dispatcher Component 的 factory 也是同步函数：
-
-```python
-def create_dispatcher():
-    async def dispatch(state, runtime):
-        items = state.get("shared_vars", {}).get("items")
-        if not isinstance(items, list) or not items:
-            raise ValueError("shared_vars.items must be a non-empty list")
-
-        tasks = [
-            {
-                "task_id": f'item:{item["id"]}',
-                "dispatch_key": "item",
-                "payload": {
-                    "item": item
-                }
-            }
-            for item in items
-        ]
-
-        return {
-            "tasks": tasks,
-            "update": {
-                "shared_vars": {
-                    "dispatched_count": len(tasks)
-                }
-            }
-        }
-
-    return dispatch
-```
-
-系统约束：
-
-- factory 返回 async dispatcher callable；
-- callable 接收完整 Workflow `state` 和 LangGraph `runtime`；
-- 每次 invocation 至少返回一个 task；
-- `task_id` 长度为 1 至 128 个字符，在当前 batch 唯一，并建议来自稳定业务 identity；
-- `dispatch_key` 长度为 1 至 64 个字符，必须与同源 Dispatch Edge 完全匹配；
+- Branch 和 Dispatch 可以在同一次 invocation 中同时产生；
+- 非空 activate key 必须与同源 Graph `branch_key` 完全匹配；
+- 每个 `dispatch_key` 必须与同源 Dispatch Edge 完全匹配，Dispatch Edge 的 target 必须是 Agent Node；
+- `task_id` 长度为 1 至 128 个字符，在当前 Command invocation 中唯一，并建议来自稳定业务 identity；
+- `dispatch_key` 长度为 1 至 64 个字符；
 - `payload` 是 strict JSON object，数值必须是有限数；
-- `update` 是 parent Workflow State partial update；
-- package不 import 或返回 LangGraph `Send`。
+- package 不读取 Edge ID、target Node ID、layout 或完整 topology；
+- package 不 import 或直接返回 LangGraph `Command`/`Send`。
 
-如果 task source 可能为空，建议由 upstream Command 绕过 Task Dispatcher，不构造空 `tasks`。
+compiler 把结果映射为一个 LangGraph `Command`：每个 activate key 选择一个 Branch target，每个 dispatch item 构造一个 `Send`。同一 Dispatch Edge 可以由多项选择，使同一个 Agent Node 获得多次独立 invocation。每个 worker 的 private `workflow_task` 包含 `command_node_id`、`command_invocation_id`、`task_id`、`dispatch_key` 和 `payload`。
 
-worker 所需的本批材料必须放入 `payload`。Task Dispatcher 的 parent `update` 不自动成为同一批 worker 的私有 input。
+同批 parent `update` 不自动成为这些 `Send` 的私有 input。worker 当批需要的材料放入 `payload`，大型材料保存到 Store 或 Filesystem 并通过 payload 传递 reference。业务字段、condition、key、task 和 update shape 根据当前 design record 修改。
 
-## 8. Custom Tool 和 Middleware
+## 7. Custom Tool 和 Middleware
 
 Custom Tool 固定使用同步无参 `create_tool()`，返回一个 `BaseTool`。LangChain `@tool` 的 function name、description 与 typed parameters 形成模型可见 Tool contract。
 
@@ -210,7 +177,7 @@ Agent Shell 使用 async Agent execution path；同步 hook 需要对应 async h
 
 代码、API shape、排序、AAP、Runtime 与装配示例见[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。使用 Middleware 改写 Agent 初始消息时同时阅读[Agent Additional Prompt](../agent-additional-prompt.md)。
 
-## 9. Event Output contract
+## 8. Event Output contract
 
 Agent Event Output 和 Workflow Event Output 都只有一个同步 entry：
 
@@ -237,9 +204,9 @@ Agent Event Output 处理 Agent-owned event。Workflow Event Output 处理 Workf
 
 稳定 event field 和示例见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)与[Workflow Event Output](../../wizard-pages/workflow-event-output-config.md)。
 
-## 10. 从 Workflow Node 写出 custom event
+## 9. 从 Workflow Node 写出 custom event
 
-Command 或 Task Dispatcher 的 runtime callable 可以使用 LangGraph public stream writer：
+Command 的 runtime callable 可以使用 LangGraph public stream writer：
 
 ```python
 from langgraph.config import get_stream_writer
@@ -247,15 +214,15 @@ from langgraph.config import get_stream_writer
 get_stream_writer()("Command selected branch review.\n")
 ```
 
-只在 `command(state, runtime)` 或 `dispatch(state, runtime)` 等 runtime callable 内获取 writer。不要在 module top level、factory 或 `output(event)` 中调用。
+只在 `command(state, runtime)` 等 runtime callable 内获取 writer。不要在 module top level、factory 或 `output(event)` 中调用。
 
-这些数据在 LangGraph v3 stream 中成为 `custom` event。Command 和 Task Dispatcher 属于 Workflow，因此需要 Workflow 引用 Workflow Event Output，并由其 `custom` branch 返回非空字符串，才会进入 OpenAI response。
+这些数据在 LangGraph v3 stream 中成为 `custom` event。Command 属于 Workflow，因此需要 Workflow 引用 Workflow Event Output，并由其 `custom` branch 返回非空字符串，才会进入 OpenAI response。
 
 Agent Node 内 Tool 或 Middleware 写出的 `custom` event 使用该 Agent 的 Agent Event Output projection。
 
 event 是单向 output。Node 不会收到 projection result。
 
-## 11. Dependency
+## 10. Dependency
 
 Python 3.12 standard library 可以直接 import。使用 standard library 能完成任务时，不增加 third-party dependency。
 
@@ -276,7 +243,7 @@ Management API 没有 enumerate-all-importable-modules endpoint。不能仅凭�
 
 dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Component。因此最终证据是 publish、restart、package GET 和真实 invocation 的闭环。
 
-## 12. Official capability discovery
+## 11. Official capability discovery
 
 需要当前指南未展开的 LangChain、LangGraph 或 Deep Agents public capability 时：
 
@@ -288,7 +255,7 @@ dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Compone
 
 官方 type 提供但 Agent Shell 未接入产品 wire 的功能，不自动成为 Agent Shell 配置能力。
 
-## 13. 本章完成结果
+## 12. 本章完成结果
 
 返回 Graph 或 validation 前确认：
 

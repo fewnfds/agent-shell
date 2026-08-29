@@ -89,7 +89,6 @@ export function editLocation(category: LibraryCategoryId, id: string): {
     || category === 'workflow-event-output'
     || category === 'response-stream-scheduling'
     || category === 'command'
-    || category === 'task-dispatcher'
   ) {
     return { path: `/workflow-components/${category}`, query: { id } }
   }

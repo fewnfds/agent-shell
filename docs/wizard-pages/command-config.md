@@ -1,49 +1,98 @@
 # Command Node
 
-Command Node 是 Workflow canvas 上可同时更新 State 和动态选择 successor Node 的 programmable Node。组件配置保存一个独占的 Python 扩展目录引用；
-分支不在组件页重复配置，而由画布上从该节点发出的具名 Branch Edge 定义。
+Command Node 是 Workflow canvas 上执行确定性 Python 的 programmable Node。一次调用可以更新 parent Workflow State、通过 Branch Edge 激活零个或多个 successor，并通过 Dispatch Edge 为 Agent Node 创建零个或多个独立任务。
 
 ## Package 与入口
 
-用户模板位于 `data/templates/workflow/command/<template-key>/`，内置示例位于 `examples/workflow-components/command/<example-key>/`，新建页以 `<key>` 和 `内置示例-<key>` 合并展示。新配置首次保存时复制为 `data/config_repos/<repository-name>/python_packages/command/<configuration-name>/` 下的配置扩展。
-配置扩展至少包含 `package.json` 和 `main.py`，模板本身无需 `package.json`，并可包含 `requirements.txt`、本地模块和测试。manifest 固定使用 `family: workflow-node` 与 `adapter: command`。完整目录、manifest、imports 和依赖规则见[文件化 Python 扩展包](../user-guide/middleware-packages.md)。
+用户模板位于 `data/templates/workflow/command/<template-key>/`，内置示例位于 `examples/workflow-components/command/<example-key>/`。新配置首次保存时复制到 `data/config_repos/<repository-name>/python_packages/command/<configuration-name>/`，并生成 `family: workflow-node`、`adapter: command` 的 `package.json`。
 
-`main.py` 必须提供同步无参工厂 `create_command()`，返回的 async callable 签名必须恰为 `(state, runtime)`，两个参数都不能有默认值：
+`main.py` 提供同步无参工厂 `create_command()`。工厂返回的 async callable 签名必须恰为 `(state, runtime)`：
 
 ```python
 def create_command():
-    threshold = 80
-
     async def command(state, runtime):
-        risk = state.get("shared_vars", {}).get("risk", 0)
-        branch = "manual_review" if risk >= threshold else "continue"
+        items = state.get("shared_vars", {}).get("items", [])
         return {
-            "activate": [branch],
-            "update": {"shared_vars": {"routed": True}},
+            "activate": ["audit"] if items else [],
+            "dispatch": [
+                {
+                    "task_id": f"item:{item['id']}",
+                    "dispatch_key": "process",
+                    "payload": {"item": item},
+                }
+                for item in items
+            ],
+            "update": {"shared_vars": {"planned": len(items)}},
         }
 
     return command
 ```
 
-新建页选择一份合法用户模板或内置示例。首次保存复制完整模板；已有配置递归显示自己的扩展目录，文件编辑按钮会打开共享文件管理工作区。
-新建、上传、下载、重命名、删除和 UTF-8 文本保存都立即作用于私有包。
+每个 Command 配置拥有独立 Python 扩展目录。文件编辑立即作用于该配置；`requirements.txt` 变化需要重启 Agent Shell 以重新准备依赖。完整目录、manifest、imports 和 dependency contract 见[文件化 Python 扩展包](../user-guide/middleware-packages.md)。
 
-每个 Command Node 配置都拥有独立的 Python 扩展。复制配置会复制新的扩展目录；模板或其他配置的扩展发生变化都不会影响它。
+## 输入
 
-## Command 返回值
+- `state` 是当前 Workflow State 的独立可变副本，包含本次调用实际存在的 `shared_vars`、`agent_invocations`、`background_tasks` 和 `files`；
+- `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Lifecycle、Run、Workflow 和 Node invocation identity 位于 `runtime.context`，Store 位于 `runtime.store`，background Run 命令位于 `runtime.context.background_runs`；
+- 脚本可以修改 `state` 副本，也可以显式返回 `update`。mutation delta 与 `update` 合并时，显式 `update` 覆盖同名顶层 channel。
 
-- `state` 是完整 Workflow State 的独立可变副本，当前声明 `shared_vars`、`agent_invocations`、`background_tasks` 和 `files`，只包含本次调用实际存在的 channel；可以修改副本，
-  也可以通过 `update` 返回局部更新。
-- `runtime` 是 LangGraph 注入的官方 `Runtime[WorkflowRuntimeContext]`。current Run 的 static identity 与 configuration 在 `runtime.context`；Lifecycle
-  Store 在 `runtime.store`；background Run 命令在 `runtime.context.background_runs`。脚本通过这些 request-scoped 对象访问运行能力。
-- `activate` 必须是 Branch Edge key 列表，可以同时激活多个不同分支；key 必须与画布中选中 Edge 后在属性栏填写的值完全一致，
-  不会显示在线段上。
-- `update` 必须是 Workflow State 的局部映射；对 `state` 副本的 mutation delta 会与返回的 `update` 合并，后者覆盖同名 key，顶层字段和值的完整形状都按当前 `WorkflowState` contract 校验。
-- `activate` 为空或省略时不激活后继目标，只提交 `update`，当前路径在该节点自然结束。
-- Shell 不保留兜底 key。条件是否覆盖完整、使用 `if/elif/else` 还是 `match`，由脚本自己负责。
-- Branch key 去除首尾空白后必须为 1 至 64 个字符且大小写敏感；返回未知或未连接的 key、重复 key、非法 State field/value、无效 entry 或 exception 都会使 current Workflow Run 失败。
+## 返回 contract
 
-运行时把结果映射为 LangGraph `Command(update=..., goto=[...])`。Branch Edge 只负责声明候选目标，不会再注册为静态 `add_edge`，因此未被 `activate` 选中的分支不会执行。package 不接触 canvas Node ID，也不直接构造或返回 `Command`，由 compiler 负责映射。
+返回对象包含三个可独立省略的字段：
 
-这些 Python 代码以服务进程权限执行。源码修改在下一次 Workflow 请求重新加载；
-`requirements.txt` 修改后必须重启 Agent Shell，依赖状态才会重新准备。
+- `activate: list[str]`：需要激活的 Branch Edge key；
+- `dispatch: list[object]`：需要创建的 Agent 任务；
+- `update: dict[str, object]`：parent Workflow State partial update。
+
+三个字段默认分别为空列表、空列表和空映射。一次调用可以同时返回 Branch、Dispatch 和 State update。空 `activate` 与空 `dispatch` 会只提交 `update`，当前 path 在 Command 处自然结束。
+
+### Branch Edge
+
+Command 的 `branch` output handle 连接 Branch Edge。每条 Edge 保存一个大小写敏感的 `branch_key`，去除首尾空白后长度为 1 至 64 个字符；同一个 Command 来源中的 key 必须唯一。`activate` 中每个 key 必须存在匹配 Edge，同一次返回中不能重复。
+
+compiler 把 Branch target Node ID 直接交给官方 `Command.goto`。Branch Edge 只声明候选 target，不注册静态 `add_edge`，所以未被选择的 Branch 不会运行。
+
+### Dispatch Edge
+
+Command 的 `dispatch` output handle 只能连接 Agent Node input。每条 Dispatch Edge 保存唯一 `dispatch_key`。一个 Dispatch Edge 可以把同一个 Agent Node 激活任意多次；重复次数来自返回的 task 数量，不通过画布创建平行 Edge 表达。
+
+每个 dispatch item 的格式是：
+
+```json
+{
+  "task_id": "item:42",
+  "dispatch_key": "process",
+  "payload": {"item_id": 42}
+}
+```
+
+- `task_id` 去除首尾空白后长度为 1 至 128 个字符，并在本次 Command invocation 内唯一；稳定业务身份便于 downstream aggregation 选择结果；
+- `dispatch_key` 必须匹配当前 Command 的一条 Dispatch Edge；
+- `payload` 必须是严格 JSON object，拒绝任意 Python object 和 `NaN`、正负无穷等非有限数；
+- task 列表可以为空，不设置数量、payload 大小、并发数或超时的 Command 专属上限。
+
+compiler 为每项构造 `workflow_task`，复制调用前的 parent State snapshot，并创建官方 `Send(target_agent_node_id, task_state)`。同一批 `update` 不自动进入这些 `Send` 的 State；需要成为 worker input 的值应直接写入 task `payload`。
+
+Agent 的 private State 可以读取：
+
+```json
+{
+  "command_node_id": "plan",
+  "command_invocation_id": "<LangGraph task identity>",
+  "task_id": "item:42",
+  "dispatch_key": "process",
+  "payload": {"item_id": 42}
+}
+```
+
+完整 task 与 Agent messages 写入 Lifecycle Store artifact。parent State 的 `agent_invocations` 只保存不含 payload 的 task identity 和 `result_ref`。需要等待动态 worker 全部完成的 aggregation Agent 使用 `defer=true`，再按 `(command_node_id, task_id)` 选择结果。
+
+## Edge 与 target identity
+
+画布 target identity 是 Node ID。两个 Agent Node 即使引用同一个 Main Agent 配置 UUID，也代表两个独立 target 和 invocation。任意一个有向 `source Node ID -> target Node ID` 组合只能存在一条 Edge，不因 handle、Edge type、branch key 或 dispatch key 而放宽；反向连接是另一个有向组合。
+
+Branch key 与 Dispatch key 各自在同一个 Command source 内唯一。Dispatch target 只接受 Dispatch incoming Edge，不能同时接收 Normal 或 Branch incoming Edge。
+
+## 失败边界
+
+未知或重复 key、重复 `task_id`、非法 payload、未声明 State channel、channel value 形状错误、无效返回对象和脚本 exception 都会让 current Workflow Run 以受控 Command 错误失败。package 不读取 Edge ID、target Node ID 或画布布局，也不直接返回 LangGraph `Command`/`Send`；这些对象由 compiler 根据已校验 Graph 机械构造。

@@ -7,10 +7,7 @@ from pydantic import Field, ValidationError
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
-from agent_shell.workflow.catalog import (
-    CommandNodeConfig,
-    TaskDispatcherNodeConfig,
-)
+from agent_shell.workflow.catalog import CommandNodeConfig
 from agent_shell.workflow.contracts import (
     WorkflowGraphDefinitionV1,
     WorkflowGraphDocumentV1,
@@ -87,7 +84,6 @@ def workflow_executable_report(
     configuration_validation: WorkflowConfigurationValidator,
 ) -> ValidationReport:
     commands: dict[str, object] = {}
-    task_dispatchers: dict[str, object] = {}
     referenced_issues: list[ValidationIssue] = []
     component_reports: dict[tuple[str, str], ValidationReport] = {}
 
@@ -255,36 +251,6 @@ def workflow_executable_report(
                     )
                 )
                 commands[node.id] = object()
-        elif node.type == "task-dispatcher":
-            reference = TaskDispatcherNodeConfig.model_validate(
-                node.config
-            ).task_dispatcher_id
-            stored = blocks.get_block_internal("task-dispatcher", reference)
-            if stored is not None:
-                report = component_report("task-dispatcher", reference, stored)
-                project_component_report(
-                    node_id=node.id,
-                    node_type=node.type,
-                    node_index=node_index,
-                    reference_field="task_dispatcher_id",
-                    report=report,
-                )
-                task_dispatchers[node.id] = stored
-            else:
-                referenced_issues.append(
-                    _component_reference_issue(
-                        configuration_validation,
-                        workflow=workflow,
-                        path=(
-                            f"definition.nodes[{node_index}].config."
-                            "task_dispatcher_id"
-                        ),
-                        reference_id=reference,
-                        expected_type="task-dispatcher",
-                    )
-                )
-                task_dispatchers[node.id] = object()
-
     def validate_main_agent(main_agent_id: str) -> ValidationReport:
         report, _ = configuration_validation.resolve_main_agent(
             main_agent_id,
@@ -296,7 +262,6 @@ def workflow_executable_report(
         document,
         validate_main_agent=validate_main_agent,
         commands=commands,
-        task_dispatchers=task_dispatchers,
         workflow_role=workflow["workflow_role"],
     )
     return ValidationReport(

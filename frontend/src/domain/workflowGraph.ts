@@ -21,7 +21,6 @@ export interface WorkflowCanvasNodeData {
   nodeType: WorkflowNodeType
   mainAgentId: string
   commandId?: string
-  taskDispatcherId?: string
   defer?: boolean
 }
 
@@ -50,7 +49,6 @@ const defaultPositions = {
   start: { x: 80, y: 180 },
   agent: { x: 360, y: 180 },
   'command': { x: 620, y: 180 },
-  'task-dispatcher': { x: 620, y: 340 },
   end: { x: 900, y: 180 },
 } satisfies Record<WorkflowNodeType, { x: number; y: number }>
 
@@ -64,7 +62,6 @@ function canvasNode(node: WorkflowGraphNode, document: WorkflowGraphDocument): W
       nodeType: node.type,
       mainAgentId: node.config.main_agent_id ?? '',
       commandId: node.config.command_id ?? '',
-      taskDispatcherId: node.config.task_dispatcher_id ?? '',
       defer: node.config.defer ?? false,
     },
   }
@@ -169,8 +166,6 @@ export function workflowCanvasToDocument(
             }
           : node.data.nodeType === 'command'
             ? { command_id: node.data.commandId }
-          : node.data.nodeType === 'task-dispatcher'
-            ? { task_dispatcher_id: node.data.taskDispatcherId }
           : {}
         return {
           id: node.id,
@@ -216,7 +211,6 @@ export function newAgentCanvasNode(
       nodeType: 'agent',
       mainAgentId,
       commandId: '',
-      taskDispatcherId: '',
       defer: false,
     },
   }
@@ -233,20 +227,6 @@ export function newCommandCanvasNode(
     position: { ...position },
     deletable: true,
     data: { nodeType: 'command', mainAgentId: '', commandId },
-  }
-}
-
-export function newTaskDispatcherCanvasNode(
-  id: string,
-  taskDispatcherId: string,
-  position: XYPosition = defaultPositions['task-dispatcher'],
-): WorkflowCanvasNode {
-  return {
-    id,
-    type: 'task-dispatcher',
-    position: { ...position },
-    deletable: true,
-    data: { nodeType: 'task-dispatcher', mainAgentId: '', taskDispatcherId },
   }
 }
 
@@ -315,11 +295,9 @@ export function workflowConnectionEdgeType(
   const duplicate = edges.some((edge) => (
     edge.id !== connection.id
     && edge.source === connection.source
-    && edge.sourceHandle === connection.sourceHandle
     && edge.target === connection.target
-    && edge.targetHandle === connection.targetHandle
   ))
-  if (duplicate && !['branch', 'dispatch'].includes(sourceHandle.edge_type)) return null
+  if (duplicate) return null
   return sourceHandle.edge_type
 }
 

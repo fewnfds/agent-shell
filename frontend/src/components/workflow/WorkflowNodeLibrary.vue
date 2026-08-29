@@ -5,16 +5,13 @@ import { WORKFLOW_NODE_DRAG_MIME } from '@/domain/workflowGraph'
 defineProps<{
   agent: WorkflowNodeCatalogItem | null
   command: WorkflowNodeCatalogItem | null
-  taskDispatcher: WorkflowNodeCatalogItem | null
   agentDisabled: boolean
   commandDisabled: boolean
-  taskDispatcherDisabled: boolean
 }>()
 
 const emit = defineEmits<{
   addAgent: []
   addCommand: []
-  addTaskDispatcher: []
 }>()
 
 function startDrag(event: DragEvent, item: WorkflowNodeCatalogItem | null, disabled: boolean): void {
@@ -70,23 +67,6 @@ function startDrag(event: DragEvent, item: WorkflowNodeCatalogItem | null, disab
           <span class="workflow-node-library-copy">
             <span class="workflow-node-library-title">{{ $t('workflows.editor.command') }}</span>
             <span class="workflow-node-library-meta">{{ $t('workflows.editor.commandRouter') }}</span>
-          </span>
-        </button>
-        <button
-          v-if="taskDispatcher"
-          class="workflow-node-library-item"
-          :disabled="taskDispatcherDisabled"
-          :draggable="!taskDispatcherDisabled"
-          type="button"
-          @click="emit('addTaskDispatcher')"
-          @dragstart="startDrag($event, taskDispatcher, taskDispatcherDisabled)"
-        >
-          <span class="workflow-node-library-icon" aria-hidden="true">
-            <i class="bi bi-boxes" />
-          </span>
-          <span class="workflow-node-library-copy">
-            <span class="workflow-node-library-title">{{ $t('workflows.editor.taskDispatcher') }}</span>
-            <span class="workflow-node-library-meta">{{ $t('workflows.editor.sendDispatcher') }}</span>
           </span>
         </button>
       </div>

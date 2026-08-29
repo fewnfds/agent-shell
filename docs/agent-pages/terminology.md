@@ -12,7 +12,7 @@
 | 检查点能力与产物 | `Checkpointer`、`Checkpoint`、`Checkpoint Thread` | Checkpointer 中文为“检查点保存器”，是 Workflow 可选装配组件；Checkpoint 中文为“检查点”，是保存的 State 快照；Checkpoint Thread 只属于启用该组件的 Workflow Run |
 | State 投影 | `Workflow State`、`Agent State`、`parent State`、`child State` | `Workflow State` 与 `Agent State` 表示 schema 边界；`parent State` 与 `child State` 只描述实际的状态投影关系 |
 | Graph 方向 | `source Node`、`target Node`、`upstream Node`、`downstream Node` | 与 Edge、routing 和 artifact 因果方向一致 |
-| Node 类别 | `system Node`、`executable Node`、`Agent Node`、`Command Node`、`Task Dispatcher` | Start/End 是 system Node；实际执行 callable 的节点是 executable Node |
+| Node 类别 | `system Node`、`executable Node`、`Agent Node`、`Command Node` | Start/End 是 system Node；实际执行 callable 的节点是 executable Node |
 | Edge 类别 | `Normal Edge`、`Branch Edge`、`Dispatch Edge` | 与 Graph wire handle 和 Catalog contract 对齐 |
 | Agent 角色 | `Main Agent`、`Subagent`、`target Agent`、`worker Agent` | `Main Agent` 和 `Subagent` 是产品实体名 |
 | 配置与扩展 | `Configuration Repository`、`Model Connection`、`Model Requirement`、`Custom Tool`、`Custom Middleware` | 与 API、catalog type 和源码 owner 对齐 |
@@ -41,6 +41,6 @@
 | Skill package / Skill 独立包 | Skill Component 创建后按配置名称保存、由 Component UUID 拥有的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
 | Custom Tool / 自定义工具 | 从 Python `@tool` 资源物化的 LangChain Tool |
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
-| Task Dispatcher | 从 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node 的 canvas Node |
+| Command Dispatch | Command 根据 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node |
 | Agent Event Output | Main Agent 拥有的 v3 运行事件到响应文本投影规则；Workflow 按稳定 Node/Agent source identity 选择规则 |
 | Workflow Lifecycle / 运行历史 | 系统区域 Workflow Lifecycle 下的 Run、结构事件、可选 Checkpoint/Store 摘要与关联诊断；只服务管理端 Debug，不提供 Resume |

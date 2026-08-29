@@ -30,8 +30,4 @@ def build_python_package_router(
     async def command_templates() -> dict[str, object]:
         return authoring.template_catalog("command")
 
-    @router.get("/api/python-package-templates/task-dispatcher")
-    async def task_dispatcher_templates() -> dict[str, object]:
-        return authoring.template_catalog("task-dispatcher")
-
     return router

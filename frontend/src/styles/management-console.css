@@ -824,8 +824,7 @@ pre code {
 }
 
 .workflow-node--agent,
-.workflow-node--command,
-.workflow-node--task-dispatcher {
+.workflow-node--command {
   display: grid;
   gap: 10px;
 }

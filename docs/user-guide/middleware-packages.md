@@ -17,7 +17,6 @@ Agent Shell 的文件化 Python 扩展分为扩展模板、配置扩展和组件
 data/
   templates/
     workflow/command/<template-key>/
-    workflow/task_dispatcher/<template-key>/
     workflow/workflow_event_output/<template-key>/
     agent/custom_tool/<template-key>/
     agent/custom_middleware/<template-key>/
@@ -26,8 +25,6 @@ data/
     components/<type>/<configuration-uuid>.yaml
     python_packages/
       command/
-        <configuration-name>/
-      task_dispatcher/
         <configuration-name>/
       workflow_event_output/
         <configuration-name>/
@@ -40,7 +37,6 @@ data/
 
 examples/
   workflow-components/command/<example-key>/
-  workflow-components/task-dispatcher/<example-key>/
   workflow-components/workflow-event-output/<example-key>/
   agent-components/custom-tool/<example-key>/
   agent-components/custom-middleware/<example-key>/
@@ -71,7 +67,7 @@ examples/
 
 ## 配置引用
 
-Command Node、Task Dispatcher 和 Custom Middleware 使用同一 YAML 外壳：
+Command Node 和 Custom Middleware 使用同一 YAML 外壳：
 
 ```yaml
 python_package:
@@ -96,26 +92,11 @@ def create_command():
 
     async def command(state, runtime):
         risk = state.get("shared_vars", {}).get("risk", 0)
-        branch = "review" if risk >= threshold else "continue"
-        return {"activate": [branch], "update": {}}
-
-    return command
-```
-
-`command(state, runtime)` 返回 `activate` 和 `update`。画布 compiler 将结果映射为 LangGraph `Command`；包不接触 Node ID，
-也不直接返回 `Command`。
-
-## Task Dispatcher
-
-Task Dispatcher 使用 `family: workflow-node`、`adapter: task-dispatcher`。同步工厂返回固定签名的 async callable：
-
-```python
-def create_dispatcher():
-    async def dispatch(state, runtime):
-        # Example source only; select any relevant State/Runtime/Store data.
         items = state.get("shared_vars", {}).get("items", [])
+        branch = "review" if risk >= threshold else "continue"
         return {
-            "tasks": [
+            "activate": [branch],
+            "dispatch": [
                 {
                     "task_id": f"item:{item['id']}",
                     "dispatch_key": "item",
@@ -123,14 +104,21 @@ def create_dispatcher():
                 }
                 for item in items
             ],
-            "update": {},
+            "update": {
+                "shared_vars": {
+                    "dispatched_count": len(items),
+                }
+            },
         }
 
-    return dispatch
+    return command
 ```
 
-`tasks` 至少包含 1 项，当前不设置产品数量上限；同批 `task_id` 唯一且长 1 至 128 个字符，`dispatch_key` 长 1 至 64 个字符并与画布同源 Dispatch Edge 完全匹配，`payload` 是严格 JSON 对象。
-compiler 为每项构造 Shell-owned `WorkflowTaskContext`，再映射为 LangGraph `Send`。package 不接触 Node ID，也不直接返回 `Send`/`Command`。worker Agent subgraph 通过 private State 的 `workflow_task` 读取任务。完整规则与内置示例见[Task Dispatcher](../wizard-pages/task-dispatcher-config.md)。payload 拒绝 Python 对象和非有限数；`update` 仍可写任意已声明 Workflow State channel，值仍经过该 channel 的现有类型校验。
+`command(state, runtime)` 返回 `activate`、`dispatch` 和 `update`，三个字段都可以为空。`activate` 选择零个或多个 Branch Edge key；`dispatch` 包含零个或多个 Agent worker task；`update` 是 parent Workflow State 的 partial update。Branch 与 Dispatch 可以在同一次 invocation 中同时产生。
+
+每个 dispatch item 使用同批唯一的 `task_id`、与同源 Dispatch Edge 完全匹配的 `dispatch_key`，以及 strict JSON object `payload`。payload 拒绝 Python 对象和非有限数。compiler 为每项构造 Shell-owned `WorkflowTaskContext`，再映射为 LangGraph `Send`；目标 Agent subgraph 通过 private State 的 `workflow_task` 读取 `command_node_id`、`command_invocation_id`、`task_id`、`dispatch_key` 和 `payload`。同批 `update` 在 parent State reducer 中提交，不会自动进入这些 `Send` 的私有 State，因此 worker 当批需要的材料应直接放入 payload 或通过 reference 读取。
+
+画布 compiler 把完整结果映射为一个 LangGraph `Command`。package 不接触 Edge ID、target Node ID 或 topology，也不直接返回 LangGraph `Command`/`Send`。完整规则与内置示例见 [Command](../wizard-pages/command-config.md)。
 
 ## Custom Middleware
 
@@ -148,7 +136,7 @@ def create_middleware(agent, config, backend):
 `references`、`scope`、`workflow_node_id`、`request_id`、`model` 和 `tools` 等；工厂也可以使用 `**kwargs` 接收全部可用值。这些参数是 Agent Shell 的装配投影，部分值会随当前装配范围而为空。工厂返回后，Middleware 通过 LangChain 官方 hook 的 `state` 和 `runtime` 读取每次运行的动态数据。
 Main Agent/Subagent 的有序 `middleware_refs` 决定多个实例进入列表的顺序。一个实例可以实现多个官方 hook，但 hook 不作为独立排序项。LangChain 对 `before_*` 正序执行、对 `after_*` 逆序执行，并把 `wrap_*` 按列表嵌套。Agent Shell 不代理官方 hook、state schema、tools 或 stream transformer。运行链使用异步执行；若自定义类覆盖 `before_agent`、`before_model`、`after_model`、`after_agent`、`wrap_model_call` 或 `wrap_tool_call` 中的同步 hook，也必须覆盖对应的 async hook，否则装配会被拒绝。
 
-内置 `agent-additional-prompt` template 通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent delegated messages 和 Dispatcher task。复制 template 后，在 `build_agent_additional_prompt_messages(state, runtime, request_messages, backend)` 中按 current Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Agent Additional Prompt](agent-additional-prompt.md)。
+内置 `agent-additional-prompt` template 通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent delegated messages 和 Command dispatch task。复制 template 后，在 `build_agent_additional_prompt_messages(state, runtime, request_messages, backend)` 中按 current Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
 ## Imports 与依赖
 
@@ -156,7 +144,7 @@ Python 名称仍需显式 `import`。本地模块使用正常相对导入，例�
 
 `requirements.txt` 可以不存在，也可以是空文件；两者都表示没有额外依赖。只有 source 实际 import 平台核心之外的 third-party package 时才需要新增或填写它。模板和配置 extension 不会因为缺少这个占位文件而失效。
 
-启动器只收集启用 Workflow 可达的配置扩展 requirements：Graph 中的 Command、Task Dispatcher 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
+启动器只收集启用 Workflow 可达的配置扩展 requirements：Graph 中的 Command 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
 
 依赖只接受普通 PyPI requirement、与核心约束兼容且提供 Windows wheel 的版本，不接受 URL、本地路径、`.pth` 或只有源码发行包的依赖。
 

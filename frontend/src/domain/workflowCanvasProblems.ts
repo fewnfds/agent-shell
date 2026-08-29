@@ -55,15 +55,6 @@ export function workflowCanvasProblems(
         `definition.nodes[${index}].config.command_id`,
       ))
     }
-    if (node.data.nodeType === 'task-dispatcher' && !node.data.taskDispatcherId) {
-      problems.push(canvasProblem(
-        'workflow.canvas.task_dispatcher_required',
-        'workflows.editor.canvasProblems.taskDispatcherRequired',
-        node.id,
-        node.data.nodeType,
-        `definition.nodes[${index}].config.task_dispatcher_id`,
-      ))
-    }
   })
 
   edges.forEach((edge, index) => {

@@ -109,9 +109,9 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 所有 Workflow 都需要读[构建 Workflow Graph](05-build-workflow-graph.md)。
 
-创建或修改 Command、Task Dispatcher、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明六类 Python package 共用的文件与 dependency contract。
+创建或修改 Command、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明五类 Python package 共用的文件与 dependency contract。
 
-使用 independent child Workflow Run 时读[使用 background Run](07-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Task Dispatcher 都在 current Run 内执行。
+使用 independent child Workflow Run 时读[使用 background Run](07-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Command dispatch task 都在 current Run 内执行。
 
 所有任务最后读[验证、运行与交付](08-validate-run-deliver.md)。
 
@@ -165,7 +165,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - Main Agent、Subagent、Agent Node、Agent invocation；
 - Agent Event Output、Workflow Event Output；
 - System Prompt、Agent Additional Prompt（AAP）；
-- Command、Task Dispatcher、Custom Tool、Custom Middleware；
+- Command、Custom Tool、Custom Middleware；
 - Workflow Graph、Node、Edge、handle、State、Runtime、Store；
 - Lifecycle、Run、background Run、Checkpoint Thread；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。

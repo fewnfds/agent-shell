@@ -266,7 +266,6 @@ def validate_workflow_executable(
     *,
     validate_main_agent: MainAgentValidator,
     commands: Mapping[str, object] | None = None,
-    task_dispatchers: Mapping[str, object] | None = None,
     workflow_role: WorkflowRole | None = None,
 ) -> ValidationReport:
     admission, normalized = admit_workflow_document(
@@ -283,7 +282,6 @@ def validate_workflow_executable(
         validate_workflow_topology(
             normalized,
             commands=commands,
-            task_dispatchers=task_dispatchers,
         )
     )
     node_index = {

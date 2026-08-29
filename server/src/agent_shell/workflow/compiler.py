@@ -20,11 +20,6 @@ from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import WorkflowNodeInputState, WorkflowState
 from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespace
-from agent_shell.task_dispatcher import (
-    TaskDispatcherCallable,
-    TaskDispatcherError,
-    run_task_dispatcher,
-)
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
@@ -145,8 +140,8 @@ def _make_agent_node(*, node_id: str, built_agent: Any):
             invocation_record["workflow_task"] = {
                 key: workflow_task[key]
                 for key in (
-                    "dispatcher_node_id",
-                    "dispatcher_invocation_id",
+                    "command_node_id",
+                    "command_invocation_id",
                     "task_id",
                     "dispatch_key",
                 )
@@ -179,6 +174,7 @@ def _make_command_node(
     node_id: str,
     command: CommandCallable,
     command_targets: Mapping[str, str],
+    dispatch_targets: Mapping[str, str],
 ):
     async def call_command(
         state: WorkflowState,
@@ -197,6 +193,7 @@ def _make_command_node(
                 state=state,
                 runtime=node_runtime,
                 allowed_branches=command_targets,
+                allowed_dispatch_keys=dispatch_targets,
             )
         except CommandError as exc:
             raise AgentRuntimeError(
@@ -204,55 +201,16 @@ def _make_command_node(
                 "The Command Node script failed.",
                 status_code=422,
             ) from exc
-        targets = list(
-            dict.fromkeys(command_targets[branch] for branch in result.activate)
-        )
-        return Command(update=result.update, goto=targets)
-
-    return call_command
-
-
-def _make_task_dispatcher_node(
-    *,
-    node_id: str,
-    dispatch: TaskDispatcherCallable,
-    dispatch_targets: Mapping[str, str],
-):
-    async def call_dispatcher(
-        state: WorkflowState,
-        runtime: Runtime[WorkflowRuntimeContext],
-    ) -> Command:
-        invocation_id, _invoked_at = _invocation_metadata(runtime)
-        node_runtime = runtime.override(
-            context=runtime.context.for_workflow_node(
-                workflow_node_id=node_id,
-                invocation_id=invocation_id,
-            )
-        )
-        try:
-            result = await run_task_dispatcher(
-                dispatch,
-                state=state,
-                runtime=node_runtime,
-                allowed_dispatch_keys=dispatch_targets,
-            )
-        except TaskDispatcherError as exc:
-            raise AgentRuntimeError(
-                "workflow.task_dispatcher_failed",
-                "The Task Dispatcher script failed.",
-                status_code=422,
-            ) from exc
-
         parent_state = {
             key: state[key]
             for key in WorkflowState.__annotations__
             if key in state
         }
         sends = []
-        for item in result.tasks:
+        for item in result.dispatch:
             workflow_task = {
-                "dispatcher_node_id": node_id,
-                "dispatcher_invocation_id": invocation_id,
+                "command_node_id": node_id,
+                "command_invocation_id": invocation_id,
                 **item.model_dump(mode="json"),
             }
             sends.append(
@@ -261,9 +219,12 @@ def _make_task_dispatcher_node(
                     {**parent_state, "workflow_task": workflow_task},
                 )
             )
-        return Command(update=result.update, goto=sends)
+        branch_targets = [
+            command_targets[branch] for branch in result.activate
+        ]
+        return Command(update=result.update, goto=[*branch_targets, *sends])
 
-    return call_dispatcher
+    return call_command
 
 
 def compile_workflow(
@@ -271,7 +232,6 @@ def compile_workflow(
     *,
     node_agents: Mapping[str, Any],
     commands: Mapping[str, CommandCallable] | None = None,
-    task_dispatchers: Mapping[str, TaskDispatcherCallable] | None = None,
     workflow_role: WorkflowRole | None = None,
     checkpointer: Any | None = None,
     store: BaseStore | None = None,
@@ -287,11 +247,9 @@ def compile_workflow(
         raise _compile_error(issue.code, issue.message)
 
     command_configs = commands or {}
-    dispatcher_configs = task_dispatchers or {}
     topology_issues = validate_workflow_topology(
         normalized,
         commands=command_configs,
-        task_dispatchers=dispatcher_configs,
     )
     if topology_issues:
         issue = topology_issues[0]
@@ -348,32 +306,18 @@ def compile_workflow(
                     "The selected Command Node configuration does not exist.",
                 )
             targets = branch_targets.get(node.id, {})
+            dispatches = dispatch_targets.get(node.id, {})
             builder.add_node(
                 node.id,
                 _make_command_node(
                     node_id=node.id,
                     command=command,
                     command_targets=targets,
+                    dispatch_targets=dispatches,
                 ),
-                destinations=tuple(dict.fromkeys(targets.values())),
-            )
-            continue
-        if spec.runtime_kind == "send_dispatcher":
-            dispatch = dispatcher_configs.get(node.id)
-            if dispatch is None:
-                raise _compile_error(
-                    "workflow.task_dispatcher_not_found",
-                    "The selected Task Dispatcher configuration does not exist.",
-                )
-            targets = dispatch_targets.get(node.id, {})
-            builder.add_node(
-                node.id,
-                _make_task_dispatcher_node(
-                    node_id=node.id,
-                    dispatch=dispatch,
-                    dispatch_targets=targets,
+                destinations=tuple(
+                    dict.fromkeys((*targets.values(), *dispatches.values()))
                 ),
-                destinations=tuple(dict.fromkeys(targets.values())),
             )
             continue
         built_agent = node_agents.get(node.id)

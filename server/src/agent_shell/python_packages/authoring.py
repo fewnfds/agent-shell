@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 PackageAdapterDirectory = Literal[
     "command",
-    "task_dispatcher",
     "agent_middleware",
     "agent_event_output",
     "workflow_event_output",
@@ -90,15 +89,6 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         adapter="command",
         directory="command",
         factory_name="create_command",
-        factory_parameters=(),
-    ),
-    "task-dispatcher": PackageAdapterSpec(
-        template_parts=("workflow", "task_dispatcher"),
-        example_parts=("workflow-components", "task-dispatcher"),
-        family="workflow-node",
-        adapter="task-dispatcher",
-        directory="task_dispatcher",
-        factory_name="create_dispatcher",
         factory_parameters=(),
     ),
     "custom-middleware": PackageAdapterSpec(

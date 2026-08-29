@@ -230,12 +230,11 @@ Content-Type: application/json
 测试输入必须覆盖本次任务的主要路径：
 
 - Agent Workflow：确认 AAP 或其他输入 owner 把目标材料交给正确 Agent，并得到 Agent Event Output；
-- Command Workflow：确认预期 branch、State update 和 termination；
-- Task Dispatcher Workflow：确认 task 生成、worker input、key 和 downstream completion；
+- Command Workflow：确认预期 branch、State update、task 生成、worker input、routing key、downstream completion 和 termination；
 - background Workflow：确认 handle 持久化、check、result handoff、业务 exit 和可选 finalizer；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
-纯 Command 或 Task Dispatcher Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
+纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
 
 ## 10. Invocation 失败
 

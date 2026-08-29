@@ -38,7 +38,6 @@ import {
   modelAdapter,
   type AgentEventOutputCatalogItem,
   type CommandCatalogItem,
-  type TaskDispatcherCatalogItem,
   type BlockDraftBase,
   type CustomMiddlewareCatalogItem,
   type CustomToolCatalogItem,
@@ -93,7 +92,6 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'prompt-caching': () => import('@/editors/PromptCachingEditor.vue'),
   'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
   command: () => import('@/editors/CommandEditor.vue'),
-  'task-dispatcher': () => import('@/editors/TaskDispatcherEditor.vue'),
   'model-connection': () => import('@/editors/ModelEditor.vue'),
 }
 
@@ -154,8 +152,6 @@ const workflowEventOutputs = ref<WorkflowEventOutputCatalogItem[]>([])
 const workflowEventOutputErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const commandPackages = ref<CommandCatalogItem[]>([])
 const commandPackageErrors = ref<Record<string, LocalizedMessagePayload>>({})
-const taskDispatcherPackages = ref<TaskDispatcherCatalogItem[]>([])
-const taskDispatcherPackageErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const skills = ref<SkillCatalogItem[]>([])
 const skillPackages = ref<SkillPackageSummary[]>([])
 const skillErrors = ref<Record<string, LocalizedMessagePayload>>({})
@@ -267,13 +263,6 @@ const editorProps = computed<Record<string, unknown>>(() => {
         errors: commandPackageErrors.value,
         loading: loadingResource.value,
       }
-    case 'task-dispatcher':
-      return {
-        defaults: activeDefaults.value,
-        catalog: taskDispatcherPackages.value,
-        errors: taskDispatcherPackageErrors.value,
-        loading: loadingResource.value,
-      }
     case 'skill':
       return {
         defaults: activeDefaults.value,
@@ -326,7 +315,6 @@ function usesPythonExtension(type: EditorType): boolean {
     || type === 'agent-event-output'
     || type === 'workflow-event-output'
     || type === 'command'
-    || type === 'task-dispatcher'
   )
 }
 
@@ -828,11 +816,6 @@ async function refreshResource(
       if (!resourceRequestIsCurrent(sequence, type)) return
       commandPackages.value = result.catalog
       commandPackageErrors.value = result.errors
-    } else if (type === 'task-dispatcher') {
-      const result = await managementApi.listTaskDispatcherTemplates()
-      if (!resourceRequestIsCurrent(sequence, type)) return
-      taskDispatcherPackages.value = result.catalog
-      taskDispatcherPackageErrors.value = result.errors
     } else if (type === 'skill') {
       const result = await managementApi.listSkills()
       if (!resourceRequestIsCurrent(sequence, type)) return

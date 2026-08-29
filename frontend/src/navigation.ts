@@ -84,10 +84,6 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
         path: '/workflow-components/command',
         labelKey: 'navigation.sections.command',
       },
-      {
-        path: '/workflow-components/task-dispatcher',
-        labelKey: 'navigation.sections.taskDispatcher',
-      },
     ],
   },
 ]

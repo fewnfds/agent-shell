@@ -1,6 +1,6 @@
 # 配置 Agent
 
-只有 Workflow Graph 包含 Agent Node 时才读本章。Command、Task Dispatcher、Start 和 End 不需要 Main Agent 或模型。
+只有 Workflow Graph 包含 Agent Node 时才读本章。Command、Start 和 End 不需要 Main Agent 或模型。
 
 完成结果是一个满足目标行为的 Main Agent，以及已经记录或完成的 Model Mapping。
 
@@ -177,7 +177,7 @@ POST /api/blocks/system-prompt
 }
 ```
 
-当前 request、Dispatcher task、Workflow State snapshot、上游 Agent result 或运行时文件属于动态材料。需要这些材料时使用 AAP 或其他明确的 Custom Middleware，不把它们硬编码进 System Prompt。
+当前 request、Command dispatch task、Workflow State snapshot、上游 Agent result 或运行时文件属于动态材料。需要这些材料时使用 AAP 或其他明确的 Custom Middleware，不把它们硬编码进 System Prompt。
 
 AAP 是可选 Custom Middleware template。先读取：
 

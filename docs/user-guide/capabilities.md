@@ -19,8 +19,7 @@
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
 | 检查点保存器（Checkpointer） | 为明确选择它的 Workflow 持久化 LangGraph State 检查点，并配置写入时机 | Workflow metadata 可选绑定 | 不属于 Agent capability |
 | Workflow Event Output | 用文件化 Python 扩展把 Workflow-owned v3 事件投影为响应字符串 | Workflow 可选绑定 | 不属于 Agent capability |
-| Command | 读取完整 Workflow State/Context，更新 State 并激活零个、一个或多个具名 Branch Edge | canvas Node 引用 | 不属于 Agent capability |
-| Task Dispatcher | 从 Workflow State/Context 生成任务，并通过 Dispatch Edge 动态 Send 到 worker | canvas Node 引用 | 不属于 Agent capability |
+| Command | 读取完整 Workflow State/Context，更新 State、激活具名 Branch Edge，并通过 Dispatch Edge 动态 Send Agent task | canvas Node 引用 | 不属于 Agent capability |
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
 
@@ -34,7 +33,7 @@ Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由
 
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
-每个 canvas Agent Node wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；parent Workflow State 的 `agent_invocations` 只保存 identity 和 `result_ref`，并按 Node/Dispatcher task 逻辑槽保留最新 reference。synchronous Subagent 仍由 Deep Agents official Middleware 在 Main Agent 内部调度，不建立隐藏的 archive wrapper。
+每个 canvas Agent Node wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；parent Workflow State 的 `agent_invocations` 只保存 identity 和 `result_ref`，并按 Node/Command dispatch task 逻辑槽保留最新 reference。synchronous Subagent 仍由 Deep Agents official Middleware 在 Main Agent 内部调度，不建立隐藏的 archive wrapper。
 这条 parent/child State 输出映射不需要额外的结束 Hook 或 Recorder 组件。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event)` 读取稳定 dict，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
@@ -43,13 +42,8 @@ Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选
 
 Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。引用挂在每个 Lifecycle 唯一的 Parent Workflow 上，但调度语义覆盖该 Lifecycle 的公开响应。Child Run Workflow 不装配该组件。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
 
-Command 组件保存一个 `workflow-node/command` Python 扩展引用和普通 config。扩展通过同步 `create_command()` 工厂物化 `async command(state, runtime)`；用户在画布 Branch Edge 上直接填写业务分支 key，command 通过 `activate` 返回零个、一个或多个完全匹配的 key，并可通过 `update` 返回 State 局部更新；空列表表示当前路径自然结束，平台不保留任何兜底 key 语义。
+Command 组件保存一个 `workflow-node/command` Python 扩展引用和普通 config。扩展通过同步 `create_command()` 工厂物化 `async command(state, runtime)`；用户在画布 Branch Edge 与 Dispatch Edge 上填写业务 key，command 通过 `activate` 返回 Branch key，通过 `dispatch` 返回带唯一 `task_id`、`dispatch_key` 和严格 JSON `payload` 的 Agent task，并可通过 `update` 返回 State 局部更新。runtime 把 Branch target 与每项 LangGraph `Send` 放入同一个官方 `Command.goto`。
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。
 
-Task Dispatcher component 保存一个 `workflow-node/task-dispatcher` Python extension reference。同步 `create_dispatcher()` factory 物化 `async dispatch(state, runtime)`；返回的每个 task 包含稳定 `task_id`、匹配 canvas Dispatch Edge 的 `dispatch_key` 和 JSON `payload`；任意 Python object 和 non-finite number 会在 Node boundary 被拒绝。Shell 将 task 映射为 LangGraph `Send`，target Agent 的 State、
-target Agent 私有 State 的 `workflow_task` 与完成后的 `agent_invocations` 轻量记录都带 task identity。
-完整规则和 item list 示例见[Task Dispatcher](../wizard-pages/task-dispatcher-config.md)。
-
-这些自定义 Python 都运行在服务进程的受信任边界内，没有 sandbox。Custom Tool、Custom Middleware、Command Node、Task Dispatcher、
-Agent Event Output 和 Workflow Event Output 是六类配置独占的 Python 扩展，并在扩展目录可选的 `requirements.txt` 声明外部包；模板和示例本身不运行也不参与依赖。六类目录与通用依赖边界见[文件化 Python 扩展](middleware-packages.md)，各组件的 factory contract 见对应组件页。
+这些自定义 Python 都运行在服务进程的受信任边界内，没有 sandbox。Custom Tool、Custom Middleware、Command Node、Agent Event Output 和 Workflow Event Output 是五类配置独占的 Python 扩展，并在扩展目录可选的 `requirements.txt` 声明外部包；模板和示例本身不运行也不参与依赖。五类目录与通用依赖边界见[文件化 Python 扩展](middleware-packages.md)，各组件的 factory contract 见对应组件页。
 启动器只收集 enabled Workflow 可达扩展的 requirements；修改后需重启 Agent Shell 以重建依赖层。文件化扩展源码在下一次请求重新加载。

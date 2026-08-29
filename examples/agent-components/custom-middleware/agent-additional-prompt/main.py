@@ -1,8 +1,8 @@
 """Agent Additional Prompt (AAP) Middleware example.
 
 The suggested policy gives a Main Agent the current Lifecycle request messages,
-keeps a Subagent's privately delegated messages, and appends a Task Dispatcher
-worker's ``workflow_task`` as a user message. Customize
+keeps a Subagent's privately delegated messages, and appends a Command-dispatched
+Agent's ``workflow_task`` as a user message. Customize
 ``build_agent_additional_prompt_messages`` to select, trim, reorder, or extend
 that Agent's private initial messages.
 
@@ -66,7 +66,7 @@ async def build_agent_additional_prompt_messages(
 
     messages = mutable_request_messages(request_messages)
 
-    # Suggested default: expose a Task Dispatcher worker's private task.
+    # Suggested default: expose a Command-dispatched Agent's private task.
     # Remove or transform this block when the Agent needs a different context.
     task = state.get("workflow_task")
     if isinstance(task, dict):

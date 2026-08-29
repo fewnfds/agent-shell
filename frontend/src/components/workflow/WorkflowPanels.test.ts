@@ -6,7 +6,6 @@ import type { MainAgent, WorkflowGraphDocument, WorkflowNodeCatalogItem } from '
 import {
   newAgentCanvasNode,
   newCommandCanvasNode,
-  newTaskDispatcherCanvasNode,
   nextWorkflowCanvasEdgeId,
   WORKFLOW_NODE_DRAG_MIME,
   workflowCanvasEdgeTypesBetween,
@@ -74,19 +73,10 @@ const commandCatalog: WorkflowNodeCatalogItem = {
   config_schema: {},
   workflow_roles: ['parent', 'child'],
   input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal', 'branch'], max_connections: null }],
-  output_handles: [{ id: 'branch', kind: 'control', edge_type: 'branch', accepted_edge_types: ['branch'], max_connections: null }],
-}
-
-const taskDispatcherCatalog: WorkflowNodeCatalogItem = {
-  type: 'task-dispatcher',
-  type_version: 1,
-  runtime_kind: 'send_dispatcher',
-  title_key: 'workflow.nodes.taskDispatcher.title',
-  description_key: 'workflow.nodes.taskDispatcher.description',
-  config_schema: {},
-  workflow_roles: ['parent', 'child'],
-  input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal', 'branch'], max_connections: null }],
-  output_handles: [{ id: 'dispatch', kind: 'control', edge_type: 'dispatch', accepted_edge_types: ['dispatch'], max_connections: null }],
+  output_handles: [
+    { id: 'branch', kind: 'control', edge_type: 'branch', accepted_edge_types: ['branch'], max_connections: null },
+    { id: 'dispatch', kind: 'control', edge_type: 'dispatch', accepted_edge_types: ['dispatch'], max_connections: null },
+  ],
 }
 
 const agents: MainAgent[] = [
@@ -100,10 +90,8 @@ describe('Workflow canvas panels', () => {
       props: {
         agent: agentCatalog,
         command: null,
-        taskDispatcher: null,
         agentDisabled: false,
         commandDisabled: true,
-        taskDispatcherDisabled: true,
       },
       global: { plugins: [i18n()] },
     })
@@ -130,7 +118,6 @@ describe('Workflow canvas panels', () => {
         inputEndpoints: agentCatalog.input_handles,
         mainAgents: agents,
         commands: [],
-        taskDispatchers: [],
         node,
         nodeIds: [node.id],
         outputEndpoints: agentCatalog.output_handles,
@@ -163,7 +150,6 @@ describe('Workflow canvas panels', () => {
         inputEndpoints: agentCatalog.input_handles,
         mainAgents: agents,
         commands: [],
-        taskDispatchers: [],
         node,
         nodeIds: [node.id],
         outputEndpoints: agentCatalog.output_handles,
@@ -196,7 +182,6 @@ describe('Workflow canvas panels', () => {
         inputEndpoints: [],
         mainAgents: agents,
         commands: [],
-        taskDispatchers: [],
         node: null,
         nodeIds: ['agent-1', 'end'],
         outputEndpoints: [],
@@ -271,7 +256,7 @@ describe('Workflow canvas panels', () => {
     expect(workflowConnectionEdgeType(existing, nodes, [existing], catalog)).toBe('normal')
   })
 
-  it('uses one output endpoint and stores the explicit key on a Branch Edge', async () => {
+  it('uses the Command routing endpoints and stores the explicit key on a Branch Edge', async () => {
     const router = newCommandCanvasNode('router-1', 'router-config-1')
     const end: WorkflowCanvasNode = {
       id: 'end',
@@ -292,7 +277,7 @@ describe('Workflow canvas panels', () => {
       ...endCatalog,
       input_handles: [{ ...endCatalog.input_handles[0]!, accepted_edge_types: ['normal', 'branch'] }],
     }
-    expect(commandCatalog.output_handles).toHaveLength(1)
+    expect(commandCatalog.output_handles).toHaveLength(2)
     expect(workflowConnectionEdgeType({
       source: router.id,
       sourceHandle: 'branch',
@@ -309,7 +294,6 @@ describe('Workflow canvas panels', () => {
         inputEndpoints: [],
         mainAgents: agents,
         commands: [],
-        taskDispatchers: [],
         node: null,
         nodeIds: [router.id, end.id],
         outputEndpoints: [],
@@ -345,7 +329,7 @@ describe('Workflow canvas panels', () => {
   })
 
   it('round-trips a State-driven Dispatch Edge and requires its dispatch key', async () => {
-    const dispatcher = newTaskDispatcherCanvasNode('dispatcher-1', 'dispatcher-config-1')
+    const command = newCommandCanvasNode('command-1', 'command-config-1')
     const worker = newAgentCanvasNode('worker-1', agents[0]!.id)
     const workerCatalog = {
       ...agentCatalog,
@@ -356,7 +340,7 @@ describe('Workflow canvas panels', () => {
     }
     const edge: WorkflowCanvasEdge = {
       id: 'edge-city',
-      source: dispatcher.id,
+      source: command.id,
       sourceHandle: 'dispatch',
       target: worker.id,
       targetHandle: 'in',
@@ -364,21 +348,21 @@ describe('Workflow canvas panels', () => {
     }
 
     expect(workflowConnectionEdgeType({
-      source: dispatcher.id,
+      source: command.id,
       sourceHandle: 'dispatch',
       target: worker.id,
       targetHandle: 'in',
-    }, [dispatcher, worker], [], [taskDispatcherCatalog, workerCatalog])).toBe('dispatch')
+    }, [command, worker], [], [commandCatalog, workerCatalog])).toBe('dispatch')
 
     const document = workflowCanvasToDocument(
-      [dispatcher, worker],
+      [command, worker],
       [edge],
       { x: 0, y: 0, zoom: 1 },
     )
-    expect(document.definition.nodes[0]!.config.task_dispatcher_id)
-      .toBe('dispatcher-config-1')
+    expect(document.definition.nodes[0]!.config.command_id)
+      .toBe('command-config-1')
     expect(document.definition.edges[0]!.dispatch_key).toBe('city')
-    expect(workflowCanvasProblems([dispatcher, worker], [{
+    expect(workflowCanvasProblems([command, worker], [{
       ...edge,
       data: { edgeType: 'dispatch' },
     }])[0]?.message_key).toBe('workflows.editor.canvasProblems.dispatchKeyRequired')
@@ -386,15 +370,14 @@ describe('Workflow canvas panels', () => {
     const wrapper = mount(WorkflowInspector, {
       props: {
         edge,
-        edgeSourceEndpoints: taskDispatcherCatalog.output_handles,
+        edgeSourceEndpoints: commandCatalog.output_handles,
         edgeTargetEndpoints: workerCatalog.input_handles,
         edgeTypeOptions: ['dispatch'],
         inputEndpoints: [],
         mainAgents: agents,
         commands: [],
-        taskDispatchers: [],
         node: null,
-        nodeIds: [dispatcher.id, worker.id],
+        nodeIds: [command.id, worker.id],
         outputEndpoints: [],
         stateContract: 'agent-shell.workflow.agent-invocations.v1',
         workflowName: 'Rainfall Workflow',

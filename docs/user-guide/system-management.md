@@ -30,7 +30,6 @@ data/
     agent/custom_middleware/
     agent/agent_event_output/
     workflow/command/
-    workflow/task_dispatcher/
     workflow/workflow_event_output/
   logs/security-events.jsonl
   logs/diagnostics/*.log
@@ -61,7 +60,7 @@ data/
 - 递归删除没有回收站。
 
 `data/templates/` 用于按 `agent/custom_tool/`、`agent/custom_middleware/`、`agent/agent_event_output/`、
-`workflow/command/`、`workflow/task_dispatcher/` 和 `workflow/workflow_event_output/` 六个类别维护静态 Python 模板。
+`workflow/command/` 和 `workflow/workflow_event_output/` 五个类别维护静态 Python 模板。
 创建 Python-backed Component 时选择一份合法模板；保存后形成配置独占的完整文件目录（目录名等于 Component 配置名称，`package.json.id` 等于 Component UUID）。
 
 ## 配置管理

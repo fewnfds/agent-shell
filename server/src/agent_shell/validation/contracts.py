@@ -116,7 +116,6 @@ def _specific_contract_identity(
         in {
             "custom-middleware",
             "command",
-            "task-dispatcher",
             "agent-event-output",
             "workflow-event-output",
         }

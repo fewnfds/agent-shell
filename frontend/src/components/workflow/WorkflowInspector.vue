@@ -20,7 +20,6 @@ const props = defineProps<{
   inputEndpoints: WorkflowNodeHandleSpec[]
   mainAgents: ConfigurationSummary[]
   commands: ConfigurationSummary[]
-  taskDispatchers: ConfigurationSummary[]
   node: WorkflowCanvasNode | null
   nodeIds: string[]
   outputEndpoints: WorkflowNodeHandleSpec[]
@@ -36,7 +35,6 @@ const emit = defineEmits<{
   selectEdgeType: [edgeId: string, edgeType: WorkflowCanvasEdgeType]
   updateAgent: [nodeId: string, mainAgentId: string]
   updateCommand: [nodeId: string, commandId: string]
-  updateTaskDispatcher: [nodeId: string, taskDispatcherId: string]
   updateNodeId: [nodeId: string, nextNodeId: string]
   updateBranchKey: [edgeId: string, branchKey: string]
   updateDispatchKey: [edgeId: string, dispatchKey: string]
@@ -64,11 +62,7 @@ watch(
 
 const contextTitle = computed(() => {
   if (props.node) {
-    const nodeTypeKey = props.node.data.nodeType === 'command'
-      ? 'command'
-      : props.node.data.nodeType === 'task-dispatcher'
-        ? 'taskDispatcher'
-        : props.node.data.nodeType
+    const nodeTypeKey = props.node.data.nodeType
     return t(`workflows.editor.${nodeTypeKey}`)
   }
   if (props.edge) return edgeTypeLabel(props.edge.data?.edgeType ?? '')
@@ -104,11 +98,6 @@ function updateAgent(event: Event): void {
 function updateCommand(event: Event): void {
   if (!props.node || props.node.data.nodeType !== 'command') return
   emit('updateCommand', props.node.id, (event.target as HTMLSelectElement).value)
-}
-
-function updateTaskDispatcher(event: Event): void {
-  if (!props.node || props.node.data.nodeType !== 'task-dispatcher') return
-  emit('updateTaskDispatcher', props.node.id, (event.target as HTMLSelectElement).value)
 }
 
 function commitNodeId(): void {
@@ -259,19 +248,6 @@ function selectEdgeTargetEndpoint(event: Event): void {
             </select>
           </div>
           <button class="workflow-inspector-delete" type="button" @click="emit('removeNode', node.id)"><i class="bi bi-trash" aria-hidden="true" />{{ $t('workflows.editor.removeCommand') }}</button>
-        </template>
-        <template v-else-if="node.data.nodeType === 'task-dispatcher'">
-          <div class="workflow-inspector-row">
-            <label class="workflow-inspector-label" for="workflow-node-task-dispatcher"><span>{{ $t('workflows.editor.taskDispatcherConfig') }}</span><span aria-hidden="true">:</span></label>
-            <select id="workflow-node-task-dispatcher" class="form-select form-select-sm workflow-inspector-select" :value="node.data.taskDispatcherId" @change="updateTaskDispatcher">
-              <option v-if="taskDispatchers.length === 0" value="">{{ $t('workflows.editor.noTaskDispatchers') }}</option>
-              <option v-if="node.data.taskDispatcherId && !hasConfiguration(taskDispatchers, node.data.taskDispatcherId)" disabled :value="node.data.taskDispatcherId">
-                {{ $t('common.missingConfiguration', { id: node.data.taskDispatcherId }) }}
-              </option>
-              <option v-for="dispatcher in taskDispatchers" :key="dispatcher.id" :value="dispatcher.id">{{ dispatcher.name }}</option>
-            </select>
-          </div>
-          <button class="workflow-inspector-delete" type="button" @click="emit('removeNode', node.id)"><i class="bi bi-trash" aria-hidden="true" />{{ $t('workflows.editor.removeTaskDispatcher') }}</button>
         </template>
         <p v-else class="workflow-inspector-note">{{ $t('workflows.editor.fixedNode') }}</p>
       </template>

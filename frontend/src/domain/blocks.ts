@@ -13,7 +13,6 @@ import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
-import { taskDispatcherAdapter } from './blocks/taskDispatcher'
 import { checkpointerAdapter } from './blocks/checkpointer'
 import { responseStreamSchedulingAdapter } from './blocks/responseStreamScheduling'
 
@@ -78,11 +77,6 @@ export type {
   CommandDraft,
 } from './blocks/command'
 export type {
-  TaskDispatcherCatalogItem,
-  TaskDispatcherDefaults,
-  TaskDispatcherDraft,
-} from './blocks/taskDispatcher'
-export type {
   CheckpointDurability,
   CheckpointerDraft,
 } from './blocks/checkpointer'
@@ -107,7 +101,6 @@ export {
   todoListAdapter,
   workflowEventOutputAdapter,
   commandAdapter,
-  taskDispatcherAdapter,
   checkpointerAdapter,
   responseStreamSchedulingAdapter,
 }
@@ -134,7 +127,6 @@ export const managedComponentTypes = [
   'workflow-event-output',
   'response-stream-scheduling',
   'command',
-  'task-dispatcher',
 ] as const
 
 export const blockAdapters = {
@@ -155,5 +147,4 @@ export const blockAdapters = {
   'workflow-event-output': workflowEventOutputAdapter,
   'response-stream-scheduling': responseStreamSchedulingAdapter,
   'command': commandAdapter,
-  'task-dispatcher': taskDispatcherAdapter,
 } as const

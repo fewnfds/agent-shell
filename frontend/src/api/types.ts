@@ -26,7 +26,6 @@ export type WorkflowComponentType =
   | 'workflow-event-output'
   | 'response-stream-scheduling'
   | 'command'
-  | 'task-dispatcher'
 export type ManagedComponentType = BlockType | WorkflowComponentType
 
 export interface CapabilityManifest {
@@ -394,7 +393,7 @@ export interface PythonPackageManifest {
   format_version: 1
   id: string
   family: 'workflow-node' | 'middleware' | 'event-output' | 'tool'
-  adapter: 'command' | 'task-dispatcher' | 'agent-middleware' | 'agent-event-output' | 'workflow-event-output' | 'agent-tool'
+  adapter: 'command' | 'agent-middleware' | 'agent-event-output' | 'workflow-event-output' | 'agent-tool'
   folder: string
 }
 
@@ -409,7 +408,7 @@ export interface PythonPackageTemplate {
   format_version: 1
   key: string
   family: 'workflow-node' | 'middleware' | 'event-output' | 'tool'
-  adapter: 'command' | 'task-dispatcher' | 'agent-middleware' | 'agent-event-output' | 'workflow-event-output' | 'agent-tool'
+  adapter: 'command' | 'agent-middleware' | 'agent-event-output' | 'workflow-event-output' | 'agent-tool'
   name: string
   files: PythonPackageFile[]
   revision: string
@@ -571,7 +570,6 @@ export type WorkflowNodeType =
   | 'start'
   | 'agent'
   | 'command'
-  | 'task-dispatcher'
   | 'end'
 
 export interface WorkflowNodeHandleSpec {
@@ -590,7 +588,6 @@ export interface WorkflowNodeCatalogItem {
     | 'graph_exit'
     | 'agent_wrapper'
     | 'command_node'
-    | 'send_dispatcher'
   title_key: string
   description_key: string
   config_schema: Record<string, unknown>
@@ -606,7 +603,6 @@ export interface WorkflowGraphNode {
   config: {
     main_agent_id?: string
     command_id?: string
-    task_dispatcher_id?: string
     defer?: boolean
   }
 }

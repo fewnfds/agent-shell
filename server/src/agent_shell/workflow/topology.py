@@ -69,7 +69,6 @@ def validate_workflow_topology(
     document: WorkflowGraphDocumentV1,
     *,
     commands: Mapping[str, object] | None = None,
-    task_dispatchers: Mapping[str, object] | None = None,
 ) -> tuple[ValidationIssue, ...]:
     nodes = document.definition.nodes
     edges = document.definition.edges
@@ -81,9 +80,7 @@ def validate_workflow_topology(
         specs[node.id] = spec
 
     issues: list[ValidationIssue] = []
-    connections: set[
-        tuple[str, str, str, str, str | None, str | None]
-    ] = set()
+    connections: set[tuple[str, str]] = set()
     routed_branches: dict[str, dict[str, int]] = {}
     routed_dispatches: dict[str, dict[str, int]] = {}
     incoming_edge_types: dict[str, set[str]] = {}
@@ -177,14 +174,7 @@ def validate_workflow_topology(
             and target_handle is not None
         ):
             endpoint_compatible_sources.add(source.id)
-        connection = (
-            edge.source,
-            edge.source_handle,
-            edge.target,
-            edge.target_handle,
-            edge.branch_key,
-            edge.dispatch_key,
-        )
+        connection = (edge.source, edge.target)
         if connection in connections:
             issues.append(
                 _edge_issue(
@@ -192,7 +182,7 @@ def validate_workflow_topology(
                     index,
                     "workflow.edge_duplicate",
                     "",
-                    "The Workflow contains the same connection more than once.",
+                    "A directed source and target node pair permits only one Workflow edge.",
                     "validation.issue.workflow.edgeDuplicate",
                 )
             )
@@ -328,42 +318,6 @@ def validate_workflow_topology(
                     )
                 )
                 continue
-    if task_dispatchers is not None:
-        node_indexes = {node.id: index for index, node in enumerate(nodes)}
-        for node in nodes:
-            spec = specs[node.id]
-            if spec.runtime_kind != "send_dispatcher":
-                continue
-            if node.id not in task_dispatchers:
-                issues.append(
-                    reference_not_found_issue(
-                        scope="workflow",
-                        owner_id=node.id,
-                        owner_name=node.id,
-                        owner_type=node.type,
-                        path=(
-                            f"definition.nodes[{node_indexes[node.id]}].config."
-                            "task_dispatcher_id"
-                        ),
-                        reference_id=str(
-                            node.config.get("task_dispatcher_id", "")
-                        ),
-                        expected_type="task-dispatcher",
-                    )
-                )
-                continue
-            if not routed_dispatches.get(node.id):
-                issues.append(
-                    _issue(
-                        "workflow.task_dispatcher_target_missing",
-                        f"definition.nodes[{node_indexes[node.id]}]",
-                        "A Task Dispatcher requires at least one dispatch edge.",
-                        "validation.issue.workflow.taskDispatcherTargetMissing",
-                        owner_id=node.id,
-                        owner_type=node.type,
-                    )
-                )
-
     node_indexes = {node.id: index for index, node in enumerate(nodes)}
     for node_id, edge_types in incoming_edge_types.items():
         if "dispatch" not in edge_types or len(edge_types) == 1:

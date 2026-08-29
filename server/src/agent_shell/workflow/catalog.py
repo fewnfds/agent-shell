@@ -27,12 +27,6 @@ class CommandNodeConfig(BaseModel):
     command_id: ConfigurationId
 
 
-class TaskDispatcherNodeConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    task_dispatcher_id: ConfigurationId
-
-
 @dataclass(frozen=True, slots=True)
 class NodeHandleSpec:
     id: str
@@ -63,7 +57,6 @@ class NodeTypeSpec:
         "graph_exit",
         "agent_wrapper",
         "command_node",
-        "send_dispatcher",
     ]
     title_key: str
     description_key: str
@@ -130,18 +123,7 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         description_key="workflow.nodes.command.description",
         config_model=CommandNodeConfig,
         input_handles=_IN,
-        output_handles=_BRANCH,
-        workflow_roles=("parent", "child"),
-    ),
-    NodeTypeSpec(
-        type="task-dispatcher",
-        type_version=1,
-        runtime_kind="send_dispatcher",
-        title_key="workflow.nodes.taskDispatcher.title",
-        description_key="workflow.nodes.taskDispatcher.description",
-        config_model=TaskDispatcherNodeConfig,
-        input_handles=_IN,
-        output_handles=_DISPATCH,
+        output_handles=_BRANCH + _DISPATCH,
         workflow_roles=("parent", "child"),
     ),
     NodeTypeSpec(
@@ -185,7 +167,6 @@ __all__ = [
     "NODE_CATALOG",
     "NodeHandleSpec",
     "NodeTypeSpec",
-    "TaskDispatcherNodeConfig",
     "node_catalog_payload",
     "node_type_spec",
     "supported_node_versions",

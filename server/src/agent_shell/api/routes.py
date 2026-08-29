@@ -81,14 +81,6 @@ WORKFLOW_COMPONENT_CATALOG = (
         "icon_key": "circle-half",
         "editor_key": "command",
     },
-    {
-        "type": "task-dispatcher",
-        "terminology_key": "task-dispatcher",
-        "label": "Task Dispatcher",
-        "order": 5,
-        "icon_key": "boxes",
-        "editor_key": "task_dispatcher",
-    },
 )
 
 

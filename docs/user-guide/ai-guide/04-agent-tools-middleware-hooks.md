@@ -29,11 +29,10 @@ Main Agent 和 Subagent 分别维护 `tool_refs` 与 `middleware_refs`。这两�
 | Custom Tool | model 选择 Tool 后执行 | `create_tool()` 返回一个 `BaseTool` |
 | Custom Middleware | Agent lifecycle、model call 或 Tool call 周围执行 | `create_middleware(...)` 返回一个 `AgentMiddleware` |
 | Agent Additional Prompt（AAP） | `abefore_agent` | 构造 current Agent 私有初始 `messages` |
-| Command | Workflow Node invocation | 更新 Workflow State 并选择 Branch Edge |
-| Task Dispatcher | Workflow Node invocation | 生成运行时 Agent worker task |
+| Command | Workflow Node invocation | 更新 Workflow State、选择 Branch Edge 并生成运行时 Agent task |
 | Agent/Workflow Event Output | event projection | 把 event 投影为公开字符串 |
 
-Command、Task Dispatcher 和 Event Output 的代码 contract 见[编写 Python extension](06-python-extensions.md)。
+Command 和 Event Output 的代码 contract 见[编写 Python extension](06-python-extensions.md)。
 
 ## 3. 创建配置独占 package
 

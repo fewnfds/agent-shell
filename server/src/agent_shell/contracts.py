@@ -33,7 +33,6 @@ from agent_shell.storage.owned_paths import (
     is_reparse_point,
     require_data_root_relative_path,
 )
-from agent_shell.task_dispatcher import TaskDispatcherBlock
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 
 
@@ -921,7 +920,6 @@ WORKFLOW_COMPONENT_MODELS = {
     "workflow-event-output": WorkflowEventOutputBlock,
     "response-stream-scheduling": ResponseStreamSchedulingBlock,
     "command": CommandBlock,
-    "task-dispatcher": TaskDispatcherBlock,
 }
 MANAGED_COMPONENT_MODELS = {**BLOCK_MODELS, **WORKFLOW_COMPONENT_MODELS}
 

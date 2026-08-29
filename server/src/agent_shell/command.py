@@ -5,7 +5,14 @@ from copy import deepcopy
 from typing import Annotated, Any, Callable
 
 from langgraph.runtime import Runtime
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StringConstraints,
+    field_validator,
+)
 
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.python_packages.contracts import PythonPackageReference
@@ -16,6 +23,16 @@ BranchKey = Annotated[
     str,
     StringConstraints(strip_whitespace=True),
     Field(min_length=1, max_length=64),
+]
+DispatchKey = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True),
+    Field(min_length=1, max_length=64),
+]
+TaskId = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True),
+    Field(min_length=1, max_length=128),
 ]
 CommandCallable = Callable[
     [dict[str, Any], Runtime[WorkflowRuntimeContext]],
@@ -30,10 +47,19 @@ class CommandBlock(BaseModel):
     python_package: PythonPackageReference
 
 
+class CommandDispatchItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    task_id: TaskId
+    dispatch_key: DispatchKey
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 class CommandResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     activate: list[BranchKey] = Field(default_factory=list)
+    dispatch: list[CommandDispatchItem] = Field(default_factory=list)
     update: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("activate")
@@ -41,6 +67,17 @@ class CommandResult(BaseModel):
     def unique_branches(cls, values: list[str]) -> list[str]:
         if len(values) != len(set(values)):
             raise ValueError("activated command branches must be unique")
+        return values
+
+    @field_validator("dispatch")
+    @classmethod
+    def unique_task_ids(
+        cls,
+        values: list[CommandDispatchItem],
+    ) -> list[CommandDispatchItem]:
+        task_ids = [item.task_id for item in values]
+        if len(task_ids) != len(set(task_ids)):
+            raise ValueError("command dispatch task IDs must be unique")
         return values
 
 
@@ -92,6 +129,7 @@ async def run_command(
     state: Mapping[str, Any],
     runtime: Runtime[WorkflowRuntimeContext],
     allowed_branches: Collection[str],
+    allowed_dispatch_keys: Collection[str] = (),
 ) -> CommandResult:
     from agent_shell.runtime.state import WorkflowState, validate_workflow_state_update
 
@@ -121,7 +159,20 @@ async def run_command(
                 "command activated branches without a matching Workflow edge: "
                 + ", ".join(unknown)
             )
-        return CommandResult(activate=activate, update=update)
+        unknown_dispatches = sorted(
+            {item.dispatch_key for item in result.dispatch}
+            - set(allowed_dispatch_keys)
+        )
+        if unknown_dispatches:
+            raise ValueError(
+                "command dispatched tasks without a matching Workflow edge: "
+                + ", ".join(unknown_dispatches)
+            )
+        return CommandResult(
+            activate=activate,
+            dispatch=result.dispatch,
+            update=update,
+        )
     except Exception as exc:
         raise CommandError("command failed") from exc
 
@@ -130,7 +181,10 @@ __all__ = [
     "BranchKey",
     "CommandBlock",
     "CommandCallable",
+    "CommandDispatchItem",
     "CommandError",
     "CommandResult",
+    "DispatchKey",
+    "TaskId",
     "run_command",
 ]

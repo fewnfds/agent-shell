@@ -23,7 +23,6 @@ from agent_shell.registries.errors import ResourceScanError
 PythonPackageFamily = Literal["workflow-node", "middleware", "event-output", "tool"]
 PythonPackageAdapter = Literal[
     "command",
-    "task-dispatcher",
     "agent-middleware",
     "agent-event-output",
     "workflow-event-output",
@@ -42,7 +41,6 @@ class _ManifestBase(BaseModel):
     def validate_adapter_family(self) -> "_ManifestBase":
         expected = {
             "command": "workflow-node",
-            "task-dispatcher": "workflow-node",
             "agent-middleware": "middleware",
             "agent-event-output": "event-output",
             "workflow-event-output": "event-output",

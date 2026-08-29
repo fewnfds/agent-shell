@@ -9,7 +9,7 @@ Agent Additional Prompt（AAP）是 Agent Shell 推荐的 Agent 初始提示词�
 客户端提交的 `messages[]` 作为 current request 的不可变事实保存在 Lifecycle Store。canvas Agent Node 以空 `messages` 启动自己的 Agent graph；synchronous Subagent 接收 Deep Agents delegation 产生的私有消息。AAP 可以在 Agent 启动前选择、转换并编排以下材料：
 
 - current Lifecycle 的 request `messages[]`；
-- Task Dispatcher 注入当前 worker 的 `workflow_task`；
+- Command Dispatch 注入当前 Agent 的 `workflow_task`；
 - parent Workflow State snapshot 中因果可见的 upstream invocation reference；
 - Runtime Context 与 Store 中 current invocation 可访问的数据；
 - current Agent Filesystem backend 中的任务文件；
@@ -35,15 +35,15 @@ current Agent 的 Deep Agents Filesystem backend ──┘
 - Subagent：读取 `state["messages"]` 中由 Deep Agents `task` delegation 产生的私有消息；Shell 按 owner 类型把 `scope` 注入为 `main_agent` 或 `subagent`；
 - parent Workflow：读取 `state["workflow_state_snapshot"]` 中的 `agent_invocations[invocation_id]` 轻量 reference，再通过 `runtime.store` 和 `result_ref` 加载完整 invocation artifact；
 - 当前身份：读取 `runtime.context.lifecycle_id`、`run_id`、可空 `checkpoint_thread_id`、`launcher_id`、`background_task_id`、`workflow_node_id`、`agent_id` 与 `invocation_id`；
-- 当前动态任务：读取 Task Dispatcher worker 的 `state["workflow_task"]`；
+- 当前动态任务：读取 Command-dispatched Agent 的 `state["workflow_task"]`；
 - 共享文件：使用工厂收到的 current Agent Deep Agents `backend`，按虚拟绝对路径读取；
 - current Agent State：使用 hook 的 `state` 参数以及其他 Middleware 声明的 State channel。
 
 Lifecycle Store 中的输入记录由平台写入。AAP 读取并复制 current Agent 所需的消息，再通过 Middleware State update 注入 Agent。更新 `messages` channel 时使用 `Overwrite(convert_to_messages(...))`，避免普通 list update 触发 reducer 追加并破坏本次 invocation 的初始消息边界。读取 Main Agent 请求快照需要可用的 `runtime.store` 和 `runtime.context.lifecycle_id`。
 
-## Task Dispatcher worker
+## Command Dispatch task
 
-Task Dispatcher 根据 Workflow State 生成任务，Shell 通过 LangGraph `Send` 把每项任务作为私有 `workflow_task` 注入 target Agent wrapper。AAP 可以读取该任务并编排 worker 的初始提示词：
+Command 根据 Workflow State 生成任务，Shell 通过 LangGraph `Send` 把每项任务作为私有 `workflow_task` 注入 target Agent wrapper。AAP 可以读取该任务并编排 Agent 的初始提示词：
 
 ```python
 task = state["workflow_task"]
@@ -52,7 +52,7 @@ dispatch_key = task.get("dispatch_key")
 payload = task.get("payload", {})
 ```
 
-任务保存在 worker 的 private Agent State。任务完成后，parent State 的 `agent_invocations` record 携带 task identity，供 downstream aggregation Agent 的 AAP 选择。同一 Super-step 的并行 worker 读取同一个 parent State 深拷贝 snapshot，各自带不同的 `workflow_task` 与 `invocation_id`。
+任务保存在 target 的 private Agent State。任务完成后，parent State 的 `agent_invocations` record 携带 task identity，供 downstream aggregation Agent 的 AAP 选择。同一 Super-step 的并行 Agent 读取同一个 parent State 深拷贝 snapshot，各自带不同的 `workflow_task` 与 `invocation_id`。
 
 ## 从内置 template 创建
 

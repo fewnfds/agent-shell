@@ -67,7 +67,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 - `GET /api/python-package-templates/{kind}` 返回 Python template catalog；
 - `GET /api/validation/repository` 返回当前 Repository validation report。
 
-当前 Python template kind 包括 `custom-tool`、`middleware`、`agent-event-output`、`workflow-event-output`、`command` 和 `task-dispatcher`。仍应以当前实例 endpoint response 为准。
+当前 Python template kind 包括 `custom-tool`、`middleware`、`agent-event-output`、`workflow-event-output` 和 `command`。仍应以当前实例 endpoint response 为准。
 
 Model Connection 不属于 Configuration Repository，也不进入 Configuration Bundle。Model Requirement、Component、Agent 和 Workflow 属于 active Repository。
 
@@ -93,7 +93,6 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
     "model_requirement": null,
     "agent_event_output": null,
     "command": null,
-    "task_dispatcher": null,
     "checkpointer": null,
     "workflow_event_output": null,
     "response_stream_scheduling": null

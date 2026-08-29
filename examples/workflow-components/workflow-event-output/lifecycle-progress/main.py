@@ -1,8 +1,8 @@
 """Publish concise Workflow lifecycle and custom progress events.
 
 This example demonstrates event filtering for Workflow Event Output. Lifecycle
-events show run status, while ``get_stream_writer()`` calls made by Command or
-Task Dispatcher code arrive as ``custom`` events with their channel and message.
+events show run status, while ``get_stream_writer()`` calls made by Command
+code arrive as ``custom`` events with their channel and message.
 All State snapshots, task records, checkpoints, debug data, and other event
 types are filtered by returning an empty string.
 

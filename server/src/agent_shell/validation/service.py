@@ -272,11 +272,6 @@ class ConfigurationValidationService:
                 reference,
                 **arguments,
             )
-        if block_type == "task-dispatcher":
-            return self._python_package_validation.task_dispatcher_issues(
-                reference,
-                **arguments,
-            )
         if block_type == "filesystem":
             skill_package_id = payload.get("skill_package_id")
             if skill_package_id is not None and self._blocks.get_block_internal(

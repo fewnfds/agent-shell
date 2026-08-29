@@ -385,7 +385,6 @@ _EDITOR_DEFAULTS = {
     ),
     "workflow_event_output": {},
     "command": {},
-    "task_dispatcher": {},
 }
 
 

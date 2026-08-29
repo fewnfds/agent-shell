@@ -8,7 +8,7 @@
 
 逐步记录语言理解、模型推理、Tool selection、确定性代码、State transition 和运行时 task generation 分别由哪个执行机制承担。
 
-Command 与 Task Dispatcher 运行确定性 Python callable。Agent Node 运行完整 Main Agent invocation，其中包含 model-tool loop。一个 Workflow 可以组合这些机制，也可以只使用其中一种。
+Command 运行确定性 Python callable，负责 State transition、Branch selection 和运行时 Agent task generation。Agent Node 运行完整 Main Agent invocation，其中包含 model-tool loop。一个 Workflow 可以组合这些机制，也可以只使用其中一种。
 
 下面是三种基础 topology 语法示例：
 
@@ -31,11 +31,13 @@ Normal Edge 表达设计时已知的 activation：
 - 一个 source 完成后需要固定激活一个或多个 target；
 - 设计时已知多个 Agent，可以直接串行或 fan-out。
 
-Command 提供确定性 State transition 与 Branch Edge selection：
+Command 提供确定性 State transition、Branch Edge selection 与 Agent task dispatch：
 
 - 需要确定性 condition；
 - 需要更新 Workflow State；
 - 需要选择 Branch Edge；
+- task 数量、payload 或 Agent target 在运行时才知道；
+- 每个 task 需要独立 Agent invocation；
 - 需要表达 loop exit、轮询状态或 background controller；
 - 需要确定性数据转换。
 
@@ -44,12 +46,6 @@ Agent Node 提供完整 Main Agent invocation：
 - 需要语言理解、非确定性推理或模型选择 Tool；
 - 一次 Node invocation 应完成一个完整 Agent loop；
 - Agent 的模型、Tool、Middleware 和 Subagent 由 Main Agent configuration 决定。
-
-Task Dispatcher 从运行时数据生成 Agent worker task：
-
-- task 数量、payload 或 target 在运行时才知道；
-- 每个 task 需要独立 Agent worker invocation；
-- 这是 dynamic map，不是设计时已知的普通 fan-out。
 
 synchronous Subagent 在 Main Agent loop 内提供模型选择的 specialist delegation：
 
@@ -64,7 +60,7 @@ background Run 启动独立 child Workflow Run：
 - parent 需要自行决定检查、等待、取消或忽略 child；
 - task 需要由 enabled child Workflow 表达。
 
-parallel Node、异步 Python、synchronous Subagent 和 Task Dispatcher worker 都属于 current Run。background Run 拥有独立 child `run_id` 和 Workflow State。
+parallel Node、异步 Python、synchronous Subagent 和 Command dispatch worker 都属于 current Run。background Run 拥有独立 child `run_id` 和 Workflow State。
 
 ## 3. LangGraph 执行约束
 
@@ -116,11 +112,9 @@ End 是 termination sentinel，不是 executable join Node。多条进入 End �
 
 ### 3.3 Dynamic routing
 
-一个 source 只使用一种 routing mechanism。
+Start 和 Agent Node 使用 static Normal Edge。Command 使用 Branch Edge 和 Dispatch Edge，没有 static Normal output handle。
 
-普通 Node 和 Agent Node 使用 static Normal Edge。Command 使用 Branch Edge。Task Dispatcher 使用 Dispatch Edge。
-
-Command 和 Task Dispatcher 使用 dynamic route，并且没有 static Normal output handle。普通 Node 和 Agent Node 使用 static Normal Edge。
+一次 Command invocation 可以同时选择零个或多个 Branch Edge，并通过零个或多个 `Send` 重复激活 Dispatch Edge 指向的 Agent Node。Branch 表达 successor selection；Dispatch 表达携带私有 task payload 的 dynamic map。
 
 ### 3.4 Graph 结束
 
@@ -141,7 +135,7 @@ Workflow root State 声明四个 channel：
 - `background_tasks` 保存 background task handle 或最近一次 snapshot；
 - `files` 保存当前 Run 的 Deep Agents StateBackend 文件状态。
 
-Task Dispatcher 通过 `Send` 为单个 worker 注入私有 `workflow_task`。它不是 Workflow root State channel。
+Command 通过 `Send` 为单个 Agent worker 注入私有 `workflow_task`。它不是 Workflow root State channel。
 
 `runtime.context` 保存 lifecycle、run、可空 checkpoint thread、Node、Agent 和 background command 等当前 invocation identity 和服务入口。
 
@@ -197,12 +191,12 @@ Task Dispatcher 通过 `Send` 为单个 worker 注入私有 `workflow_task`。�
 
 ### 4.4 `workflow_task`
 
-Task Dispatcher 为每个 Agent worker 注入：
+Command 为每个 Dispatch Agent worker 注入：
 
 ```json
 {
-  "dispatcher_node_id": "dispatcher",
-  "dispatcher_invocation_id": "<invocation UUID>",
+  "command_node_id": "planner",
+  "command_invocation_id": "<invocation UUID>",
   "task_id": "item:42",
   "dispatch_key": "item",
   "payload": {
@@ -225,7 +219,7 @@ Node local variable 只存在于当前 invocation。需要影响下一 Super-ste
 
 Workflow root State 不包含 `messages`。Start Node 不注入客户端消息。Agent Node 默认以私有空 `messages` 调用 Main Agent graph。
 
-如果 Agent 需要使用当前 request、Dispatcher task、Workflow State snapshot、上游 invocation 或文件，为该 Agent 配置 AAP 或其他具有明确输入 contract 的 Middleware。
+如果 Agent 需要使用当前 request、Command dispatch task、Workflow State snapshot、上游 invocation 或文件，为该 Agent 配置 AAP 或其他具有明确输入 contract 的 Middleware。
 
 System Prompt 保存每次 invocation 都适用的稳定角色和规则。AAP 负责本次运行材料的选择、裁剪、role 编排和初始消息构造。
 
@@ -267,13 +261,13 @@ Poll Command
 ### 6.4 动态 Agent map
 
 ```text
-Task Dispatcher
+Command
   -> worker(item-1)
   -> worker(item-2)
   -> worker(item-N)
 ```
 
-Task Dispatcher 根据运行时才确定的 task 集合生成 worker invocation。每个 task 使用稳定 `task_id`、明确 `dispatch_key` 和 JSON payload。
+Command 根据运行时才确定的 task 集合生成 Agent invocation。每个 task 使用稳定 `task_id`、明确 `dispatch_key` 和 JSON payload。同一 Dispatch Edge 可以承载任意数量的 task，每个 task 对应一次 LangGraph `Send`。
 
 ### 6.5 Independent child Run
 
@@ -297,7 +291,7 @@ observable result: <用户将看到或取得什么>
 workflow role: parent | child
 topology: Start -> ... -> End
 agent nodes: <Main Agent role，或 none>
-deterministic nodes: <Command / Task Dispatcher role，或 none>
+deterministic nodes: <Command role，或 none>
 state owners: <top-level key -> logical owner>
 agent input: <System Prompt / AAP source / workflow_task / result_ref>
 large artifacts: <Store namespace 或 virtual Filesystem path>

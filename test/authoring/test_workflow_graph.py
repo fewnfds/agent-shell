@@ -111,24 +111,23 @@ def test_catalog_exposes_the_first_supported_node_and_handle_paradigms() -> None
         "start",
         "agent",
         "command",
-        "task-dispatcher",
         "end",
     ]
     assert [item.runtime_kind for item in NODE_CATALOG] == [
         "graph_entry",
         "agent_wrapper",
         "command_node",
-        "send_dispatcher",
         "graph_exit",
     ]
     assert [handle.id for handle in NODE_CATALOG[0].output_handles] == ["next"]
     assert [handle.id for handle in NODE_CATALOG[1].input_handles] == ["in"]
     assert [handle.id for handle in NODE_CATALOG[1].output_handles] == ["next"]
     assert [handle.id for handle in NODE_CATALOG[2].input_handles] == ["in"]
-    assert [handle.id for handle in NODE_CATALOG[2].output_handles] == ["branch"]
+    assert [handle.id for handle in NODE_CATALOG[2].output_handles] == [
+        "branch",
+        "dispatch",
+    ]
     assert [handle.id for handle in NODE_CATALOG[3].input_handles] == ["in"]
-    assert [handle.id for handle in NODE_CATALOG[3].output_handles] == ["dispatch"]
-    assert [handle.id for handle in NODE_CATALOG[4].input_handles] == ["in"]
     assert {
         handle.edge_type for item in NODE_CATALOG for handle in (
             *item.input_handles,

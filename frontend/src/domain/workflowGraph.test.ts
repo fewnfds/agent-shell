@@ -20,7 +20,7 @@ describe('workflow edge visual projection', () => {
     expect(startEnd.class).toBe('workflow-edge--start workflow-edge--end')
     expect(startEnd.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
 
-    const dispatchEnd = workflowCanvasEdgeVisual('dispatch', 'task-dispatcher', 'end')
+    const dispatchEnd = workflowCanvasEdgeVisual('dispatch', 'command', 'end')
     expect(dispatchEnd.class).toBe('workflow-edge--dispatch workflow-edge--end')
     expect(dispatchEnd.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
     expect(dispatchEnd.animated).toBe(true)

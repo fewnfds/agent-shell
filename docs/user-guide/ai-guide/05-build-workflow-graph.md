@@ -11,7 +11,7 @@
 - active Configuration Repository 没有变化；
 - 已读取当前 `/api/workflow-node-catalog`；
 - design record 已明确 topology、State owner 和结束条件；
-- Graph 使用的 Main Agent、Command、Task Dispatcher、Checkpointer 和 Workflow Event Output UUID 已记录；
+- Graph 使用的 Main Agent、Command、Checkpointer 和 Workflow Event Output UUID 已记录；
 - 缺少 Python-backed Component 时，先按[编写 Python extension](06-python-extensions.md)创建，再返回本章。
 
 从已有 Graph 或示例复制 Node type、version、handle 或 Component UUID 前，先通过当前 Catalog 和当前 Repository 确认这些值仍然有效。
@@ -98,7 +98,7 @@ POST /api/blocks/response-stream-scheduling
 
 把 response UUID 写入 Parent Workflow metadata 的 `response_stream_scheduling_id`。省略或提交 `null` 时使用内置默认；Child Run Workflow 不接受该引用。该组件只排序和节流 Event Output 已批准的文本，不决定事件可见性或文本修饰。
 
-需要公开 Command、Task Dispatcher 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
+需要公开 Command 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
 
 `cancel_on_upstream_termination` 的含义取决于 Workflow role：
 
@@ -231,7 +231,7 @@ reachable executable Node 可以没有 outgoing Edge。该 path 会自然结束�
 
 ## 7. Node 规则
 
-当前 Node type 为 Start、Agent、Command、Task Dispatcher 和 End。以当前 Node Catalog 为准。
+当前 Node type 为 Start、Agent、Command 和 End。以当前 Node Catalog 为准。
 
 Start：
 
@@ -251,17 +251,11 @@ Command：
 
 - config 引用 `command_id`；
 - input handle 是 `in`；
-- dynamic output handle 是 `branch`；
-- Python callable 返回 `activate` key 和 State `update`；
-- 每个非空 key 必须对应同源 Branch Edge 的 `branch_key`。
-
-Task Dispatcher：
-
-- config 引用 `task_dispatcher_id`；
-- input handle 是 `in`；
-- dynamic output handle 是 `dispatch`；
-- Python callable 返回一个或多个 task 和 parent State `update`；
-- 每个 task 的 `dispatch_key` 必须对应同源 Dispatch Edge。
+- dynamic output handle 是 `branch` 和 `dispatch`；
+- Python callable 返回 Branch `activate` key、Agent `dispatch` task 和 parent State `update`；
+- Branch 与 Dispatch 可以由同一次 invocation 同时产生；
+- 每个非空 `activate` key 必须对应同源 Branch Edge 的 `branch_key`；
+- 每个 dispatch item 的 `dispatch_key` 必须对应同源 Dispatch Edge。
 
 End：
 
@@ -278,6 +272,8 @@ Node ID 和 Edge ID：
 - 以字母开头；
 - 只使用字母、数字、`_` 和 `-`；
 - 最长 64 字符。
+
+同一个有向 `(source Node ID, target Node ID)` pair 只允许一条 Edge，Edge type、handle 或 routing key 不产生第二条连接身份。反向 `(target, source)` 是另一个有向 pair。需要把相同 Main Agent configuration 作为两个独立 target 时，创建两个不同 Agent Node ID。
 
 handle ID：
 
@@ -319,12 +315,12 @@ Branch Edge 从 Command 的 `branch` handle 发出，并保存唯一 `branch_key
 
 Command `activate` 可以返回零个、一个或多个不同 key。空集合表示不激活 successor，State update 仍提交，当前 path 自然结束。返回未知 key 会让 Run 受控失败。
 
-Dispatch Edge 从 Task Dispatcher 的 `dispatch` handle 发出，并保存唯一 `dispatch_key`：
+Dispatch Edge 从 Command 的 `dispatch` handle 发出，并保存唯一 `dispatch_key`：
 
 ```json
 {
   "id": "dispatch-item",
-  "source": "dispatcher",
+  "source": "planner",
   "source_handle": "dispatch",
   "target": "item-worker",
   "target_handle": "in",
@@ -334,7 +330,9 @@ Dispatch Edge 从 Task Dispatcher 的 `dispatch` handle 发出，并保存唯一
 
 Dispatch target 必须是 Agent 的 task-aware input。同一个 Agent 不能同时使用 Dispatch Edge 和 Normal 或 Branch input。
 
-Command 和 Task Dispatcher 的完整 Python contract 见[编写 Python extension](06-python-extensions.md)。
+同一 Dispatch Edge 可以被一个 Command invocation 中的多个 dispatch item 重复选择。compiler 为每一项创建一个 LangGraph `Send`，因此目标 Agent Node 会获得多次独立 invocation，并分别收到自己的 private `workflow_task`。两个不同 Agent Node ID 即使引用同一个 Main Agent UUID，也仍是两个不同 Graph target。
+
+Command 的完整 Python contract 见[编写 Python extension](06-python-extensions.md)。
 
 ## 10. Fan-out、fan-in、leaf 和 loop
 
@@ -355,7 +353,7 @@ Command -> branch A -> J
 
 loop 必须通过 Command 或其他业务逻辑提供可达 exit path。只有 static Normal Edge 的环没有受控出口，会一直运行到失败边界。
 
-Task Dispatcher 的动态 pending worker 需要 downstream aggregation 时，可以在下游 aggregation Agent Node 使用 `defer=true`。该设置让 Agent Node 等待当前 Graph 中其他 pending task 完成后再执行。
+Command 的动态 pending worker 需要 downstream aggregation 时，可以在下游 aggregation Agent Node 使用 `defer=true`。该设置让 Agent Node 等待当前 Graph 中其他 pending task 完成后再执行。
 
 ## 11. 保存 draft
 
@@ -394,8 +392,9 @@ GET /api/workflows/<workflow UUID>/graph
 - 除 End 外的 Node 都从 Start 可达；
 - Node type、version、config 和 handle 来自当前 Catalog；
 - Component reference 使用 API 返回的 UUID；
-- Command 只连接 Branch Edge；
-- Task Dispatcher 只连接 Dispatch Edge；
+- Command 的 outgoing Edge 只使用 Branch 或 Dispatch handle；
+- Dispatch Edge 的 target 是 Agent Node；
+- 每个有向 source/target Node pair 只有一条 Edge；
 - key 与 Python callable 的可能返回值一致；
 - parallel State owner 和 all-of source 合法；
 - loop 有业务可达 exit；

@@ -1038,7 +1038,6 @@ def test_workflow_graph_catalog_save_and_reload(
         "start",
         "agent",
         "command",
-        "task-dispatcher",
         "end",
     ]
     assert saved.status_code == 200, saved.text

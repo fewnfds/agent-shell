@@ -30,7 +30,6 @@ import { useToasts } from '@/composables/useToasts'
 import {
   newAgentCanvasNode,
   newCommandCanvasNode,
-  newTaskDispatcherCanvasNode,
   nextWorkflowCanvasEdgeId,
   WORKFLOW_NODE_DRAG_MIME,
   workflowCanvasEdgeVisual,
@@ -61,7 +60,6 @@ const { notify } = useToasts()
 const workflow = ref<Workflow | null>(null)
 const mainAgents = ref<ConfigurationSummary[]>([])
 const commands = ref<ConfigurationSummary[]>([])
-const taskDispatchers = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
 const nodes = ref<WorkflowCanvasNode[]>([])
 const edges = ref<WorkflowCanvasEdge[]>([])
@@ -104,14 +102,6 @@ const canAddCommand = computed(() => (
   && commands.value.length > 0
   && commandCatalogItem.value !== null
 ))
-const taskDispatcherCatalogItem = computed(() => (
-  nodeCatalog.value.find((item) => item.type === 'task-dispatcher') ?? null
-))
-const canAddTaskDispatcher = computed(() => (
-  loaded.value
-  && taskDispatchers.value.length > 0
-  && taskDispatcherCatalogItem.value !== null
-))
 const canvasProblems = computed(() => workflowCanvasProblems(nodes.value, edges.value))
 const problems = computed(() => [
   ...canvasProblems.value,
@@ -138,7 +128,6 @@ const graphRevision = computed(() => JSON.stringify({
     type: node.data.nodeType,
     mainAgentId: node.data.mainAgentId,
     commandId: node.data.commandId,
-    taskDispatcherId: node.data.taskDispatcherId,
     defer: node.data.defer,
   })),
   edges: edges.value.map((edge) => ({
@@ -267,24 +256,6 @@ function addCommand(position?: XYPosition): void {
   rightPanel.value = 'inspector'
 }
 
-function addTaskDispatcher(position?: XYPosition): void {
-  const firstDispatcher = taskDispatchers.value[0]
-  if (!canAddTaskDispatcher.value || !firstDispatcher) return
-  const nodeId = nextTaskDispatcherNodeId()
-  const node = newTaskDispatcherCanvasNode(
-    nodeId,
-    firstDispatcher.id,
-    position ?? nextTaskDispatcherPosition(),
-  )
-  node.selected = true
-  nodes.value = [
-    ...nodes.value.map((item) => ({ ...item, selected: false })),
-    node,
-  ]
-  edges.value = edges.value.map((edge) => ({ ...edge, selected: false }))
-  rightPanel.value = 'inspector'
-}
-
 function nextAgentPosition(): XYPosition {
   const count = nodes.value.filter((node) => node.data.nodeType === 'agent').length
   return {
@@ -310,20 +281,9 @@ function nextCommandNodeId(): string {
   return `command-${index}`
 }
 
-function nextTaskDispatcherPosition(): XYPosition {
-  const count = nodes.value.filter((node) => node.data.nodeType === 'task-dispatcher').length
-  return { x: 620 + (count % 3) * 280, y: 340 + Math.floor(count / 3) * 160 }
-}
-
-function nextTaskDispatcherNodeId(): string {
-  let index = 1
-  while (nodes.value.some((node) => node.id === `task-dispatcher-${index}`)) index += 1
-  return `task-dispatcher-${index}`
-}
-
 function dragOver(event: DragEvent): void {
   if (
-    (!canAddAgent.value && !canAddCommand.value && !canAddTaskDispatcher.value)
+    (!canAddAgent.value && !canAddCommand.value)
     || !event.dataTransfer?.types.includes(WORKFLOW_NODE_DRAG_MIME)
   ) return
   event.preventDefault()
@@ -332,9 +292,9 @@ function dragOver(event: DragEvent): void {
 
 function dropNode(event: DragEvent): void {
   if (
-    (!canAddAgent.value && !canAddCommand.value && !canAddTaskDispatcher.value)
+    (!canAddAgent.value && !canAddCommand.value)
     || !flow.value
-    || !['agent', 'command', 'task-dispatcher'].includes(
+    || !['agent', 'command'].includes(
       event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_MIME) ?? '',
     )
   ) return
@@ -342,8 +302,7 @@ function dropNode(event: DragEvent): void {
   const position = flow.value.screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
   const nodeType = event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_MIME)
   if (nodeType === 'agent') addAgent(position)
-  else if (nodeType === 'command') addCommand(position)
-  else addTaskDispatcher(position)
+  else addCommand(position)
 }
 
 function removeNode(nodeId: string): void {
@@ -453,14 +412,6 @@ function selectCommand(nodeId: string, commandId: string): void {
   ))
 }
 
-function selectTaskDispatcher(nodeId: string, taskDispatcherId: string): void {
-  nodes.value = nodes.value.map((node) => (
-    node.id === nodeId
-      ? { ...node, data: { ...node.data, taskDispatcherId } }
-      : node
-  ))
-}
-
 function updateBranchKey(edgeId: string, branchKey: string): void {
   edges.value = edges.value.map((edge) => (
     edge.id === edgeId && edge.data.edgeType === 'branch'
@@ -551,11 +502,6 @@ function mainAgentName(mainAgentId: string): string {
 function commandName(commandId: string): string {
   return commands.value.find((router) => router.id === commandId)?.name
     ?? t('workflows.editor.noCommandSelected')
-}
-
-function taskDispatcherName(taskDispatcherId: string): string {
-  return taskDispatchers.value.find((dispatcher) => dispatcher.id === taskDispatcherId)?.name
-    ?? t('workflows.editor.noTaskDispatcherSelected')
 }
 
 async function initializeFlow(instance: VueFlowStore): Promise<void> {
@@ -682,7 +628,6 @@ onMounted(async () => {
     workflow.value = metadata
     mainAgents.value = options.main_agents
     commands.value = options.components.command ?? []
-    taskDispatchers.value = options.components['task-dispatcher'] ?? []
     nodeCatalog.value = catalog.filter((item) => item.workflow_roles.includes(metadata.workflow_role))
     stateContract.value = graph.definition.state_contract
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
@@ -771,13 +716,10 @@ onUnmounted(() => {
           v-if="leftPanel === 'library'"
           :agent="agentCatalogItem"
           :command="commandCatalogItem"
-          :task-dispatcher="taskDispatcherCatalogItem"
           :agent-disabled="!canAddAgent"
           :command-disabled="!canAddCommand"
-          :task-dispatcher-disabled="!canAddTaskDispatcher"
           @add-agent="addAgent()"
           @add-command="addCommand()"
-          @add-task-dispatcher="addTaskDispatcher()"
         />
         <WorkflowNodeTracker
           v-else-if="leftPanel === 'tracker'"
@@ -871,18 +813,6 @@ onUnmounted(() => {
             </div>
           </template>
 
-          <template #node-task-dispatcher="{ id, data }">
-            <div class="workflow-node workflow-node--task-dispatcher">
-              <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('task-dispatcher', 'input')" />
-              <div class="workflow-node-header">
-                <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-boxes" /></span>
-                <span class="workflow-node-title">{{ id }}</span>
-              </div>
-              <span class="workflow-node-summary">{{ taskDispatcherName(data.taskDispatcherId ?? '') }}</span>
-              <WorkflowNodeEndpoints direction="output" :endpoints="nodeEndpoints('task-dispatcher', 'output')" />
-            </div>
-          </template>
-
           <template #node-end="{ id }">
             <div class="workflow-node workflow-node--terminal">
               <WorkflowNodeEndpoints
@@ -909,7 +839,6 @@ onUnmounted(() => {
           :input-endpoints="selectedNodeInputEndpoints"
           :main-agents="mainAgents"
           :commands="commands"
-          :task-dispatchers="taskDispatchers"
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
           :output-endpoints="selectedNodeOutputEndpoints"
@@ -922,7 +851,6 @@ onUnmounted(() => {
           @select-edge-type="selectEdgeType"
           @update-agent="selectAgent"
           @update-command="selectCommand"
-          @update-task-dispatcher="selectTaskDispatcher"
           @update-node-id="updateNodeId"
           @update-branch-key="updateBranchKey"
           @update-dispatch-key="updateDispatchKey"

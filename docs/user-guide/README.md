@@ -11,7 +11,7 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component c
 3. [管理模型连接与模型映射](models.md)
 4. [装配 Workflow、Main Agent 与 Subagent](configuration-workflow.md)
 5. [使用 Agent Additional Prompt](agent-additional-prompt.md)
-6. [使用文件化 Python 扩展（Custom Middleware / Command / Task Dispatcher）](middleware-packages.md)
+6. [使用文件化 Python 扩展（Custom Middleware / Command）](middleware-packages.md)
 7. [管理配置库](configuration-library.md)
 8. [调用 API Server](api-server.md)
 9. [查看日志中心与运行历史](runtime-observability.md)

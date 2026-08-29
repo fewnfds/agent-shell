@@ -1,21 +1,13 @@
-"""Dispatch rainfall readings to routine-report or alert Agents.
-
-Expected Workflow State example::
-
-    state["shared_vars"]["rainfall_readings"] = [
-        {"station_id": "north-gauge", "millimeters": 18.5},
-        {"station_id": "river-gauge", "millimeters": 72.0},
-    ]
+"""Dispatch rainfall readings to report or alert Agent Nodes.
 
 Create Dispatch Edges named ``rainfall-report`` and ``rainfall-alert``. Each
-reading becomes one private worker task. Readings at or above 50 mm use the
-alert edge; the others use the report edge. The parent Workflow State receives
-the total and alert counts after dispatch.
+reading becomes one private Agent task. Readings at or above 50 mm use the
+alert Edge; other readings use the report Edge. The parent Workflow State
+receives total and alert counts through ``update``.
 
-The field names, threshold, and edge keys are editable example policy. The
-stable adapter contract is ``create_dispatcher()`` returning an async
-``dispatch(state, runtime)`` that emits JSON payloads. This package uses only
-the Python standard library.
+The field names, threshold, and Edge keys are editable example policy. The
+package uses the Command ``create_command()`` factory contract and only the
+Python standard library.
 """
 
 from math import isfinite
@@ -28,8 +20,6 @@ ALERT_EDGE = "rainfall-alert"
 
 
 def _task_for(reading: dict[str, Any]) -> dict[str, Any]:
-    """Validate one reading and turn it into a stable dispatch task."""
-
     station_id = reading.get("station_id")
     if not isinstance(station_id, str) or not station_id.strip():
         raise ValueError("each rainfall reading requires a non-empty station_id")
@@ -46,10 +36,8 @@ def _task_for(reading: dict[str, Any]) -> dict[str, Any]:
 
     is_alert = millimeters >= ALERT_THRESHOLD_MM
     return {
-        # Stable business identity lets downstream aggregation match results.
         "task_id": f"rainfall:{station_id}",
         "dispatch_key": ALERT_EDGE if is_alert else REPORT_EDGE,
-        # Worker-specific input belongs in payload, not parent State updates.
         "payload": {
             "station_id": station_id,
             "millimeters": millimeters,
@@ -59,13 +47,8 @@ def _task_for(reading: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def create_dispatcher():
-    """Create the async callable required by the task-dispatcher adapter."""
-
-    async def dispatch(state, runtime):
-        # A dispatcher may also read runtime.context or runtime.store. This
-        # example needs only Workflow State, so `runtime` remains available for
-        # the user to extend without changing the required callable signature.
+def create_command():
+    async def command(state, runtime):
         shared_vars = state.get("shared_vars", {})
         readings = (
             shared_vars.get("rainfall_readings")
@@ -80,7 +63,7 @@ def create_dispatcher():
         tasks = [_task_for(reading) for reading in readings]
         alert_count = sum(task["payload"]["is_alert"] for task in tasks)
         return {
-            "tasks": tasks,
+            "dispatch": tasks,
             "update": {
                 "shared_vars": {
                     "rainfall_dispatched_count": len(tasks),
@@ -89,4 +72,4 @@ def create_dispatcher():
             },
         }
 
-    return dispatch
+    return command
