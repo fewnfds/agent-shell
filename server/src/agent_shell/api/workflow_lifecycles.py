@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+from urllib.parse import quote
 import zipfile
 
 from fastapi import APIRouter, Query
@@ -41,6 +42,7 @@ EXPORT_SECTIONS = frozenset(
         "diagnostic_summaries",
         "checkpoint_state",
         "store_payloads",
+        "v3_event_streams",
     }
 )
 
@@ -143,6 +145,44 @@ def _write_model_request_files(
             "owners": owners,
         },
     )
+
+
+def _write_event_stream_files(
+    root: Path,
+    records: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for record in records:
+        method = str(record["method"])
+        grouped.setdefault(method, []).append(record)
+
+    channels: list[dict[str, object]] = []
+    for method, method_records in sorted(grouped.items()):
+        filename = f"{quote(method, safe='-_.')}.jsonl"
+        _write_jsonl_file(root / filename, method_records)
+        channels.append(
+            {
+                "method": method,
+                "file": filename,
+                "event_count": len(method_records),
+                "first_seq": int(method_records[0]["seq"]),
+                "last_seq": int(method_records[-1]["seq"]),
+            }
+        )
+    return channels
+
+
+def _event_stream_manifest(
+    channels_by_run: dict[str, list[dict[str, object]]],
+) -> dict[str, object]:
+    return {
+        "available": bool(channels_by_run),
+        "api_version": "v3",
+        "capture_condition": "workflow_debug_capture_enabled",
+        "capture_point": "post_transformer_pre_normalizer",
+        "directory": "event-streams/",
+        "channels_by_run": channels_by_run,
+    }
 
 
 def _write_event_pages(
@@ -592,11 +632,22 @@ def build_workflow_lifecycle_router(
                 lifecycle_id,
                 None,
             )
+            event_streams: dict[str, list[dict[str, object]]] = {}
             for run in runs:
+                run_id = str(run["run_id"])
+                protocol_events = lifecycle_service.protocol_events(
+                    lifecycle_id,
+                    run_id=run_id,
+                )
+                if protocol_events:
+                    event_streams[run_id] = await asyncio.to_thread(
+                        _write_event_stream_files,
+                        content_root / "event-streams" / _path_segment(run_id),
+                        protocol_events,
+                    )
                 checkpoint_thread_id = run.get("checkpoint_thread_id")
                 if checkpoint_thread_id is None:
                     continue
-                run_id = str(run["run_id"])
                 await _write_async_jsonl_file(
                     content_root / "checkpoints" / f"{run_id}.jsonl",
                     iter_checkpoint_history(
@@ -614,7 +665,11 @@ def build_workflow_lifecycle_router(
                 "lifecycle_status": record.get("lifecycle_status", "active"),
                 "observation_status": summary_payload["observation_status"],
                 "last_event_sequence": last_event_sequence,
-                "includes": {key: True for key in sorted(EXPORT_SECTIONS)},
+                "includes": {
+                    key: bool(event_streams) if key == "v3_event_streams" else True
+                    for key in sorted(EXPORT_SECTIONS)
+                },
+                "event_streams": _event_stream_manifest(event_streams),
                 "diagnostic_details_included": True,
                 "limitations": [
                     "This is a captured runtime snapshot, not a byte-exact replay.",
@@ -704,6 +759,22 @@ def build_workflow_lifecycle_router(
                 lifecycle_id,
                 run_id,
             )
+            protocol_events = lifecycle_service.protocol_events(
+                lifecycle_id,
+                run_id=run_id,
+            )
+            event_stream_channels = (
+                await asyncio.to_thread(
+                    _write_event_stream_files,
+                    content_root / "event-streams",
+                    protocol_events,
+                )
+                if protocol_events
+                else []
+            )
+            event_streams = (
+                {run_id: event_stream_channels} if event_stream_channels else {}
+            )
             checkpoint_path = content_root / "checkpoints.jsonl"
             checkpoint_thread_id = run.get("checkpoint_thread_id")
             if checkpoint_thread_id is not None:
@@ -733,7 +804,11 @@ def build_workflow_lifecycle_router(
                 "observation_status": run["observation_status"],
                 "last_event_sequence": last_event_sequence,
                 "checkpoint_thread_id": checkpoint_thread_id,
-                "includes": {key: True for key in sorted(EXPORT_SECTIONS)},
+                "includes": {
+                    key: bool(event_streams) if key == "v3_event_streams" else True
+                    for key in sorted(EXPORT_SECTIONS)
+                },
+                "event_streams": _event_stream_manifest(event_streams),
                 "diagnostic_details_included": True,
                 "limitations": [
                     "This is a captured runtime snapshot, not a byte-exact replay.",

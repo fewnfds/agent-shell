@@ -168,6 +168,22 @@ ON workflow_run_events(run_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_workflow_run_events_node
 ON workflow_run_events(run_id, node_invocation_id, sequence);
 
+CREATE TABLE IF NOT EXISTS workflow_protocol_events (
+    lifecycle_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    event_sequence INTEGER NOT NULL CHECK (event_sequence > 0),
+    method TEXT NOT NULL CHECK (length(method) > 0),
+    envelope_json TEXT NOT NULL,
+    PRIMARY KEY (run_id, event_sequence),
+    FOREIGN KEY (lifecycle_id) REFERENCES workflow_lifecycles(lifecycle_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (run_id) REFERENCES workflow_run_records(run_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_protocol_events_lifecycle
+ON workflow_protocol_events(lifecycle_id, run_id, event_sequence);
+
 CREATE TABLE IF NOT EXISTS workflow_model_requests (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     lifecycle_id TEXT NOT NULL,

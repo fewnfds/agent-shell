@@ -50,6 +50,7 @@ from agent_shell.runtime.output_stream import (
     MainAgentMediaBlock,
     V3EventNormalizer,
 )
+from agent_shell.runtime.protocol_events import serialize_protocol_event
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
     PresentationFrame,
@@ -296,6 +297,7 @@ class RunExecution:
 
     async def _stream_text_inner(self) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
+        protocol_event_capture_failed = False
 
         def observation_error(exc: BaseException, code: str) -> None:
             if self.lifecycle_service is not None and self.context is not None:
@@ -312,6 +314,25 @@ class RunExecution:
                     component="observability",
                     context=self.diagnostic_context(),
                 )
+
+        def capture_protocol_event(envelope: object) -> None:
+            nonlocal protocol_event_capture_failed
+            if (
+                protocol_event_capture_failed
+                or not self.workflow_debug_capture_enabled
+                or self.lifecycle_service is None
+                or self.context is None
+            ):
+                return
+            try:
+                self.lifecycle_service.append_protocol_event(
+                    self.context.lifecycle_id,
+                    self.context.run_id,
+                    serialize_protocol_event(envelope),
+                )
+            except Exception as exc:
+                protocol_event_capture_failed = True
+                observation_error(exc, "workflow_protocol_event_record_failed")
 
         async def cancel_background_children() -> None:
             if self.cancel_background_children is None:
@@ -573,6 +594,7 @@ class RunExecution:
                                     next_event_task = None
                                     break
                                 next_event_task = asyncio.create_task(anext(envelopes))
+                                capture_protocol_event(envelope)
                                 for event in self.normalizer.feed(envelope):
                                     if isinstance(event, ModelCallBoundary):
                                         projected = project_input(event)

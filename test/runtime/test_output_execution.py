@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from agent_shell.runtime.output_stream import OutputEvent
+from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
+from agent_shell.runtime.output_stream import OutputEvent
 from agent_shell.runtime.response_presentation import PresentationFrame
+from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 
 from .support import *
 
@@ -82,6 +85,95 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
         "[T]answer[/T][C]working[/C]",
     ]
     assert usage == {"input_tokens": 2, "output_tokens": 4, "total_tokens": 6}
+
+
+def test_debug_event_stream_record_failure_does_not_replace_run_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class Diagnostics:
+        def __init__(self) -> None:
+            self.errors: list[dict[str, object]] = []
+
+        def observation_error(self, exc, **kwargs) -> None:
+            self.errors.append({"error": exc, **kwargs})
+
+    async def scenario():
+        lifecycle = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "protocol-event-failure.sqlite3"),
+            store_database=SQLiteFile(
+                tmp_path / "protocol-event-failure-workflow-store.sqlite3"
+            ),
+        )
+        await lifecycle.start()
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "debug"}],
+                request_id="debug-event-request",
+                run_id="debug-event-run",
+                checkpoint_thread_id=None,
+                workflow_id="debug-event-workflow",
+                workflow_name="Debug Event Workflow",
+            )
+
+            def fail_record(*_args, **_kwargs) -> None:
+                raise OSError("protocol event persistence unavailable")
+
+            monkeypatch.setattr(lifecycle, "append_protocol_event", fail_record)
+            diagnostics = Diagnostics()
+            execution = RunExecution(
+                graph=EventGraph(
+                    [
+                        {
+                            "type": "event",
+                            "seq": 1,
+                            "method": "custom",
+                            "params": {
+                                "namespace": [],
+                                "timestamp": 1,
+                                "data": "still-visible",
+                            },
+                        }
+                    ]
+                ),
+                input_state={"messages": []},
+                response_scheduler=response_scheduler(
+                    OutputProjector(output_renderer({"custom": "{{message}}"}))
+                ),
+                normalizer=V3EventNormalizer("Main Agent"),
+                middleware_runtime=noop_middleware_runtime(),
+                media_response=noop_media_response(),
+                context=WorkflowRuntimeContext.for_run(
+                    request_id="debug-event-request",
+                    lifecycle_id=lifecycle_id,
+                    run_id="debug-event-run",
+                    checkpoint_thread_id=None,
+                    workflow={
+                        "id": "debug-event-workflow",
+                        "name": "Debug Event Workflow",
+                    },
+                ),
+                lifecycle_service=lifecycle,
+                lifecycle_id=lifecycle_id,
+                runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
+                workflow_debug_capture_enabled=True,
+            )
+            parts = [part async for part in execution.stream_text()]
+            return (
+                parts,
+                lifecycle.history.get_run("debug-event-run"),
+                diagnostics.errors,
+            )
+        finally:
+            await lifecycle.close()
+
+    parts, run, errors = asyncio.run(scenario())
+
+    assert parts == ["still-visible"]
+    assert run is not None
+    assert run["status"] == "completed"
+    assert run["observation_status"] == "partial"
+    assert errors[0]["code"] == "workflow_protocol_event_record_failed"
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:

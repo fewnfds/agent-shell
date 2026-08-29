@@ -186,6 +186,18 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
     dynamic_parent = tmp_path / "dynamic-workspaces"
     dynamic_parent.mkdir()
     with make_client(tmp_path, monkeypatch) as client:
+        current_policy = client.get("/api/system/runtime-policy").json()
+        debug_policy = {
+            key: value
+            for key, value in current_policy.items()
+            if key not in {"defaults", "minimums", "configurable"}
+        }
+        debug_policy["workflow_debug_capture_enabled"] = True
+        policy_reply = client.put(
+            "/api/system/runtime-policy",
+            json=debug_policy,
+        )
+        assert policy_reply.status_code == 200, policy_reply.text
         filesystem = client.post(
             "/api/blocks/filesystem",
             json={
@@ -352,6 +364,32 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             assert manifest["includes"]["lifecycle_input"] is True
             assert manifest["includes"]["checkpoint_state"] is True
             assert manifest["includes"]["model_requests"] is True
+            assert manifest["includes"]["v3_event_streams"] is True
+            assert manifest["event_streams"]["api_version"] == "v3"
+            assert manifest["event_streams"]["capture_condition"] == (
+                "workflow_debug_capture_enabled"
+            )
+            assert manifest["event_streams"]["capture_point"] == (
+                "post_transformer_pre_normalizer"
+            )
+            event_stream_root = f"event-streams/{root_run['run_id']}"
+            assert f"{event_stream_root}/messages.jsonl" in archive.namelist()
+            assert f"{event_stream_root}/values.jsonl" in archive.namelist()
+            message_events = [
+                json.loads(line)
+                for line in archive.read(
+                    f"{event_stream_root}/messages.jsonl"
+                ).splitlines()
+            ]
+            assert message_events
+            assert all(event["method"] == "messages" for event in message_events)
+            assert [event["seq"] for event in message_events] == sorted(
+                event["seq"] for event in message_events
+            )
+            assert all(
+                isinstance(event["params"]["namespace"], list)
+                for event in message_events
+            )
             assert json.loads(archive.read("input.json"))["messages"] == [
                 {"role": "user", "content": "private-run-history-sentinel"}
             ]
@@ -430,6 +468,14 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "checkpoint_thread_id"
             ]
             assert manifest["includes"]["checkpoint_state"] is True
+            assert manifest["includes"]["v3_event_streams"] is True
+            assert "event-streams/messages.jsonl" in archive.namelist()
+            assert "event-streams/values.jsonl" in archive.namelist()
+            run_message_events = [
+                json.loads(line)
+                for line in archive.read("event-streams/messages.jsonl").splitlines()
+            ]
+            assert run_message_events == message_events
             run_model_request_index = json.loads(
                 archive.read("model-requests/index.json")
             )
@@ -641,6 +687,12 @@ def test_lifecycle_without_checkpointer_never_accesses_saver(
             assert not any(
                 name.startswith("checkpoints/") for name in archive.namelist()
             )
+            assert not any(
+                name.startswith("event-streams/") for name in archive.namelist()
+            )
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["includes"]["v3_event_streams"] is False
+            assert manifest["event_streams"]["available"] is False
 
         run_download = client.get(
             f"/api/workflow-lifecycles/{summary['lifecycle_id']}"
@@ -651,6 +703,10 @@ def test_lifecycle_without_checkpointer_never_accesses_saver(
             assert archive.read("checkpoints.jsonl") == b""
             manifest = json.loads(archive.read("manifest.json"))
             assert manifest["checkpoint_thread_id"] is None
+            assert manifest["includes"]["v3_event_streams"] is False
+            assert not any(
+                name.startswith("event-streams/") for name in archive.namelist()
+            )
         assert client.app.state.workflow_checkpoints.started is False
 
         deleted = client.delete(

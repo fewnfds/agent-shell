@@ -147,9 +147,16 @@ class EventGraph:
         self._events = events
 
     async def astream_events(
-        self, _input, *, config: dict, version: str, transformers: tuple = ()
+        self,
+        _input,
+        *,
+        config: dict,
+        version: str,
+        transformers: tuple = (),
+        **_kwargs,
     ):
-        assert config == {"recursion_limit": 1_000_000}
+        assert config["recursion_limit"] == 1_000_000
+        assert set(config) <= {"recursion_limit", "callbacks"}
         assert version == "v3"
         assert transformers
         return EventRun(self._events)

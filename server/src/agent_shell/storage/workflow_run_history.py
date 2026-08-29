@@ -11,7 +11,7 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted
 
 
 class WorkflowRunHistoryStore:
-    """Persist authoritative Run records and append-only structural events."""
+    """Persist Run records, structural events, and optional v3 protocol events."""
 
     def __init__(self, database: SQLiteDatabase) -> None:
         self._database = database
@@ -87,6 +87,13 @@ class WorkflowRunHistoryStore:
             "workflow_node_id": row["workflow_node_id"] or "",
             "request": json.loads(row["payload_json"]),
         }
+
+    @staticmethod
+    def _protocol_event(row: sqlite3.Row) -> dict[str, object]:
+        value = json.loads(row["envelope_json"])
+        if not isinstance(value, dict):
+            raise ValueError("the persisted v3 protocol event must be an object")
+        return value
 
     @staticmethod
     def _append_in(
@@ -215,6 +222,47 @@ class WorkflowRunHistoryStore:
     def append_event(self, event: dict[str, object]) -> int:
         with self._database.transaction() as connection:
             return self._append_in(connection, event)
+
+    def append_protocol_event(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        event: dict[str, object],
+    ) -> None:
+        sequence = event.get("seq")
+        method = event.get("method")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise ValueError("the v3 protocol event must have a positive seq")
+        if not isinstance(method, str) or not method:
+            raise ValueError("the v3 protocol event must have a method")
+        payload = json.dumps(
+            event,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        )
+        with self._database.transaction() as connection:
+            connection.execute(
+                "INSERT INTO workflow_protocol_events ("
+                "lifecycle_id, run_id, event_sequence, method, envelope_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (lifecycle_id, run_id, sequence, method, payload),
+            )
+
+    def list_protocol_events(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str,
+    ) -> list[dict[str, object]]:
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT envelope_json FROM workflow_protocol_events "
+                "WHERE lifecycle_id = ? AND run_id = ? ORDER BY event_sequence",
+                (lifecycle_id, run_id),
+            ).fetchall()
+        return [self._protocol_event(row) for row in rows]
 
     def mark_partial(self, run_id: str) -> None:
         with self._database.transaction() as connection:

@@ -283,6 +283,14 @@ class WorkflowLifecycleService:
     def append_run_event(self, event: dict[str, object]) -> int:
         return self._history.append_event(event)
 
+    def append_protocol_event(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        event: dict[str, object],
+    ) -> None:
+        self._history.append_protocol_event(lifecycle_id, run_id, event)
+
     def append_model_request(self, record: dict[str, object]) -> None:
         self._history.append_model_request(record)
 
@@ -318,6 +326,14 @@ class WorkflowLifecycleService:
         run_id: str | None = None,
     ) -> list[dict[str, object]]:
         return self._history.list_model_requests(lifecycle_id, run_id=run_id)
+
+    def protocol_events(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str,
+    ) -> list[dict[str, object]]:
+        return self._history.list_protocol_events(lifecycle_id, run_id=run_id)
 
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
         return self._history.summary(lifecycle_id)
