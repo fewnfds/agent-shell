@@ -961,6 +961,7 @@ class AgentRuntime:
         execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
         cancel_background_children: Callable[[], Awaitable[None]] | None = None,
         response_stream_policy: ResponseStreamPolicy | None = None,
+        workflow_debug_capture_enabled: bool | None = None,
     ) -> RunExecution:
         if built is None:
             if graph is None or input_state is None:
@@ -1017,7 +1018,11 @@ class AgentRuntime:
                     source_type="script",
                     workflow_node_id=node_id,
                 )
-        runtime_policy = self._input_policy()
+        debug_capture = (
+            self._input_policy().workflow_debug_capture_enabled
+            if workflow_debug_capture_enabled is None
+            else workflow_debug_capture_enabled
+        )
         scheduler_policy = (
             response_stream_policy.model_copy(deep=True)
             if response_stream_policy is not None
@@ -1094,9 +1099,7 @@ class AgentRuntime:
                 node_id: dict(agent.subagent_profile_ids)
                 for node_id, agent in workflow_agents
             },
-            workflow_debug_capture_enabled=(
-                runtime_policy.workflow_debug_capture_enabled
-            ),
+            workflow_debug_capture_enabled=debug_capture,
             execution_timeout_seconds=execution_timeout_seconds,
             cancel_background_children=cancel_background_children,
         )
@@ -1137,7 +1140,8 @@ class AgentRuntime:
             for node in document.definition.nodes
             if node.type == "command"
         ]
-        messages = validate_client_messages(raw_messages, self._input_policy())
+        runtime_policy = self._input_policy()
+        messages = validate_client_messages(raw_messages, runtime_policy)
         messages_sha = client_messages_sha(messages)
         assemblies: dict[str, StaticAssembly] = {}
 
@@ -1487,6 +1491,9 @@ class AgentRuntime:
                     mapped_directory_paths_by_filesystem=(
                         mapped_directory_paths_by_filesystem
                     ),
+                    workflow_debug_capture_enabled=(
+                        runtime_policy.workflow_debug_capture_enabled
+                    ),
                 )
                 built_agents.append((agent_node.id, built))
                 if agent_event_output_runtime is not None:
@@ -1644,4 +1651,7 @@ class AgentRuntime:
             public_output=public_output,
             command_runtime=command_runtime,
             response_stream_policy=response_stream_policy,
+            workflow_debug_capture_enabled=(
+                runtime_policy.workflow_debug_capture_enabled
+            ),
         )

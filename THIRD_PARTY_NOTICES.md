@@ -119,7 +119,7 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | colorama | `0.4.6` | NOASSERTION | https://pypi.org/project/colorama/0.4.6/ |
 | pypi | cryptography | `50.0.0` | Apache-2.0 OR BSD-3-Clause | https://pypi.org/project/cryptography/50.0.0/ |
 | pypi | curl-cffi | `0.16.0` | MIT | https://pypi.org/project/curl-cffi/0.16.0/ |
-| pypi | deepagents | `0.7.7` | MIT | https://pypi.org/project/deepagents/0.7.7/ |
+| pypi | deepagents | `0.7.11` | MIT | https://pypi.org/project/deepagents/0.7.11/ |
 | pypi | distro | `1.9.0` | Apache License, Version 2.0 | https://pypi.org/project/distro/1.9.0/ |
 | pypi | docstring-parser | `0.18.0` | MIT | https://pypi.org/project/docstring-parser/0.18.0/ |
 | pypi | fastapi | `0.141.1` | MIT | https://pypi.org/project/fastapi/0.141.1/ |
@@ -150,21 +150,21 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | jsonpointer | `3.1.1` | Modified BSD License | https://pypi.org/project/jsonpointer/3.1.1/ |
 | pypi | jsonschema | `4.26.0` | MIT | https://pypi.org/project/jsonschema/4.26.0/ |
 | pypi | jsonschema-specifications | `2025.9.1` | MIT | https://pypi.org/project/jsonschema-specifications/2025.9.1/ |
-| pypi | langchain | `1.3.15` | MIT | https://pypi.org/project/langchain/1.3.15/ |
-| pypi | langchain-anthropic | `1.6.0` | MIT | https://pypi.org/project/langchain-anthropic/1.6.0/ |
-| pypi | langchain-core | `1.6.0` | MIT | https://pypi.org/project/langchain-core/1.6.0/ |
+| pypi | langchain | `1.3.18` | MIT | https://pypi.org/project/langchain/1.3.18/ |
+| pypi | langchain-anthropic | `1.7.0` | MIT | https://pypi.org/project/langchain-anthropic/1.7.0/ |
+| pypi | langchain-core | `1.6.1` | MIT | https://pypi.org/project/langchain-core/1.6.1/ |
 | pypi | langchain-deepseek | `1.1.0` | MIT | https://pypi.org/project/langchain-deepseek/1.1.0/ |
-| pypi | langchain-google-genai | `4.3.4` | MIT | https://pypi.org/project/langchain-google-genai/4.3.4/ |
+| pypi | langchain-google-genai | `4.3.7` | MIT | https://pypi.org/project/langchain-google-genai/4.3.7/ |
 | pypi | langchain-google-vertexai | `3.2.4` | MIT | https://pypi.org/project/langchain-google-vertexai/3.2.4/ |
 | pypi | langchain-openai | `1.6.0` | MIT | https://pypi.org/project/langchain-openai/1.6.0/ |
-| pypi | langchain-protocol | `0.0.18` | MIT | https://pypi.org/project/langchain-protocol/0.0.18/ |
+| pypi | langchain-protocol | `0.0.19` | MIT | https://pypi.org/project/langchain-protocol/0.0.19/ |
 | pypi | langchain-xai | `1.3.0` | MIT | https://pypi.org/project/langchain-xai/1.3.0/ |
 | pypi | langgraph | `1.2.11` | MIT | https://pypi.org/project/langgraph/1.2.11/ |
 | pypi | langgraph-checkpoint | `4.2.0` | MIT | https://pypi.org/project/langgraph-checkpoint/4.2.0/ |
 | pypi | langgraph-checkpoint-sqlite | `3.1.1` | MIT | https://pypi.org/project/langgraph-checkpoint-sqlite/3.1.1/ |
 | pypi | langgraph-prebuilt | `1.1.0` | MIT | https://pypi.org/project/langgraph-prebuilt/1.1.0/ |
-| pypi | langgraph-sdk | `0.4.2` | MIT | https://pypi.org/project/langgraph-sdk/0.4.2/ |
-| pypi | langsmith | `0.11.1` | MIT | https://pypi.org/project/langsmith/0.11.1/ |
+| pypi | langgraph-sdk | `0.4.4` | MIT | https://pypi.org/project/langgraph-sdk/0.4.4/ |
+| pypi | langsmith | `0.11.2` | MIT | https://pypi.org/project/langsmith/0.11.2/ |
 | pypi | multidict | `6.7.1` | Apache License 2.0 | https://pypi.org/project/multidict/6.7.1/ |
 | pypi | numexpr | `2.14.2` | MIT | https://pypi.org/project/numexpr/2.14.2/ |
 | pypi | numpy | `2.5.1` | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | https://pypi.org/project/numpy/2.5.1/ |

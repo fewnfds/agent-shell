@@ -45,6 +45,8 @@ from agent_shell.runtime.agent_compilation import (
     MaterializedAgentProfile,
     configuration_error,
     construct_deep_agent,
+    enable_deepagents_trace_inputs,
+    materialize_patch_tool_calls_middleware,
     reported_error,
     validate_middleware_names,
     validate_model_visible_tool_names,
@@ -534,6 +536,7 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
+        workflow_debug_capture_enabled: bool = False,
     ) -> BuiltAgent:
         # Validate the immutable request snapshot before any selected user module
         # can be imported or any optional capability can be materialized.
@@ -554,6 +557,7 @@ class AgentBuilder:
             mapped_directory_paths_by_filesystem=(
                 mapped_directory_paths_by_filesystem
             ),
+            workflow_debug_capture_enabled=workflow_debug_capture_enabled,
         )
 
     async def build_resolved(
@@ -568,6 +572,7 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
+        workflow_debug_capture_enabled: bool = False,
     ) -> BuiltAgent:
         main_agent = assembly.main_agent
         references = assembly.references
@@ -614,6 +619,10 @@ class AgentBuilder:
             ),
             disabled_capabilities=assembly.disabled_capabilities,
         )
+        enable_deepagents_trace_inputs(
+            [*materialized.middleware, *materialized.extra_middleware],
+            debug_capture=workflow_debug_capture_enabled,
+        )
         constructor: dict[str, object] = {
             "model": materialized.model,
             "name": str(main_agent["name"]),
@@ -634,7 +643,13 @@ class AgentBuilder:
         if materialized.skill_sources:
             constructor["skills"] = list(materialized.skill_sources)
 
-        middleware = [ToolErrorBoundaryMiddleware(), *materialized.middleware]
+        middleware = [
+            ToolErrorBoundaryMiddleware(),
+            *materialized.middleware,
+            materialize_patch_tool_calls_middleware(
+                debug_capture=workflow_debug_capture_enabled,
+            ),
+        ]
         if materialized.tool_choice is not None or materialized.model_settings:
             middleware.append(
                 make_model_request_settings_middleware(
@@ -663,6 +678,9 @@ class AgentBuilder:
                     mapped_directory_paths_by_filesystem
                 ),
                 initial_files=subagent_initial_files,
+                workflow_debug_capture_enabled=(
+                    workflow_debug_capture_enabled
+                ),
             )
             delegation_instruction = selected_blocks["subagent"][
                 "instruction_override"
@@ -700,7 +718,7 @@ class AgentBuilder:
             input_state["files"] = initial_files
 
         try:
-            if compiled_subagents and task_description_override is not None:
+            if compiled_subagents:
                 from agent_shell.runtime.subagent_middleware import (
                     make_subagent_middleware_override,
                 )
@@ -710,6 +728,10 @@ class AgentBuilder:
                     subagents=compiled_subagents,
                     task_description=task_description_override,
                     middleware=(*middleware, *materialized.package_middleware),
+                    state_schema=AgentShellState,
+                    workflow_debug_capture_enabled=(
+                        workflow_debug_capture_enabled
+                    ),
                 )
                 if replacement is not None:
                     middleware.append(replacement)

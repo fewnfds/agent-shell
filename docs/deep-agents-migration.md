@@ -1,6 +1,6 @@
 # Deep Agents runtime 基线
 
-Agent Shell 使用锁定的 `deepagents==0.7.7` 和 `deepagents.create_deep_agent()` 构造 Main Agent。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 只在外层 canvas Agent Node 建立 invocation identity 和 parent/child State 输入输出边界，不实现委派调度或第二套 Agent loop。
+Agent Shell 使用锁定的 `deepagents==0.7.11` 和 `deepagents.create_deep_agent()` 构造 Main Agent。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 只在外层 canvas Agent Node 建立 invocation identity 和 parent/child State 输入输出边界，不实现委派调度或第二套 Agent loop。
 
 ## 责任边界
 
@@ -25,13 +25,14 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
 - Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
+- Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Workflow Debug 值在 Run 建立时冻结；开启时 Main Agent 和直接 Subagent 为本次编译创建同名 replacement，并设置实例级 `TracePolicy(process_inputs=...)`，使 LangChain callback/tracing 保留经过统一 JSON/secret 转换的 hook inputs。关闭时保留上游默认策略。该覆盖不修改类属性或进程级默认，不影响并发的其他 Run；
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
 - `AgentShellState.shared_vars` 保存公共 Workflow State 业务变量；Workflow 装配 Checkpointer 时它参与官方 checkpoint，Middleware 实例属性只保存当前实例的运行期数据。
 - Agent Event Output 使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event)` 返回公开文本。
 
-### Middleware 禁用装配查证表（deepagents 0.7.7）
+### Middleware 禁用装配查证表（deepagents 0.7.11）
 
 以下是 current Agent Shell 装配中会使用“同名、无行为 replacement”的能力。replacement 是通过 `create_deep_agent(middleware=...)` 的官方同名覆盖规则生效的；它会替换默认实例，但不会让该名称从最终 middleware 列表中消失。
 
@@ -45,9 +46,9 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 下列项目不走这套 replacement：
 
-- `SubAgentMiddleware`：通过官方 `GeneralPurposeSubagentProfile(enabled=False)` 且不传 synchronous Subagent，真正不装配；
+- `SubAgentMiddleware`：通过官方 `GeneralPurposeSubagentProfile(enabled=False)` 且不传 synchronous Subagent，真正不装配；有直接 Subagent 时使用同名 replacement 固定 private State keys，并按当前 Run 的 Workflow Debug 值设置 trace policy；
 - `FilesystemMiddleware`：官方要求的 protected scaffolding，不能移除，只能限制其工具或权限；
-- `PatchToolCallsMiddleware`：当前是 Deep Agents 核心修复 middleware，没有 Agent Shell 的可选禁用开关。
+- `PatchToolCallsMiddleware`：当前是 Deep Agents 核心修复 middleware，没有 Agent Shell 的可选禁用开关；Shell 使用同名行为实例承接 Run-local trace policy。
 
 Deep Agents 也支持 `HarnessProfile.excluded_middleware` 物理移除普通 middleware，但它是按 model/provider profile 生效，无法表达同一模型下每个 Agent 独立的 capability 选择，因此当前运行时没有用它承载上述 per-agent 设置。
 

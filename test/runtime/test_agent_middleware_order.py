@@ -227,6 +227,7 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
         builder.build(
             "main-id",
             [{"role": "user", "content": "Hello"}],
+            workflow_debug_capture_enabled=True,
         )
     )
 
@@ -243,6 +244,18 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
     assert child_middleware.index(child_retry) < child_middleware.index(child_packages[0])
     assert main_middleware.index(delegation) < main_middleware.index(main_packages[0])
     assert delegation_input[-2:] == main_packages
+    main_patch = next(
+        item for item in main_middleware if item.name == "PatchToolCallsMiddleware"
+    )
+    child_patch = next(
+        item for item in child_middleware if item.name == "PatchToolCallsMiddleware"
+    )
+    for patch in (main_patch, child_patch):
+        process_inputs = patch.trace_policy.process_inputs
+        assert process_inputs is not None
+        assert process_inputs(
+            {"messages": ["debug-body"], "api_key": "credential-sentinel"}
+        ) == {"messages": ["debug-body"], "api_key": "[REDACTED]"}
 
 
 def test_task_description_override_keeps_shell_middleware_private_state_keys(
@@ -274,10 +287,12 @@ def test_task_description_override_keeps_shell_middleware_private_state_keys(
         ],
         task_description="Delegate to {available_agents}.",
         middleware=(_middleware("Package", state_schema=PackageState),),
+        state_schema=AgentShellState,
     )
 
     assert isinstance(result, CapturingSubAgentMiddleware)
     assert captured["task_description"] == "Delegate to {available_agents}."
     private_state_keys = captured["private_state_keys"]
     assert "private_value" in private_state_keys
+    assert "jump_to" in private_state_keys
     assert "public_value" not in private_state_keys

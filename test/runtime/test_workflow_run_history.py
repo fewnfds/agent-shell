@@ -447,7 +447,11 @@ def test_model_failure_event_preserves_safe_provider_stream_evidence(tmp_path) -
 
 
 def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path) -> None:
-    async def scenario() -> tuple[list[dict[str, object]], _Diagnostics]:
+    async def scenario() -> tuple[
+        list[dict[str, object]],
+        list[dict[str, object]],
+        _Diagnostics,
+    ]:
         database = SQLiteDatabase(tmp_path / "debug-capture.sqlite3")
         lifecycle = _lifecycle_service(database)
         await lifecycle.start()
@@ -477,7 +481,16 @@ def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path)
             )
             journal.on_chat_model_start(
                 {"name": "provider-model"},
-                [[HumanMessage(content="input")]],
+                [
+                    [
+                        HumanMessage(
+                            content="input",
+                            additional_kwargs={
+                                "credential": "message-credential-sentinel"
+                            },
+                        )
+                    ]
+                ],
                 run_id="debug-model-run",
                 metadata={
                     "langgraph_node": "agent-node",
@@ -489,11 +502,15 @@ def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path)
                 ProviderStreamError(curl_code=56),
                 run_id="debug-model-run",
             )
-            return lifecycle.events(lifecycle_id, event_type="model"), diagnostics
+            return (
+                lifecycle.events(lifecycle_id, event_type="model"),
+                lifecycle.model_requests(lifecycle_id),
+                diagnostics,
+            )
         finally:
             await lifecycle.close()
 
-    events, diagnostics = asyncio.run(scenario())
+    events, model_requests, diagnostics = asyncio.run(scenario())
 
     failed = next(event for event in events if event["phase"] == "failed")
     assert failed["metadata"]["provider_debug"] == {
@@ -502,6 +519,12 @@ def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path)
     }
     assert failed["metadata"]["api_key"] == "[REDACTED]"
     assert failed["metadata"]["curl_error"] == "RECV_ERROR"
+    assert (
+        model_requests[0]["request"]["message_batches"][0][0]["data"][
+            "additional_kwargs"
+        ]["credential"]
+        == "[REDACTED]"
+    )
     assert diagnostics.runtime_errors[0]["code"] == "workflow_callback_failed"
     assert diagnostics.runtime_errors[0]["component"] == "workflow_debug_capture"
     assert isinstance(diagnostics.runtime_errors[0]["error"], ProviderStreamError)

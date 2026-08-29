@@ -1,12 +1,73 @@
 from types import SimpleNamespace
 
+from deepagents.backends import StateBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware
+from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from deepagents.middleware.skills import SkillsMiddleware
+from deepagents.middleware.subagents import SubAgentMiddleware
+from deepagents.middleware.summarization import SummarizationMiddleware
+from langchain.agents.middleware import omit_payload
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.runnables import RunnableLambda
 from langgraph.store.memory import InMemoryStore
 
 from agent_shell.capability_manifest import DEFAULT_MIDDLEWARE_CAPABILITY_TYPES
 from agent_shell.runtime import agent_builder, deepagents_harness
 from agent_shell.runtime.agent_builder import AgentBuilder
+from agent_shell.runtime.agent_compilation import enable_deepagents_trace_inputs
 from agent_shell.storage.environment import EnvironmentSnapshot
 from agent_shell.storage.model_connections import ModelResourceSnapshot
+
+
+def _input_omitting_deepagents_middleware():
+    backend = StateBackend()
+    return [
+        FilesystemMiddleware(backend=backend),
+        SkillsMiddleware(backend=backend, sources=[]),
+        SummarizationMiddleware(
+            FakeListChatModel(responses=["summary"]),
+            backend=backend,
+        ),
+        SubAgentMiddleware(
+            backend=backend,
+            subagents=[
+                {
+                    "name": "worker",
+                    "description": "Handles delegated work.",
+                    "runnable": RunnableLambda(lambda state: state),
+                }
+            ],
+        ),
+        PatchToolCallsMiddleware(),
+    ]
+
+
+def test_workflow_debug_restores_deep_agents_inputs_per_compilation() -> None:
+    regular = _input_omitting_deepagents_middleware()
+    debug = _input_omitting_deepagents_middleware()
+
+    enable_deepagents_trace_inputs(debug, debug_capture=True)
+
+    assert all(
+        item.trace_policy.process_inputs is omit_payload for item in regular
+    )
+    for item in debug:
+        process_inputs = item.trace_policy.process_inputs
+        assert process_inputs is not None
+        assert process_inputs(
+            {
+                "state": {
+                    "messages": [{"role": "user", "content": "debug body"}],
+                    "credential": "credential-sentinel",
+                }
+            }
+        ) == {
+            "state": {
+                "messages": [{"role": "user", "content": "debug body"}],
+                "credential": "[REDACTED]",
+            }
+        }
+    assert PatchToolCallsMiddleware.trace_policy.process_inputs is omit_payload
 
 
 def test_harness_profile_registration_uses_configured_model_identity(

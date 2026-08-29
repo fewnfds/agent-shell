@@ -96,4 +96,8 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
         isinstance(item, AgentShellStateMiddleware)
         for item in specs[0]["middleware"]
     )
+    assert any(
+        item.name == "PatchToolCallsMiddleware"
+        for item in specs[0]["middleware"]
+    )
     assert all("graph" not in item and "runnable" not in item for item in specs)

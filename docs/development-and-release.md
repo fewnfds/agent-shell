@@ -52,15 +52,15 @@ git pull --ff-only
 | --- | --- |
 | 内置 CPython | `3.12.13` |
 | runtime/CI uv | `0.12.2` |
-| Deep Agents | `0.7.7` |
+| Deep Agents | `0.7.11` |
 | FastAPI / Uvicorn | `0.141.1` / `0.52.1` |
-| LangChain adapters | Anthropic `1.6.0`；DeepSeek `1.1.0`；Google GenAI `4.3.4`；Google Vertex AI `3.2.4`；OpenAI `1.6.0`；xAI `1.3.0` |
-| LangChain core/graph | `langchain 1.3.15`；`langchain-core 1.6.0`；`langgraph 1.2.11`；LangSmith `0.11.1` |
+| LangChain adapters | Anthropic `1.7.0`；DeepSeek `1.1.0`；Google GenAI `4.3.7`；Google Vertex AI `3.2.4`；OpenAI `1.6.0`；xAI `1.3.0` |
+| LangChain core/graph | `langchain 1.3.18`；`langchain-core 1.6.1`；`langgraph 1.2.11`；LangSmith `0.11.2` |
 | 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
 
 第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一锁文件或 runtime lock 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。
 
-截至本基线，`uv lock --dry-run --upgrade` 保持当前锁。`uv tree --outdated` 可能显示 `websockets 17`、`protobuf 7`、`pydantic-core 2.48` 或 `pyarrow 25`，它们分别受 LangGraph/Google 依赖范围或当前 Provider 组合约束。依赖升级从重新运行上述 dry-run 开始，并按单一影响面批量推进。LangChain 系的版本边界、LangSmith `>=0.11.1,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
+无范围的 `uv lock --upgrade` 会把 FastAPI、Provider SDK 和开发依赖等无关行为面一起带入，不作为日常升级入口。依赖升级先用 `uv tree --outdated` 扫描，再按单一影响面使用 scoped `--upgrade-package` 推进。LangChain 系的版本边界、LangSmith `>=0.11.2,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
 
 ## 前端 Debug
 

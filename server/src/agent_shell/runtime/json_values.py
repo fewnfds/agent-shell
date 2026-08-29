@@ -19,12 +19,16 @@ _SECRET_FIELD_NAMES = frozenset(
         "authorization",
         "bearer_token",
         "client_secret",
+        "credential",
+        "credentials",
         "management_token",
         "password",
         "proxy_authorization",
         "refresh_token",
         "secret",
         "secret_value",
+        "token",
+        "api_token",
         "x_api_key",
     }
 )
@@ -73,7 +77,7 @@ def json_safe(
             return json_safe(
                 message_to_dict(value),
                 active=active,
-                redact_secret_fields=False,
+                redact_secret_fields=redact_secret_fields,
             )
         if isinstance(value, BaseTool):
             try:

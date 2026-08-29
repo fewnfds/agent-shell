@@ -30,7 +30,7 @@ def _serialize_chat_model_request(
     return {
         "capture_layer": "langchain.on_chat_model_start",
         "serialized_model": json_safe(serialized),
-        "message_batches": json_safe(messages, redact_secret_fields=False),
+        "message_batches": json_safe(messages),
         "invocation_params": safe_invocation_params,
         "options": json_safe(kwargs.get("options") or {}),
         "tags": json_safe(tags or []),
