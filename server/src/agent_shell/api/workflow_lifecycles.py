@@ -1,17 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator
 from collections import Counter
-from datetime import datetime, timezone
-import json
 import math
-from pathlib import Path
-import re
-import shutil
-import tempfile
-from urllib.parse import quote
-import zipfile
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
@@ -26,25 +18,11 @@ from agent_shell.runtime.background_tasks import (
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
-from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
-
-
-EXPORT_SECTIONS = frozenset(
-    {
-        "run_registry",
-        "structural_events",
-        "lifecycle_input",
-        "agent_invocations",
-        "model_requests",
-        "background_tasks",
-        "checkpoint_summaries",
-        "store_summary",
-        "diagnostic_summaries",
-        "checkpoint_state",
-        "store_payloads",
-        "v3_event_streams",
-    }
+from agent_shell.runtime.workflow_diagnostic_exports import (
+    WorkflowDiagnosticCheckpointError,
+    WorkflowDiagnosticExportService,
 )
+from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 
 
 class WorkflowLifecycleBulkDelete(BaseModel):
@@ -54,224 +32,12 @@ class WorkflowLifecycleBulkDelete(BaseModel):
     delete_dynamic_directories: bool = False
 
 
-def _json_default(value: object) -> object:
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        try:
-            return model_dump(mode="json")
-        except (TypeError, ValueError):
-            pass
-    return str(value)
-
-
-def _json(value: object) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-        default=_json_default,
-    ) + "\n"
-
-
-def _json_line(value: object) -> bytes:
-    return (
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-            default=_json_default,
-        )
-        + "\n"
-    ).encode("utf-8")
-
-
-def _write_json_file(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_json(value), encoding="utf-8")
-
-
-def _write_jsonl_file(path: Path, values: Iterable[object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as stream:
-        for value in values:
-            stream.write(_json_line(value))
-
-
-def _path_segment(value: object) -> str:
-    segment = re.sub(r"[^A-Za-z0-9._-]", "_", str(value or ""))
-    return segment if segment not in {"", ".", ".."} else "unknown"
-
-
-def _write_model_request_files(
-    root: Path,
-    records: list[dict[str, object]],
-) -> None:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for record in records:
-        node_scope = _path_segment(
-            record.get("workflow_node_id") or record.get("parent_agent_id")
-        )
-        agent_id = _path_segment(record.get("agent_id"))
-        if record.get("agent_type") == "subagent":
-            relative_path = f"subagents/{node_scope}/{agent_id}.jsonl"
-        else:
-            relative_path = f"main-agents/{node_scope}--{agent_id}.jsonl"
-        grouped.setdefault(relative_path, []).append(record)
-
-    owners: list[dict[str, object]] = []
-    for relative_path, owner_records in sorted(grouped.items()):
-        first = owner_records[0]
-        _write_jsonl_file(root / relative_path, owner_records)
-        owners.append(
-            {
-                "path": relative_path,
-                "request_count": len(owner_records),
-                "agent_type": first["agent_type"],
-                "agent_id": first["agent_id"],
-                "agent_name": first["agent_name"],
-                "parent_agent_id": first.get("parent_agent_id", ""),
-                "parent_agent_name": first.get("parent_agent_name", ""),
-                "workflow_node_id": first.get("workflow_node_id", ""),
-                "run_ids": sorted({str(item["run_id"]) for item in owner_records}),
-            }
-        )
-    _write_json_file(
-        root / "index.json",
-        {
-            "capture_layer": "langchain.on_chat_model_start",
-            "request_count": len(records),
-            "owners": owners,
-        },
-    )
-
-
-def _write_event_stream_files(
-    root: Path,
-    records: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for record in records:
-        method = str(record["method"])
-        grouped.setdefault(method, []).append(record)
-
-    channels: list[dict[str, object]] = []
-    for method, method_records in sorted(grouped.items()):
-        filename = f"{quote(method, safe='-_.')}.jsonl"
-        _write_jsonl_file(root / filename, method_records)
-        channels.append(
-            {
-                "method": method,
-                "file": filename,
-                "event_count": len(method_records),
-                "first_seq": int(method_records[0]["seq"]),
-                "last_seq": int(method_records[-1]["seq"]),
-            }
-        )
-    return channels
-
-
-def _event_stream_manifest(
-    channels_by_run: dict[str, list[dict[str, object]]],
-) -> dict[str, object]:
-    return {
-        "available": bool(channels_by_run),
-        "api_version": "v3",
-        "capture_condition": "workflow_debug_capture_enabled",
-        "capture_point": "post_transformer_protocol_event",
-        "directory": "event-streams/",
-        "channels_by_run": channels_by_run,
-    }
-
-
-def _write_event_pages(
-    path: Path,
-    lifecycle_service: WorkflowLifecycleService,
-    lifecycle_id: str,
-    run_id: str | None,
-) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    after_sequence = 0
-    with path.open("wb") as stream:
-        while True:
-            page = lifecycle_service.events(
-                lifecycle_id,
-                run_id=run_id,
-                after_sequence=after_sequence,
-                limit=5000,
-            )
-            for event in page:
-                stream.write(_json_line(event))
-            if not page:
-                return after_sequence
-            after_sequence = int(page[-1]["sequence"])
-            if len(page) < 5000:
-                return after_sequence
-
-
-def _append_bytes(path: Path, payload: bytes) -> None:
-    with path.open("ab") as stream:
-        stream.write(payload)
-
-
-async def _write_async_jsonl_file(
-    path: Path,
-    values: AsyncIterator[dict[str, object]],
-) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(path.write_bytes, b"")
-    chunk = bytearray()
-    async for value in values:
-        chunk.extend(_json_line(value))
-        if len(chunk) >= 1024 * 1024:
-            await asyncio.to_thread(_append_bytes, path, bytes(chunk))
-            chunk.clear()
-    if chunk:
-        await asyncio.to_thread(_append_bytes, path, bytes(chunk))
-
-
-def _build_zip(
-    content_root: Path,
-    archive_path: Path,
-    diagnostic_details: list[tuple[Path, str]],
-) -> None:
-    with zipfile.ZipFile(
-        archive_path,
-        "w",
-        compression=zipfile.ZIP_DEFLATED,
-    ) as archive:
-        for path in sorted(content_root.rglob("*")):
-            if path.is_file():
-                archive.write(path, path.relative_to(content_root).as_posix())
-        for path, archive_name in diagnostic_details:
-            archive.write(path, archive_name)
-
-
-def _diagnostic_file_response(
-    archive_path: Path,
-    export_root: Path,
-    filename: str,
-) -> FileResponse:
-    return FileResponse(
-        archive_path,
-        filename=filename,
-        media_type="application/zip",
-        headers={"Cache-Control": "no-store"},
-        background=BackgroundTask(
-            shutil.rmtree,
-            export_root,
-            ignore_errors=True,
-        ),
-    )
-
-
 def build_workflow_lifecycle_router(
     lifecycle_service: WorkflowLifecycleService,
     background_tasks: BackgroundTaskManager,
     workflow_checkpoints: WorkflowCheckpointService,
     runtime_diagnostics: RuntimeDiagnostics,
-    export_temp_root: Path,
+    diagnostic_exports: WorkflowDiagnosticExportService,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -508,17 +274,6 @@ def build_workflow_lifecycle_router(
             )
         return "deleted", len(checkpoint_thread_ids)
 
-    def diagnostic_details(
-        diagnostics: list[dict[str, object]],
-    ) -> list[tuple[Path, str]]:
-        result: list[tuple[Path, str]] = []
-        for entry in diagnostics:
-            diagnostic_id = str(entry["diagnostic_id"])
-            path = runtime_diagnostics.detail_path(diagnostic_id)
-            if path is not None:
-                result.append((path, f"diagnostics/{diagnostic_id}.log"))
-        return result
-
     @router.get("/api/workflow-lifecycles")
     async def list_workflow_lifecycles(
         page: int = Query(default=1, ge=1),
@@ -612,125 +367,25 @@ def build_workflow_lifecycle_router(
         lifecycle_id: str,
     ) -> FileResponse:
         record = await require_lifecycle(lifecycle_id)
-        captured_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        runs = lifecycle_service.runs(lifecycle_id)
-        model_requests = lifecycle_service.model_requests(lifecycle_id)
-        diagnostics = diagnostics_for(lifecycle_id)
-        summary_payload = await summary(record)
-        store_summary = await lifecycle_service.artifact_summary(lifecycle_id)
-        export_temp_root.mkdir(parents=True, exist_ok=True)
-        export_root = Path(
-            tempfile.mkdtemp(prefix="workflow-diagnostic-", dir=export_temp_root)
-        )
-        content_root = export_root / "content"
-        archive_path = export_root / "diagnostic.zip"
         try:
-            last_event_sequence = await asyncio.to_thread(
-                _write_event_pages,
-                content_root / "events.jsonl",
-                lifecycle_service,
+            archive = await diagnostic_exports.export_lifecycle(
                 lifecycle_id,
-                None,
+                record=record,
+                summary=await summary(record),
             )
-            event_streams: dict[str, list[dict[str, object]]] = {}
-            for run in runs:
-                run_id = str(run["run_id"])
-                protocol_events = lifecycle_service.protocol_events(
-                    lifecycle_id,
-                    run_id=run_id,
-                )
-                if protocol_events:
-                    event_streams[run_id] = await asyncio.to_thread(
-                        _write_event_stream_files,
-                        content_root / "event-streams" / _path_segment(run_id),
-                        protocol_events,
-                    )
-                checkpoint_thread_id = run.get("checkpoint_thread_id")
-                if checkpoint_thread_id is None:
-                    continue
-                await _write_async_jsonl_file(
-                    content_root / "checkpoints" / f"{run_id}.jsonl",
-                    iter_checkpoint_history(
-                        str(checkpoint_thread_id),
-                        lifecycle_id=lifecycle_id,
-                        run_id=run_id,
-                        include_state=True,
-                    ),
-                )
-            manifest = {
-                "format": "agent-shell-run-history-v3",
-                "scope": "lifecycle",
-                "captured_at": captured_at,
-                "lifecycle_id": lifecycle_id,
-                "lifecycle_status": record.get("lifecycle_status", "active"),
-                "observation_status": summary_payload["observation_status"],
-                "last_event_sequence": last_event_sequence,
-                "includes": {
-                    key: bool(event_streams) if key == "v3_event_streams" else True
-                    for key in sorted(EXPORT_SECTIONS)
-                },
-                "event_streams": _event_stream_manifest(event_streams),
-                "diagnostic_details_included": True,
-                "limitations": [
-                    "This is a captured runtime snapshot, not a byte-exact replay.",
-                    "LangChain on_chat_model_start messages, tools, and invocation parameters are persisted under model-requests/.",
-                    "Provider-adapter network payloads and raw successful Provider HTTP responses are not separately persisted.",
-                    "The archive contains persisted runtime data available to the Run History owner.",
-                ],
-            }
-            await asyncio.to_thread(
-                _write_json_file, content_root / "manifest.json", manifest
-            )
-            await asyncio.to_thread(
-                _write_json_file, content_root / "lifecycle.json", summary_payload
-            )
-            await asyncio.to_thread(
-                _write_json_file, content_root / "runs.json", runs
-            )
-            await asyncio.to_thread(
-                _write_json_file,
-                content_root / "input.json",
-                await lifecycle_service.input_record(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "agent-invocations.jsonl",
-                await lifecycle_service.invocation_artifacts(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_model_request_files,
-                content_root / "model-requests",
-                model_requests,
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "background-tasks.jsonl",
-                await lifecycle_service.task_records(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_json_file, content_root / "store-summary.json", store_summary
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "store-payloads.jsonl",
-                await lifecycle_service.store_records(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file, content_root / "diagnostics.jsonl", diagnostics
-            )
-            await asyncio.to_thread(
-                _build_zip,
-                content_root,
-                archive_path,
-                diagnostic_details(diagnostics),
-            )
-        except BaseException:
-            shutil.rmtree(export_root, ignore_errors=True)
-            raise
-        return _diagnostic_file_response(
-            archive_path,
-            export_root,
-            f"agent-shell-lifecycle-{lifecycle_id}.zip",
+        except WorkflowDiagnosticCheckpointError as exc:
+            raise checkpoint_error(
+                exc.error,
+                lifecycle_id=exc.lifecycle_id,
+                run_id=exc.run_id,
+                checkpoint_thread_id=exc.checkpoint_thread_id,
+            ) from exc
+        return FileResponse(
+            archive.path,
+            filename=archive.filename,
+            media_type="application/zip",
+            headers={"Cache-Control": "no-store"},
+            background=BackgroundTask(archive.release),
         )
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download")
@@ -740,137 +395,24 @@ def build_workflow_lifecycle_router(
     ) -> FileResponse:
         await require_lifecycle(lifecycle_id)
         run = require_run(lifecycle_id, run_id)
-        model_requests = lifecycle_service.model_requests(
-            lifecycle_id,
-            run_id=run_id,
-        )
-        diagnostics = diagnostics_for(lifecycle_id, run_id=run_id)
-        export_temp_root.mkdir(parents=True, exist_ok=True)
-        export_root = Path(
-            tempfile.mkdtemp(prefix="workflow-diagnostic-", dir=export_temp_root)
-        )
-        content_root = export_root / "content"
-        archive_path = export_root / "diagnostic.zip"
         try:
-            last_event_sequence = await asyncio.to_thread(
-                _write_event_pages,
-                content_root / "events.jsonl",
-                lifecycle_service,
+            archive = await diagnostic_exports.export_run(
                 lifecycle_id,
-                run_id,
+                run=run,
             )
-            protocol_events = lifecycle_service.protocol_events(
-                lifecycle_id,
-                run_id=run_id,
-            )
-            event_stream_channels = (
-                await asyncio.to_thread(
-                    _write_event_stream_files,
-                    content_root / "event-streams",
-                    protocol_events,
-                )
-                if protocol_events
-                else []
-            )
-            event_streams = (
-                {run_id: event_stream_channels} if event_stream_channels else {}
-            )
-            checkpoint_path = content_root / "checkpoints.jsonl"
-            checkpoint_thread_id = run.get("checkpoint_thread_id")
-            if checkpoint_thread_id is not None:
-                await _write_async_jsonl_file(
-                    checkpoint_path,
-                    iter_checkpoint_history(
-                        str(checkpoint_thread_id),
-                        lifecycle_id=lifecycle_id,
-                        run_id=run_id,
-                        include_state=True,
-                    ),
-                )
-            else:
-                await asyncio.to_thread(
-                    checkpoint_path.parent.mkdir, parents=True, exist_ok=True
-                )
-                await asyncio.to_thread(checkpoint_path.write_bytes, b"")
-            manifest = {
-                "format": "agent-shell-run-history-v3",
-                "scope": "run",
-                "captured_at": datetime.now(timezone.utc).isoformat(
-                    timespec="milliseconds"
-                ),
-                "lifecycle_id": lifecycle_id,
-                "run_id": run_id,
-                "run_status": run["status"],
-                "observation_status": run["observation_status"],
-                "last_event_sequence": last_event_sequence,
-                "checkpoint_thread_id": checkpoint_thread_id,
-                "includes": {
-                    key: bool(event_streams) if key == "v3_event_streams" else True
-                    for key in sorted(EXPORT_SECTIONS)
-                },
-                "event_streams": _event_stream_manifest(event_streams),
-                "diagnostic_details_included": True,
-                "limitations": [
-                    "This is a captured runtime snapshot, not a byte-exact replay.",
-                    "LangChain on_chat_model_start messages, tools, and invocation parameters are persisted under model-requests/.",
-                    "Provider-adapter network payloads and raw successful Provider HTTP responses are not separately persisted.",
-                    "The archive contains persisted runtime data available to the Run History owner.",
-                ],
-            }
-            await asyncio.to_thread(
-                _write_json_file, content_root / "manifest.json", manifest
-            )
-            await asyncio.to_thread(
-                _write_json_file, content_root / "run.json", run
-            )
-            await asyncio.to_thread(
-                _write_json_file,
-                content_root / "input.json",
-                await lifecycle_service.input_record(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "agent-invocations.jsonl",
-                await lifecycle_service.invocation_artifacts(
-                    lifecycle_id, run_id=run_id
-                ),
-            )
-            await asyncio.to_thread(
-                _write_model_request_files,
-                content_root / "model-requests",
-                model_requests,
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "background-tasks.jsonl",
-                await lifecycle_service.task_records(lifecycle_id, run_id=run_id),
-            )
-            await asyncio.to_thread(
-                _write_json_file,
-                content_root / "store-summary.json",
-                await lifecycle_service.artifact_summary(lifecycle_id),
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file,
-                content_root / "store-payloads.jsonl",
-                await lifecycle_service.store_records(lifecycle_id, run_id=run_id),
-            )
-            await asyncio.to_thread(
-                _write_jsonl_file, content_root / "diagnostics.jsonl", diagnostics
-            )
-            await asyncio.to_thread(
-                _build_zip,
-                content_root,
-                archive_path,
-                diagnostic_details(diagnostics),
-            )
-        except BaseException:
-            shutil.rmtree(export_root, ignore_errors=True)
-            raise
-        return _diagnostic_file_response(
-            archive_path,
-            export_root,
-            f"agent-shell-run-{run_id}.zip",
+        except WorkflowDiagnosticCheckpointError as exc:
+            raise checkpoint_error(
+                exc.error,
+                lifecycle_id=exc.lifecycle_id,
+                run_id=exc.run_id,
+                checkpoint_thread_id=exc.checkpoint_thread_id,
+            ) from exc
+        return FileResponse(
+            archive.path,
+            filename=archive.filename,
+            media_type="application/zip",
+            headers={"Cache-Control": "no-store"},
+            background=BackgroundTask(archive.release),
         )
 
     @router.delete("/api/workflow-lifecycles/{lifecycle_id}")

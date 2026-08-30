@@ -102,7 +102,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             filename=download.filename,
             media_type=download.media_type,
             background=(
-                BackgroundTask(download.path.unlink, missing_ok=True)
+                BackgroundTask(files.release_download, download)
                 if download.delete_after
                 else None
             ),
@@ -127,7 +127,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             download.path,
             filename=download.filename,
             media_type=download.media_type,
-            background=BackgroundTask(download.path.unlink, missing_ok=True),
+            background=BackgroundTask(files.release_download, download),
         )
 
     @router.get("/api/file-manager/text")

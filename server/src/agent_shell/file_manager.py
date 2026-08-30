@@ -670,6 +670,17 @@ class FileManagerService:
             media_type="application/octet-stream",
         )
 
+    def release_download(self, download: FileDownload) -> None:
+        if not download.delete_after:
+            return
+        path = download.path.resolve()
+        if (
+            path.parent != self._temporary_directory
+            or not path.name.startswith(_TEMPORARY_PREFIX)
+        ):
+            raise ValueError("the download is not an owned temporary artifact")
+        path.unlink(missing_ok=True)
+
     def _regular_file_path(
         self, path: str, capability: str
     ) -> tuple[Path, str]:

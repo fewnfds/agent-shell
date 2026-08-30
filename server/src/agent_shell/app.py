@@ -36,6 +36,9 @@ from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
+from agent_shell.runtime.workflow_diagnostic_exports import (
+    WorkflowDiagnosticExportService,
+)
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.settings import (
     Settings,
@@ -220,6 +223,7 @@ def create_app(
         ConfigurationRepositoryManagementService(
             configuration,
             model_resources,
+            runtime_dir,
         )
     )
     api_server_store = ApiServerStore(
@@ -242,6 +246,12 @@ def create_app(
         api_server_events.publish_nowait,
         store=runtime_diagnostic_store,
         details=runtime_diagnostic_details,
+    )
+    workflow_diagnostic_exports = WorkflowDiagnosticExportService(
+        workflow_lifecycle,
+        workflow_checkpoints,
+        runtime_diagnostics,
+        settings.resolved_runtime_dir() / "tmp",
     )
     background_tasks = BackgroundTaskManager(
         workflow_lifecycle,
@@ -578,7 +588,6 @@ def create_app(
             configuration,
             configuration_repository_management,
             repository_validation,
-            runtime_root=runtime_dir,
         )
     )
     app.include_router(
@@ -622,7 +631,7 @@ def create_app(
             background_tasks,
             workflow_checkpoints,
             runtime_diagnostics,
-            settings.resolved_runtime_dir() / "tmp",
+            workflow_diagnostic_exports,
         )
     )
     app.include_router(

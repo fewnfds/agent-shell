@@ -18,6 +18,7 @@ from zipfile import ZipFile
 
 from packaging.utils import canonicalize_name
 
+from agent_shell.configuration.identity import is_configuration_id
 from agent_shell.python_requirements import (
     PythonRequirements as PackageRequirements,
     PythonRequirementsError,
@@ -148,6 +149,38 @@ def dependency_metadata(
         "dependency_status": status,
         "dependency_error_code": error_code,
     }
+
+
+def repository_restart_required(
+    packages_root: Path,
+    runtime_root: Path,
+) -> bool:
+    if not packages_root.exists():
+        return False
+    for adapter in packages_root.iterdir():
+        if not adapter.is_dir():
+            continue
+        for folder in adapter.iterdir():
+            if not folder.is_dir():
+                continue
+            try:
+                requirements = read_package_requirements(folder)
+                manifest = json.loads(
+                    (folder / "package.json").read_text(encoding="utf-8")
+                )
+                package_id = manifest.get("id") if isinstance(manifest, dict) else None
+                if not is_configuration_id(package_id):
+                    continue
+            except (OSError, UnicodeError, json.JSONDecodeError, ResourceScanError):
+                continue
+            metadata = dependency_metadata(
+                f"python-package:{package_id}",
+                requirements,
+                runtime_root,
+            )
+            if metadata["dependency_status"] == "restart_required":
+                return True
+    return False
 
 
 def activate_package_site(runtime_root: Path) -> None:

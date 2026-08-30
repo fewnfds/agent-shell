@@ -1,19 +1,30 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from agent_shell.python_packages.dependencies import repository_restart_required
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceStore
 
 
 class ConfigurationRepositoryManagementService:
-    """Own repository-wide commands that also update instance model bindings."""
+    """Own repository-wide commands and their cross-domain status."""
 
     def __init__(
         self,
         repository: FileConfigRepository,
         model_resources: ModelResourceStore,
+        runtime_root: Path,
     ) -> None:
         self._repository = repository
         self._model_resources = model_resources
+        self._runtime_root = runtime_root
+
+    def active_repository_restart_required(self) -> bool:
+        return repository_restart_required(
+            self._repository.python_packages_root,
+            self._runtime_root,
+        )
 
     def copy(self, source_id: str, name: str) -> dict[str, object]:
         with self._repository.exclusive_config_mutation():

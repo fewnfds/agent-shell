@@ -7,12 +7,11 @@ from pathlib import Path
 SOURCE_ROOT = (
     Path(__file__).resolve().parents[2] / "server" / "src" / "agent_shell"
 )
+API_ROOT = SOURCE_ROOT / "api"
 
 # Each entry is a semantic writer, a low-level primitive, or an explicitly
 # temporary/runtime owner documented by the instance-data contract.
 REGISTERED_WRITE_MODULES = {
-    "api/file_manager.py",
-    "api/workflow_lifecycles.py",
     "configuration/bundles/archive.py",
     "configuration/bundles/assets.py",
     "configuration/bundles/exporting.py",
@@ -24,6 +23,7 @@ REGISTERED_WRITE_MODULES = {
     "file_manager.py",
     "python_packages/authoring.py",
     "python_packages/dependencies.py",
+    "runtime/workflow_diagnostic_exports.py",
     "runtime/workflow_lifecycle.py",
     "security_events.py",
     "settings.py",
@@ -39,12 +39,22 @@ REGISTERED_WRITE_MODULES = {
 
 PATH_WRITE_METHODS = {
     "mkdir",
-    "rename",
     "rmdir",
     "touch",
     "unlink",
     "write_bytes",
     "write_text",
+}
+PATH_READ_METHODS = {"glob", "iterdir", "read_bytes", "read_text", "rglob"}
+PHYSICAL_PATH_ATTRIBUTES = {
+    "bindings_path",
+    "components_root",
+    "config_root",
+    "data_root",
+    "python_packages_root",
+    "skill_packages_root",
+    "system_path",
+    "workflows_root",
 }
 OS_WRITE_FUNCTIONS = {"mkdir", "makedirs", "remove", "replace", "rmdir", "unlink"}
 SHUTIL_WRITE_FUNCTIONS = {"copy", "copy2", "copytree", "move", "rmtree"}
@@ -162,6 +172,19 @@ def _scope_path_names(scope: ast.AST) -> set[str]:
     while changed:
         changed = False
         for node in nodes:
+            if isinstance(node, (ast.For, ast.AsyncFor)):
+                iterator = node.iter
+                if (
+                    isinstance(iterator, ast.Call)
+                    and isinstance(iterator.func, ast.Attribute)
+                    and iterator.func.attr in {"glob", "iterdir", "rglob"}
+                    and _is_path_expression(iterator.func.value, names)
+                ):
+                    discovered = _assigned_names(node.target)
+                    if not discovered.issubset(names):
+                        names.update(discovered)
+                        changed = True
+                continue
             targets: list[ast.expr] = []
             value: ast.expr | None = None
             if isinstance(node, ast.Assign):
@@ -188,12 +211,37 @@ def _nearest_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> ast.AST:
     return current
 
 
-def _path_replace(node: ast.Call, path_names: set[str]) -> bool:
+def _path_mutation(node: ast.Call, path_names: set[str]) -> bool:
     return (
         isinstance(node.func, ast.Attribute)
-        and node.func.attr == "replace"
+        and node.func.attr in {"rename", "replace"}
         and _is_path_expression(node.func.value, path_names)
     )
+
+
+def _zipfile_write(node: ast.Call) -> bool:
+    name = _qualified_name(node.func)
+    if name[-1:] != ("ZipFile",):
+        return False
+    mode: ast.expr | None = node.args[1] if len(node.args) > 1 else None
+    for keyword in node.keywords:
+        if keyword.arg == "mode":
+            mode = keyword.value
+    return (
+        isinstance(mode, ast.Constant)
+        and isinstance(mode.value, str)
+        and any(marker in mode.value for marker in "wax+")
+    )
+
+
+def _temporary_write(node: ast.Call) -> bool:
+    return _qualified_name(node.func) in {
+        ("tempfile", "NamedTemporaryFile"),
+        ("tempfile", "TemporaryDirectory"),
+        ("tempfile", "TemporaryFile"),
+        ("tempfile", "mkdtemp"),
+        ("tempfile", "mkstemp"),
+    }
 
 
 def _write_call_lines(source: str, *, filename: str = "<source>") -> list[int]:
@@ -217,7 +265,7 @@ def _write_call_lines(source: str, *, filename: str = "<source>") -> list[int]:
                 and name[-1] in PATH_WRITE_METHODS
                 and isinstance(node.func, ast.Attribute)
             )
-            or _path_replace(node, path_names)
+            or _path_mutation(node, path_names)
             or (len(name) >= 2 and name[-2] == "os" and name[-1] in OS_WRITE_FUNCTIONS)
             or (
                 len(name) >= 2
@@ -226,6 +274,8 @@ def _write_call_lines(source: str, *, filename: str = "<source>") -> list[int]:
             )
             or name == ("sqlite3", "connect")
             or _open_writes(node)
+            or _temporary_write(node)
+            or _zipfile_write(node)
         )
         if is_write:
             lines.append(node.lineno)
@@ -239,21 +289,82 @@ def _write_calls(path: Path) -> list[int]:
     )
 
 
-def test_replace_detection_distinguishes_paths_from_same_named_helpers() -> None:
+def _read_call_lines(source: str, *, filename: str = "<source>") -> list[int]:
+    tree = ast.parse(source, filename=filename)
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    scope_names: dict[ast.AST, set[str]] = {}
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        scope = _nearest_scope(node, parents)
+        path_names = scope_names.setdefault(scope, _scope_path_names(scope))
+        if (
+            node.func.attr in PATH_READ_METHODS
+            and _is_path_expression(node.func.value, path_names)
+        ):
+            lines.append(node.lineno)
+            continue
+        if node.func.attr != "open" or not _is_path_expression(
+            node.func.value, path_names
+        ):
+            continue
+        mode: ast.expr | None = node.args[0] if node.args else None
+        for keyword in node.keywords:
+            if keyword.arg == "mode":
+                mode = keyword.value
+        if mode is None or (
+            isinstance(mode, ast.Constant)
+            and isinstance(mode.value, str)
+            and not any(marker in mode.value for marker in "wax+")
+        ):
+            lines.append(node.lineno)
+    return sorted(set(lines))
+
+
+def _physical_path_capability_lines(
+    source: str,
+    *,
+    filename: str = "<source>",
+) -> list[int]:
+    tree = ast.parse(source, filename=filename)
+    return sorted(
+        {
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+            and node.attr in PHYSICAL_PATH_ATTRIBUTES
+        }
+    )
+
+
+def test_path_detection_distinguishes_paths_from_same_named_services() -> None:
     source = """
 import dataclasses
 from dataclasses import replace
 from pathlib import Path
 
-def mutate(path: Path, value: str) -> None:
+def mutate(path: Path, value: str, files) -> None:
     path.replace(Path("target"))
     Path("source").replace("target")
     dataclasses.replace(object())
     replace(object())
     value.replace("a", "b")
+    files.rename("a", "b")
+    files.read_text("a")
+    for child in path.iterdir():
+        child.read_text()
 """
 
     assert _write_call_lines(source) == [7, 8]
+    assert _read_call_lines(source) == [14, 15]
+    assert _physical_path_capability_lines(
+        "def leak(repository):\n    return repository.python_packages_root\n"
+    ) == [2]
 
 
 def test_production_write_calls_belong_to_registered_owner_modules() -> None:
@@ -271,3 +382,23 @@ def test_production_write_calls_belong_to_registered_owner_modules() -> None:
 
     assert not unregistered, f"unregistered persistence writers: {unregistered}"
     assert not stale, f"stale persistence owner registrations: {sorted(stale)}"
+
+
+def test_api_modules_do_not_perform_physical_persistence_crud() -> None:
+    violations: dict[str, dict[str, list[int]]] = {}
+    for path in API_ROOT.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        reads = _read_call_lines(source, filename=str(path))
+        writes = _write_call_lines(source, filename=str(path))
+        path_capabilities = _physical_path_capability_lines(
+            source,
+            filename=str(path),
+        )
+        if reads or writes or path_capabilities:
+            violations[path.relative_to(SOURCE_ROOT).as_posix()] = {
+                "reads": reads,
+                "writes": writes,
+                "path_capabilities": path_capabilities,
+            }
+
+    assert not violations, f"API modules bypass persistence owners: {violations}"
