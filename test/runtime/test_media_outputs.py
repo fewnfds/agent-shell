@@ -9,7 +9,7 @@ import threading
 import pytest
 
 from agent_shell.runtime.media_response import MainAgentMediaResponse
-from agent_shell.runtime.output_stream import MainAgentMediaBlock
+from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.media_outputs import MediaOutputStore, MediaProjection
 from agent_shell.storage.file_config import FileConfigRepository
@@ -140,7 +140,7 @@ def test_cancelled_projection_waits_for_persistence_without_publishing() -> None
         response = MainAgentMediaResponse(BlockingStore(), "request-1")  # type: ignore[arg-type]
         task = asyncio.create_task(
             response.project(
-                MainAgentMediaBlock(
+                MediaContentBlock(
                     timestamp="2026-01-01T00:00:00+00:00",
                     namespace="main_agent",
                     agent_name="main_agent",

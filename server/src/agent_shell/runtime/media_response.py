@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agent_shell.runtime.model_response import ModelResponse
-from agent_shell.runtime.output_stream import MainAgentMediaBlock
+from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.storage.media_outputs import MediaOutputStore, MediaProjection
 
 
@@ -29,7 +29,7 @@ class MainAgentMediaResponse:
         self._by_event_key: dict[str, _HandledMedia] = {}
         self._ordered: list[_HandledMedia] = []
 
-    async def project(self, event: MainAgentMediaBlock) -> str | None:
+    async def project(self, event: MediaContentBlock) -> str | None:
         event_key = event.stream_id or (
             f"{event.message_id}:{event.block_index}:{len(self._ordered)}"
         )

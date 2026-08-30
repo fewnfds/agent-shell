@@ -12,7 +12,8 @@ from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.model_response import ModelResponse, finish_reason_category
-from agent_shell.runtime.output_stream import MainAgentMediaBlock, OutputEvent
+from agent_shell.runtime.media_events import MediaContentBlock
+from agent_shell.runtime.output_stream import OutputEvent
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 
@@ -611,7 +612,7 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
 
             def feed(self, _envelope):
                 return [
-                    MainAgentMediaBlock(
+                            MediaContentBlock(
                         timestamp="now",
                         namespace="root",
                         agent_name="Agent",

@@ -5,7 +5,7 @@ import warnings
 from copy import deepcopy
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -49,9 +49,10 @@ from agent_shell.runtime.output_projection import (
 from agent_shell.runtime.output_stream import (
     ModelCallBoundary,
     OutputEvent,
-    MainAgentMediaBlock,
     V3EventNormalizer,
 )
+from agent_shell.runtime.media_events import MediaContentBlock
+from agent_shell.runtime.usage import RunUsageAccumulator
 from agent_shell.runtime.protocol_events import serialize_protocol_event
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
@@ -124,6 +125,7 @@ class RunExecution:
     normalizer: V3EventNormalizer
     middleware_runtime: MiddlewarePackageRuntime | None
     media_response: MainAgentMediaResponse
+    usage_accumulator: RunUsageAccumulator = field(default_factory=RunUsageAccumulator)
     output_projection_stream: EventOutputProjectionStream | None = None
     origin_resolver: EventOutputOriginResolver | None = None
     event_output_projector: OutputProjector | WorkflowOutputProjector | None = None
@@ -157,6 +159,9 @@ class RunExecution:
     _lifecycle_finished: bool = False
 
     def __post_init__(self) -> None:
+        attach_usage = getattr(self.normalizer, "set_usage_accumulator", None)
+        if callable(attach_usage):
+            attach_usage(self.usage_accumulator)
         if (
             not self.public_output
             or self.context is None
@@ -172,7 +177,7 @@ class RunExecution:
 
     @property
     def usage(self) -> dict[str, int]:
-        return dict(self.normalizer.usage)
+        return self.usage_accumulator.snapshot
 
     @property
     def finish_reason(self) -> str:
@@ -778,7 +783,7 @@ class RunExecution:
                                     for event in normalized_events:
                                         if isinstance(event, ModelCallBoundary):
                                             projected = project_input(event)
-                                        elif isinstance(event, MainAgentMediaBlock):
+                                        elif isinstance(event, MediaContentBlock):
                                             notification = (
                                                 await self.media_response.project(event)
                                                 if response_accepting()
@@ -1267,6 +1272,7 @@ class AgentRuntime:
             str(context.workflow.get("id", "")) if context is not None else ""
         )
         output_projection_stream = EventOutputProjectionStream()
+        usage_accumulator = RunUsageAccumulator()
         origin_resolver = EventOutputOriginResolver(
             context,
             workflow_sources=workflow_sources,
@@ -1292,6 +1298,7 @@ class AgentRuntime:
             tool_runtime=(built.tool_runtime if built is not None else None),
             media_response=MainAgentMediaResponse(self._media_outputs, request_id),
             response_scheduler=effective_response_scheduler,
+            usage_accumulator=usage_accumulator,
             output_projection_stream=output_projection_stream,
             origin_resolver=origin_resolver,
             event_output_projector=projector,
@@ -1315,6 +1322,7 @@ class AgentRuntime:
                     node_id: agent.agent_name
                     for node_id, agent in workflow_agents
                 },
+                usage_accumulator=usage_accumulator,
             ),
             event_observers=tuple(observers),
             middleware_runtimes=tuple(

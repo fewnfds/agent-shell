@@ -12,6 +12,9 @@ from agent_shell.runtime.model_response import (
     ModelResponseTracker,
     public_finish_reason,
 )
+from agent_shell.runtime.usage import RunUsageAccumulator
+from agent_shell.runtime.media_events import MediaContentBlock
+from agent_shell.runtime.message_state import MessageRunRegistry
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 from pydantic import ValidationError
@@ -161,19 +164,6 @@ class ModelCallBoundary:
     phase: Literal["start", "end"] = "start"
 
 
-@dataclass(frozen=True, slots=True)
-class MainAgentMediaBlock:
-    timestamp: str
-    namespace: str
-    agent_name: str
-    node: str
-    message_id: str
-    block_index: int
-    content: dict[str, object]
-    stream_id: str = ""
-    source: WorkflowEventSourceV1 | None = None
-
-
 @dataclass(slots=True)
 class _MessageBlock:
     timestamp: str
@@ -202,6 +192,7 @@ class V3EventNormalizer:
         workflow_subagent_profile_ids: Mapping[
             str, Mapping[str, str]
         ] | None = None,
+        usage_accumulator: RunUsageAccumulator | None = None,
     ) -> None:
         self._main_agent_name = main_agent_name
         self._main_agent_names = frozenset(main_agent_names or (main_agent_name,))
@@ -215,22 +206,33 @@ class V3EventNormalizer:
         }
         self._sequence = 0
         self._blocks: dict[tuple[str, int], _MessageBlock] = {}
-        self._message_ids: dict[str, str] = {}
-        self._message_sources: dict[str, WorkflowEventSourceV1 | None] = {}
-        self._main_agent_message_runs: set[str] = set()
-        self._main_agent_ai_runs: dict[str, bool] = {}
-        self._public_ai_runs: dict[str, bool] = {}
-        self._streamed_message_runs: set[str] = set()
+        self._message_runs = MessageRunRegistry()
         self._responses = ModelResponseTracker(model_response_observers)
         self._tool_names: dict[tuple[str, str, str], str] = {}
         self._subagent_runs: dict[str, tuple[str, str]] = {}
-        self._usage_by_run: dict[str, dict[str, int]] = {}
+        self._usage_accumulator = usage_accumulator or RunUsageAccumulator()
         self._raw_seq: int = 0
-        self.usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
     @property
     def main_agent_message_active(self) -> bool:
-        return bool(self._main_agent_message_runs)
+        return bool(self._message_runs.active_main_runs)
+
+    @property
+    def usage(self) -> dict[str, int]:
+        """Expose the run aggregate owned by :class:`RunUsageAccumulator`."""
+
+        return self._usage_accumulator.snapshot
+
+    @property
+    def usage_accumulator(self) -> RunUsageAccumulator:
+        """The owner used to aggregate protocol usage for this run."""
+
+        return self._usage_accumulator
+
+    def set_usage_accumulator(self, accumulator: RunUsageAccumulator) -> None:
+        """Attach the execution-owned usage accumulator before streaming."""
+
+        self._usage_accumulator = accumulator
 
     @property
     def finish_reason(self) -> str:
@@ -272,7 +274,7 @@ class V3EventNormalizer:
 
     def feed(
         self, envelope: object
-    ) -> list[OutputEvent | ModelCallBoundary | MainAgentMediaBlock]:
+    ) -> list[OutputEvent | ModelCallBoundary | MediaContentBlock]:
         if not isinstance(envelope, dict):
             return []
         method = str(envelope.get("method") or "")
@@ -298,27 +300,6 @@ class V3EventNormalizer:
             if method == "lifecycle" and isinstance(data, dict):
                 return self._lifecycle_events(
                     data, timestamp=timestamp, namespace=namespace
-                )
-            # These methods contain state, task inputs/results, checkpoints, HITL
-            # payloads, or debug data and are never exposed as template variables.
-            if method in {
-                "values",
-                "updates",
-                "tasks",
-                "checkpoints",
-                "input",
-                "input.requested",
-                "debug",
-            }:
-                return (
-                    [
-                        self._non_agent_event(
-                            method, data, timestamp=timestamp, namespace=namespace
-                        )
-                    ]
-                    if self._workflow_mode
-                    and not self._known_agent_scope(namespace)
-                    else []
                 )
             return (
                 [
@@ -630,7 +611,7 @@ class V3EventNormalizer:
                 additional_kwargs if isinstance(additional_kwargs, dict) else {}
             )
             content_blocks = getattr(payload, "content_blocks", None)
-            self._merge_run_usage(run_key, usage_data)
+            self._usage_accumulator.merge(run_key, usage_data)
             if not is_public_agent:
                 return []
             if is_main_agent:
@@ -655,7 +636,7 @@ class V3EventNormalizer:
             boundary = ModelCallBoundary(
                 run_key, source_key, cycle_key, self._raw_seq
             )
-            if run_key in self._streamed_message_runs:
+            if self._message_runs.was_streamed(run_key):
                 return [boundary, replace(boundary, phase="end")]
             return [
                 boundary,
@@ -674,16 +655,15 @@ class V3EventNormalizer:
         event_name = str(payload.get("event") or "")
         if event_name == "message-start":
             message_id = str(payload.get("id") or payload.get("message_id") or "")
-            self._message_ids[run_key] = message_id
-            self._message_sources[run_key] = source
-            self._responses.begin(run_key, payload.get("metadata"))
-            self._streamed_message_runs.add(run_key)
             is_main_agent_ai = is_main_agent and str(payload.get("role") or "ai") == "ai"
             is_public_ai = is_public_agent and str(payload.get("role") or "ai") == "ai"
-            self._main_agent_ai_runs[run_key] = is_main_agent_ai
-            self._public_ai_runs[run_key] = is_public_ai
-            if is_main_agent_ai:
-                self._main_agent_message_runs.add(run_key)
+            self._message_runs.begin(
+                run_key,
+                message_id=message_id,
+                main_agent_ai=is_main_agent_ai,
+                public_ai=is_public_ai,
+            )
+            self._responses.begin(run_key, payload.get("metadata"))
             return [
                 ModelCallBoundary(
                     run_key, source_key, cycle_key, self._raw_seq
@@ -709,11 +689,13 @@ class V3EventNormalizer:
                     diagnostics.get("incomplete_block_count", 0)
                     + incomplete_block_count
                 )
-            self._merge_run_usage(run_key, usage_data)
-            is_main_agent_message = self._main_agent_ai_runs.get(run_key, is_main_agent)
-            is_public_message = self._public_ai_runs.get(
-                run_key,
-                is_public_agent,
+            self._usage_accumulator.merge(run_key, usage_data)
+            message_run = self._message_runs.get(run_key)
+            is_main_agent_message = (
+                message_run.main_agent_ai if message_run is not None else is_main_agent
+            )
+            is_public_message = (
+                message_run.public_ai if message_run is not None else is_public_agent
             )
             if is_main_agent_message:
                 self._responses.record(
@@ -723,7 +705,7 @@ class V3EventNormalizer:
                     node=node,
                     run_id=run_id,
                     run_key=run_key,
-                    message_id=self._message_ids.get(run_key, ""),
+                    message_id=(message_run.message_id if message_run is not None else ""),
                     is_main_agent=True,
                     usage=usage_data,
                     response_metadata=metadata_data,
@@ -740,7 +722,10 @@ class V3EventNormalizer:
                 )
             ] if is_public_message else []
         if event_name == "error":
-            is_main_agent_message = self._main_agent_ai_runs.get(run_key, is_main_agent)
+            message_run = self._message_runs.get(run_key)
+            is_main_agent_message = (
+                message_run.main_agent_ai if message_run is not None else is_main_agent
+            )
             self._discard_message(run_key)
             if is_main_agent_message:
                 raise AgentRuntimeError(
@@ -750,14 +735,15 @@ class V3EventNormalizer:
                 )
             return []
 
-        if not self._public_ai_runs.get(run_key, is_public_agent):
+        message_run = self._message_runs.get(run_key)
+        if not (message_run.public_ai if message_run is not None else is_public_agent):
             return []
 
         index = payload.get("index")
         if not isinstance(index, int):
             return []
         key = (run_key, index)
-        message_id = self._message_ids.get(run_key, "")
+        message_id = message_run.message_id if message_run is not None else ""
         if event_name == "content-block-start":
             content = payload.get("content")
             block_type = (
@@ -912,13 +898,13 @@ class V3EventNormalizer:
         agent_name: str,
         node: str,
         source: WorkflowEventSourceV1 | None,
-    ) -> list[OutputEvent | MainAgentMediaBlock]:
+    ) -> list[OutputEvent | MediaContentBlock]:
         message_id = str(getattr(message, "id", "") or "")
         blocks = getattr(message, "content_blocks", None)
         if not isinstance(blocks, list):
             text = _message_text(message)
             blocks = [{"type": "text", "text": text}] if text else []
-        events: list[OutputEvent | MainAgentMediaBlock] = []
+        events: list[OutputEvent | MediaContentBlock] = []
         for index, content in enumerate(blocks):
             if not isinstance(content, dict):
                 continue
@@ -947,7 +933,7 @@ class V3EventNormalizer:
         *,
         block_index: int = 0,
         stream_id: str = "",
-    ) -> list[OutputEvent | MainAgentMediaBlock]:
+    ) -> list[OutputEvent | MediaContentBlock]:
         block_type = str(content.get("type") or "")
         if block_type in {"text", "reasoning"}:
             return [
@@ -966,7 +952,7 @@ class V3EventNormalizer:
             ]
         if block_type in {"image", "audio", "video", "file"}:
             return [
-                MainAgentMediaBlock(
+                MediaContentBlock(
                     timestamp=block.timestamp,
                     namespace=block.namespace,
                     agent_name=block.agent_name,
@@ -1091,7 +1077,7 @@ class V3EventNormalizer:
         return []
 
     def media_notification(
-        self, block: MainAgentMediaBlock, message: str
+        self, block: MediaContentBlock, message: str
     ) -> OutputEvent:
         return self._event(
             "assistant_text",
@@ -1272,44 +1258,22 @@ class V3EventNormalizer:
     def _discard_message(self, run_key: str) -> None:
         for key in [item for item in self._blocks if item[0] == run_key]:
             self._blocks.pop(key, None)
-        self._message_ids.pop(run_key, None)
-        self._message_sources.pop(run_key, None)
         self._responses.discard(run_key)
-        self._main_agent_ai_runs.pop(run_key, None)
-        self._public_ai_runs.pop(run_key, None)
-        self._main_agent_message_runs.discard(run_key)
+        self._message_runs.discard(run_key)
 
     def close_main_agent_messages(self) -> None:
         """Discard normalization state after the graph stream is exhausted."""
 
-        run_keys = self._main_agent_message_runs | {key[0] for key in self._blocks}
+        run_keys = self._message_runs.active_main_runs | {key[0] for key in self._blocks}
         for run_key in sorted(run_keys):
             self._discard_message(run_key)
+        self._message_runs.clear_stream_history()
 
     def abort_main_agent_messages(self) -> None:
-        run_keys = self._main_agent_message_runs | {key[0] for key in self._blocks}
+        run_keys = self._message_runs.active_main_runs | {key[0] for key in self._blocks}
         for run_key in list(run_keys):
             self._discard_message(run_key)
-
-    def _merge_run_usage(self, run_key: str, usage: object) -> None:
-        if not isinstance(usage, dict):
-            return
-        current: dict[str, int] = {}
-        for key in ("input_tokens", "output_tokens", "total_tokens"):
-            value = usage.get(key)
-            if isinstance(value, int) and value >= 0:
-                current[key] = value
-        output_details = usage.get("output_token_details")
-        if isinstance(output_details, dict):
-            reasoning = output_details.get("reasoning")
-            if isinstance(reasoning, int) and reasoning >= 0:
-                current["reasoning_tokens"] = reasoning
-        previous = self._usage_by_run.setdefault(run_key, {})
-        for key, value in current.items():
-            previous_value = previous.get(key, 0)
-            if value > previous_value:
-                self.usage[key] = self.usage.get(key, 0) + value - previous_value
-                previous[key] = value
+        self._message_runs.clear_stream_history()
 
     def _subagent_for_namespace(self, namespace: str) -> str:
         """Resolve the nearest active Deep Agent subagent scope."""
@@ -1501,6 +1465,6 @@ __all__ = [
     "ModelCallBoundary",
     "OutputEvent",
     "WorkflowEventSourceV1",
-    "MainAgentMediaBlock",
+    "MediaContentBlock",
     "V3EventNormalizer",
 ]
