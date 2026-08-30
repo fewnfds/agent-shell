@@ -17,7 +17,6 @@ from agent_shell.contracts import (
     ResponseStreamSchedulingBlock,
 )
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
-from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
@@ -142,7 +141,6 @@ class RunExecution:
     runtime_diagnostics: RuntimeDiagnostics | None = None
     request_id: str = ""
     public_model: str = ""
-    include_tool_call_transformer: bool = True
     public_output: bool = True
     journal_node_kinds: dict[str, str] | None = None
     journal_agent_names: dict[str, str] | None = None
@@ -650,9 +648,8 @@ class RunExecution:
                         "config": config,
                         "version": "v3",
                         "transformers": (
-                            (RawCustomEventTransformer, ToolCallTransformer)
-                            if self.include_tool_call_transformer
-                            else (RawCustomEventTransformer,)
+                            RawCustomEventTransformer,
+                            ToolCallTransformer,
                         ),
                     }
                     if self.durability is not None:
@@ -1045,27 +1042,6 @@ class AgentRuntime:
                     context=context,
                 )
 
-    async def build_agent(
-        self,
-        main_agent_id: str,
-        raw_messages: object,
-        *,
-        request_id: str = "",
-        workflow_node_id: str | None = None,
-        workspace: DeepAgentsWorkspace | None = None,
-    ) -> BuiltAgent:
-        try:
-            return await self._builder.build(
-                main_agent_id,
-                raw_messages,
-                request_id=request_id,
-                workflow_node_id=workflow_node_id,
-                workspace=workspace,
-            )
-        except Exception:
-            await self._builder.close_failed_build()
-            raise
-
     async def build_resolved_agent(
         self,
         assembly: StaticAssembly,
@@ -1142,7 +1118,6 @@ class AgentRuntime:
         run_config: dict[str, Any] | None = None,
         durability: str | None = None,
         owns_lifecycle: bool = False,
-        include_tool_call_transformer: bool = True,
         public_output: bool = True,
         execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
         cancel_background_children: Callable[[], Awaitable[None]] | None = None,
@@ -1256,7 +1231,6 @@ class AgentRuntime:
             runtime_diagnostics=self._runtime_diagnostics,
             request_id=request_id,
             public_model=public_model,
-            include_tool_call_transformer=include_tool_call_transformer,
             public_output=public_output,
             journal_node_kinds=journal_node_kinds,
             journal_agent_names={

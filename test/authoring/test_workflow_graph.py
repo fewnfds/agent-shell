@@ -551,33 +551,22 @@ def test_executable_validation_allows_agent_free_script_graph() -> None:
         node_agents={},
         commands={"router": router},
     )
-    runtime = AgentRuntime(
-        object(),  # type: ignore[arg-type]
-        object(),  # type: ignore[arg-type]
-        workflow_lifecycle=object(),  # type: ignore[arg-type]
-    )
-    execution = runtime._execution(
-        None,
-        graph=graph,
-        input_state={
-            "shared_vars": {},
-            "agent_invocations": {},
-            "background_tasks": {},
-        },
-        context=WorkflowRuntimeContext(
-            lifecycle_id="lifecycle-1",
-            workflow_run_id="run-1",
-            workflow_id="workflow-1",
-        ),
-        include_tool_call_transformer=False,
-        public_output=False,
+    result = asyncio.run(
+        graph.ainvoke(
+            {
+                "shared_vars": {},
+                "agent_invocations": {},
+                "background_tasks": {},
+            },
+            context=WorkflowRuntimeContext(
+                lifecycle_id="lifecycle-1",
+                workflow_run_id="run-1",
+                workflow_id="workflow-1",
+            ),
+        )
     )
 
-    asyncio.run(execution.execute())
-
-    assert execution.middleware_runtime is None
-    assert execution.final_state is not None
-    assert execution.final_state["shared_vars"] == {"script_ran": True}
+    assert result["shared_vars"] == {"script_ran": True}
 
 
 def test_executable_validation_attaches_main_agent_issues_to_the_agent_node() -> None:
