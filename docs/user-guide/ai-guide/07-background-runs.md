@@ -214,7 +214,7 @@ child 不自动复制或 merge parent 的 request messages、State、checkpoint 
 
 ## 9. Output 和 result handoff
 
-background child 使用自己的 Agent Event Output 和 Workflow Event Output。公开 response 保持开放时，child 已投影的事件与 parent 事件一起进入同一个 Lifecycle Response Stream Scheduler；scheduler 按现有 atom 策略和事件到达先后排队，不设置 parent/child 优先级。
+background child 使用自己的 Agent Event Output 和 Workflow Event Output。公开 response 保持开放时，child 已投影的事件与 parent 事件一起进入同一个 Lifecycle Response Stream Scheduler；scheduler 明确识别 Parent 与各 child Run identity，当前按现有 atom 策略和事件到达先后排队，对所有 role 使用相同调度权重。后续角色权重策略可以建立在该身份边界上。
 
 `check()` 或 `list()` 返回 task status 和受限系统结果，不会把 child 完整 Agent output 变成 parent prompt，也不保存公开事件文本。parent 到达 End 并封口 response 后，仍在运行的 independent child 继续维护自己的终态、usage、Debug 和诊断，但后续事件没有可写入的公开 response。要求交付完整 child 事件时，controller 必须在 parent End 前等待对应 task terminal。
 
