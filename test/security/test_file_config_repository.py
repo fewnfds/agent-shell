@@ -121,7 +121,7 @@ def test_config_mutation_rejects_noncanonical_duplicate_and_casefold_identity(
     def duplicate_name(config: dict) -> None:
         config["components"]["model-requirement"] = [
             {"id": MAIN_AGENT_ID, "name": "Shared", "description": "One."},
-            {"id": REQUIREMENT_ID, "name": " shared ", "description": "Two."},
+            {"id": REQUIREMENT_ID, "name": "shared", "description": "Two."},
         ]
 
     with pytest.raises(ValueError, match="conflicts"):

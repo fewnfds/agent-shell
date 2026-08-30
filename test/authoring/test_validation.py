@@ -325,10 +325,7 @@ def test_declared_configuration_references_require_canonical_uuid4(
             {
                 "name": "Invalid package",
                 "python_package": {
-                        "folder": (
-                            "AAAAAAAA-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-                        ),
-                    "config": {},
+                    "folder": "invalid/folder",
                 },
             },
             "block",

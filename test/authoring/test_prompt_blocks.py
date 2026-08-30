@@ -199,6 +199,12 @@ def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
         json={
             "name": "No file instructions",
             "system_prompt_override": "",
+        },
+    )
+    filesystem_tools = client.post(
+        "/api/blocks/filesystem-tools",
+        json={
+            "name": "No file tool instructions",
             "tool_configs": {
                 "read_file": {"description_override": ""},
             },
@@ -222,7 +228,13 @@ def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
 
     assert filesystem.status_code == 200, filesystem.text
     assert filesystem.json()["system_prompt_override"] == ""
-    assert filesystem.json()["tool_configs"]["read_file"]["description_override"] == ""
+    assert filesystem_tools.status_code == 200, filesystem_tools.text
+    assert (
+        filesystem_tools.json()["tool_configs"]["read_file"][
+            "description_override"
+        ]
+        == ""
+    )
     assert todo.status_code == 200, todo.text
     assert todo.json()["system_prompt_override"] == ""
     assert todo.json()["tool_description_override"] == ""

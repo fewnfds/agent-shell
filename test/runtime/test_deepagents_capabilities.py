@@ -45,7 +45,7 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
 
     assert isinstance(capabilities.backend, LocalShellBackend)
     assert _route_host_path_prompt(capabilities.backend) == ""
-    result = capabilities.backend.execute("cd")
+    result = capabilities.backend.execute("cd" if os.name == "nt" else "pwd")
     assert result.exit_code == 0
     assert os.path.normcase(result.output.strip()) == os.path.normcase(
         str(workspace.resolve())

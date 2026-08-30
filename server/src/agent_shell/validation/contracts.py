@@ -111,7 +111,7 @@ def _specific_contract_identity(
             "validation.issue.contract.subagentNameFormatInvalid",
         )
     if (
-        error_type == "string_pattern_mismatch"
+        error_type in {"string_pattern_mismatch", "value_error"}
         and owner_type
         in {
             "custom-middleware",
