@@ -32,8 +32,20 @@ def test_runtime_context_keeps_identity_without_lifecycle_or_parent_state_payloa
     assert {
         "lifecycle_id",
         "workflow_run_id",
-        "checkpoint_thread_id",
+        "workflow_id",
+        "workflow_node_id",
+        "agent_profile_id",
+        "node_invocation_id",
+        "background_runs",
     } <= fields.keys()
+    assert "request_id" not in fields
+    assert "checkpoint_thread_id" not in fields
+    assert "parent_workflow_run_id" not in fields
+    assert "background_task_id" not in fields
+    assert "launcher_id" not in fields
+    assert "run_depth" not in fields
+    assert "workflow_name" not in fields
+    assert "workflow_role" not in fields
     assert "run_id" not in fields
     assert "workflow" not in fields
     assert "messages" not in fields

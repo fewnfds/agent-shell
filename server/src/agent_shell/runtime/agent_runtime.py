@@ -186,7 +186,6 @@ class RunExecution:
                 subject_kind="workflow",
                 subject_name=self.public_model,
             )
-        context = self.context
         return RuntimeDiagnosticContext(
             request_id=identity.request_id or self.request_id,
             lifecycle_id=identity.lifecycle_id,
@@ -197,10 +196,6 @@ class RunExecution:
             subject_kind="workflow",
             subject_id=identity.workflow_id,
             subject_name=identity.workflow_name,
-            workflow_node_id=context.workflow_node_id if context is not None else "",
-            node_invocation_id=(
-                context.node_invocation_id if context is not None else ""
-            ),
         )
 
     async def cancel(self) -> None:
@@ -641,7 +636,6 @@ class RunExecution:
                             self.lifecycle_service,
                             self.runtime_diagnostics,
                             self.identity,
-                            self.context,
                             workflow_node_kinds=self.journal_node_kinds or {},
                             agent_names=self.journal_agent_names or {},
                             agent_profile_ids=self.journal_agent_profile_ids or {},
@@ -1211,7 +1205,6 @@ class AgentRuntime:
         usage_accumulator = RunUsageAccumulator()
         origin_resolver = RunEventOriginResolver(
             identity,
-            context=context,
             workflow_sources=workflow_sources,
             main_agent_names=tuple(agent.agent_name for _, agent in workflow_agents),
             workflow_agent_names={

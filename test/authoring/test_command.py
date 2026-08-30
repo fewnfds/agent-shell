@@ -89,7 +89,6 @@ def test_command_receives_complete_values_and_converts_state_mutation() -> None:
             command,
             state={"shared_vars": {"risk": 90}, "agent_invocations": {}, "files": {}},
             runtime=_runtime(
-                request_id="request-1",
                 workflow_id="workflow-1",
             ),
             allowed_branches={"review", "audit"},

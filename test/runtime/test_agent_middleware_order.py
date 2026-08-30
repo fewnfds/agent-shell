@@ -95,8 +95,8 @@ def test_custom_middleware_reads_private_agent_state_and_parent_workflow_snapsho
         ),
     ).for_workflow_agent(
         workflow_node_id="agent-current",
-        agent_id="agent-id",
-        invocation_id="invocation-current",
+        agent_profile_id="agent-id",
+        node_invocation_id="invocation-current",
     )
 
     result = agent.invoke(

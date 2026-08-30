@@ -231,6 +231,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
         captured["run_config"] = kwargs.get("run_config")
         captured["durability"] = kwargs.get("durability")
         captured["context"] = kwargs.get("context")
+        captured["identity"] = kwargs.get("identity")
         captured["execution_timeout_seconds"] = kwargs.get(
             "execution_timeout_seconds"
         )
@@ -292,7 +293,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
     assert "run_id" not in captured["run_config"]
     assert "configurable" not in captured["run_config"]
     assert captured["durability"] is None
-    assert captured["context"].checkpoint_thread_id is None
+    assert captured["identity"].checkpoint_thread_id is None
 
 
 def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapshot(
@@ -373,6 +374,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
                 "run_config": kwargs.get("run_config"),
                 "durability": kwargs.get("durability"),
                 "context": kwargs.get("context"),
+                "identity": kwargs.get("identity"),
             }
         )
         return original_execution(self, *args, **kwargs)
@@ -424,21 +426,22 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
 
             observed = captured[-1]
             context = observed["context"]
+            identity = observed["identity"]
             assert observed["durability"] == durability
-            assert context.checkpoint_thread_id
+            assert identity.checkpoint_thread_id
             assert observed["run_config"]["configurable"] == {
-                "thread_id": context.checkpoint_thread_id,
+                "thread_id": identity.checkpoint_thread_id,
             }
             run = client.app.state.workflow_lifecycle.history.get_run(
                 context.workflow_run_id
             )
             assert run is not None
-            assert run["checkpoint_thread_id"] == context.checkpoint_thread_id
+            assert run["checkpoint_thread_id"] == identity.checkpoint_thread_id
             portal = client.portal
             assert portal is not None
             assert portal.call(
                 client.app.state.workflow_checkpoints.checkpoint_count,
-                context.checkpoint_thread_id,
+                identity.checkpoint_thread_id,
             ) > 0
 
         assert client.app.state.workflow_checkpoints.started is True

@@ -98,8 +98,8 @@ def _make_agent_node(*, node_id: str, built_agent: Any):
         )
         child_context = runtime.context.for_workflow_agent(
             workflow_node_id=node_id,
-            agent_id=built_agent.agent_id,
-            invocation_id=invocation_id,
+            agent_profile_id=built_agent.agent_id,
+            node_invocation_id=invocation_id,
         )
         result = await built_agent.graph.ainvoke(
             child_input,
@@ -184,7 +184,7 @@ def _make_command_node(
         node_runtime = runtime.override(
             context=runtime.context.for_workflow_node(
                 workflow_node_id=node_id,
-                invocation_id=invocation_id,
+                node_invocation_id=invocation_id,
             )
         )
         try:

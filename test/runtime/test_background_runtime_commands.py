@@ -203,11 +203,9 @@ def test_background_workflow_has_its_own_identity_and_command_caller() -> None:
             background_runtime=service,
         ).for_workflow_node(
             workflow_node_id="command-1",
-            invocation_id="command-invocation-1",
+            node_invocation_id="command-invocation-1",
         )
 
-        assert context.launcher_id == "router-1"
-        assert context.background_task_id == "task-1"
         assert context.agent_profile_id == ""
         assert context.workflow_node_id == "command-1"
         assert context.node_invocation_id == "command-invocation-1"
@@ -218,6 +216,6 @@ def test_background_workflow_has_its_own_identity_and_command_caller() -> None:
         assert service.calls == [("list", service.calls[0][1])]
         caller = service.calls[0][1]
         assert caller.workflow_run_id == "child-run-1"
-        assert caller.caller_id == "command-1"
+        assert caller.caller_workflow_node_id == "command-1"
 
     asyncio.run(scenario())

@@ -8,7 +8,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 from agent_shell.provider_http import ProviderStreamError
-from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
@@ -80,13 +79,11 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
                 workflow_name="Parent Workflow",
                 checkpoint_thread_id="root-thread",
             )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
             diagnostics = _Diagnostics()
             journal = WorkflowRunJournal(
                 lifecycle,
                 diagnostics,  # type: ignore[arg-type]
                 identity,
-                context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
                 agent_profile_ids={"agent-node": "main-agent-profile"},
@@ -301,12 +298,10 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
                 workflow_name="Ownership Workflow",
                 checkpoint_thread_id="ownership-thread",
             )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
             journal = WorkflowRunJournal(
                 lifecycle,
                 None,
                 identity,
-                context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
                 agent_profile_ids={"agent-node": "main-profile-id"},
@@ -433,8 +428,7 @@ def test_model_failure_event_preserves_safe_provider_stream_evidence(tmp_path) -
                 workflow_id="provider-stream-workflow",
                 workflow_name="Provider Stream Workflow",
             )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
-            journal = WorkflowRunJournal(lifecycle, None, identity, context)
+            journal = WorkflowRunJournal(lifecycle, None, identity)
             journal.on_chat_model_start(
                 {"name": "provider-model"},
                 [[HumanMessage(content="input")]],
@@ -490,13 +484,11 @@ def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path)
                 workflow_id="debug-capture-workflow",
                 workflow_name="Debug Capture Workflow",
             )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
             diagnostics = _Diagnostics()
             journal = WorkflowRunJournal(
                 lifecycle,
                 diagnostics,  # type: ignore[arg-type]
                 identity,
-                context,
                 debug_capture=True,
             )
             journal.on_chat_model_start(
@@ -573,12 +565,10 @@ def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
                 workflow_name="Cancelled Workflow",
                 checkpoint_thread_id="cancel-thread",
             )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
             journal = WorkflowRunJournal(
                 lifecycle,
                 None,
                 identity,
-                context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
             )

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage
 
-from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.event_origin import (
     RunEventOriginResolver,
@@ -33,7 +32,6 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
         workflow_name="Child Workflow",
         workflow_role="child",
     )
-    context = WorkflowRuntimeContext.for_run(identity=identity)
     source = WorkflowNodeSource(
         source_type="agent",
         workflow_node_id="agent-a",
@@ -41,7 +39,6 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
     )
     resolver = RunEventOriginResolver(
         identity,
-        context=context,
         workflow_sources={"agent-a": source},
         main_agent_names=("Main",),
     )
@@ -79,7 +76,6 @@ def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> No
         workflow_name="Parent Workflow",
         workflow_role="parent",
     )
-    context = WorkflowRuntimeContext.for_run(identity=identity)
     source = WorkflowNodeSource(
         source_type="agent",
         workflow_node_id="agent-a",
@@ -87,7 +83,6 @@ def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> No
     )
     resolver = RunEventOriginResolver(
         identity,
-        context=context,
         workflow_sources={"agent-a": source},
     )
     event = {
@@ -106,6 +101,30 @@ def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> No
     origin = resolver.resolve(event).output
     assert origin["workflow_node_id"] == "agent-a"
     assert origin["node_invocation_id"] == "invoke-9"
+
+
+def test_run_origin_does_not_promote_a_default_agent_node_to_workflow_scope() -> None:
+    identity = WorkflowRunIdentity(
+        request_id="request-1",
+        lifecycle_id="lifecycle-1",
+        workflow_run_id="run-1",
+        workflow_id="workflow-1",
+        workflow_name="Workflow",
+    )
+    resolver = RunEventOriginResolver(
+        identity,
+        workflow_sources={
+            "agent-a": WorkflowNodeSource("agent", "agent-a", "profile-a")
+        },
+        default_workflow_node_id="agent-a",
+        default_agent_profile_id="profile-a",
+    )
+
+    origin = resolver.run_origin()
+
+    assert origin["workflow_node_id"] == ""
+    assert origin["node_invocation_id"] == ""
+    assert origin["agent_profile_id"] == ""
 
 
 def test_workflow_projector_selects_agent_or_workflow_package_from_origin() -> None:

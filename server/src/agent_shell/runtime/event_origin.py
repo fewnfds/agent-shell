@@ -4,7 +4,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 
@@ -92,7 +91,6 @@ class RunEventOriginResolver:
         self,
         identity: WorkflowRunIdentity | None,
         *,
-        context: WorkflowRuntimeContext | None = None,
         workflow_sources: Mapping[str, WorkflowNodeSource] | None = None,
         main_agent_names: Sequence[str] = (),
         workflow_agent_names: Mapping[str, str] | None = None,
@@ -102,7 +100,6 @@ class RunEventOriginResolver:
         default_workflow_node_id: str = "",
     ) -> None:
         self._identity = identity
-        self._context = context
         self._sources = dict(workflow_sources or {})
         self._main_agent_names = tuple(str(name) for name in main_agent_names if name)
         self._workflow_agent_names = {
@@ -167,15 +164,7 @@ class RunEventOriginResolver:
         agent_profile_id = (
             source.agent_profile_id
             if source is not None
-            else (
-                (
-                    self._context.agent_profile_id
-                    if self._context is not None and self._context.agent_profile_id
-                    else self._default_agent_profile_id
-                )
-                if agent_name
-                else ""
-            )
+            else (self._default_agent_profile_id if agent_name else "")
         )
         profiles = self._workflow_subagent_profile_ids.get(
             workflow_node_id,
@@ -238,8 +227,7 @@ class RunEventOriginResolver:
             name, separator, invocation_id = segment.partition(":")
             if name in self._sources:
                 return name, invocation_id if separator else ""
-        context_node = self._context.workflow_node_id if self._context is not None else ""
-        return context_node or self._default_workflow_node_id, ""
+        return self._default_workflow_node_id, ""
 
     def _active_subagent(self, namespace: str) -> str:
         scope = _namespace_scope(namespace)
@@ -262,7 +250,6 @@ class RunEventOriginResolver:
         agent_profile_id: str = "",
         subagent_profile_id: str = "",
     ) -> EventOutputOriginDict:
-        context = self._context
         identity = self._identity
         return {
             "lifecycle_id": identity.lifecycle_id if identity is not None else "",
@@ -278,15 +265,9 @@ class RunEventOriginResolver:
                 identity.background_task_id if identity is not None else ""
             ),
             "run_depth": identity.run_depth if identity is not None else 0,
-            "workflow_node_id": workflow_node_id or (
-                context.workflow_node_id if context is not None else ""
-            ),
-            "node_invocation_id": node_invocation_id or (
-                context.node_invocation_id if context is not None else ""
-            ),
-            "agent_profile_id": agent_profile_id or (
-                context.agent_profile_id if context is not None else ""
-            ),
+            "workflow_node_id": workflow_node_id,
+            "node_invocation_id": node_invocation_id,
+            "agent_profile_id": agent_profile_id,
             "subagent_profile_id": subagent_profile_id,
         }
 

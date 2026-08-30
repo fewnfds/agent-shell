@@ -20,7 +20,7 @@ class BackgroundRunCaller:
     lifecycle_id: str
     workflow_run_id: str
     run_depth: int
-    caller_id: str = ""
+    caller_workflow_node_id: str = ""
 
 
 class BackgroundRunRuntime(Protocol):
@@ -69,10 +69,13 @@ class BackgroundRunCommands:
         self._runtime = runtime
         self._caller = caller
 
-    def for_caller(self, caller_id: str) -> BackgroundRunCommands:
+    def for_caller(self, workflow_node_id: str) -> BackgroundRunCommands:
         return BackgroundRunCommands(
             self._runtime,
-            replace(self._caller, caller_id=caller_id),
+            replace(
+                self._caller,
+                caller_workflow_node_id=workflow_node_id,
+            ),
         )
 
     async def start_workflow(

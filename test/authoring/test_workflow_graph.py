@@ -652,7 +652,6 @@ def test_compiler_maps_canvas_start_and_end_to_langgraph_sentinels() -> None:
         graph.ainvoke(
             {"shared_vars": {}, "agent_invocations": {}},
             context=WorkflowRuntimeContext(
-                request_id="request-1",
                 lifecycle_id="lifecycle-1",
                 workflow_run_id="run-1",
                 workflow_id="workflow-id",
@@ -731,7 +730,6 @@ def test_serial_agents_have_private_messages_and_explicit_parent_snapshot() -> N
         graph.ainvoke(
             {"shared_vars": {}, "agent_invocations": {}},
             context=WorkflowRuntimeContext(
-                request_id="request-1",
                 lifecycle_id="lifecycle-1",
                 workflow_run_id="run-1",
                 workflow_id="workflow-id",
@@ -859,7 +857,6 @@ def test_normal_edge_fan_out_and_fan_in_merge_invocations_and_independent_files(
         graph.ainvoke(
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
-                request_id="request-1",
                 lifecycle_id="lifecycle-1",
                 workflow_run_id="run-1",
                 workflow_id="workflow-id",
@@ -969,7 +966,6 @@ def test_normal_multi_in_compiles_as_one_all_of_barrier_and_runs_target_once() -
         graph.ainvoke(
             {"shared_vars": {}, "agent_invocations": {}},
             context=WorkflowRuntimeContext(
-                request_id="request-1",
                 lifecycle_id="lifecycle-1",
                 workflow_run_id="run-1",
                 workflow_id="workflow-id",
@@ -1201,7 +1197,6 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
         graph.ainvoke(
             {"shared_vars": {}, "agent_invocations": {}},
             context=WorkflowRuntimeContext(
-                request_id="request-loop",
                 lifecycle_id="lifecycle-loop",
                 workflow_run_id="run-loop",
                 workflow_id="workflow-id",

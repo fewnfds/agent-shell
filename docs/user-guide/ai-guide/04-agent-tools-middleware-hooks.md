@@ -108,6 +108,7 @@ def create_tool() -> BaseTool:
 
 - `runtime.state`：current Agent State；
 - `runtime.context`：current `WorkflowRuntimeContext`，包含明确命名的 Lifecycle、Workflow Run、canvas Agent Node、Agent profile 和 Node invocation identity；
+- `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；
 - `runtime.store`：current Lifecycle 可访问的 LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
 - `runtime.context.background_runs`：Agent Shell 的 background Run command facade。
