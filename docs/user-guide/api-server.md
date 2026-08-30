@@ -58,8 +58,8 @@ Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
-- 每次请求执行一次完整运行；`run_id` 是所有 Run 的执行身份，只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
-- background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Command Dispatch 在请求内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
+- 每次请求执行一次完整运行；运行历史/API 中的 `run_id` 是 Shell Workflow Run 身份，不是 LangGraph `Runtime.execution_info.run_id`。只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
+- background Workflow Run 通过 Agent Shell 注入 `Runtime.context` 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Command Dispatch 在请求内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
 - independent child/background Run 使用自己的 `RunExecution` 和 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；不同 Run 在公平队列中没有 parent/child 优先级；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；

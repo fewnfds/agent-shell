@@ -20,7 +20,7 @@ Response Stream Scheduling 是【工作流组件】中的可复用配置，进�
 
 并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，dispatch invocation 按 Command Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此启用 Checkpointer 时，旧 Checkpoint State 的旧引用仍可读取。
 
-background Run 由应用级 Manager 管理。每个 Run 的官方 Runtime Context 提供 `background_runs` 命令对象，Command Node、
+background Run 由应用级 Manager 管理。Agent Shell 通过 LangGraph `Runtime.context` 为每个 Run 注入 `background_runs` 命令对象，Command Node、
 Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。只允许启动 enabled child Workflow；需要让一个 Agent 在后台执行时创建 `Start -> Agent -> End` 子图，使该 Run 继续使用标准 Workflow checkpoint、事件和运行配置。
 
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
