@@ -78,7 +78,7 @@ AAP 可以读取 `state["workflow_task"]`，把当前任务材料编排进 Agent
 Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecycle`、`values`、`updates`、`tasks` 等 Workflow-owned non-Agent v3 事件；
 每类事件由配置独占 Python package 中的同步 `output(event, origin)` 处理，直接读取 LangGraph v3 原始 envelope 和其中的 Python `data` 对象；`origin` 只提供 Shell Lifecycle、Run、Workflow、Node 与 Agent 身份。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent Event Output。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
 
-Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模式。每个原始 ProtocolEvent 先执行所属 `output(event, origin)`；空字符串不进入公开输出队列，非空字符串携带 origin 进入响应流调度。Shell 合成的 Run 状态由可选 `run_output(run_event, origin)` 处理。调度器只能排序、保持 Tool transaction 原子和按批次排水。
+Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模式。每个原始 ProtocolEvent 先执行所属 `output(event, origin)`；空字符串不进入公开输出队列，非空字符串携带 origin 进入响应流调度。Shell 合成的 Workflow Run 状态由 Workflow Event Output 的可选 `run_output(run_event, origin)` 处理。调度器只能排序、保持 Tool transaction 原子和按批次排水。
 
 ## 校验与生效
 

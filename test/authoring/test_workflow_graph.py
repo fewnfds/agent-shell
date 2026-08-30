@@ -573,10 +573,6 @@ def test_executable_validation_allows_agent_free_script_graph() -> None:
         public_output=False,
     )
 
-    lifecycle_event = execution.normalizer.lifecycle("start", status="running")
-    assert lifecycle_event.source_type == "non_agent"
-    assert lifecycle_event.workflow_event_kind == "lifecycle"
-
     asyncio.run(execution.execute())
 
     assert execution.middleware_runtime is None

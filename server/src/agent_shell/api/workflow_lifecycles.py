@@ -179,7 +179,7 @@ def _event_stream_manifest(
         "available": bool(channels_by_run),
         "api_version": "v3",
         "capture_condition": "workflow_debug_capture_enabled",
-        "capture_point": "post_transformer_pre_normalizer",
+        "capture_point": "post_transformer_protocol_event",
         "directory": "event-streams/",
         "channels_by_run": channels_by_run,
     }

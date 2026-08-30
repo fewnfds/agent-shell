@@ -370,7 +370,7 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
                 "workflow_debug_capture_enabled"
             )
             assert manifest["event_streams"]["capture_point"] == (
-                "post_transformer_pre_normalizer"
+                "post_transformer_protocol_event"
             )
             event_stream_root = f"event-streams/{root_run['run_id']}"
             assert f"{event_stream_root}/messages.jsonl" in archive.namelist()

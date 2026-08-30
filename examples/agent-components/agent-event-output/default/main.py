@@ -24,7 +24,3 @@ def output(event, origin):
     if not isinstance(delta, dict):
         return ""
     return str(delta.get("text") or delta.get("reasoning") or "")
-
-
-def run_output(event, origin):
-    return ""

@@ -127,6 +127,7 @@ class EventOutputPackageRuntime:
         packages_dir: Path,
         runtime_root: Path,
     ) -> None:
+        self._kind = kind
         adapter, self._binding_kind = _SPECS[kind]
         self._loader = PythonPackageLoader(
             request_id=request_id,
@@ -160,7 +161,7 @@ class EventOutputPackageRuntime:
         self._outputs[binding_id] = output
         return output
 
-    def run_output_for(
+    def workflow_run_output_for(
         self,
         binding_id: str,
         package_owner_id: str,
@@ -172,6 +173,8 @@ class EventOutputPackageRuntime:
         is intentionally separate because synthetic lifecycle status is a
         product event, not a LangGraph ProtocolEvent.
         """
+        if self._kind != "workflow":
+            raise RuntimeError("run_output belongs to Workflow Event Output")
         if binding_id in self._run_outputs:
             return self._run_outputs[binding_id]
         module, _metadata, _package_dir = self._loader.load(

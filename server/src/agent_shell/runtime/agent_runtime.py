@@ -32,7 +32,11 @@ from agent_shell.runtime.diagnostics import (
     RuntimeDiagnosticContext,
     RuntimeDiagnostics,
 )
-from agent_shell.runtime.model_response import ModelResponse
+from agent_shell.runtime.event_origin import (
+    RunEventOriginResolver,
+    WorkflowNodeSource,
+)
+from agent_shell.runtime.event_stream import RunEventStream
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
 from agent_shell.runtime.limits import (
     GRAPH_RECURSION_LIMIT,
@@ -40,16 +44,9 @@ from agent_shell.runtime.limits import (
 )
 from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.runtime.output_projection import (
-    EventOutputOriginResolver,
     EventOutputError,
-    EventOutputProjectionStream,
     OutputProjector,
     WorkflowOutputProjector,
-)
-from agent_shell.runtime.output_stream import (
-    ModelCallBoundary,
-    OutputEvent,
-    V3EventNormalizer,
 )
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.usage import RunUsageAccumulator
@@ -59,7 +56,10 @@ from agent_shell.runtime.response_scheduler import (
     PresentationFrame,
     ResponseEventInput,
 )
-from agent_shell.runtime.response_presentation import ResponseEvent, to_response_signal
+from agent_shell.runtime.response_presentation import (
+    ResponseEvent,
+    ResponseModelCallBoundary,
+)
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.media_outputs import MediaOutputStore
@@ -122,12 +122,11 @@ class RunExecution:
     graph: Any
     input_state: dict[str, Any]
     response_scheduler: LifecycleResponseScheduler | None
-    normalizer: V3EventNormalizer
     middleware_runtime: MiddlewarePackageRuntime | None
     media_response: MainAgentMediaResponse
     usage_accumulator: RunUsageAccumulator = field(default_factory=RunUsageAccumulator)
-    output_projection_stream: EventOutputProjectionStream | None = None
-    origin_resolver: EventOutputOriginResolver | None = None
+    event_stream: RunEventStream = field(init=False)
+    origin_resolver: RunEventOriginResolver | None = None
     event_output_projector: OutputProjector | WorkflowOutputProjector | None = None
     response_consumer: bool = True
     tool_runtime: ToolPackageRuntime | None = None
@@ -135,7 +134,6 @@ class RunExecution:
     tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
     command_runtime: CommandPackageRuntime | None = None
     event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = ()
-    event_observers: tuple[Callable[[OutputEvent], None], ...] = ()
     context: WorkflowRuntimeContext | None = None
     run_config: dict[str, Any] | None = None
     durability: str | None = None
@@ -159,9 +157,7 @@ class RunExecution:
     _lifecycle_finished: bool = False
 
     def __post_init__(self) -> None:
-        attach_usage = getattr(self.normalizer, "set_usage_accumulator", None)
-        if callable(attach_usage):
-            attach_usage(self.usage_accumulator)
+        self.event_stream = RunEventStream(self.usage_accumulator)
         if (
             not self.public_output
             or self.context is None
@@ -182,10 +178,6 @@ class RunExecution:
     @property
     def finish_reason(self) -> str:
         return "stop"
-
-    @property
-    def finish_reason_source(self) -> str | None:
-        return None
 
     def diagnostic_context(self) -> RuntimeDiagnosticContext:
         context = self.context
@@ -451,13 +443,6 @@ class RunExecution:
                 str(self.context.workflow.get("id", "")),
             )
 
-        def projection_stream() -> EventOutputProjectionStream:
-            stream = self.output_projection_stream
-            if stream is None:
-                stream = EventOutputProjectionStream()
-                self.output_projection_stream = stream
-            return stream
-
         def response_accepting() -> bool:
             scheduler = self.response_scheduler
             if not self.public_output or scheduler is None:
@@ -472,41 +457,28 @@ class RunExecution:
             return frame_text(scheduler.take_published())
 
         def project_input(
-            event: OutputEvent | ModelCallBoundary,
+            event: ResponseEvent | ResponseModelCallBoundary,
             *,
             text: str = "",
-            segment_end_text: str = "",
         ) -> list[str]:
             if not self.public_output:
                 return []
-            if isinstance(event, OutputEvent):
-                for observer in self.event_observers:
-                    observer(event)
             scheduler = self.response_scheduler
             assert scheduler is not None
             origin_run_id, origin_workflow_id = response_origin()
             if not scheduler.accepting(origin_run_id, origin_workflow_id):
                 return []
-            for projected in projection_stream().project(
-                event,
-                text=text,
-                segment_end_text=segment_end_text,
-            ):
-                scheduler.publish(
-                    ResponseEventInput(
-                        lifecycle_id=scheduler.lifecycle_id,
-                        origin_run_id=origin_run_id,
-                        origin_workflow_id=origin_workflow_id,
-                        event=to_response_signal(projected.event),
-                        text=projected.text,
-                        segment_end_text=projected.segment_end_text,
-                    ),
-                    now=loop.time(),
-                )
+            scheduler.publish(
+                ResponseEventInput(
+                    lifecycle_id=scheduler.lifecycle_id,
+                    origin_run_id=origin_run_id,
+                    origin_workflow_id=origin_workflow_id,
+                    event=event,
+                    text=text,
+                ),
+                now=loop.time(),
+            )
             return take_response_output()
-
-        def project_event(event: OutputEvent, *, text: str = "") -> list[str]:
-            return project_input(event, text=text)
 
         def project_run_event(
             phase: str,
@@ -531,7 +503,7 @@ class RunExecution:
             }
             projector = self.event_output_projector
             resolver = self.origin_resolver
-            origin = resolver.resolve({}, ()) if resolver is not None else {}
+            origin = resolver.run_origin() if resolver is not None else {}
             text = (
                 projector.render_run(run_event, origin)
                 if projector is not None
@@ -557,46 +529,20 @@ class RunExecution:
 
         def event_origin(
             envelope: Mapping[str, object],
-            normalized: tuple[OutputEvent | ModelCallBoundary, ...] = (),
-        ) -> Mapping[str, object]:
+        ):
             resolver = self.origin_resolver
             if resolver is None:
-                return {}
-            return resolver.resolve(envelope, normalized)
+                raise RuntimeError("Run event origin resolver is unavailable")
+            return resolver.resolve(envelope)
 
         def render_protocol_event(
             envelope: Mapping[str, object],
-            normalized: tuple[OutputEvent | ModelCallBoundary, ...],
-        ) -> tuple[str, Mapping[str, object]]:
-            origin = event_origin(envelope, normalized)
+            origin,
+        ) -> str:
             projector = self.event_output_projector
             if projector is None:
-                return "", origin
-            return projector.render(envelope, origin), origin
-
-        def raw_atomic_event(
-            envelope: Mapping[str, object], origin: Mapping[str, object]
-        ) -> OutputEvent:
-            params = envelope.get("params")
-            data = params.get("data") if isinstance(params, Mapping) else None
-            namespace = params.get("namespace") if isinstance(params, Mapping) else ()
-            namespace_text = "/".join(str(part) for part in namespace) if isinstance(namespace, (list, tuple)) else str(namespace or "root")
-            raw_seq = envelope.get("seq")
-            return OutputEvent(
-                event_type="custom",
-                phase="end",
-                sequence=int(raw_seq) if isinstance(raw_seq, int) else 0,
-                timestamp=str(params.get("timestamp", "")) if isinstance(params, Mapping) else "",
-                namespace=namespace_text or "root",
-                source_type=("agent" if origin.get("agent_profile_id") else "non_agent"),
-                workflow_node_id=str(origin.get("workflow_node_id") or ""),
-                agent_profile_id=str(origin.get("agent_profile_id") or ""),
-                subagent_profile_id=str(origin.get("subagent_profile_id") or ""),
-                data=data,
-                raw_seq=int(raw_seq) if isinstance(raw_seq, int) else 0,
-                source_key="raw-protocol",
-                cycle_key=namespace_text or "root",
-            )
+                return ""
+            return projector.render(envelope, origin.output)
 
         def project_deadline() -> list[str]:
             if not self.public_output or not self.response_consumer:
@@ -607,21 +553,14 @@ class RunExecution:
             return take_response_output()
 
         def failure_output(error_code: str) -> list[str]:
-            self.normalizer.abort_main_agent_messages()
+            self.event_stream.close()
+            if self.origin_resolver is not None:
+                self.origin_resolver.close()
             scheduler = self.response_scheduler
-            if scheduler is not None and self.public_output:
-                projection_stream().discard()
             parts: list[str] = []
             if self.public_output and scheduler is not None:
                 if self.response_consumer:
                     parts.extend(frame_text(scheduler.abort()))
-                else:
-                    origin_run_id, origin_workflow_id = response_origin()
-                    scheduler.abort_origin(
-                        origin_run_id,
-                        origin_workflow_id,
-                        now=loop.time(),
-                    )
             try:
                 parts.extend(project_run_event(
                     "error",
@@ -647,7 +586,7 @@ class RunExecution:
                     scheduler.discard()
                 else:
                     origin_run_id, origin_workflow_id = response_origin()
-                    scheduler.finish_origin(
+                    scheduler.abort_origin(
                         origin_run_id,
                         origin_workflow_id,
                         now=loop.time(),
@@ -791,19 +730,22 @@ class RunExecution:
                                 else:
                                     next_event_task = asyncio.create_task(anext(envelopes))
                                     capture_protocol_event(envelope)
-                                    normalized_events = tuple(
-                                        self.normalizer.feed(envelope)
-                                    )
+                                    origin = event_origin(envelope)
+                                    (
+                                        stream_events,
+                                        publish_raw_output,
+                                    ) = self.event_stream.consume(envelope, origin)
                                     raw_text = ""
-                                    raw_origin: Mapping[str, object] = {}
                                     if self.public_output:
-                                        raw_text, raw_origin = render_protocol_event(
+                                        raw_text = render_protocol_event(
                                             envelope,
-                                            normalized_events,
+                                            origin,
                                         )
+                                        if not publish_raw_output:
+                                            raw_text = ""
                                     text_attached = False
-                                    for event in normalized_events:
-                                        if isinstance(event, ModelCallBoundary):
+                                    for event in stream_events:
+                                        if isinstance(event, ResponseModelCallBoundary):
                                             projected = project_input(event)
                                         elif isinstance(event, MediaContentBlock):
                                             notification = (
@@ -812,10 +754,12 @@ class RunExecution:
                                                 else None
                                             )
                                             projected = (
-                                                project_event(
-                                                    self.normalizer.media_notification(
-                                                        event, notification
-                                                    )
+                                                project_input(
+                                                    self.event_stream.media_notification(
+                                                        origin,
+                                                        event,
+                                                    ),
+                                                    text=notification,
                                                 )
                                                 if notification is not None
                                                 else []
@@ -825,7 +769,7 @@ class RunExecution:
                                                 raw_text if not text_attached else ""
                                             )
                                             text_attached = text_attached or bool(raw_text)
-                                            projected = project_event(
+                                            projected = project_input(
                                                 event,
                                                 text=event_text,
                                             )
@@ -833,8 +777,14 @@ class RunExecution:
                                             with pause_execution_timeout():
                                                 yield rendered
                                     if raw_text and not text_attached:
-                                        projected = project_event(
-                                            raw_atomic_event(envelope, raw_origin),
+                                        params = envelope.get("params")
+                                        data = (
+                                            params.get("data")
+                                            if isinstance(params, Mapping)
+                                            else None
+                                        )
+                                        projected = project_input(
+                                            self.event_stream.atomic(origin, data),
                                             text=raw_text,
                                         )
                                         for rendered in projected:
@@ -858,22 +808,9 @@ class RunExecution:
                             )
                     output = await stream.output()
                     self.final_state = dict(output) if isinstance(output, Mapping) else None
-                    self.normalizer.close_main_agent_messages()
-                    if self.public_output and self.response_scheduler is not None:
-                        scheduler = self.response_scheduler
-                        origin_run_id, origin_workflow_id = response_origin()
-                        for projected in projection_stream().finish():
-                            scheduler.publish(
-                                ResponseEventInput(
-                                    lifecycle_id=scheduler.lifecycle_id,
-                                    origin_run_id=origin_run_id,
-                                    origin_workflow_id=origin_workflow_id,
-                                    event=to_response_signal(projected.event),
-                                    text=projected.text,
-                                    segment_end_text=projected.segment_end_text,
-                                ),
-                                now=loop.time(),
-                            )
+                    self.event_stream.close()
+                    if self.origin_resolver is not None:
+                        self.origin_resolver.close()
                     for rendered in take_response_output():
                         if rendered:
                             with pause_execution_timeout():
@@ -923,20 +860,15 @@ class RunExecution:
                 journal.finish_open_spans(
                     "cancelled", error_code="request_cancelled"
                 )
-            self.normalizer.abort_main_agent_messages()
+            self.event_stream.close()
+            if self.origin_resolver is not None:
+                self.origin_resolver.close()
             if self.response_scheduler is not None:
-                if self.public_output:
-                    projection_stream().discard()
                 if self.response_consumer:
                     self.response_scheduler.discard()
                 elif self.public_output:
                     origin_run_id, origin_workflow_id = response_origin()
                     self.response_scheduler.abort_origin(
-                        origin_run_id,
-                        origin_workflow_id,
-                        now=loop.time(),
-                    )
-                    self.response_scheduler.finish_origin(
                         origin_run_id,
                         origin_workflow_id,
                         now=loop.time(),
@@ -1113,7 +1045,6 @@ class AgentRuntime:
         main_agent_id: str,
         raw_messages: object,
         *,
-        model_response_observer: Callable[[ModelResponse], None] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
         workspace: DeepAgentsWorkspace | None = None,
@@ -1122,7 +1053,6 @@ class AgentRuntime:
             return await self._builder.build(
                 main_agent_id,
                 raw_messages,
-                model_response_observer=model_response_observer,
                 request_id=request_id,
                 workflow_node_id=workflow_node_id,
                 workspace=workspace,
@@ -1193,14 +1123,11 @@ class AgentRuntime:
         graph: Any | None = None,
         input_state: dict[str, Any] | None = None,
         workflow_node_id: str = "",
-        event_observer: Callable[[OutputEvent], None] | None = None,
-        model_response_observer: Callable[[ModelResponse], None] | None = None,
         request_id: str = "",
         public_model: str = "",
         workflow_built: tuple[tuple[str, BuiltAgent], ...] = (),
         agent_event_outputs: Mapping[str, EventOutputCallable] | None = None,
         workflow_event_output: EventOutputCallable | None = None,
-        agent_run_outputs: Mapping[str, EventRunOutputCallable | None] | None = None,
         workflow_run_output: EventRunOutputCallable | None = None,
         event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = (),
         command_runtime: CommandPackageRuntime | None = None,
@@ -1229,16 +1156,11 @@ class AgentRuntime:
             effective_input_state = (
                 input_state if input_state is not None else built.input_state
             )
-        observers = []
-        if event_observer is not None:
-            observers.append(event_observer)
         workflow_agents = workflow_built or (
             ((workflow_node_id, built),) if built is not None else ()
         )
-        from agent_shell.workflow.events import WorkflowEventSourceV1
-
         workflow_sources = {
-            node_id: WorkflowEventSourceV1(
+            node_id: WorkflowNodeSource(
                 source_type="agent",
                 workflow_node_id=node_id,
                 agent_profile_id=agent.agent_id,
@@ -1249,7 +1171,6 @@ class AgentRuntime:
             projector = WorkflowOutputProjector(
                 agent_event_outputs or {},
                 workflow_output=workflow_event_output,
-                run_outputs_by_node=agent_run_outputs,
                 workflow_run_output=workflow_run_output,
             )
         else:
@@ -1270,7 +1191,7 @@ class AgentRuntime:
             }
         for node_id, node_type in journal_node_kinds.items():
             if node_type == "command":
-                workflow_sources[node_id] = WorkflowEventSourceV1(
+                workflow_sources[node_id] = WorkflowNodeSource(
                     source_type="script",
                     workflow_node_id=node_id,
                 )
@@ -1289,17 +1210,21 @@ class AgentRuntime:
         workflow_identity = (
             str(context.workflow.get("id", "")) if context is not None else ""
         )
-        output_projection_stream = EventOutputProjectionStream()
         usage_accumulator = RunUsageAccumulator()
-        origin_resolver = EventOutputOriginResolver(
+        origin_resolver = RunEventOriginResolver(
             context,
             workflow_sources=workflow_sources,
             main_agent_names=tuple(agent.agent_name for _, agent in workflow_agents),
+            workflow_agent_names={
+                node_id: agent.agent_name for node_id, agent in workflow_agents
+            },
             workflow_subagent_profile_ids={
                 node_id: agent.subagent_profile_ids
                 for node_id, agent in workflow_agents
             },
             subagent_profile_ids=(built.subagent_profile_ids if built is not None else {}),
+            default_agent_profile_id=(built.agent_id if built is not None else ""),
+            default_workflow_node_id=workflow_node_id,
         )
         effective_response_scheduler = response_scheduler
         if effective_response_scheduler is None:
@@ -1317,32 +1242,9 @@ class AgentRuntime:
             media_response=MainAgentMediaResponse(self._media_outputs, request_id),
             response_scheduler=effective_response_scheduler,
             usage_accumulator=usage_accumulator,
-            output_projection_stream=output_projection_stream,
             origin_resolver=origin_resolver,
             event_output_projector=projector,
             response_consumer=response_consumer,
-            normalizer=V3EventNormalizer(
-                built.agent_name if built is not None else "",
-                model_response_observers=(model_response_observer,)
-                if model_response_observer is not None
-                else (),
-                workflow_mode=True,
-                workflow_sources=workflow_sources,
-                subagent_profile_ids=(
-                    built.subagent_profile_ids if built is not None else {}
-                ),
-                main_agent_names=tuple(agent.agent_name for _, agent in workflow_agents),
-                workflow_subagent_profile_ids={
-                    node_id: agent.subagent_profile_ids
-                    for node_id, agent in workflow_agents
-                },
-                workflow_agent_names={
-                    node_id: agent.agent_name
-                    for node_id, agent in workflow_agents
-                },
-                usage_accumulator=usage_accumulator,
-            ),
-            event_observers=tuple(observers),
             middleware_runtimes=tuple(
                 agent.middleware_runtime
                 for _, agent in workflow_agents[1:]
@@ -1386,8 +1288,6 @@ class AgentRuntime:
         raw_messages: object,
         *,
         workflow_snapshot: Mapping[str, Any] | None = None,
-        model_response_observer: Callable[[ModelResponse], None] | None = None,
-        event_observer: Callable[[OutputEvent], None] | None = None,
         request_id: str = "",
         public_model: str = "",
         lifecycle_id: str | None = None,
@@ -1616,7 +1516,6 @@ class AgentRuntime:
         agent_event_output_runtime: EventOutputPackageRuntime | None = None
         workflow_event_output_runtime: EventOutputPackageRuntime | None = None
         agent_event_outputs: dict[str, EventOutputCallable] = {}
-        agent_run_outputs: dict[str, EventRunOutputCallable | None] = {}
         workflow_event_output: EventOutputCallable | None = None
         workflow_run_output: EventRunOutputCallable | None = None
         command_runtime: CommandPackageRuntime | None = None
@@ -1753,10 +1652,12 @@ class AgentRuntime:
                     str(output_id),
                     output_block.python_package.model_dump(mode="json"),
                 )
-                workflow_run_output = workflow_event_output_runtime.run_output_for(
-                    str(workflow_identity.get("id", "")) or "workflow",
-                    str(output_id),
-                    output_block.python_package.model_dump(mode="json"),
+                workflow_run_output = (
+                    workflow_event_output_runtime.workflow_run_output_for(
+                        str(workflow_identity.get("id", "")) or "workflow",
+                        str(output_id),
+                        output_block.python_package.model_dump(mode="json"),
+                    )
                 )
 
             for agent_node, assembly in resolved_agents:
@@ -1769,7 +1670,6 @@ class AgentRuntime:
                 built = await self.build_resolved_agent(
                     assembly,
                     messages,
-                    model_response_observer=model_response_observer,
                     request_id=request_id,
                     workflow_node_id=agent_node.id,
                     workspace=workspace,
@@ -1784,13 +1684,6 @@ class AgentRuntime:
                 if agent_event_output_runtime is not None:
                     agent_event_outputs[agent_node.id] = (
                         agent_event_output_runtime.output_for(
-                            agent_node.id,
-                            built.event_output_id,
-                            built.event_output_reference,
-                        )
-                    )
-                    agent_run_outputs[agent_node.id] = (
-                        agent_event_output_runtime.run_output_for(
                             agent_node.id,
                             built.event_output_id,
                             built.event_output_reference,
@@ -1892,13 +1785,10 @@ class AgentRuntime:
             input_state=input_state,
             workflow_node_id=first_node_id,
             workflow_built=tuple(built_agents),
-            event_observer=event_observer,
-            model_response_observer=model_response_observer,
             request_id=request_id,
             public_model=public_model,
             agent_event_outputs=agent_event_outputs,
             workflow_event_output=workflow_event_output,
-            agent_run_outputs=agent_run_outputs,
             workflow_run_output=workflow_run_output,
             event_output_runtimes=tuple(
                 runtime

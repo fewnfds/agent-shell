@@ -1,28 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import weakref
 
 import pytest
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.output_projection import EventOutputProjectionStream
-from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
     ResponseEvent,
     ResponseEventInput,
+    ResponseModelCallBoundary,
 )
-
-from .support import output_renderer
 
 
 LIFECYCLE_ID = "lifecycle-1"
 RUN_ID = "run-parent"
 WORKFLOW_ID = "workflow-parent"
-_PROJECTION_STREAMS: weakref.WeakKeyDictionary[
-    LifecycleResponseScheduler, EventOutputProjectionStream
-] = weakref.WeakKeyDictionary()
 
 
 def _policy(**updates: object) -> ResponseStreamPolicy:
@@ -38,20 +31,12 @@ def _policy(**updates: object) -> ResponseStreamPolicy:
 def _scheduler(
     policy: ResponseStreamPolicy | None = None,
 ) -> LifecycleResponseScheduler:
-    scheduler = LifecycleResponseScheduler(
+    return LifecycleResponseScheduler(
         policy or _policy(),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
     )
-    _PROJECTION_STREAMS[scheduler] = EventOutputProjectionStream()
-    return scheduler
-
-
-def _projection_stream(
-    scheduler: LifecycleResponseScheduler,
-) -> EventOutputProjectionStream:
-    return _PROJECTION_STREAMS[scheduler]
 
 
 def test_scheduler_accepts_private_response_signal() -> None:
@@ -66,7 +51,6 @@ def test_scheduler_accepts_private_response_signal() -> None:
                 phase="end",
                 sequence=1,
                 source_type="script",
-                source_key="script|node",
                 cycle_key="node:invocation",
             ),
             text="private-signal",
@@ -88,24 +72,44 @@ def _event(
     invocation_id: str = "",
     source_type: str = "agent",
     **values: str,
-) -> OutputEvent:
+) -> ResponseEvent:
     cycle_key = invocation_id or f"{node_id}:invocation"
-    return OutputEvent(
-        event_type=event_type,
+    kind = (
+        "content"
+        if event_type in {"assistant_text", "reasoning"}
+        else "tool"
+        if event_type in {"tool_call", "tool_result", "tool_error", "tool_progress"}
+        else "lifecycle"
+        if event_type == "lifecycle"
+        else "event"
+    )
+    tool_kind = {
+        "tool_call": "call",
+        "tool_result": "result",
+        "tool_error": "error",
+        "tool_progress": "progress",
+    }.get(event_type, "")
+    data: object
+    if event_type == "assistant_text":
+        data = {"type": "text", "text": message}
+    elif event_type == "reasoning":
+        data = {"type": "reasoning", "reasoning": message}
+    else:
+        data = {"message": message, **values}
+    return ResponseEvent(
+        kind=kind,  # type: ignore[arg-type]
         phase=phase,
         sequence=sequence,
-        timestamp="2026-08-28T00:00:00Z",
         namespace=cycle_key,
-        agent_name=node_id,
-        node="model",
         source_type=source_type,
         workflow_node_id=node_id,
         agent_profile_id=f"profile-{node_id}",
-        message=message,
-        values=values,
+        data=data,
         stream_id=(f"{turn_id}:{stream_id}" if stream_id else ""),
-        source_key=f"{source_type}|{node_id}|profile-{node_id}|",
         cycle_key=cycle_key,
+        tool_kind=tool_kind,  # type: ignore[arg-type]
+        tool_call_id=values.get("tool_call_id", ""),
+        terminal=(event_type == "lifecycle" and phase in {"end", "error"}),
     )
 
 
@@ -114,10 +118,12 @@ def _boundary(
     turn_id: str,
     *,
     phase: str = "start",
-) -> ModelCallBoundary:
-    return ModelCallBoundary(
+) -> ResponseModelCallBoundary:
+    return ResponseModelCallBoundary(
         run_key=turn_id,
-        source_key=f"agent|{node_id}|profile-{node_id}|",
+        source_type="agent",
+        workflow_node_id=node_id,
+        agent_profile_id=f"profile-{node_id}",
         cycle_key=f"{node_id}:invocation",
         phase=phase,
     )
@@ -125,34 +131,29 @@ def _boundary(
 
 def _submit(
     scheduler: LifecycleResponseScheduler,
-    event: OutputEvent | ModelCallBoundary,
+    event: ResponseEvent | ResponseModelCallBoundary,
     now: float,
 ) -> list[str]:
     text = ""
     segment_end_text = ""
-    if isinstance(event, OutputEvent):
+    if isinstance(event, ResponseEvent):
         text, segment_end_text = _projected_text(event)
     return [
         frame.text
-        for projected in _projection_stream(scheduler).project(
-            event,
-            text=text,
-            segment_end_text=segment_end_text,
-        )
         for frame in scheduler.submit(
             ResponseEventInput(
                 lifecycle_id=LIFECYCLE_ID,
                 origin_run_id=RUN_ID,
                 origin_workflow_id=WORKFLOW_ID,
-                event=projected.event,
-                text=projected.text,
-                segment_end_text=projected.segment_end_text,
+                event=event,
+                text=text,
+                segment_end_text=segment_end_text,
             ), now=now,
         )
     ]
 
 
-def _projected_text(event: OutputEvent) -> tuple[str, str]:
+def _projected_text(event: ResponseEvent) -> tuple[str, str]:
     """Supply already-rendered text to scheduler tests.
 
     Runtime tests call the public extension before this stream. Scheduler
@@ -160,23 +161,31 @@ def _projected_text(event: OutputEvent) -> tuple[str, str]:
     text explicitly instead of invoking an Event Output package.
     """
 
-    if event.event_type == "assistant_text":
+    data = event.data if isinstance(event.data, dict) else {}
+    block_type = str(data.get("type") or "")
+    message = str(
+        data.get("text")
+        or data.get("reasoning")
+        or data.get("message")
+        or ""
+    )
+    if event.kind == "content" and block_type != "reasoning":
         if isinstance(event.data, dict) and event.data.get("type") in {
             "image",
             "audio",
             "video",
             "file",
         }:
-            return f"<text>{event.message}</text>", ""
+            return f"<text>{message}</text>", ""
         return (
-            (event.message if event.phase == "delta" else ""),
+            (message if event.phase == "delta" else ""),
             "",
         )
-    if event.event_type == "reasoning":
+    if event.kind == "content" and block_type == "reasoning":
         if event.phase == "start":
             return '<details type="agent"><summary>Reasoning</summary>', "</details>\n"
         if event.phase == "delta":
-            return event.message, ""
+            return message, ""
         if event.phase == "end":
             return "", "</details>\n"
         return "", ""
@@ -186,10 +195,17 @@ def _projected_text(event: OutputEvent) -> tuple[str, str]:
         "tool_error": "<error id={tool_call_id}>{message}</error>",
         "custom": "<custom>{message}</custom>",
     }
-    template = templates.get(event.event_type)
+    event_type = {
+        ("tool", "call"): "tool_call",
+        ("tool", "result"): "tool_result",
+        ("tool", "error"): "tool_error",
+        ("event", ""): "custom",
+    }.get((event.kind, event.tool_kind))
+    template = templates.get(event_type or "")
     if template is None:
         return "", ""
-    return template.format(message=event.message, **event.values), ""
+    fields = {key: value for key, value in data.items() if key != "message"}
+    return template.format(message=message, **fields), ""
 
 
 def test_request_atom_holds_competing_request_until_idle_timeout() -> None:
@@ -618,12 +634,11 @@ def test_content_projection_is_additive_and_media_remains_atomic() -> None:
         message="[image]",
         stream_id="media",
     )
-    object.__setattr__(media, "data", {"type": "image"})
+    object.__setattr__(media, "data", {"type": "image", "text": "[image]"})
     assert _submit(scheduler, media, 0.4) == ["<text>[image]</text>"]
 
 
-def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
-    projection_stream = EventOutputProjectionStream()
+def test_non_streaming_whole_content_is_emitted_from_one_end_signal() -> None:
     scheduler = LifecycleResponseScheduler(
         _policy(queue={"send_interval_seconds": 0}),
         lifecycle_id=LIFECYCLE_ID,
@@ -632,52 +647,45 @@ def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
     )
 
     def submit_projected(
-        event: OutputEvent,
+        event: ResponseEvent,
         *,
         text: str,
         segment_end_text: str = "",
     ) -> list[str]:
         return [
             frame.text
-            for projected in projection_stream.project(
-                event,
-                text=text,
-                segment_end_text=segment_end_text,
-            )
             for frame in scheduler.submit(
                 ResponseEventInput(
                     lifecycle_id=LIFECYCLE_ID,
                     origin_run_id=RUN_ID,
                     origin_workflow_id=WORKFLOW_ID,
-                    event=projected.event,
-                    text=projected.text,
-                    segment_end_text=projected.segment_end_text,
+                    event=event,
+                    text=text,
+                    segment_end_text=segment_end_text,
                 ),
                 now=0,
             )
         ]
 
+    assert _submit(scheduler, _boundary("agent-a", "turn-1"), 0) == []
     rendered = submit_projected(
-        _event("agent-a", "assistant_text", "start", 1, stream_id="whole"),
-        text="<answer>",
-        segment_end_text="</answer>",
+        _event(
+            "agent-a",
+            "assistant_text",
+            "end",
+            1,
+            stream_id="whole",
+            message="complete response",
+        ),
+        text="complete response",
     )
-    rendered.extend(
-        submit_projected(
-            _event(
-                "agent-a",
-                "assistant_text",
-                "end",
-                2,
-                stream_id="whole",
-                message="complete response",
-            ),
-            text="complete response",
-            segment_end_text="</answer>",
-        )
-    )
+    rendered.extend(_submit(
+        scheduler,
+        _boundary("agent-a", "turn-1", phase="end"),
+        0,
+    ))
 
-    assert rendered == ["<answer>", "complete response", "</answer>"]
+    assert rendered == ["", "complete response"]
 
 
 def test_message_finish_is_a_strong_boundary_before_content_finish_arrives() -> None:
@@ -1085,23 +1093,18 @@ def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None
             sequence,
             message=message,
             source_type="script",
-            )
+        )
         text, segment_end_text = _projected_text(event)
         return [
             frame.text
-            for projected in _projection_stream(scheduler).project(
-                event,
-                text=text,
-                segment_end_text=segment_end_text,
-            )
             for frame in scheduler.submit(
                 ResponseEventInput(
                     lifecycle_id=LIFECYCLE_ID,
                     origin_run_id=run_id,
                     origin_workflow_id=workflow_id,
-                    event=projected.event,
-                    text=projected.text,
-                    segment_end_text=projected.segment_end_text,
+                    event=event,
+                    text=text,
+                    segment_end_text=segment_end_text,
                 ),
                 now=now,
             )
@@ -1138,7 +1141,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
     def submit(
         run_id: str,
         workflow_id: str,
-        event: OutputEvent,
+        event: ResponseEvent,
         text: str,
         now: float,
     ) -> list[str]:
@@ -1169,7 +1172,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
         parent_start,
         phase="delta",
         sequence=2,
-        message="parent",
+        data={"type": "text", "text": "parent"},
     )
     child_start = _event(
         "shared-agent",
@@ -1183,7 +1186,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
         child_start,
         phase="delta",
         sequence=2,
-        message="child",
+        data={"type": "text", "text": "child"},
     )
 
     assert submit(RUN_ID, WORKFLOW_ID, parent_start, "", 0) == []
@@ -1216,7 +1219,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
     parent_continuation = replace(
         parent_delta,
         sequence=3,
-        message="-continues",
+        data={"type": "text", "text": "-continues"},
     )
     assert submit(
         RUN_ID,
@@ -1234,7 +1237,7 @@ def test_same_tool_call_identity_in_two_runs_does_not_cross_pair() -> None:
     def submit(
         run_id: str,
         workflow_id: str,
-        event: OutputEvent,
+        event: ResponseEvent,
         text: str,
         now: float,
     ) -> list[str]:
@@ -1272,12 +1275,12 @@ def test_same_tool_call_identity_in_two_runs_does_not_cross_pair() -> None:
     child_call = replace(
         parent_call,
         sequence=3,
-        message="child-call",
+        data={"message": "child-call", "tool_call_id": "shared-call"},
     )
     parent_result = replace(
         child_result,
         sequence=4,
-        message="parent-result",
+        data={"message": "parent-result", "tool_call_id": "shared-call"},
     )
 
     assert submit(

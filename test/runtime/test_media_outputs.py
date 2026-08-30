@@ -141,10 +141,6 @@ def test_cancelled_projection_waits_for_persistence_without_publishing() -> None
         task = asyncio.create_task(
             response.project(
                 MediaContentBlock(
-                    timestamp="2026-01-01T00:00:00+00:00",
-                    namespace="main_agent",
-                    agent_name="main_agent",
-                    node="model",
                     message_id="message-1",
                     block_index=0,
                     content={"type": "image"},

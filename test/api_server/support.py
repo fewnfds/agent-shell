@@ -129,7 +129,6 @@ def create_main_agent(
         json=agent_event_output_payload(
             client,
             "Published output",
-            include_lifecycle=False,
         ),
     )
     assert output_response.status_code == 200, output_response.text
@@ -300,17 +299,7 @@ def _python_output_payload(
 def agent_event_output_payload(
     client: TestClient,
     name: str = "Visible timeline",
-    *,
-    include_lifecycle: bool = True,
 ) -> dict[str, object]:
-    lifecycle_branch = (
-        'def run_output(event, origin):\n'
-        '    if event.get("type") == "agent_shell.workflow_run":\n'
-        '        return f\'<status phase="{event["phase"]}">{event["status"]}</status>\'\n'
-        '    return ""\n'
-        if include_lifecycle
-        else 'def run_output(event, origin):\n    return ""\n'
-    )
     return _python_output_payload(
         client,
         "agent-event-output",
@@ -327,8 +316,7 @@ def agent_event_output_payload(
         '    if payload.get("event") == "content-block-delta":\n'
         '        delta = payload.get("delta", {})\n'
         '        return str(delta.get("text", "")) if isinstance(delta, dict) else ""\n'
-        '    return ""\n\n'
-        f"{lifecycle_branch}",
+        '    return ""\n',
     )
 
 

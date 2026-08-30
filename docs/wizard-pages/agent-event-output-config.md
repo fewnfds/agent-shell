@@ -45,7 +45,9 @@ model run、Tool call、`seq`、namespace 和 channel-specific 字段一律从�
 
 每个原始 ProtocolEvent 调用一次 `output`。脚本依据官方 message payload 的 `content-block-start`、`content-block-delta` 和 `content-block-finish` 自行决定首文本、delta 和尾文本；不要依赖平台伪造的 start/end envelope，也不要修改模块全局状态。工具声明和 outcome 分别按原始 `tools` event 调用，Response Stream Scheduler 负责事务配对和公平排队。
 
-Shell 合成的 Run 状态不是 LangGraph ProtocolEvent。需要输出 Run 开始、完成或失败状态时，可在同一 package 中额外提供同步 `run_output(run_event, origin)`；该 hook 接收 `{"type": "agent_shell.workflow_run", "phase": ..., "status": ...}`，只处理产品状态，不替代 `output`。
+同一 model run 同时出现 streamed message events 与完整 `AIMessage` snapshot 时，runtime 仍调用两次 `output`，但完整 snapshot 的投影结果不会再次进入公开队列，避免重复正文。model run identity 直接读取 message metadata 的官方 `run_id`。
+
+Shell 合成的 Workflow Run 状态不是 Agent-owned ProtocolEvent，由 Workflow Event Output 的可选 `run_output(run_event, origin)` 处理。Agent Event Output 只提供 `output(event, origin)`。
 
 媒体、usage、debug capture 和 Python payload 不由 Event Output 改写；返回空字符串只影响公开文本投影。Subagent 事件沿用所属 Main Agent package，`origin["subagent_profile_id"]` 用于区分来源。
 

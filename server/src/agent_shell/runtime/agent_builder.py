@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 from langchain.chat_models import init_chat_model
 from langgraph.store.base import BaseStore
@@ -61,7 +61,6 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.model_request_settings import (
     make_model_request_settings_middleware,
 )
-from agent_shell.runtime.model_response import ModelResponse
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.service import ConfigurationValidationService
@@ -529,7 +528,6 @@ class AgentBuilder:
         main_agent_id: str,
         raw_messages: object,
         *,
-        model_response_observer: Callable[[ModelResponse], Any] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
         workspace: DeepAgentsWorkspace | None = None,
@@ -550,7 +548,6 @@ class AgentBuilder:
         return await self.build_resolved(
             assembly,
             messages,
-            model_response_observer=model_response_observer,
             request_id=request_id,
             workflow_node_id=workflow_node_id,
             workspace=workspace,
@@ -565,7 +562,6 @@ class AgentBuilder:
         assembly: StaticAssembly,
         _messages: list[dict[str, Any]],
         *,
-        model_response_observer: Callable[[ModelResponse], Any] | None = None,
         request_id: str = "",
         workflow_node_id: str | None = None,
         workspace: DeepAgentsWorkspace | None = None,

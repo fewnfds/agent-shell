@@ -5,12 +5,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from agent_shell.runtime.model_response import ModelResponse
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.storage.media_outputs import MediaOutputStore, MediaProjection
-
-
-_PUBLIC_BLOCK_TYPES = frozenset({"text", "image", "audio", "video", "file"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,31 +64,3 @@ class MainAgentMediaResponse:
             for item in self._ordered
             if item.projection.asset is not None
         ]
-
-    def structured_blocks(
-        self, response: ModelResponse | None
-    ) -> list[dict[str, Any]]:
-        if response is None:
-            return []
-        by_index = {
-            item.block_index: item.projection.structured_block
-            for item in self._ordered
-            if item.message_id == response.message_id
-        }
-        blocks: list[dict[str, Any]] = []
-        for index, raw in enumerate(response.content_blocks):
-            block_type = str(raw.get("type") or "")
-            if block_type not in _PUBLIC_BLOCK_TYPES:
-                continue
-            if block_type == "text":
-                blocks.append(deepcopy(raw))
-                continue
-            structured = by_index.get(index)
-            if structured is None:
-                structured = {
-                    "type": block_type,
-                    "saved": False,
-                    "reason": "projection_unavailable",
-                }
-            blocks.append(deepcopy(structured))
-        return blocks

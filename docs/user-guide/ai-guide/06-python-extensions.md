@@ -204,7 +204,7 @@ def output(event, origin):
 - 空字符串只过滤公开渲染文本；
 - Event Output 不更新 State、不选择 successor，也不处理顶层 HTTP error。
 
-Shell 合成的 Run 状态不是 ProtocolEvent。需要输出开始、完成或失败状态时，可选提供同步 `run_output(run_event, origin)`；它只处理 `type="agent_shell.workflow_run"` 的产品状态。
+Shell 合成的 Run 状态不是 ProtocolEvent。Workflow Event Output 可选提供同步 `run_output(run_event, origin)`，只处理 `type="agent_shell.workflow_run"` 的产品状态；Agent Event Output 只处理 raw ProtocolEvent。
 
 Agent Event Output 处理 Agent-owned event。Workflow Event Output 处理 Workflow-owned non-Agent event。
 

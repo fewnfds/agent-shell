@@ -2,54 +2,26 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from types import SimpleNamespace
 
 from .support import *
 from .support import _build_chat_model
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, ToolMessage
 from agent_shell.model_provider_contracts import _SETTINGS_BY_PROVIDER
 from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.model_response import ModelResponse, finish_reason_category
-from agent_shell.runtime.media_events import MediaContentBlock
-from agent_shell.runtime.output_stream import OutputEvent
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 
-@pytest.mark.parametrize(
-    ("reason", "category"),
-    [
-        ("stop", "stop"),
-        ("length", "length"),
-        ("content_filter", "content_filter"),
-        ("tool_calls", "tool_calls"),
-        ("vendor-specific", "unknown"),
-        (None, "unknown"),
-    ],
-)
-def test_finish_reason_categories_keep_unknown_provider_values_explicit(
-    reason: str | None, category: str
-) -> None:
-    assert finish_reason_category(reason) == category
-
-
-def test_workflow_run_completion_does_not_inherit_an_agent_finish_reason() -> None:
-    normalizer = SimpleNamespace(
-        usage={},
-        finish_reason="length",
-        finish_reason_source="response_metadata.finish_reason",
-    )
-    workflow = RunExecution(
+def test_workflow_run_has_stable_openai_completion_reason() -> None:
+    execution = RunExecution(
         graph=None,
         input_state={},
         response_scheduler=None,
-        normalizer=normalizer,
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
     )
-    assert workflow.finish_reason == "stop"
-    assert workflow.finish_reason_source is None
+    assert execution.finish_reason == "stop"
 
 
 def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled() -> None:
@@ -102,7 +74,6 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
             input_state={"messages": [{"role": "user", "content": "cancel me"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             cancel_background_children=cancel_children,
@@ -153,7 +124,6 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             graph=None,
             input_state={},
             response_scheduler=None,
-            normalizer=SimpleNamespace(usage={}),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             context=WorkflowRuntimeContext.for_run(
@@ -203,9 +173,9 @@ def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
             input_state={"messages": []},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
+            origin_resolver=event_origin_resolver(),
             execution_timeout_seconds=0.1,
         )
         stream = execution.stream_text()
@@ -279,9 +249,9 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
                 ResponseStreamPolicy.model_validate(payload),
             ),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
+            origin_resolver=event_origin_resolver(),
         )
         stream = execution.stream_text()
         assert await anext(stream) == "running"
@@ -349,9 +319,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             graph=QuietGraph(quiet_run),
             input_state={},
             response_scheduler=scheduler,
-            output_projection_stream=EventOutputProjectionStream(),
             event_output_projector=output,
-            normalizer=V3EventNormalizer("Parent Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             context=WorkflowRuntimeContext.for_run(
@@ -373,12 +341,11 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             ),
             input_state={},
             response_scheduler=scheduler,
-            output_projection_stream=EventOutputProjectionStream(),
             event_output_projector=output,
             response_consumer=False,
-            normalizer=V3EventNormalizer("Child Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
+            origin_resolver=event_origin_resolver("Child Agent"),
             context=WorkflowRuntimeContext.for_run(
                 request_id="request",
                 lifecycle_id=lifecycle_id,
@@ -475,7 +442,6 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 input_state={"messages": [{"role": "user", "content": "wait"}]},
                 response_scheduler=response_scheduler(projector),
                 event_output_projector=projector,
-                normalizer=V3EventNormalizer("Main Agent"),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
                 execution_timeout_seconds=0.01,
@@ -548,7 +514,6 @@ def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:
             input_state={"messages": [], "shared_vars": {}},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
@@ -583,7 +548,11 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
                 if self._sent:
                     raise StopAsyncIteration
                 self._sent = True
-                return object()
+                return {
+                    "method": "custom",
+                    "params": {"namespace": [], "timestamp": 1, "data": {"ok": True}},
+                    "seq": 1,
+                }
 
             async def output(self):
                 return {"shared_vars": {"result": "ok"}}
@@ -595,42 +564,6 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
                 assert version == "v3"
                 assert transformers
                 return OneEnvelopeRun()
-
-        class SilentNormalizer:
-            usage: dict[str, int] = {}
-            finish_reason = "stop"
-            finish_reason_source = None
-            last_main_agent_response = None
-
-            def lifecycle(self, phase: str, **_kwargs) -> OutputEvent:
-                return OutputEvent(
-                    event_type="lifecycle",
-                    phase=phase,
-                    sequence=1,
-                    timestamp="now",
-                )
-
-            def feed(self, _envelope):
-                return [
-                            MediaContentBlock(
-                        timestamp="now",
-                        namespace="root",
-                        agent_name="Agent",
-                        node="agent",
-                        message_id="message-1",
-                        block_index=0,
-                        content={"type": "image", "url": "private"},
-                    )
-                ]
-
-            def close_main_agent_messages(self) -> None:
-                return None
-
-            def abort_main_agent_messages(self) -> None:
-                return None
-
-            def media_notification(self, *_args):
-                raise AssertionError("silent execution must not create media output")
 
         class ExplodingProjector:
             def enabled(self, _event) -> bool:
@@ -647,20 +580,13 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
             def assets(self):
                 return []
 
-            def structured_blocks(self, _response):
-                return []
-
-        def observe(_event) -> None:
-            raise AssertionError("silent execution must not call public observers")
-
         execution = RunExecution(
             graph=Graph(),
             input_state={"shared_vars": {}},
             response_scheduler=response_scheduler(ExplodingProjector()),  # type: ignore[arg-type]
-            normalizer=SilentNormalizer(),  # type: ignore[arg-type]
             middleware_runtime=noop_middleware_runtime(),
             media_response=ExplodingMediaResponse(),  # type: ignore[arg-type]
-            event_observers=(observe,),
+            origin_resolver=event_origin_resolver(),
             public_output=False,
         )
 
@@ -686,7 +612,6 @@ def test_graph_recursion_failure_uses_step_limit_error() -> None:
             input_state={"messages": [{"role": "user", "content": "loop"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
         )
@@ -769,7 +694,6 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
             input_state={"messages": [{"role": "user", "content": "fail"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
@@ -810,7 +734,6 @@ def test_classified_graph_failure_emits_matching_lifecycle_error() -> None:
             input_state={"messages": [{"role": "user", "content": "fail"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
         )

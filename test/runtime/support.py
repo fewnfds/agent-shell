@@ -2,38 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import re
-import weakref
 from collections.abc import Callable
 from types import SimpleNamespace
 
 import httpx
 import pytest
-from langchain_core.messages import ToolMessage
-from langgraph.types import Command
 
 from agent_shell.runtime.agent_builder import _build_chat_model
 from agent_shell.runtime.agent_runtime import RunExecution
 
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
+from agent_shell.runtime.event_origin import RunEventOriginResolver
+from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
 from agent_shell.runtime.limits import (
     ProviderErrorBoundaryMiddleware,
     ToolErrorBoundaryMiddleware,
 )
-from agent_shell.runtime.output_stream import (
-    ModelCallBoundary,
-    OutputEvent,
-    V3EventNormalizer,
-)
-
-_SCHEDULER_PROJECTORS: weakref.WeakKeyDictionary[LifecycleResponseScheduler, object] = (
-    weakref.WeakKeyDictionary()
-)
-_SCHEDULER_STREAMS: weakref.WeakKeyDictionary[
-    LifecycleResponseScheduler, EventOutputProjectionStream
-] = weakref.WeakKeyDictionary()
 
 
 def _render_template(template: str, event: dict[str, object]) -> str:
@@ -148,22 +134,17 @@ def response_scheduler(
         origin_run_id="",
         origin_workflow_id="",
     )
-    _SCHEDULER_STREAMS[scheduler] = EventOutputProjectionStream()
-    # Keep the projector outside the scheduler. RunExecution receives it
-    # explicitly; workflow event helpers use this test-only association to
-    # exercise the raw-event boundary without reaching into production state.
-    _SCHEDULER_PROJECTORS[scheduler] = projector
     return scheduler
 
 
-def scheduler_projector(scheduler: LifecycleResponseScheduler):
-    return _SCHEDULER_PROJECTORS[scheduler]
-
-
-def scheduler_projection_stream(
-    scheduler: LifecycleResponseScheduler,
-) -> EventOutputProjectionStream:
-    return _SCHEDULER_STREAMS[scheduler]
+def event_origin_resolver(
+    main_agent_name: str = "Main Agent",
+) -> RunEventOriginResolver:
+    return RunEventOriginResolver(
+        None,
+        main_agent_names=(main_agent_name,),
+        default_agent_profile_id="test-agent-profile",
+    )
 
 
 @pytest.fixture
@@ -267,11 +248,6 @@ class NoopMediaResponse:
     @property
     def assets(self) -> list[dict]:
         return []
-
-    @staticmethod
-    def structured_blocks(_response) -> list[dict]:
-        return []
-
 
 def noop_media_response() -> NoopMediaResponse:
     return NoopMediaResponse()

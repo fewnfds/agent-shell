@@ -10,7 +10,6 @@ from agent_shell.runtime.response_presentation import (
     ResponseEvent,
     ResponseModelCallBoundary,
     ResponsePresentationWriter,
-    to_response_signal,
 )
 
 
@@ -85,7 +84,7 @@ class LifecycleResponseScheduler:
         self._writer.begin(now=now)
         self._validate_input(item)
         event = self._scoped_event(
-            to_response_signal(item.event),
+            item.event,
             run_id=item.origin_run_id,
         )
         if isinstance(event, ResponseModelCallBoundary):
@@ -208,6 +207,7 @@ class LifecycleResponseScheduler:
         self._writer.drain()
         self._collect_output()
         self._published_frames.extend(self._take_due_batch(now))
+        self._finished_origins.add(run_id)
         self._wakeup.set()
 
     def abort(self) -> list[PresentationFrame]:
@@ -251,22 +251,7 @@ class LifecycleResponseScheduler:
         *,
         run_id: str,
     ) -> ResponseEvent | ResponseModelCallBoundary:
-        prefix = self._lane_prefix(run_id)
-        if isinstance(event, ResponseModelCallBoundary):
-            return replace(
-                event,
-                source_key=prefix + (event.source_key or "unknown"),
-            )
-        source_key = event.source_key.strip() or "|".join(
-            str(value or "")
-            for value in (
-                event.source_type,
-                event.workflow_node_id,
-                event.agent_profile_id,
-                event.subagent_profile_id,
-            )
-        )
-        return replace(event, source_key=prefix + source_key)
+        return replace(event, origin_run_id=run_id)
 
     def _handle_tool(
         self,

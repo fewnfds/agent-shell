@@ -11,13 +11,12 @@ from langgraph.graph import END, START, StateGraph
 
 from agent_shell.runtime.agent_runtime import RunExecution
 from agent_shell.runtime.output_projection import OutputProjector, WorkflowOutputProjector
-from agent_shell.runtime.output_stream import V3EventNormalizer
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
-from agent_shell.workflow.events import WorkflowCustomEventV1, WorkflowEventSourceV1
 from .support import (
     noop_media_response,
     noop_middleware_runtime,
     EventGraph,
+    event_origin_resolver,
     message_envelope,
     output_renderer,
     response_scheduler,
@@ -85,16 +84,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
     def emit_progress(state: _State) -> dict[str, str]:
         writer = get_stream_writer()
         writer("progress ready")
-        writer(
-            WorkflowCustomEventV1(
-                source=WorkflowEventSourceV1(
-                    source_type="script",
-                    workflow_node_id="script-node",
-                ),
-                channel="progress",
-                data={"progress": "ready"},
-            ).model_dump(mode="json")
-        )
+        writer({"kind": "progress", "progress": "ready"})
         return {"value": "done"}
 
     builder = StateGraph(_State)
@@ -108,11 +98,8 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
             return ""
         params = event.get("params")
         data = params.get("data") if isinstance(params, dict) else None
-        if (
-            isinstance(data, dict)
-            and data.get("schema_name") == "agent-shell.workflow.custom-event.v1"
-        ):
-            return json.dumps(data.get("data"), ensure_ascii=False, separators=(",", ":"))
+        if isinstance(data, dict):
+            return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
         return str(data or "")
 
     projector = WorkflowOutputProjector(
@@ -124,7 +111,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
         input_state={},
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
-        normalizer=V3EventNormalizer("Main Agent"),
+        origin_resolver=event_origin_resolver(),
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
     )
@@ -134,7 +121,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
 
     assert asyncio.run(collect()) == [
         "progress ready",
-        '{"progress":"ready"}',
+        '{"kind":"progress","progress":"ready"}',
     ]
     assert execution.final_state == {"value": "done"}
 
@@ -183,7 +170,7 @@ def test_agent_execution_projects_real_tool_result() -> None:
         input_state={},
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
-        normalizer=V3EventNormalizer("Main Agent"),
+        origin_resolver=event_origin_resolver(),
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
     )
@@ -249,7 +236,7 @@ def test_agent_execution_preserves_raw_finish_projection_as_segment_end() -> Non
         input_state={},
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
-        normalizer=V3EventNormalizer("Main Agent"),
+        origin_resolver=event_origin_resolver(),
         middleware_runtime=noop_middleware_runtime(),
         media_response=noop_media_response(),
     )

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from langchain_core.messages import AIMessage
+
 from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
-from agent_shell.runtime.output_stream import OutputEvent
+from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.runtime.response_presentation import PresentationFrame
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
@@ -73,7 +74,7 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
             input_state={"messages": []},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
+            origin_resolver=event_origin_resolver(),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
         )
@@ -87,6 +88,49 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
         "[T]answer[/T][C]working[/C]",
     ]
     assert usage == {"input_tokens": 2, "output_tokens": 4, "total_tokens": 6}
+
+
+def test_execution_does_not_repeat_whole_ai_message_after_streamed_deltas() -> None:
+    run_id = "model-duplicate-shape"
+    events = [
+        message_envelope(
+            {"event": "message-start", "role": "ai", "id": "message-1"},
+            run_id=run_id,
+        ),
+        message_envelope({
+            "event": "content-block-start",
+            "index": 0,
+            "content": {"type": "text", "text": ""},
+        }, run_id=run_id),
+        message_envelope({
+            "event": "content-block-delta",
+            "index": 0,
+            "delta": {"type": "text-delta", "text": "once"},
+        }, run_id=run_id),
+        message_envelope({
+            "event": "content-block-finish",
+            "index": 0,
+            "content": {"type": "text", "text": "once"},
+        }, run_id=run_id),
+        message_envelope(
+            {"event": "message-finish", "usage": {}},
+            run_id=run_id,
+        ),
+        message_envelope(AIMessage(content="once"), run_id=run_id),
+    ]
+    projector = OutputProjector(output_renderer())
+    execution = RunExecution(
+        graph=EventGraph(events),
+        input_state={"messages": []},
+        response_scheduler=response_scheduler(projector),
+        event_output_projector=projector,
+        origin_resolver=event_origin_resolver(),
+        middleware_runtime=noop_middleware_runtime(),
+        media_response=noop_media_response(),
+    )
+
+    text, _usage = asyncio.run(execution.run())
+    assert text == "once"
 
 
 def test_debug_event_stream_record_failure_does_not_replace_run_result(
@@ -142,7 +186,7 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                 input_state={"messages": []},
                 response_scheduler=response_scheduler(projector),
                 event_output_projector=projector,
-                normalizer=V3EventNormalizer("Main Agent"),
+                origin_resolver=event_origin_resolver(),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
                 context=WorkflowRuntimeContext.for_run(
@@ -199,7 +243,7 @@ def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> Non
             input_state={"messages": []},
             response_scheduler=scheduler,
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
+            origin_resolver=event_origin_resolver(),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
         )
@@ -229,7 +273,7 @@ def test_non_string_lifecycle_output_stays_behind_the_runtime_error_boundary() -
             input_state={"messages": []},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
+            origin_resolver=event_origin_resolver(),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
         )
@@ -277,7 +321,7 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
             input_state={"messages": []},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            normalizer=V3EventNormalizer("Main Agent"),
+            origin_resolver=event_origin_resolver(),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
@@ -290,85 +334,3 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
 
     assert code == "event_output.execution_failed"
     assert isinstance(detail_exception, KeyError)
-
-
-def test_model_response_observer_keeps_full_safe_source_data_per_call() -> None:
-    responses = []
-    normalizer = V3EventNormalizer(
-        "Main Agent", model_response_observers=(responses.append,)
-    )
-    normalizer.feed(
-        message_envelope(
-            {
-                "event": "message-start",
-                "role": "ai",
-                "id": "message-1",
-                "metadata": {"provider": "deepseek", "model": "reasoner"},
-            }
-        )
-    )
-    normalizer.feed(
-        message_envelope(
-            {
-                "event": "content-block-finish",
-                "index": 0,
-                "content": {"type": "reasoning", "reasoning": "full thought"},
-            }
-        )
-    )
-    normalizer.feed(
-        message_envelope(
-            {
-                "event": "message-finish",
-                "usage": {
-                    "input_tokens": 7,
-                    "output_tokens": 3,
-                    "total_tokens": 10,
-                    "output_token_details": {"reasoning": 2},
-                },
-                "metadata": {
-                    "finish_reason": "length",
-                    "model_name": "reasoner",
-                    "system_fingerprint": "fp-1",
-                    "logprobs": {"content": []},
-                },
-                "additional_kwargs": {"reasoning_content": "full thought"},
-            }
-        )
-    )
-
-    assert len(responses) == 1
-    response = responses[0]
-    assert response.provider_finish_reason == "length"
-    assert response.finish_reason_source == "response_metadata.finish_reason"
-    assert response.usage["output_token_details"] == {"reasoning": 2}
-    assert response.response_metadata["system_fingerprint"] == "fp-1"
-    assert response.additional_kwargs == {"reasoning_content": "full thought"}
-    assert response.content_blocks == [
-        {"type": "reasoning", "reasoning": "full thought"}
-    ]
-    assert normalizer.finish_reason == "length"
-
-
-def test_last_main_agent_model_call_owns_external_finish_reason() -> None:
-    normalizer = V3EventNormalizer("Main Agent")
-    for run_id, reason in (("run-tools", "tool_calls"), ("run-final", "stop")):
-        normalizer.feed(
-            message_envelope(
-                {"event": "message-start", "role": "ai", "id": run_id},
-                run_id=run_id,
-            )
-        )
-        normalizer.feed(
-            message_envelope(
-                {
-                    "event": "message-finish",
-                    "usage": {},
-                    "metadata": {"finish_reason": reason},
-                },
-                run_id=run_id,
-            )
-        )
-
-    assert normalizer.finish_reason == "stop"
-    assert normalizer.finish_reason_source == "response_metadata.finish_reason"

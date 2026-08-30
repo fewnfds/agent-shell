@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Literal
@@ -12,13 +11,13 @@ from agent_shell.response_stream_policy import ResponseStreamPolicy
 class ResponseEvent:
     """Minimal scheduler signal projected from a runtime event.
 
-    The scheduler only needs presentation metadata and control values.  Raw
-    LangGraph protocol envelopes and the normalizer's product event object stay
-    on the producer side of this boundary.
+    The scheduler only needs presentation metadata and control values. Raw
+    LangGraph protocol envelopes stay on the producer side of this boundary.
     """
 
     kind: Literal["content", "tool", "lifecycle", "event"]
     phase: str
+    origin_run_id: str = ""
     sequence: int = 0
     namespace: str = "root"
     source_type: str = ""
@@ -27,7 +26,6 @@ class ResponseEvent:
     subagent_profile_id: str = ""
     data: object = field(default=None, repr=False)
     stream_id: str = ""
-    source_key: str = ""
     cycle_key: str = ""
     tool_kind: Literal["call", "result", "error", "progress", ""] = ""
     tool_call_id: str = ""
@@ -39,71 +37,14 @@ class ResponseModelCallBoundary:
     """Scheduler signal delimiting one model message invocation."""
 
     run_key: str
-    source_key: str = ""
+    origin_run_id: str = ""
+    source_type: str = ""
+    workflow_node_id: str = ""
+    agent_profile_id: str = ""
+    subagent_profile_id: str = ""
     cycle_key: str = ""
     raw_seq: int = 0
     phase: Literal["start", "end"] = "start"
-
-
-def to_response_signal(event: object) -> ResponseEvent | ResponseModelCallBoundary:
-    """Convert a normalizer event into the scheduler's private signal shape."""
-
-    if isinstance(event, ResponseEvent):
-        return event
-    if isinstance(event, ResponseModelCallBoundary) or (
-        hasattr(event, "run_key") and not hasattr(event, "event_type")
-    ):
-        return ResponseModelCallBoundary(
-            run_key=str(getattr(event, "run_key", "")),
-            source_key=str(getattr(event, "source_key", "") or ""),
-            cycle_key=str(getattr(event, "cycle_key", "") or ""),
-            raw_seq=int(getattr(event, "raw_seq", 0) or 0),
-            phase=("end" if getattr(event, "phase", "start") == "end" else "start"),
-        )
-
-    event_type = str(getattr(event, "event_type", "") or "")
-    values = getattr(event, "values", {})
-    if not isinstance(values, Mapping):
-        values = {}
-    kind = (
-        "content"
-        if event_type in {"assistant_text", "reasoning"}
-        else "tool"
-        if event_type in {"tool_call", "tool_result", "tool_error", "tool_progress"}
-        else "lifecycle"
-        if event_type == "lifecycle"
-        else "event"
-    )
-    tool_kind = (
-        {
-            "tool_call": "call",
-            "tool_result": "result",
-            "tool_error": "error",
-            "tool_progress": "progress",
-        }.get(event_type, "")
-    )
-    return ResponseEvent(
-        kind=kind,
-        phase=str(getattr(event, "phase", "") or ""),
-        sequence=int(getattr(event, "sequence", 0) or 0),
-        namespace=str(getattr(event, "namespace", "root") or "root"),
-        source_type=str(getattr(event, "source_type", "") or ""),
-        workflow_node_id=str(getattr(event, "workflow_node_id", "") or ""),
-        agent_profile_id=str(getattr(event, "agent_profile_id", "") or ""),
-        subagent_profile_id=str(getattr(event, "subagent_profile_id", "") or ""),
-        data=getattr(event, "data", None),
-        stream_id=str(getattr(event, "stream_id", "") or ""),
-        source_key=str(getattr(event, "source_key", "") or ""),
-        cycle_key=str(getattr(event, "cycle_key", "") or ""),
-        tool_kind=tool_kind,
-        tool_call_id=str(values.get("tool_call_id") or ""),
-        terminal=(
-            event_type == "lifecycle"
-            and bool(getattr(event, "workflow_node_id", ""))
-            and str(getattr(event, "phase", "")) in {"end", "error"}
-        ),
-    )
-
 
 FrameKind = Literal["content"]
 FramePhase = Literal["start", "delta", "end", "atomic", "abort"]
@@ -497,23 +438,30 @@ class ResponsePresentationWriter:
 
     @staticmethod
     def event_lane_id(event: ResponseEvent) -> str:
-        source_key = event.source_key.strip()
-        if not source_key:
-            source_key = "|".join(
-                str(item or "")
-                for item in (
-                    event.source_type,
-                    event.workflow_node_id,
-                    event.agent_profile_id,
-                    event.subagent_profile_id,
-                )
+        source_key = "|".join(
+            str(item or "")
+            for item in (
+                event.source_type,
+                event.workflow_node_id,
+                event.agent_profile_id,
+                event.subagent_profile_id,
             )
+        )
         cycle_key = event.cycle_key.strip() or event.namespace.strip() or "root"
-        return f"{source_key}|{cycle_key}"
+        return f"run:{event.origin_run_id}|{source_key}|{cycle_key}"
 
     @staticmethod
     def boundary_lane_id(event: ResponseModelCallBoundary) -> str:
-        return f"{event.source_key or 'unknown'}|{event.cycle_key or 'root'}"
+        source_key = "|".join(
+            str(item or "")
+            for item in (
+                event.source_type,
+                event.workflow_node_id,
+                event.agent_profile_id,
+                event.subagent_profile_id,
+            )
+        )
+        return f"run:{event.origin_run_id}|{source_key}|{event.cycle_key or 'root'}"
 
     def _close_turn_blocks(self, lane_id: str, turn_id: str) -> None:
         if self._open_block_id is not None:
@@ -839,5 +787,4 @@ __all__ = [
     "ResponseEvent",
     "ResponseModelCallBoundary",
     "ResponsePresentationWriter",
-    "to_response_signal",
 ]
