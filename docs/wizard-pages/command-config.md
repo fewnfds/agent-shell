@@ -33,7 +33,7 @@ def create_command():
 ## 输入
 
 - `state` 是当前 Workflow State 的独立可变副本，包含本次调用实际存在的 `shared_vars`、`agent_invocations`、`background_tasks` 和 `files`；
-- `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Lifecycle、Run、Workflow 和 Node invocation identity 位于 `runtime.context`，Store 位于 `runtime.store`，background Run 命令位于 `runtime.context.background_runs`；
+- `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Lifecycle、Workflow Run、Workflow 和 Node invocation identity 使用 `lifecycle_id`、`workflow_run_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id` 等明确字段，Store 位于 `runtime.store`，background Run 命令位于 `runtime.context.background_runs`；
 - 脚本可以修改 `state` 副本，也可以显式返回 `update`。mutation delta 与 `update` 合并时，显式 `update` 覆盖同名顶层 channel。
 
 ## 返回 contract

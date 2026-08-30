@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.event_origin import (
     RunEventOriginResolver,
     WorkflowNodeSource,
@@ -21,22 +22,26 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
             "data": {"answer": 42},
         },
     }
-    context = WorkflowRuntimeContext.for_run(
+    identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="11111111-1111-4111-8111-111111111111",
-        run_id="22222222-2222-4222-8222-222222222222",
-        parent_run_id="33333333-3333-4333-8333-333333333333",
+        workflow_run_id="22222222-2222-4222-8222-222222222222",
+        parent_workflow_run_id="33333333-3333-4333-8333-333333333333",
         background_task_id="44444444-4444-4444-8444-444444444444",
         run_depth=1,
-        workflow={"id": "55555555-5555-4555-8555-555555555555", "workflow_role": "child"},
+        workflow_id="55555555-5555-4555-8555-555555555555",
+        workflow_name="Child Workflow",
+        workflow_role="child",
     )
+    context = WorkflowRuntimeContext.for_run(identity=identity)
     source = WorkflowNodeSource(
         source_type="agent",
         workflow_node_id="agent-a",
         agent_profile_id="66666666-6666-4666-8666-666666666666",
     )
     resolver = RunEventOriginResolver(
-        context,
+        identity,
+        context=context,
         workflow_sources={"agent-a": source},
         main_agent_names=("Main",),
     )
@@ -66,18 +71,25 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
 
 
 def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> None:
-    context = WorkflowRuntimeContext.for_run(
+    identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="11111111-1111-4111-8111-111111111111",
-        run_id="22222222-2222-4222-8222-222222222222",
-        workflow={"id": "55555555-5555-4555-8555-555555555555", "workflow_role": "parent"},
+        workflow_run_id="22222222-2222-4222-8222-222222222222",
+        workflow_id="55555555-5555-4555-8555-555555555555",
+        workflow_name="Parent Workflow",
+        workflow_role="parent",
     )
+    context = WorkflowRuntimeContext.for_run(identity=identity)
     source = WorkflowNodeSource(
         source_type="agent",
         workflow_node_id="agent-a",
         agent_profile_id="66666666-6666-4666-8666-666666666666",
     )
-    resolver = RunEventOriginResolver(context, workflow_sources={"agent-a": source})
+    resolver = RunEventOriginResolver(
+        identity,
+        context=context,
+        workflow_sources={"agent-a": source},
+    )
     event = {
         "seq": 1,
         "method": "lifecycle",

@@ -317,10 +317,14 @@ async def _completion_stream(
             if not cancelled:
                 await deliver("done", None)
 
-    run_id = execution.context.run_id if execution.context is not None else "unbound"
+    workflow_run_id = (
+        execution.identity.workflow_run_id
+        if execution.identity is not None
+        else "unbound"
+    )
     producer = background_tasks.create_detached_task(
         consume_execution(),
-        name=f"request-workflow:{run_id}",
+        name=f"request-workflow:{workflow_run_id}",
     )
     try:
         yield encode(
@@ -428,7 +432,7 @@ async def _completion_stream(
             if producer.cancel():
                 background_tasks.create_detached_task(
                     execution.cancel(),
-                    name=f"cancel-request-workflow:{run_id}",
+                        name=f"cancel-request-workflow:{workflow_run_id}",
                 )
 
 

@@ -15,6 +15,7 @@ from agent_shell.runtime import agent_builder, subagent_middleware
 from agent_shell.runtime.agent_builder import AgentBuilder
 from agent_shell.runtime.agent_compilation import MaterializedAgentProfile
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
@@ -38,7 +39,7 @@ class _ScopeReadingMiddleware(AgentMiddleware):
                         f"private={len(state['messages'])};"
                         f"parent={len(state['workflow_state_snapshot']['agent_invocations'])};"
                         f"node={runtime.context.workflow_node_id};"
-                        f"invocation={runtime.context.invocation_id}"
+                        f"invocation={runtime.context.node_invocation_id}"
                     ),
                 }
             ]
@@ -84,10 +85,14 @@ def test_custom_middleware_reads_private_agent_state_and_parent_workflow_snapsho
         state_schema=AgentShellState,
     )
     context = WorkflowRuntimeContext.for_run(
-        request_id="request-1",
-        lifecycle_id="lifecycle-1",
-        run_id="run-1",
-        checkpoint_thread_id="thread-1",
+        identity=WorkflowRunIdentity(
+            request_id="request-1",
+            lifecycle_id="lifecycle-1",
+            workflow_run_id="run-1",
+            workflow_id="workflow-1",
+            workflow_name="Workflow",
+            checkpoint_thread_id="thread-1",
+        ),
     ).for_workflow_agent(
         workflow_node_id="agent-current",
         agent_id="agent-id",

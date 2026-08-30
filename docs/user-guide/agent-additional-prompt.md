@@ -22,7 +22,7 @@ Agent Additional Prompt（AAP）是 Agent Shell 推荐的 Agent 初始提示词�
         │
         ▼
 Lifecycle Store（不可变请求快照） ─────────┐
-WorkflowRuntimeContext（run/invocation 身份） ──┤
+WorkflowRuntimeContext（Workflow/Node invocation 身份） ──┤
 current Agent State 与 parent Graph snapshot ─┼── AAP abefore_agent(...) ── current Agent private messages
 current Agent 的 Deep Agents Filesystem backend ──┘
 ```
@@ -34,7 +34,7 @@ current Agent 的 Deep Agents Filesystem backend ──┘
 - Main Agent：用 `runtime.context.lifecycle_id` 定位 `runtime.store` 中 `lifecycle_input_namespace(lifecycle_id)` / `LIFECYCLE_INPUT_KEY` 的冻结 OpenAI `system/user/assistant` 请求快照；
 - Subagent：读取 `state["messages"]` 中由 Deep Agents `task` delegation 产生的私有消息；Shell 按 owner 类型把 `scope` 注入为 `main_agent` 或 `subagent`；
 - parent Workflow：读取 `state["workflow_state_snapshot"]` 中的 `agent_invocations[invocation_id]` 轻量 reference，再通过 `runtime.store` 和 `result_ref` 加载完整 invocation artifact；
-- 当前身份：读取 `runtime.context.lifecycle_id`、`run_id`、可空 `checkpoint_thread_id`、`launcher_id`、`background_task_id`、`workflow_node_id`、`agent_id` 与 `invocation_id`；
+- 当前身份：读取 `runtime.context.lifecycle_id`、`workflow_run_id`、可空 `checkpoint_thread_id`、`launcher_id`、`background_task_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id`；
 - 当前动态任务：读取 Command-dispatched Agent 的 `state["workflow_task"]`；
 - 共享文件：使用工厂收到的 current Agent Deep Agents `backend`，按虚拟绝对路径读取；
 - current Agent State：使用 hook 的 `state` 参数以及其他 Middleware 声明的 State channel。

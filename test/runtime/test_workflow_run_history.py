@@ -9,6 +9,7 @@ from langchain_core.outputs import ChatGeneration, LLMResult
 
 from agent_shell.provider_http import ProviderStreamError
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
@@ -71,29 +72,41 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
                 workflow_name="Parent Workflow",
             )
             assert lifecycle.start_run("root-run") is True
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="request-1",
                 lifecycle_id=lifecycle_id,
-                run_id="root-run",
+                workflow_run_id="root-run",
+                workflow_id="workflow-1",
+                workflow_name="Parent Workflow",
                 checkpoint_thread_id="root-thread",
-                workflow={"id": "workflow-1", "name": "Parent Workflow"},
             )
+            context = WorkflowRuntimeContext.for_run(identity=identity)
             diagnostics = _Diagnostics()
             journal = WorkflowRunJournal(
                 lifecycle,
                 diagnostics,  # type: ignore[arg-type]
+                identity,
                 context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
                 agent_profile_ids={"agent-node": "main-agent-profile"},
             )
 
+            graph_root = uuid4()
+            journal.on_chain_start(
+                {},
+                {},
+                run_id=graph_root,
+                name="CompiledStateGraph",
+            )
+            assert str(graph_root) != identity.workflow_run_id
             first = uuid4()
             second = uuid4()
             journal.on_chain_start(
                 {},
                 {"secret": "private-journal-sentinel"},
                 run_id=first,
+                parent_run_id=graph_root,
                 name="agent-node",
                 metadata={"langgraph_node": "agent-node", "langgraph_step": 1},
             )
@@ -102,6 +115,7 @@ def test_run_history_distinguishes_repeated_node_spans_and_structural_events_omi
                 {},
                 {"secret": "private-journal-sentinel"},
                 run_id=second,
+                parent_run_id=graph_root,
                 name="agent-node",
                 metadata={"langgraph_node": "agent-node", "langgraph_step": 2},
             )
@@ -279,16 +293,19 @@ def test_model_requests_keep_main_and_subagent_profile_ownership(tmp_path) -> No
                 workflow_name="Ownership Workflow",
             )
             assert lifecycle.start_run("ownership-run") is True
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="ownership-request",
                 lifecycle_id=lifecycle_id,
-                run_id="ownership-run",
+                workflow_run_id="ownership-run",
+                workflow_id="ownership-workflow",
+                workflow_name="Ownership Workflow",
                 checkpoint_thread_id="ownership-thread",
-                workflow={"id": "ownership-workflow"},
             )
+            context = WorkflowRuntimeContext.for_run(identity=identity)
             journal = WorkflowRunJournal(
                 lifecycle,
                 None,
+                identity,
                 context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},
@@ -409,14 +426,15 @@ def test_model_failure_event_preserves_safe_provider_stream_evidence(tmp_path) -
                 workflow_name="Provider Stream Workflow",
             )
             assert lifecycle.start_run("provider-stream-run") is True
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="provider-stream-request",
                 lifecycle_id=lifecycle_id,
-                run_id="provider-stream-run",
-                checkpoint_thread_id=None,
-                workflow={"id": "provider-stream-workflow"},
+                workflow_run_id="provider-stream-run",
+                workflow_id="provider-stream-workflow",
+                workflow_name="Provider Stream Workflow",
             )
-            journal = WorkflowRunJournal(lifecycle, None, context)
+            context = WorkflowRuntimeContext.for_run(identity=identity)
+            journal = WorkflowRunJournal(lifecycle, None, identity, context)
             journal.on_chat_model_start(
                 {"name": "provider-model"},
                 [[HumanMessage(content="input")]],
@@ -465,17 +483,19 @@ def test_debug_capture_preserves_callback_metadata_and_failure_details(tmp_path)
                 workflow_name="Debug Capture Workflow",
             )
             assert lifecycle.start_run("debug-capture-run") is True
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="debug-capture-request",
                 lifecycle_id=lifecycle_id,
-                run_id="debug-capture-run",
-                checkpoint_thread_id=None,
-                workflow={"id": "debug-capture-workflow"},
+                workflow_run_id="debug-capture-run",
+                workflow_id="debug-capture-workflow",
+                workflow_name="Debug Capture Workflow",
             )
+            context = WorkflowRuntimeContext.for_run(identity=identity)
             diagnostics = _Diagnostics()
             journal = WorkflowRunJournal(
                 lifecycle,
                 diagnostics,  # type: ignore[arg-type]
+                identity,
                 context,
                 debug_capture=True,
             )
@@ -545,19 +565,19 @@ def test_journal_closes_all_open_spans_when_run_is_cancelled(tmp_path) -> None:
                 workflow_name="Cancelled Workflow",
             )
             assert lifecycle.start_run("cancel-run") is True
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="cancel-request",
                 lifecycle_id=lifecycle_id,
-                run_id="cancel-run",
+                workflow_run_id="cancel-run",
+                workflow_id="cancel-workflow",
+                workflow_name="Cancelled Workflow",
                 checkpoint_thread_id="cancel-thread",
-                workflow={
-                    "id": "cancel-workflow",
-                    "name": "Cancelled Workflow",
-                },
             )
+            context = WorkflowRuntimeContext.for_run(identity=identity)
             journal = WorkflowRunJournal(
                 lifecycle,
                 None,
+                identity,
                 context,
                 workflow_node_kinds={"agent-node": "agent"},
                 agent_names={"agent-node": "Writer Agent"},

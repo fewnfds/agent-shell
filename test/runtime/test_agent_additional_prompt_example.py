@@ -9,6 +9,7 @@ from types import ModuleType, SimpleNamespace
 from langgraph.store.memory import InMemoryStore
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.workflow_lifecycle import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
@@ -43,10 +44,14 @@ def test_agent_additional_prompt_example_adds_private_dispatch_task() -> None:
         {"role": "user", "content": "request"},
     ]
     context = WorkflowRuntimeContext.for_run(
-        request_id="request-id",
-        lifecycle_id="lifecycle-id",
-        run_id="run-id",
-        checkpoint_thread_id="thread-id",
+        identity=WorkflowRunIdentity(
+            request_id="request-id",
+            lifecycle_id="lifecycle-id",
+            workflow_run_id="run-id",
+            workflow_id="workflow-id",
+            workflow_name="Workflow",
+            checkpoint_thread_id="thread-id",
+        ),
     )
     store = InMemoryStore()
     store.put(

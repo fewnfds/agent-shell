@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.errors import AgentRuntimeError
 
 from .support import *
@@ -99,14 +100,16 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                 workflow_name="Parent Workflow",
             )
             context = WorkflowRuntimeContext.for_run(
-                request_id="request-background",
-                lifecycle_id=lifecycle_id,
-                run_id="parent-run",
-                checkpoint_thread_id=(
-                    "parent-thread" if parent_checkpointer_enabled else None
+                identity=WorkflowRunIdentity(
+                    request_id="request-background",
+                    lifecycle_id=lifecycle_id,
+                    workflow_run_id="parent-run",
+                    workflow_id="parent-workflow",
+                    workflow_name="Parent Workflow",
+                    checkpoint_thread_id=(
+                        "parent-thread" if parent_checkpointer_enabled else None
+                    ),
                 ),
-                run_depth=0,
-                workflow={"id": "parent-workflow"},
                 background_runtime=snapshot,
             )
             assert context.background_runs is not None

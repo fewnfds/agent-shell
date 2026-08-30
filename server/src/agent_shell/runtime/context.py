@@ -1,24 +1,13 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass, field, replace
-from typing import Any, Mapping
+from dataclasses import dataclass, replace
 
 from agent_shell.runtime.background_commands import (
     BackgroundRunCaller,
     BackgroundRunCommands,
     BackgroundRunRuntime,
 )
-
-
-def _detached(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {str(key): _detached(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return tuple(_detached(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_detached(item) for item in value)
-    return value
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,43 +20,39 @@ class WorkflowRuntimeContext:
 
     request_id: str = ""
     lifecycle_id: str = ""
-    run_id: str = ""
+    workflow_run_id: str = ""
     checkpoint_thread_id: str | None = None
-    parent_run_id: str = ""
+    parent_workflow_run_id: str = ""
     background_task_id: str = ""
     launcher_id: str = ""
     run_depth: int = 0
-    workflow: Mapping[str, Any] = field(default_factory=dict)
+    workflow_id: str = ""
+    workflow_name: str = ""
+    workflow_role: str = ""
     workflow_node_id: str = ""
-    agent_id: str = ""
-    invocation_id: str = ""
+    agent_profile_id: str = ""
+    node_invocation_id: str = ""
     background_runs: BackgroundRunCommands | None = None
 
     @classmethod
     def for_run(
         cls,
         *,
-        request_id: str,
-        lifecycle_id: str,
-        run_id: str,
-        checkpoint_thread_id: str | None = None,
-        parent_run_id: str = "",
-        background_task_id: str = "",
-        launcher_id: str = "",
-        run_depth: int = 0,
-        workflow: Mapping[str, Any] | None = None,
+        identity: WorkflowRunIdentity,
         background_runtime: BackgroundRunRuntime | None = None,
     ) -> "WorkflowRuntimeContext":
         context = cls(
-            request_id=request_id,
-            lifecycle_id=lifecycle_id,
-            run_id=run_id,
-            checkpoint_thread_id=checkpoint_thread_id,
-            parent_run_id=parent_run_id,
-            background_task_id=background_task_id,
-            launcher_id=launcher_id,
-            run_depth=run_depth,
-            workflow=_detached(deepcopy(dict(workflow or {}))),
+            request_id=identity.request_id,
+            lifecycle_id=identity.lifecycle_id,
+            workflow_run_id=identity.workflow_run_id,
+            checkpoint_thread_id=identity.checkpoint_thread_id,
+            parent_workflow_run_id=identity.parent_workflow_run_id,
+            background_task_id=identity.background_task_id,
+            launcher_id=identity.launcher_id,
+            run_depth=identity.run_depth,
+            workflow_id=identity.workflow_id,
+            workflow_name=identity.workflow_name,
+            workflow_role=identity.workflow_role,
         )
         if background_runtime is None:
             return context
@@ -76,11 +61,10 @@ class WorkflowRuntimeContext:
             background_runs=BackgroundRunCommands(
                 background_runtime,
                 BackgroundRunCaller(
-                    request_id=request_id,
-                    lifecycle_id=lifecycle_id,
-                    run_id=run_id,
-                    run_depth=run_depth,
-                    workflow=context.workflow,
+                    request_id=identity.request_id,
+                    lifecycle_id=identity.lifecycle_id,
+                    workflow_run_id=identity.workflow_run_id,
+                    run_depth=identity.run_depth,
                 ),
             ),
         )
@@ -101,7 +85,7 @@ class WorkflowRuntimeContext:
         return replace(
             self,
             workflow_node_id=workflow_node_id,
-            invocation_id=invocation_id,
+            node_invocation_id=invocation_id,
             background_runs=background_runs,
         )
 
@@ -119,7 +103,7 @@ class WorkflowRuntimeContext:
                 workflow_node_id=workflow_node_id,
                 invocation_id=invocation_id,
             ),
-            agent_id=agent_id,
+            agent_profile_id=agent_id,
         )
 
 __all__ = ["WorkflowRuntimeContext"]

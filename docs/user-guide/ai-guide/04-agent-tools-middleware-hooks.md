@@ -107,7 +107,7 @@ def create_tool() -> BaseTool:
 `ToolRuntime` 是 LangChain 注入参数，不进入发送给模型的 Tool input schema。它提供：
 
 - `runtime.state`：current Agent State；
-- `runtime.context`：current `WorkflowRuntimeContext`，包含 Lifecycle、Run、canvas Agent Node、Main Agent 和 invocation identity；
+- `runtime.context`：current `WorkflowRuntimeContext`，包含明确命名的 Lifecycle、Workflow Run、canvas Agent Node、Agent profile 和 Node invocation identity；
 - `runtime.store`：current Lifecycle 可访问的 LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
 - `runtime.context.background_runs`：Agent Shell 的 background Run command facade。
@@ -199,7 +199,7 @@ class InvocationIdentityMiddleware(AgentMiddleware):
                 f"agent:{self._agent_id}": {
                     "agent_type": self._agent_type,
                     "workflow_node_id": context.workflow_node_id,
-                    "invocation_id": context.invocation_id,
+                    "node_invocation_id": context.node_invocation_id,
                 }
             }
         }

@@ -29,7 +29,13 @@ def test_agent_shell_state_exposes_shared_vars_as_public_graph_state() -> None:
 def test_runtime_context_keeps_identity_without_lifecycle_or_parent_state_payloads() -> None:
     fields = WorkflowRuntimeContext.__dataclass_fields__
 
-    assert {"lifecycle_id", "run_id", "checkpoint_thread_id"} <= fields.keys()
+    assert {
+        "lifecycle_id",
+        "workflow_run_id",
+        "checkpoint_thread_id",
+    } <= fields.keys()
+    assert "run_id" not in fields
+    assert "workflow" not in fields
     assert "messages" not in fields
     assert "messages_sha" not in fields
     assert "workflow_state" not in fields

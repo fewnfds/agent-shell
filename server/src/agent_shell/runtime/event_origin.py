@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal, TypedDict
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 
 class EventOutputOriginDict(TypedDict):
@@ -89,8 +90,9 @@ class RunEventOriginResolver:
 
     def __init__(
         self,
-        context: WorkflowRuntimeContext | None,
+        identity: WorkflowRunIdentity | None,
         *,
+        context: WorkflowRuntimeContext | None = None,
         workflow_sources: Mapping[str, WorkflowNodeSource] | None = None,
         main_agent_names: Sequence[str] = (),
         workflow_agent_names: Mapping[str, str] | None = None,
@@ -99,6 +101,7 @@ class RunEventOriginResolver:
         default_agent_profile_id: str = "",
         default_workflow_node_id: str = "",
     ) -> None:
+        self._identity = identity
         self._context = context
         self._sources = dict(workflow_sources or {})
         self._main_agent_names = tuple(str(name) for name in main_agent_names if name)
@@ -166,8 +169,8 @@ class RunEventOriginResolver:
             if source is not None
             else (
                 (
-                    self._context.agent_id
-                    if self._context is not None and self._context.agent_id
+                    self._context.agent_profile_id
+                    if self._context is not None and self._context.agent_profile_id
                     else self._default_agent_profile_id
                 )
                 if agent_name
@@ -260,23 +263,29 @@ class RunEventOriginResolver:
         subagent_profile_id: str = "",
     ) -> EventOutputOriginDict:
         context = self._context
-        workflow = context.workflow if context is not None else {}
+        identity = self._identity
         return {
-            "lifecycle_id": context.lifecycle_id if context is not None else "",
-            "workflow_run_id": context.run_id if context is not None else "",
-            "parent_workflow_run_id": context.parent_run_id if context is not None else "",
-            "workflow_id": str(workflow.get("id", "")),
-            "workflow_role": str(workflow.get("workflow_role", "")),
-            "background_task_id": context.background_task_id if context is not None else "",
-            "run_depth": context.run_depth if context is not None else 0,
+            "lifecycle_id": identity.lifecycle_id if identity is not None else "",
+            "workflow_run_id": (
+                identity.workflow_run_id if identity is not None else ""
+            ),
+            "parent_workflow_run_id": (
+                identity.parent_workflow_run_id if identity is not None else ""
+            ),
+            "workflow_id": identity.workflow_id if identity is not None else "",
+            "workflow_role": identity.workflow_role if identity is not None else "",
+            "background_task_id": (
+                identity.background_task_id if identity is not None else ""
+            ),
+            "run_depth": identity.run_depth if identity is not None else 0,
             "workflow_node_id": workflow_node_id or (
                 context.workflow_node_id if context is not None else ""
             ),
             "node_invocation_id": node_invocation_id or (
-                context.invocation_id if context is not None else ""
+                context.node_invocation_id if context is not None else ""
             ),
             "agent_profile_id": agent_profile_id or (
-                context.agent_id if context is not None else ""
+                context.agent_profile_id if context is not None else ""
             ),
             "subagent_profile_id": subagent_profile_id,
         }

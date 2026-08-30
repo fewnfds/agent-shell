@@ -39,6 +39,7 @@ def test_completion_stream_applies_workflow_disconnect_policy(
     cancel_on_disconnect: bool,
 ) -> None:
     class Execution:
+        identity = None
         context = None
         finish_reason = "stop"
         usage: dict[str, int] = {}
@@ -101,6 +102,7 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Execution:
+        identity = None
         context = None
         finish_reason = "stop"
         usage: dict[str, int] = {}
@@ -287,6 +289,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
     assert captured["workflow_debug_capture_enabled"] is True
     assert captured["run_config"]["recursion_limit"] == 321
     assert captured["run_config"]["max_concurrency"] == 7
+    assert "run_id" not in captured["run_config"]
     assert "configurable" not in captured["run_config"]
     assert captured["durability"] is None
     assert captured["context"].checkpoint_thread_id is None
@@ -427,7 +430,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
                 "thread_id": context.checkpoint_thread_id,
             }
             run = client.app.state.workflow_lifecycle.history.get_run(
-                context.run_id
+                context.workflow_run_id
             )
             assert run is not None
             assert run["checkpoint_thread_id"] == context.checkpoint_thread_id

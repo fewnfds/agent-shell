@@ -12,6 +12,7 @@ from langgraph.runtime import Runtime
 from agent_shell.command import run_command
 from agent_shell.runtime.background_commands import BackgroundRunCaller
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 
 class _CommandRuntime:
@@ -40,11 +41,13 @@ class _CommandRuntime:
 
 def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
     return WorkflowRuntimeContext.for_run(
-        request_id="request-1",
-        lifecycle_id="lifecycle-1",
-        run_id="run-1",
-        checkpoint_thread_id=None,
-        workflow={"id": "workflow-1"},
+        identity=WorkflowRunIdentity(
+            request_id="request-1",
+            lifecycle_id="lifecycle-1",
+            workflow_run_id="run-1",
+            workflow_id="workflow-1",
+            workflow_name="Workflow",
+        ),
         background_runtime=service,
     )
 
@@ -92,7 +95,9 @@ def test_commands_receive_the_official_runtime_commands() -> None:
 
         assert seen == [official_runtime, official_runtime]
         assert [name for name, _caller in service.calls] == ["list", "check"]
-        assert all(caller.run_id == "run-1" for _name, caller in service.calls)
+        assert all(
+            caller.workflow_run_id == "run-1" for _name, caller in service.calls
+        )
 
     asyncio.run(scenario())
 
@@ -121,7 +126,7 @@ def test_command_can_start_background_workflow_and_end_without_a_target() -> Non
         assert result.activate == []
         assert result.update == {"shared_vars": {"published": True}}
         assert service.starts[0][:2] == ("workflow-1", "publish-review")
-        assert service.starts[0][2].run_id == "run-1"
+        assert service.starts[0][2].workflow_run_id == "run-1"
 
     asyncio.run(scenario())
 
@@ -184,15 +189,17 @@ def test_background_workflow_has_its_own_identity_and_command_caller() -> None:
     async def scenario() -> None:
         service = _CommandRuntime()
         context = WorkflowRuntimeContext.for_run(
-            request_id="request-1",
-            lifecycle_id="lifecycle-1",
-            run_id="child-run-1",
-            checkpoint_thread_id=None,
-            parent_run_id="parent-run-1",
-            background_task_id="task-1",
-            launcher_id="router-1",
-            run_depth=1,
-            workflow={"id": "workflow-1"},
+            identity=WorkflowRunIdentity(
+                request_id="request-1",
+                lifecycle_id="lifecycle-1",
+                workflow_run_id="child-run-1",
+                workflow_id="workflow-1",
+                workflow_name="Child Workflow",
+                parent_workflow_run_id="parent-run-1",
+                background_task_id="task-1",
+                launcher_id="router-1",
+                run_depth=1,
+            ),
             background_runtime=service,
         ).for_workflow_node(
             workflow_node_id="command-1",
@@ -201,16 +208,16 @@ def test_background_workflow_has_its_own_identity_and_command_caller() -> None:
 
         assert context.launcher_id == "router-1"
         assert context.background_task_id == "task-1"
-        assert context.agent_id == ""
+        assert context.agent_profile_id == ""
         assert context.workflow_node_id == "command-1"
-        assert context.invocation_id == "command-invocation-1"
+        assert context.node_invocation_id == "command-invocation-1"
         assert context.background_runs is not None
 
         await context.background_runs.list()
 
         assert service.calls == [("list", service.calls[0][1])]
         caller = service.calls[0][1]
-        assert caller.run_id == "child-run-1"
+        assert caller.workflow_run_id == "child-run-1"
         assert caller.caller_id == "command-1"
 
     asyncio.run(scenario())

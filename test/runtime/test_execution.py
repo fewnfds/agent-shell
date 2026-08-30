@@ -10,6 +10,7 @@ from agent_shell.model_provider_contracts import _SETTINGS_BY_PROVIDER
 from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 
@@ -120,23 +121,23 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             child_cancel_started.set()
             await child_cancel_release.wait()
 
+        identity = WorkflowRunIdentity(
+            request_id="cancel-request",
+            lifecycle_id=lifecycle_id,
+            workflow_run_id="cancel-run",
+            workflow_id="cancel-workflow",
+            workflow_name="Cancel Workflow",
+        )
+
         execution = RunExecution(
             graph=None,
             input_state={},
             response_scheduler=None,
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
-            context=WorkflowRuntimeContext.for_run(
-                request_id="cancel-request",
-                lifecycle_id=lifecycle_id,
-                run_id="cancel-run",
-                workflow={
-                    "id": "cancel-workflow",
-                    "name": "Cancel Workflow",
-                },
-            ),
+            identity=identity,
+            context=WorkflowRuntimeContext.for_run(identity=identity),
             lifecycle_service=lifecycle,
-            lifecycle_id=lifecycle_id,
             owns_lifecycle=True,
             cancel_background_children=cancel_children,
         )
@@ -315,6 +316,21 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
         )
         scheduler.register_origin(child_run_id, child_workflow_id)
         quiet_run = QuietRun()
+        parent_identity = WorkflowRunIdentity(
+            request_id="request",
+            lifecycle_id=lifecycle_id,
+            workflow_run_id=parent_run_id,
+            workflow_id=parent_workflow_id,
+            workflow_name="Parent Workflow",
+        )
+        child_identity = WorkflowRunIdentity(
+            request_id="request",
+            lifecycle_id=lifecycle_id,
+            workflow_run_id=child_run_id,
+            parent_workflow_run_id=parent_run_id,
+            workflow_id=child_workflow_id,
+            workflow_name="Child Workflow",
+        )
         parent = RunExecution(
             graph=QuietGraph(quiet_run),
             input_state={},
@@ -322,12 +338,8 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             event_output_projector=output,
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
-            context=WorkflowRuntimeContext.for_run(
-                request_id="request",
-                lifecycle_id=lifecycle_id,
-                run_id=parent_run_id,
-                workflow={"id": parent_workflow_id},
-            ),
+            identity=parent_identity,
+            context=WorkflowRuntimeContext.for_run(identity=parent_identity),
         )
         child = RunExecution(
             graph=EventGraph(
@@ -346,13 +358,8 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
             origin_resolver=event_origin_resolver("Child Agent"),
-            context=WorkflowRuntimeContext.for_run(
-                request_id="request",
-                lifecycle_id=lifecycle_id,
-                run_id=child_run_id,
-                parent_run_id=parent_run_id,
-                workflow={"id": child_workflow_id},
-            ),
+            identity=child_identity,
+            context=WorkflowRuntimeContext.for_run(identity=child_identity),
         )
 
         stream = parent.stream_text()
@@ -430,13 +437,15 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 workflow_id="timeout-workflow",
                 workflow_name="Timeout Workflow",
             )
-            context = WorkflowRuntimeContext.for_run(
+            identity = WorkflowRunIdentity(
                 request_id="timeout-request",
                 lifecycle_id=lifecycle_id,
-                run_id="timeout-run",
+                workflow_run_id="timeout-run",
+                workflow_id="timeout-workflow",
+                workflow_name="Timeout Workflow",
                 checkpoint_thread_id="timeout-thread",
-                workflow={"id": "timeout-workflow", "name": "Timeout Workflow"},
             )
+            context = WorkflowRuntimeContext.for_run(identity=identity)
             execution = RunExecution(
                 graph=Graph(run),
                 input_state={"messages": [{"role": "user", "content": "wait"}]},
@@ -446,8 +455,8 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 media_response=noop_media_response(),
                 execution_timeout_seconds=0.01,
                 lifecycle_service=lifecycle,
-                lifecycle_id=lifecycle_id,
                 owns_lifecycle=True,
+                identity=identity,
                 context=context,
             )
             stream = execution.stream_text()

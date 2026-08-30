@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.input_messages import client_messages_sha
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.runtime import workflow_checkpoints as workflow_checkpoints_module
@@ -129,11 +130,14 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
                 workflow_name="Checkpoint Workflow",
             )
             context = WorkflowRuntimeContext.for_run(
-                request_id="request-1",
-                lifecycle_id=lifecycle_id,
-                run_id=run_id,
-                checkpoint_thread_id=checkpoint_thread_id,
-                workflow={"id": "workflow-1", "name": "Checkpoint Workflow"},
+                identity=WorkflowRunIdentity(
+                    request_id="request-1",
+                    lifecycle_id=lifecycle_id,
+                    workflow_run_id=run_id,
+                    workflow_id="workflow-1",
+                    workflow_name="Checkpoint Workflow",
+                    checkpoint_thread_id=checkpoint_thread_id,
+                ),
             )
             checkpointer = await service.require_checkpointer()
             graph = compile_workflow(

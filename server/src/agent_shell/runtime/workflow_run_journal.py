@@ -9,6 +9,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from agent_shell.provider_http import ProviderStreamError
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.json_values import json_safe
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 
@@ -143,6 +144,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
         self,
         lifecycle: WorkflowLifecycleService,
         diagnostics: RuntimeDiagnostics | None,
+        identity: WorkflowRunIdentity,
         context: WorkflowRuntimeContext,
         *,
         workflow_node_kinds: Mapping[str, str] | None = None,
@@ -153,6 +155,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
     ) -> None:
         self._lifecycle = lifecycle
         self._diagnostics = diagnostics
+        self._identity = identity
         self._context = context
         self._debug_capture = debug_capture
         self._node_kinds = dict(workflow_node_kinds or {})
@@ -171,35 +174,38 @@ class WorkflowRunJournal(BaseCallbackHandler):
             for node_id, profiles in (subagent_profile_ids or {}).items()
         }
         self._spans: dict[str, dict[str, object]] = {}
-        self._child_parent_spans: dict[str, str] = {
-            context.run_id: context.run_id
-        }
+        self._child_parent_spans: dict[str, str] = {}
         self._synthetic_agent_spans: set[str] = set()
         self._span_agents: dict[str, _AgentOwner] = {}
-        if context.agent_id:
+        self._root_callback_run_id: str | None = None
+        self._run_agent_owner: _AgentOwner | None = None
+        if context.agent_profile_id:
             node_id = context.workflow_node_id
             agent_name = self._agent_names.get(node_id, "")
             if not agent_name:
                 matching_nodes = [
                     candidate
                     for candidate, profile_id in self._agent_profile_ids.items()
-                    if profile_id == context.agent_id
+                    if profile_id == context.agent_profile_id
                 ]
                 if len(matching_nodes) == 1:
                     node_id = matching_nodes[0]
                     agent_name = self._agent_names.get(node_id, "")
-            self._span_agents[context.run_id] = _AgentOwner(
+            self._run_agent_owner = _AgentOwner(
                 agent_type="main_agent",
-                agent_id=context.agent_id,
+                agent_id=context.agent_profile_id,
                 agent_name=agent_name or "unknown-agent",
                 workflow_node_id=node_id,
             )
 
     def _parent_span(self, parent_run_id: object | None) -> str:
         if parent_run_id is None:
-            return self._context.run_id
+            return self._identity.workflow_run_id
         parent_id = str(parent_run_id)
-        return self._child_parent_spans.get(parent_id, self._context.run_id)
+        return self._child_parent_spans.get(
+            parent_id,
+            self._identity.workflow_run_id,
+        )
 
     def _record(
         self,
@@ -224,8 +230,8 @@ class WorkflowRunJournal(BaseCallbackHandler):
         if subject_kind == "workflow_node":
             node_invocation_id = span_id
         event = {
-            "lifecycle_id": self._context.lifecycle_id,
-            "run_id": self._context.run_id,
+            "lifecycle_id": self._identity.lifecycle_id,
+            "run_id": self._identity.workflow_run_id,
             "occurred_at": _now(),
             "event_type": event_type,
             "phase": phase,
@@ -253,7 +259,9 @@ class WorkflowRunJournal(BaseCallbackHandler):
             self._lifecycle.append_run_event(event)
         except Exception as exc:
             try:
-                self._lifecycle.mark_run_observation_partial(self._context.run_id)
+                self._lifecycle.mark_run_observation_partial(
+                    self._identity.workflow_run_id
+                )
             except Exception:
                 pass
             if self._diagnostics is not None:
@@ -262,10 +270,10 @@ class WorkflowRunJournal(BaseCallbackHandler):
                     code="workflow_run_event_record_failed",
                     component="observability",
                     context=RuntimeDiagnosticContext(
-                        request_id=self._context.request_id,
-                        lifecycle_id=self._context.lifecycle_id,
-                        run_id=self._context.run_id,
-                        thread_id=self._context.checkpoint_thread_id,
+                        request_id=self._identity.request_id,
+                        lifecycle_id=self._identity.lifecycle_id,
+                        workflow_run_id=self._identity.workflow_run_id,
+                        checkpoint_thread_id=self._identity.checkpoint_thread_id,
                         subject_kind=subject_kind,
                         subject_id=span_id,
                         subject_name=subject_name,
@@ -283,7 +291,11 @@ class WorkflowRunJournal(BaseCallbackHandler):
             owner = self._span_agents.get(str(parent_run_id))
             if owner is not None:
                 return owner
-        return self._span_agents.get(parent_span_id)
+        return self._span_agents.get(parent_span_id) or (
+            self._run_agent_owner
+            if parent_span_id == self._identity.workflow_run_id
+            else None
+        )
 
     def _record_debug_callback_failure(
         self,
@@ -302,10 +314,10 @@ class WorkflowRunJournal(BaseCallbackHandler):
                 code="workflow_callback_failed",
                 component="workflow_debug_capture",
                 context=RuntimeDiagnosticContext(
-                    request_id=self._context.request_id,
-                    lifecycle_id=self._context.lifecycle_id,
-                    run_id=self._context.run_id,
-                    thread_id=self._context.checkpoint_thread_id,
+                    request_id=self._identity.request_id,
+                    lifecycle_id=self._identity.lifecycle_id,
+                    workflow_run_id=self._identity.workflow_run_id,
+                    checkpoint_thread_id=self._identity.checkpoint_thread_id,
                     subject_kind=str(span.get("kind", "callback")),
                     subject_id=span_id,
                     subject_name=str(span.get("name", "unknown")),
@@ -333,8 +345,8 @@ class WorkflowRunJournal(BaseCallbackHandler):
             if len(matching_nodes) == 1:
                 resolved_node_id = matching_nodes[0]
                 profile_id = self._agent_profile_ids.get(resolved_node_id, "")
-        if not profile_id and self._context.agent_id:
-            profile_id = self._context.agent_id
+        if not profile_id and self._context.agent_profile_id:
+            profile_id = self._context.agent_profile_id
             resolved_node_id = self._context.workflow_node_id
         if not profile_id:
             return None
@@ -438,7 +450,7 @@ class WorkflowRunJournal(BaseCallbackHandler):
         return _AgentOwner(
             agent_type="main_agent",
             agent_id=(
-                self._context.agent_id
+                self._context.agent_profile_id
                 or self._agent_profile_ids.get(node_id, "")
                 or f"unresolved:{node_id or agent_name or 'agent'}"
             ),
@@ -477,9 +489,6 @@ class WorkflowRunJournal(BaseCallbackHandler):
         **kwargs,
     ):
         span_id = str(run_id)
-        if span_id == self._context.run_id:
-            self._child_parent_spans[span_id] = span_id
-            return
         parent_span_id = self._parent_span(parent_run_id)
         parent_owner = self._parent_agent(parent_run_id, parent_span_id)
         chain = self._chain_kind(
@@ -487,6 +496,16 @@ class WorkflowRunJournal(BaseCallbackHandler):
             _name(serialized, kwargs),
             parent_owner,
         )
+        if (
+            parent_run_id is None
+            and self._root_callback_run_id is None
+            and chain is None
+        ):
+            self._root_callback_run_id = span_id
+            self._child_parent_spans[span_id] = self._identity.workflow_run_id
+            if self._run_agent_owner is not None:
+                self._span_agents[span_id] = self._run_agent_owner
+            return
         if chain is None:
             self._child_parent_spans[span_id] = parent_span_id
             if parent_owner is not None:
@@ -577,8 +596,8 @@ class WorkflowRunJournal(BaseCallbackHandler):
         try:
             self._lifecycle.append_model_request(
                 {
-                    "lifecycle_id": self._context.lifecycle_id,
-                    "run_id": self._context.run_id,
+                    "lifecycle_id": self._identity.lifecycle_id,
+                    "run_id": self._identity.workflow_run_id,
                     "occurred_at": _now(),
                     "model_run_id": str(run_id),
                     "parent_span_id": parent_span_id,
@@ -599,7 +618,9 @@ class WorkflowRunJournal(BaseCallbackHandler):
             )
         except Exception as exc:
             try:
-                self._lifecycle.mark_run_observation_partial(self._context.run_id)
+                self._lifecycle.mark_run_observation_partial(
+                    self._identity.workflow_run_id
+                )
             except Exception:
                 pass
             if self._diagnostics is not None:
@@ -608,10 +629,10 @@ class WorkflowRunJournal(BaseCallbackHandler):
                     code="workflow_model_request_record_failed",
                     component="observability",
                     context=RuntimeDiagnosticContext(
-                        request_id=self._context.request_id,
-                        lifecycle_id=self._context.lifecycle_id,
-                        run_id=self._context.run_id,
-                        thread_id=self._context.checkpoint_thread_id,
+                        request_id=self._identity.request_id,
+                        lifecycle_id=self._identity.lifecycle_id,
+                        workflow_run_id=self._identity.workflow_run_id,
+                        checkpoint_thread_id=self._identity.checkpoint_thread_id,
                         subject_kind="model",
                         subject_id=str(run_id),
                         subject_name=str(self._spans[str(run_id)]["name"]),

@@ -18,9 +18,8 @@ class BackgroundRunCaller:
 
     request_id: str
     lifecycle_id: str
-    run_id: str
+    workflow_run_id: str
     run_depth: int
-    workflow: Mapping[str, Any]
     caller_id: str = ""
 
 

@@ -71,7 +71,7 @@ def _built_agent_graph(agent_id: str, graph) -> BuiltAgent:
     )
 def test_command_receives_complete_values_and_converts_state_mutation() -> None:
     async def command(state, runtime):
-        state.setdefault("shared_vars", {})["workflow_id"] = runtime.context.workflow["id"]
+        state.setdefault("shared_vars", {})["workflow_id"] = runtime.context.workflow_id
         return {
             "activate": ["review", "audit"],
             "dispatch": [
@@ -90,7 +90,7 @@ def test_command_receives_complete_values_and_converts_state_mutation() -> None:
             state={"shared_vars": {"risk": 90}, "agent_invocations": {}, "files": {}},
             runtime=_runtime(
                 request_id="request-1",
-                workflow={"id": "workflow-1"},
+                workflow_id="workflow-1",
             ),
             allowed_branches={"review", "audit"},
             allowed_dispatch_keys={"process"},
@@ -271,8 +271,8 @@ def test_compiler_uses_command_for_named_multi_branch_routing() -> None:
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-1"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-1",
             ),
         )
     )
@@ -319,8 +319,8 @@ def test_compiler_commits_update_and_ends_at_command_with_zero_targets() -> None
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-1"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-1",
             ),
         )
     )
@@ -505,8 +505,8 @@ def test_compiler_combines_branch_dispatch_and_update_with_deferred_collection()
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-1"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-1",
             ),
         )
     )

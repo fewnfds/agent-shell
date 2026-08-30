@@ -733,8 +733,8 @@ class BackgroundTaskManager:
         return RuntimeDiagnosticContext(
             request_id=record.request_id,
             lifecycle_id=record.lifecycle_id,
-            run_id=record.child_run_id,
-            thread_id=record.checkpoint_thread_id,
+            workflow_run_id=record.child_run_id,
+            checkpoint_thread_id=record.checkpoint_thread_id,
             subject_kind=record.target_kind,
             subject_id=record.target_id,
             subject_name=record.target_name,

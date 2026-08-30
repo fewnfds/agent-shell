@@ -300,8 +300,8 @@ def build_workflow_lifecycle_router(
             component="persistence",
             context=RuntimeDiagnosticContext(
                 lifecycle_id=lifecycle_id,
-                run_id=run_id,
-                thread_id=checkpoint_thread_id or None,
+                workflow_run_id=run_id,
+                checkpoint_thread_id=checkpoint_thread_id or None,
                 subject_kind="persistence",
                 subject_name="Workflow Checkpointer",
             ),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.runtime.response_presentation import PresentationFrame
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
@@ -168,6 +169,13 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
             monkeypatch.setattr(lifecycle, "append_protocol_event", fail_record)
             diagnostics = Diagnostics()
             projector = OutputProjector(output_renderer({"custom": "{{message}}"}))
+            identity = WorkflowRunIdentity(
+                request_id="debug-event-request",
+                lifecycle_id=lifecycle_id,
+                workflow_run_id="debug-event-run",
+                workflow_id="debug-event-workflow",
+                workflow_name="Debug Event Workflow",
+            )
             execution = RunExecution(
                 graph=EventGraph(
                     [
@@ -189,18 +197,9 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                 origin_resolver=event_origin_resolver(),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
-                context=WorkflowRuntimeContext.for_run(
-                    request_id="debug-event-request",
-                    lifecycle_id=lifecycle_id,
-                    run_id="debug-event-run",
-                    checkpoint_thread_id=None,
-                    workflow={
-                        "id": "debug-event-workflow",
-                        "name": "Debug Event Workflow",
-                    },
-                ),
+                identity=identity,
+                context=WorkflowRuntimeContext.for_run(identity=identity),
                 lifecycle_service=lifecycle,
-                lifecycle_id=lifecycle_id,
                 runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
                 workflow_debug_capture_enabled=True,
             )

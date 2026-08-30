@@ -157,8 +157,8 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
                 context=RuntimeDiagnosticContext(
                     request_id=request_id,
                     lifecycle_id="lifecycle-one",
-                    run_id="run-one",
-                    thread_id="thread-one",
+                    workflow_run_id="run-one",
+                    checkpoint_thread_id="thread-one",
                     parent_workflow_id="workflow-parent",
                     parent_workflow_name="Published Workflow",
                     subject_kind="agent",
@@ -260,7 +260,9 @@ def test_runtime_diagnostic_keeps_structured_entry_when_detail_write_fails(
             OSError("journal unavailable"),
             code="workflow_run_event_record_failed",
             component="observability",
-            context=RuntimeDiagnosticContext(run_id="run-without-detail"),
+            context=RuntimeDiagnosticContext(
+                workflow_run_id="run-without-detail"
+            ),
         )
         entries = client.app.state.runtime_diagnostics.snapshot()["entries"]
 

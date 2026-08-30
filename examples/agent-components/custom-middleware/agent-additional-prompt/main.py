@@ -47,7 +47,10 @@ async def load_invocation_artifact(
     if runtime.store is None or not isinstance(result_ref, str) or not result_ref:
         raise RuntimeError("workflow invocation artifact is unavailable")
     item = await runtime.store.aget(
-        lifecycle_invocations_namespace(context.lifecycle_id, context.run_id),
+        lifecycle_invocations_namespace(
+            context.lifecycle_id,
+            context.workflow_run_id,
+        ),
         result_ref,
     )
     value = getattr(item, "value", None)

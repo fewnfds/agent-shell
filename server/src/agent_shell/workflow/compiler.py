@@ -69,7 +69,7 @@ def _make_agent_node(*, node_id: str, built_agent: Any):
         runtime: Runtime[WorkflowRuntimeContext],
     ) -> dict[str, Any]:
         invocation_id, invoked_at = _invocation_metadata(runtime)
-        workflow_id = str(runtime.context.workflow.get("id", ""))
+        workflow_id = runtime.context.workflow_id
         if not workflow_id:
             raise AgentRuntimeError(
                 "workflow.identity_unavailable",
@@ -119,7 +119,7 @@ def _make_agent_node(*, node_id: str, built_agent: Any):
         await runtime.store.aput(
             lifecycle_invocations_namespace(
                 runtime.context.lifecycle_id,
-                runtime.context.run_id,
+                runtime.context.workflow_run_id,
             ),
             invocation_id,
             invocation_artifact,

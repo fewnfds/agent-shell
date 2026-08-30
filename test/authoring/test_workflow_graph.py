@@ -566,8 +566,8 @@ def test_executable_validation_allows_agent_free_script_graph() -> None:
         },
         context=WorkflowRuntimeContext(
             lifecycle_id="lifecycle-1",
-            run_id="run-1",
-            workflow={"id": "workflow-1"},
+            workflow_run_id="run-1",
+            workflow_id="workflow-1",
         ),
         include_tool_call_transformer=False,
         public_output=False,
@@ -654,8 +654,8 @@ def test_compiler_maps_canvas_start_and_end_to_langgraph_sentinels() -> None:
             context=WorkflowRuntimeContext(
                 request_id="request-1",
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -733,8 +733,8 @@ def test_serial_agents_have_private_messages_and_explicit_parent_snapshot() -> N
             context=WorkflowRuntimeContext(
                 request_id="request-1",
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -861,8 +861,8 @@ def test_normal_edge_fan_out_and_fan_in_merge_invocations_and_independent_files(
             context=WorkflowRuntimeContext(
                 request_id="request-1",
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -971,8 +971,8 @@ def test_normal_multi_in_compiles_as_one_all_of_barrier_and_runs_target_once() -
             context=WorkflowRuntimeContext(
                 request_id="request-1",
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -1050,8 +1050,8 @@ def test_start_and_normal_predecessor_activate_the_same_target_independently() -
             {"shared_vars": {}, "agent_invocations": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-start-independent",
-                run_id="run-start-independent",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-start-independent",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -1203,8 +1203,8 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
             context=WorkflowRuntimeContext(
                 request_id="request-loop",
                 lifecycle_id="lifecycle-loop",
-                run_id="run-loop",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-loop",
+                workflow_id="workflow-id",
             ),
         )
     )
@@ -1279,8 +1279,8 @@ def test_static_normal_edge_cycle_has_no_controlled_exit() -> None:
                 config={"recursion_limit": 4},
                 context=WorkflowRuntimeContext(
                     lifecycle_id="lifecycle-1",
-                    run_id="run-1",
-                    workflow={"id": "workflow-id"},
+                    workflow_run_id="run-1",
+                    workflow_id="workflow-id",
                 ),
             )
         )
@@ -1333,8 +1333,8 @@ def test_workflow_agent_nodes_share_official_state_backend_files() -> None:
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                run_id="run-1",
-                workflow={"id": "workflow-id"},
+                workflow_run_id="run-1",
+                workflow_id="workflow-id",
             ),
         )
     )

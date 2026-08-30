@@ -334,7 +334,7 @@ def test_lifecycle_management_summarizes_and_deletes_dynamic_workspace(
             component="observability",
             context=RuntimeDiagnosticContext(
                 lifecycle_id=summary["lifecycle_id"],
-                run_id=root_run["run_id"],
+                workflow_run_id=root_run["run_id"],
             ),
         )
 
