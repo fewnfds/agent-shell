@@ -99,10 +99,14 @@ describe('SystemSettingsPage', () => {
     await interval.setValue('500')
     await wrapper.get('#workflow-debug-capture-enabled').setValue(true)
     await wrapper.get('#runtime-policy-chat_completion_body_bytes').setValue('32')
-    await wrapper.get('#system-settings-form').trigger('submit')
+    await wrapper.get('[data-testid="system-card-validation"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateValidationSettings).toHaveBeenCalledWith(500)
+    expect(api.updateRuntimePolicy).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="system-card-runtime-policy"]').trigger('submit')
+    await flushPromises()
     expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
       chat_completion_body_bytes: 32 * 1024 * 1024,
       provider_timeout_seconds: 600,

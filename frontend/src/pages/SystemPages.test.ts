@@ -96,7 +96,7 @@ function runtimePolicyApi() {
 }
 
 describe('SystemSettingsPage', () => {
-  it('loads and saves typed system settings without filling secret values', async () => {
+  it('saves each settings owner independently without filling secret values', async () => {
     const api = {
       ...validationSettingsApi(),
       ...runtimePolicyApi(),
@@ -114,13 +114,14 @@ describe('SystemSettingsPage', () => {
     const cards = wrapper.findAll('[data-testid^="system-card-"]')
     expect(cards).toHaveLength(4)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
-    expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-hdd-network', 'bi-sliders', 'bi-gear', 'bi-shield-lock'])
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
-    expect(saveButtons).toHaveLength(1)
-    await saveButtons[0]!.trigger('click')
+    expect(saveButtons).toHaveLength(4)
+    expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
+      .toEqual(['bi-hdd-network', 'bi-key', 'bi-check2-square', 'bi-sliders'])
+
+    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
@@ -136,11 +137,18 @@ describe('SystemSettingsPage', () => {
       cors_origins: [],
       trusted_proxy_cidrs: [],
     })
+    expect(api.saveApiServer).not.toHaveBeenCalled()
+    expect(api.updateValidationSettings).not.toHaveBeenCalled()
+    expect(api.updateRuntimePolicy).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('systemSettings.restartRequired')
+
+    await wrapper.get('[data-testid="system-card-api-server"]').trigger('submit')
+    await flushPromises()
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'keep' },
       max_initial_messages: 1000,
     })
-    expect(wrapper.text()).toContain('systemSettings.restartRequired')
+    expect(api.updateSystemSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).not.toContain('test-management-token')
   })
 
@@ -177,8 +185,7 @@ describe('SystemSettingsPage', () => {
     const textareas = wrapper.findAll('textarea')
     await textareas[0]!.setValue('http://localhost:3000\nhttp://127.0.0.1:3000')
     await textareas[1]!.setValue('127.0.0.1/32')
-    const save = wrapper.findAll('button').find((button) => button.text() === 'common.save')
-    await save!.trigger('click')
+    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
@@ -194,13 +201,17 @@ describe('SystemSettingsPage', () => {
       cors_origins: ['http://localhost:3000', 'http://127.0.0.1:3000'],
       trusted_proxy_cidrs: ['127.0.0.1/32'],
     })
+    expect(api.saveApiServer).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="system-card-api-server"]').trigger('submit')
+    await flushPromises()
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'replace', value: 'new-api-key' },
       max_initial_messages: 2500,
     })
   })
 
-  it('reveals only newly entered credentials and clears edited API keys through the unified save', async () => {
+  it('reveals only newly entered credentials and clears secrets through their owning save', async () => {
     const api = {
       ...validationSettingsApi(),
       ...runtimePolicyApi(),
@@ -233,13 +244,17 @@ describe('SystemSettingsPage', () => {
 
     await apiKey.setValue('')
     await langsmithApiKey.setValue('')
-    await wrapper.get('[data-testid="system-settings-form"]').trigger('submit')
+    await wrapper.get('[data-testid="system-card-api-server"]').trigger('submit')
     await flushPromises()
 
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'clear' },
       max_initial_messages: 1000,
     })
+    expect(api.updateSystemSettings).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
+    await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
       langsmith_api_key: { operation: 'clear' },
     }))
