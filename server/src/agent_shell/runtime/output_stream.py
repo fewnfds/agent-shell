@@ -15,6 +15,7 @@ from agent_shell.runtime.model_response import (
 from agent_shell.runtime.usage import RunUsageAccumulator
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.message_state import MessageRunRegistry
+from agent_shell.runtime.tool_state import ToolCallRegistry
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 from pydantic import ValidationError
@@ -208,7 +209,7 @@ class V3EventNormalizer:
         self._blocks: dict[tuple[str, int], _MessageBlock] = {}
         self._message_runs = MessageRunRegistry()
         self._responses = ModelResponseTracker(model_response_observers)
-        self._tool_names: dict[tuple[str, str, str], str] = {}
+        self._tool_names = ToolCallRegistry()
         self._subagent_runs: dict[str, tuple[str, str]] = {}
         self._usage_accumulator = usage_accumulator or RunUsageAccumulator()
         self._raw_seq: int = 0
@@ -1120,14 +1121,15 @@ class V3EventNormalizer:
             arguments if isinstance(arguments, str) else _json_text(arguments)
         )
         if call_id and name:
-            self._tool_names[
+            self._tool_names.remember(
                 self._tool_cache_key(
                     namespace=namespace,
                     node=node,
                     agent_name=agent_name,
                     call_id=call_id,
-                )
-            ] = name
+                ),
+                name,
+            )
         return self._event(
             "tool_call",
             phase,
@@ -1177,10 +1179,10 @@ class V3EventNormalizer:
             call_id=call_id,
         )
         name = str(
-            data.get("tool_name") or result_name or self._tool_names.get(tool_key, "")
+            data.get("tool_name") or result_name or self._tool_names.get(tool_key)
         )
         if call_id and name:
-            self._tool_names[tool_key] = name
+            self._tool_names.remember(tool_key, name)
         if lifecycle == "tool-started":
             return [
                 self._event(
@@ -1216,7 +1218,7 @@ class V3EventNormalizer:
                 )
             ]
         if lifecycle == "tool-finished":
-            self._tool_names.pop(tool_key, None)
+            self._tool_names.pop(tool_key)
             return [
                 self._event(
                     "tool_result",
@@ -1235,7 +1237,7 @@ class V3EventNormalizer:
                 )
             ]
         if "fail" in lifecycle or "error" in lifecycle:
-            self._tool_names.pop(tool_key, None)
+            self._tool_names.pop(tool_key)
             return [
                 self._event(
                     "tool_error",
