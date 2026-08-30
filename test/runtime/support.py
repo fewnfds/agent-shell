@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import weakref
 from collections.abc import Callable
 from types import SimpleNamespace
 
@@ -27,6 +28,10 @@ from agent_shell.runtime.output_stream import (
     V3EventNormalizer,
 )
 
+_SCHEDULER_PROJECTORS: weakref.WeakKeyDictionary[LifecycleResponseScheduler, object] = (
+    weakref.WeakKeyDictionary()
+)
+
 
 def _render_template(template: str, event: dict[str, object]) -> str:
     return re.sub(
@@ -40,12 +45,58 @@ def output_renderer(
     templates: dict[str, str] | None = None,
     *,
     enabled: set[str] | None = None,
-) -> Callable[[dict[str, object]], str]:
+) -> Callable[[dict[str, object], dict[str, object]], str]:
     resolved_templates = templates or {"assistant_text": "{{message}}"}
     resolved_enabled = set(resolved_templates) if enabled is None else enabled
+    streamed_blocks: set[tuple[str, int]] = set()
 
-    def output(event: dict[str, object]) -> str:
-        event_type = str(event["event_type"])
+    def output(event: dict[str, object], origin: dict[str, object]) -> str:
+        method = str(event.get("method") or "")
+        params = event.get("params")
+        data = params.get("data") if isinstance(params, dict) else None
+        phase = "delta"
+        message = ""
+        event_type = method
+        if method == "messages" and isinstance(data, (list, tuple)) and len(data) == 2:
+            payload = data[0]
+            if isinstance(payload, dict):
+                raw_event = str(payload.get("event") or "")
+                if raw_event in {"content-block-delta", "content-block-start", "content-block-finish"}:
+                    block = payload.get("delta") or payload.get("content")
+                    if isinstance(block, dict):
+                        block_type = str(block.get("type") or "")
+                        event_type = "reasoning" if "reasoning" in block_type else "assistant_text"
+                        metadata = data[1] if isinstance(data[1], dict) else {}
+                        run_id = str(metadata.get("run_id") or "")
+                        index = payload.get("index")
+                        block_key = (run_id, index) if isinstance(index, int) else None
+                        if raw_event == "content-block-start" and block_key is not None:
+                            streamed_blocks.add(block_key)
+                        elif raw_event == "content-block-delta" and block_key is not None:
+                            streamed_blocks.add(block_key)
+                        # A streamed finish payload is a snapshot. Suppress it
+                        # after real deltas; a finish without a prior block is
+                        # the whole-message form and remains visible.
+                        if raw_event != "content-block-finish" or block_key not in streamed_blocks:
+                            message = str(block.get("text") or block.get("reasoning") or "")
+                        elif block_type in {"text", "reasoning"}:
+                            return ""
+                phase = "delta" if raw_event in {"content-block-delta", "content-block-finish"} else "start"
+            else:
+                message = str(getattr(payload, "text", "") or "")
+                event_type = "assistant_text"
+                phase = "delta"
+        elif method == "custom":
+            message = str(data)
+        event = {
+            "event_type": event_type,
+            "phase": phase,
+            "message": message,
+            "data": data,
+            "source_type": "agent" if origin.get("agent_profile_id") else "non_agent",
+            "tool_name": "",
+            "tool_call_id": "",
+        }
         if event_type not in resolved_enabled:
             return ""
         if (
@@ -65,17 +116,45 @@ def output_renderer(
     return output
 
 
+def run_output_renderer(
+    template: str = "{{status}}",
+) -> Callable[[dict[str, object], dict[str, object]], str]:
+    """Render Shell's synthetic Run status hook for runtime tests."""
+
+    def run_output(event: dict[str, object], origin: dict[str, object]) -> str:
+        if event.get("type") != "agent_shell.workflow_run":
+            return ""
+        return _render_template(template, event)
+
+    return run_output
+
+
 def response_scheduler(
     projector,
     policy: ResponseStreamPolicy | None = None,
+    *,
+    run_output=None,
 ) -> LifecycleResponseScheduler:
-    return LifecycleResponseScheduler(
+    if run_output is not None:
+        from agent_shell.runtime.output_projection import OutputProjector
+
+        projector = OutputProjector(None, run_output=run_output)
+    scheduler = LifecycleResponseScheduler(
         policy or ResponseStreamPolicy(),
-        projection_stream=EventOutputProjectionStream(projector),
+        projection_stream=EventOutputProjectionStream(),
         lifecycle_id="",
         origin_run_id="",
         origin_workflow_id="",
     )
+    # Keep the projector outside the scheduler. RunExecution receives it
+    # explicitly; workflow event helpers use this test-only association to
+    # exercise the raw-event boundary without reaching into production state.
+    _SCHEDULER_PROJECTORS[scheduler] = projector
+    return scheduler
+
+
+def scheduler_projector(scheduler: LifecycleResponseScheduler):
+    return _SCHEDULER_PROJECTORS[scheduler]
 
 
 @pytest.fixture

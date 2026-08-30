@@ -67,10 +67,12 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
                 }
             ),
         ]
+        projector = OutputProjector(output)
         execution = RunExecution(
             graph=EventGraph(events),
             input_state={"messages": []},
-            response_scheduler=response_scheduler(OutputProjector(output)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -121,6 +123,7 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
 
             monkeypatch.setattr(lifecycle, "append_protocol_event", fail_record)
             diagnostics = Diagnostics()
+            projector = OutputProjector(output_renderer({"custom": "{{message}}"}))
             execution = RunExecution(
                 graph=EventGraph(
                     [
@@ -137,9 +140,8 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                     ]
                 ),
                 input_state={"messages": []},
-                response_scheduler=response_scheduler(
-                    OutputProjector(output_renderer({"custom": "{{message}}"}))
-                ),
+                response_scheduler=response_scheduler(projector),
+                event_output_projector=projector,
                 normalizer=V3EventNormalizer("Main Agent"),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
@@ -177,15 +179,17 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:
-    def output(event: dict[str, object]) -> str:
-        if event["event_type"] != "lifecycle":
-            return ""
+    def output(event: dict[str, object], origin: dict[str, object]) -> str:
+        return ""
+
+    def run_output(event: dict[str, object], origin: dict[str, object]) -> str:
         return "started" if event["phase"] == "start" else "finished"
 
     payload = ResponseStreamPolicy().model_dump(mode="json")
     payload["queue"]["send_interval_seconds"] = 0.01
+    projector = OutputProjector(output, run_output=run_output)
     scheduler = response_scheduler(
-        OutputProjector(output),
+        projector,
         ResponseStreamPolicy.model_validate(payload),
     )
 
@@ -194,6 +198,7 @@ def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> Non
             graph=EventGraph([]),
             input_state={"messages": []},
             response_scheduler=scheduler,
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -205,10 +210,25 @@ def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> Non
 
 def test_non_string_lifecycle_output_stays_behind_the_runtime_error_boundary() -> None:
     async def scenario() -> None:
+        projector = OutputProjector(lambda event, origin: event)
         execution = RunExecution(
-            graph=EventGraph([]),
+            graph=EventGraph(
+                [
+                    {
+                        "type": "event",
+                        "seq": 1,
+                        "method": "custom",
+                        "params": {
+                            "namespace": [],
+                            "timestamp": 1,
+                            "data": "custom",
+                        },
+                    }
+                ]
+            ),
             input_state={"messages": []},
-            response_scheduler=response_scheduler(OutputProjector(lambda event: event)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -234,14 +254,29 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
             ) -> None:
                 self.detail_exception = detail_exception
 
-        def output(event: dict[str, object]) -> str:
+        def output(event: dict[str, object], origin: dict[str, object]) -> str:
             return str(event["tool_name"])
 
         diagnostics = RecordingDiagnostics()
+        projector = OutputProjector(output)
         execution = RunExecution(
-            graph=EventGraph([]),
+            graph=EventGraph(
+                [
+                    {
+                        "type": "event",
+                        "seq": 1,
+                        "method": "custom",
+                        "params": {
+                            "namespace": [],
+                            "timestamp": 1,
+                            "data": "custom",
+                        },
+                    }
+                ]
+            ),
             input_state={"messages": []},
-            response_scheduler=response_scheduler(OutputProjector(output)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),

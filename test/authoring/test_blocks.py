@@ -270,7 +270,7 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
         key="timeline-output",
         family="event-output",
         adapter="agent-event-output",
-        source='def output(event):\n    return event["message"]\n',
+            source='def output(event, origin):\n    return ""\n',
     )
     client = make_client(tmp_path, monkeypatch)
 

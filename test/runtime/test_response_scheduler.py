@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.output_projection import EventOutputProjectionStream, OutputProjector
+from agent_shell.runtime.output_projection import EventOutputProjectionStream
 from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
@@ -33,37 +33,9 @@ def _policy(**updates: object) -> ResponseStreamPolicy:
 def _scheduler(
     policy: ResponseStreamPolicy | None = None,
 ) -> LifecycleResponseScheduler:
-    def output(event: dict[str, object]) -> str:
-        event_type = str(event["event_type"])
-        phase = str(event["phase"])
-        message = str(event["message"])
-        if event_type == "assistant_text":
-            if isinstance(event["data"], dict) and event["data"].get("type") in {
-                "image", "audio", "video", "file",
-            }:
-                return f"<text>{message}</text>"
-            return message if phase == "delta" else ""
-        if event_type == "reasoning":
-            if phase == "start":
-                return '<details type="agent"><summary>Reasoning</summary>'
-            if phase == "delta":
-                return message
-            if phase == "end":
-                return "</details>\n"
-            return ""
-        templates = {
-            "tool_call": "<call id={{tool_call_id}}>{{message}}</call>",
-            "tool_result": "<result id={{tool_call_id}}>{{message}}</result>",
-            "tool_error": "<error id={{tool_call_id}}>{{message}}</error>",
-            "custom": "<custom>{{message}}</custom>",
-        }
-        template = templates.get(event_type)
-        return output_renderer({event_type: template})(event) if template else ""
-
-    projector = OutputProjector(output)
     return LifecycleResponseScheduler(
         policy or _policy(),
-        projection_stream=EventOutputProjectionStream(projector),
+        projection_stream=EventOutputProjectionStream(),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
@@ -122,9 +94,17 @@ def _submit(
     event: OutputEvent | ModelCallBoundary,
     now: float,
 ) -> list[str]:
+    text = ""
+    segment_end_text = ""
+    if isinstance(event, OutputEvent):
+        text, segment_end_text = _projected_text(event)
     return [
         frame.text
-        for projected in scheduler.projection_stream.project(event)
+        for projected in scheduler.projection_stream.project(
+            event,
+            text=text,
+            segment_end_text=segment_end_text,
+        )
         for frame in scheduler.submit(
             ResponseEventInput(
                 lifecycle_id=LIFECYCLE_ID,
@@ -136,6 +116,46 @@ def _submit(
             ), now=now,
         )
     ]
+
+
+def _projected_text(event: OutputEvent) -> tuple[str, str]:
+    """Supply already-rendered text to scheduler tests.
+
+    Runtime tests call the public extension before this stream. Scheduler
+    tests start at the private projected-event boundary and therefore pass
+    text explicitly instead of invoking an Event Output package.
+    """
+
+    if event.event_type == "assistant_text":
+        if isinstance(event.data, dict) and event.data.get("type") in {
+            "image",
+            "audio",
+            "video",
+            "file",
+        }:
+            return f"<text>{event.message}</text>", ""
+        return (
+            (event.message if event.phase == "delta" else ""),
+            "",
+        )
+    if event.event_type == "reasoning":
+        if event.phase == "start":
+            return '<details type="agent"><summary>Reasoning</summary>', "</details>\n"
+        if event.phase == "delta":
+            return event.message, ""
+        if event.phase == "end":
+            return "", "</details>\n"
+        return "", ""
+    templates = {
+        "tool_call": "<call id={tool_call_id}>{message}</call>",
+        "tool_result": "<result id={tool_call_id}>{message}</result>",
+        "tool_error": "<error id={tool_call_id}>{message}</error>",
+        "custom": "<custom>{message}</custom>",
+    }
+    template = templates.get(event.event_type)
+    if template is None:
+        return "", ""
+    return template.format(message=event.message, **event.values), ""
 
 
 def test_request_atom_holds_competing_request_until_idle_timeout() -> None:
@@ -569,49 +589,61 @@ def test_content_projection_is_additive_and_media_remains_atomic() -> None:
 
 
 def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
-    calls: list[tuple[str, str]] = []
-
-    def output(event: dict[str, object]) -> str:
-        if event["event_type"] != "assistant_text":
-            return ""
-        phase = str(event["phase"])
-        message = str(event["message"])
-        calls.append((phase, message))
-        if phase == "start":
-            return "<answer>"
-        if phase == "delta":
-            return message
-        if phase == "end":
-            return "</answer>"
-        return ""
-
     scheduler = LifecycleResponseScheduler(
         _policy(queue={"send_interval_seconds": 0}),
-        projection_stream=EventOutputProjectionStream(OutputProjector(output)),
+        projection_stream=EventOutputProjectionStream(),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
     )
 
-    rendered = _submit(
-        scheduler,
-        _event(
-            "agent-a",
-            "assistant_text",
-            "end",
-            1,
-            stream_id="whole",
-            message="complete response",
-        ),
-        0,
+    def submit_projected(
+        event: OutputEvent,
+        *,
+        text: str,
+        segment_end_text: str = "",
+    ) -> list[str]:
+        return [
+            frame.text
+            for projected in scheduler.projection_stream.project(
+                event,
+                text=text,
+                segment_end_text=segment_end_text,
+            )
+            for frame in scheduler.submit(
+                ResponseEventInput(
+                    lifecycle_id=LIFECYCLE_ID,
+                    origin_run_id=RUN_ID,
+                    origin_workflow_id=WORKFLOW_ID,
+                    event=projected.event,
+                    text=projected.text,
+                    segment_end_text=projected.segment_end_text,
+                ),
+                now=0,
+            )
+        ]
+
+    rendered = submit_projected(
+        _event("agent-a", "assistant_text", "start", 1, stream_id="whole"),
+        text="<answer>",
+        segment_end_text="</answer>",
+    )
+    rendered.extend(
+        submit_projected(
+            _event(
+                "agent-a",
+                "assistant_text",
+                "end",
+                2,
+                stream_id="whole",
+                message="complete response",
+            ),
+            text="complete response",
+            segment_end_text="</answer>",
+        )
     )
 
     assert rendered == ["<answer>", "complete response", "</answer>"]
-    assert calls == [
-        ("start", ""),
-        ("delta", "complete response"),
-        ("end", ""),
-    ]
 
 
 def test_message_finish_is_a_strong_boundary_before_content_finish_arrives() -> None:
@@ -1019,10 +1051,15 @@ def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None
             sequence,
             message=message,
             source_type="script",
-        )
+            )
+        text, segment_end_text = _projected_text(event)
         return [
             frame.text
-            for projected in scheduler.projection_stream.project(event)
+            for projected in scheduler.projection_stream.project(
+                event,
+                text=text,
+                segment_end_text=segment_end_text,
+            )
             for frame in scheduler.submit(
                 ResponseEventInput(
                     lifecycle_id=LIFECYCLE_ID,

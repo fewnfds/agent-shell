@@ -362,31 +362,50 @@ def test_complete_blocks_and_atomic_events_keep_v3_arrival_order() -> None:
 
 
 def test_projector_uses_event_scripts_without_a_separate_filter_layer() -> None:
-    tool_result = OutputEvent(
-        event_type="tool_result",
-        phase="end",
-        sequence=1,
-        timestamp="2026-01-01T00:00:00Z",
-        agent_name="Main Agent",
-        node="tools",
-        message="<unsafe>",
-        values={"tool_name": "commit", "status": "completed"},
-    )
-    tool_call = OutputEvent(
-        event_type="tool_call",
-        phase="end",
-        sequence=2,
-        timestamp="2026-01-01T00:00:01Z",
-        agent_name="Main Agent",
-        node="tools",
-        message="call",
-        values={"tool_name": "commit"},
-    )
+    def output(event: dict[str, object], origin: dict[str, object]) -> str:
+        if event.get("method") != "tools":
+            return ""
+        data = event["params"]["data"]
+        if data["event"] == "tool-finished":
+            return str(data["output"])
+        if data["event"] == "tool-started":
+            return "call"
+        return ""
 
-    projector = OutputProjector(output_renderer({
-        "tool_result": "{{message}}",
-        "tool_call": "{{message}}",
-    }))
+    projector = OutputProjector(output)
 
-    assert projector.render(tool_result) == "<unsafe>"
-    assert projector.render(tool_call) == "call"
+    assert projector.render(
+        {
+            "type": "event",
+            "seq": 1,
+            "method": "tools",
+            "params": {
+                "namespace": [],
+                "timestamp": 1,
+                "data": {
+                    "event": "tool-finished",
+                    "tool_call_id": "call-1",
+                    "output": "<unsafe>",
+                },
+            },
+        },
+        {},
+    ) == "<unsafe>"
+    assert projector.render(
+        {
+            "type": "event",
+            "seq": 2,
+            "method": "tools",
+            "params": {
+                "namespace": [],
+                "timestamp": 2,
+                "data": {
+                    "event": "tool-started",
+                    "tool_call_id": "call-1",
+                    "tool_name": "commit",
+                    "input": {},
+                },
+            },
+        },
+        {},
+    ) == "call"

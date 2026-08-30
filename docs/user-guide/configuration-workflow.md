@@ -76,9 +76,9 @@ AAP 可以读取 `state["workflow_task"]`，把当前任务材料编排进 Agent
 ### 事件输出
 
 Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecycle`、`values`、`updates`、`tasks` 等 Workflow-owned non-Agent v3 事件；
-每类事件由配置独占 Python package 中的同步 `output(event)` 处理，直接读取稳定 dict 和其中的原始 Python `data` 对象并返回字符串。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent Event Output。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
+每类事件由配置独占 Python package 中的同步 `output(event, origin)` 处理，直接读取 LangGraph v3 原始 envelope 和其中的 Python `data` 对象；`origin` 只提供 Shell Lifecycle、Run、Workflow、Node 与 Agent 身份。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent Event Output。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
 
-Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模式。每个规范化事件先执行所属 `output(event)`；空字符串不进入公开输出队列，也不刷新输出原子的空闲倒计时，非空字符串携带原有request/invocation身份进入响应流调度。运行时仍可消费无正文的request、content和Node terminal控制边界来关闭segment或释放atom，但不会把它们变成公开文本。调度器只能排序、保持Tool transaction原子和按批次排水。`assistant_text`与`reasoning`使用additive `start / delta / end`：首文本写在`start`，每个`delta`只返回新增文本，尾文本写在`end`。非流式完整正文由投影层机械展开为`start -> delta(完整正文) -> end`，同一脚本无需判断Provider是否流式，也不会在每个delta重复首尾修饰。已收到delta时相信delta拼接；finish snapshot不一致只用于诊断，不能重复公开正文或终止Run。
+Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模式。每个原始 ProtocolEvent 先执行所属 `output(event, origin)`；空字符串不进入公开输出队列，非空字符串携带 origin 进入响应流调度。Shell 合成的 Run 状态由可选 `run_output(run_event, origin)` 处理。调度器只能排序、保持 Tool transaction 原子和按批次排水。
 
 ## 校验与生效
 

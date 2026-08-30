@@ -71,7 +71,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         adapter="agent-event-output",
         directory="agent_event_output",
         factory_name="output",
-        factory_parameters=("event",),
+        factory_parameters=("event", "origin"),
     ),
     "workflow-event-output": PackageAdapterSpec(
         template_parts=("workflow", "workflow_event_output"),
@@ -80,7 +80,7 @@ PACKAGE_COMPONENT_SPECS: dict[str, PackageAdapterSpec] = {
         adapter="workflow-event-output",
         directory="workflow_event_output",
         factory_name="output",
-        factory_parameters=("event",),
+        factory_parameters=("event", "origin"),
     ),
     "command": PackageAdapterSpec(
         template_parts=("workflow", "command"),

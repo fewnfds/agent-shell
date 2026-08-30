@@ -180,10 +180,12 @@ def test_child_agent_and_workflow_events_join_the_parent_lifecycle_response(
                 client,
                 "Child workflow output",
                 source=(
-                    "def output(event):\n"
-                    "    if event['event_type'] == 'lifecycle':\n"
-                    "        return f\"<child-workflow>{event['phase']}\" "
-                    "+ '</child-workflow>'\n"
+                    "def output(event, origin):\n"
+                    "    return ''\n"
+                    "\n"
+                    "def run_output(event, origin):\n"
+                    "    if event.get('type') == 'agent_shell.workflow_run':\n"
+                    "        return f\"<child-workflow>{event['phase']}\" + '</child-workflow>'\n"
                     "    return ''\n"
                 ),
             ),

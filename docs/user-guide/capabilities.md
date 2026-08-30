@@ -36,7 +36,7 @@ Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式�
 每个 canvas Agent Node wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；parent Workflow State 的 `agent_invocations` 只保存 identity 和 `result_ref`，并按 Node/Command dispatch task 逻辑槽保留最新 reference。synchronous Subagent 仍由 Deep Agents official Middleware 在 Main Agent 内部调度，不建立隐藏的 archive wrapper。
 这条 parent/child State 输出映射不需要额外的结束 Hook 或 Recorder 组件。
 
-Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event)` 读取稳定 dict，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
+Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 
 检查点保存器也是 Workflow-owned 组件。Workflow 通过可空 `checkpointer_id` 选择一个配置，默认【无】；组件只有 `name` 和 `durability=exit|async|sync`，默认 `async`。选择后，Workflow root 使用官方 `AsyncSqliteSaver`，其 Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承 saver；parent 与 background child Workflow 分别读取自己的配置。未选择时最终 State、Store、Lifecycle、Run/Event/Model Request History、background Run、Tracing、Diagnostics 和 usage 继续工作，只缺少 Checkpoint State 与 Checkpoint Thread。当前软件不提供 Resume 或灾难恢复入口。字段见[检查点保存器](../wizard-pages/checkpointer-config.md)。
 

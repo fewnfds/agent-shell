@@ -238,11 +238,17 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     )
     output_template.mkdir(parents=True, exist_ok=True)
     (output_template / "main.py").write_text(
-        'def output(event):\n'
-        '    if (event["event_type"] == "assistant_text"\n'
-        '            and event["phase"] == "delta"):\n'
-        '        return event["message"]\n'
-        '    return ""\n',
+        'def output(event, origin):\n'
+        '    if event.get("method") != "messages":\n'
+        '        return ""\n'
+        '    data = event.get("params", {}).get("data", ())\n'
+        '    if not isinstance(data, (list, tuple)) or len(data) != 2:\n'
+        '        return ""\n'
+        '    payload = data[0]\n'
+        '    if isinstance(payload, dict) and payload.get("event") == "content-block-delta":\n'
+        '        delta = payload.get("delta", {})\n'
+        '        return str(delta.get("text", "")) if isinstance(delta, dict) else ""\n'
+        '    return str(getattr(payload, "text", "") or "")\n',
         encoding="utf-8",
     )
     instance_environment.patch(

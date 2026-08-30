@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from langchain_core.messages import AIMessage
 
 from agent_shell.runtime.output_projection import WorkflowOutputProjector
@@ -11,7 +13,7 @@ from agent_shell.workflow.events import (
     emit_workflow_custom_event,
 )
 
-from .support import output_renderer, response_scheduler
+from .support import output_renderer, response_scheduler, scheduler_projector
 
 
 MAIN_A = "11111111-1111-4111-8111-111111111111"
@@ -21,12 +23,65 @@ SUBAGENT_B = "44444444-4444-4444-8444-444444444444"
 
 
 def _workflow_output(event_name: str):
+    if event_name == "custom":
+        def custom_output(event, origin):
+            data = event.get("params", {}).get("data")
+            return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+        return custom_output
     return output_renderer({event_name: "{{message}}"})
 
 
 def _schedule(scheduler, event: OutputEvent) -> list[str]:
+    projector = scheduler_projector(scheduler)
+    method = event.workflow_event_kind or event.event_type
+    if event.event_type in {"assistant_text", "reasoning"}:
+        delta = {
+            "type": (
+                "reasoning-delta"
+                if event.event_type == "reasoning"
+                else "text-delta"
+            )
+        }
+        delta["reasoning" if event.event_type == "reasoning" else "text"] = event.message
+        raw = {
+            "type": "event",
+            "seq": event.raw_seq or event.sequence,
+            "method": "messages",
+            "params": {
+                "namespace": [event.namespace],
+                "timestamp": event.timestamp,
+                "data": (
+                    {
+                        "event": "content-block-delta",
+                        "delta": delta,
+                    },
+                    {"run_id": event.stream_id},
+                ),
+            },
+        }
+    else:
+        data = event.data
+        if data is None and method == "custom":
+            data = {**event.values, "message": event.message}
+        raw = {
+            "type": "event",
+            "seq": event.raw_seq or event.sequence,
+            "method": method,
+            "params": {
+                "namespace": [event.namespace],
+                "timestamp": event.timestamp,
+                "data": data,
+            },
+        }
+    origin = {
+        "workflow_node_id": event.workflow_node_id,
+        "agent_profile_id": event.agent_profile_id,
+        "subagent_profile_id": event.subagent_profile_id,
+    }
+    text = projector.render(raw, origin)
     frames = []
-    for projected in scheduler.projection_stream.project(event):
+    for projected in scheduler.projection_stream.project(event, text=text):
         frames.extend(
             scheduler.submit(
                 ResponseEventInput(
@@ -530,7 +585,11 @@ def test_workflow_event_output_script_selects_and_renders_non_agent_events() -> 
     allowed = response_scheduler(
         WorkflowOutputProjector(
             {},
-            workflow_output=lambda event: event["channel"] + ":" + event["message"],
+            workflow_output=lambda event, origin: (
+                event["params"]["data"].get("channel", "")
+                + ":"
+                + str(event["params"]["data"].get("message", ""))
+            ),
         )
     )
 
@@ -580,9 +639,9 @@ def test_non_agent_raw_channels_default_to_string_while_agent_state_stays_intern
     configured = response_scheduler(
         WorkflowOutputProjector(
             {},
-            workflow_output=lambda event: (
-                event["data"]["result"]
-                if event["event_type"] == "updates"
+                workflow_output=lambda event, origin: (
+                event["params"]["data"]["result"]
+                if event["method"] == "updates"
                 else ""
             ),
         )
@@ -602,10 +661,18 @@ def test_workflow_event_output_script_receives_the_full_state_dict() -> None:
     )
     projector = WorkflowOutputProjector(
         {},
-        workflow_output=lambda event: str(event["data"]["shared_vars"]["answer"]),
+        workflow_output=lambda event, origin: str(
+            event["params"]["data"]["shared_vars"]["answer"]
+        ),
     )
 
-    assert projector.render(values) == "42"
+    assert projector.render(
+        {
+            "method": "values",
+            "params": {"namespace": [], "data": values.data},
+        },
+        {"workflow_node_id": "", "agent_profile_id": ""},
+    ) == "42"
 
 
 def test_v3_marks_only_the_full_state_channel_for_filtering() -> None:

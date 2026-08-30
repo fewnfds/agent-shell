@@ -30,7 +30,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
 - `AgentShellState.shared_vars` 保存公共 Workflow State 业务变量；Workflow 装配 Checkpointer 时它参与官方 checkpoint，Middleware 实例属性只保存当前实例的运行期数据。
-- Agent Event Output 使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event)` 返回公开文本。
+- Agent Event Output 使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event, origin)` 读取原始 LangGraph v3 ProtocolEvent 与明确的 Shell origin 返回公开文本。
 
 ### Middleware 禁用装配查证表（deepagents 0.7.11）
 

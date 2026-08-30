@@ -90,6 +90,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
         children_cancelled = False
+        projector = OutputProjector(output, run_output=run_output_renderer())
 
         async def cancel_children() -> None:
             nonlocal children_cancelled
@@ -98,7 +99,8 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
         execution = RunExecution(
             graph=Graph(run),
             input_state={"messages": [{"role": "user", "content": "cancel me"}]},
-            response_scheduler=response_scheduler(OutputProjector(output)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -192,14 +194,14 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
 
 def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
     async def scenario() -> bool:
+        projector = OutputProjector(output_renderer())
         execution = RunExecution(
             graph=EventGraph(
                 [message_envelope(AIMessageChunk(content="ready", id="message-1"))]
             ),
             input_state={"messages": []},
-            response_scheduler=response_scheduler(
-                OutputProjector(output_renderer())
-            ),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -259,20 +261,23 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
         payload = ResponseStreamPolicy().model_dump(mode="json")
         payload["queue"]["send_interval_seconds"] = 0.1
         run = QuietRun()
+        projector = OutputProjector(
+            output_renderer(
+                {
+                    "lifecycle": "{{message}}",
+                    "assistant_text": "{{message}}",
+                }
+            ),
+            run_output=run_output_renderer("{{status}}"),
+        )
         execution = RunExecution(
             graph=Graph(run),
             input_state={},
             response_scheduler=response_scheduler(
-                OutputProjector(
-                    output_renderer(
-                        {
-                            "lifecycle": "{{message}}",
-                            "assistant_text": "{{message}}",
-                        }
-                    )
-                ),
+                projector,
                 ResponseStreamPolicy.model_validate(payload),
             ),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -333,7 +338,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
         output = OutputProjector(output_renderer())
         scheduler = LifecycleResponseScheduler(
             ResponseStreamPolicy(),
-            projection_stream=EventOutputProjectionStream(output),
+            projection_stream=EventOutputProjectionStream(),
             lifecycle_id=lifecycle_id,
             origin_run_id=parent_run_id,
             origin_workflow_id=parent_workflow_id,
@@ -344,7 +349,8 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             graph=QuietGraph(quiet_run),
             input_state={},
             response_scheduler=scheduler,
-            output_projection_stream=EventOutputProjectionStream(output),
+            output_projection_stream=EventOutputProjectionStream(),
+            event_output_projector=output,
             normalizer=V3EventNormalizer("Parent Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -367,7 +373,8 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             ),
             input_state={},
             response_scheduler=scheduler,
-            output_projection_stream=EventOutputProjectionStream(output),
+            output_projection_stream=EventOutputProjectionStream(),
+            event_output_projector=output,
             response_consumer=False,
             normalizer=V3EventNormalizer("Child Agent"),
             middleware_runtime=noop_middleware_runtime(),
@@ -441,6 +448,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
 
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
+        projector = OutputProjector(output, run_output=run_output_renderer())
         lifecycle = WorkflowLifecycleService(
             SQLiteDatabase(tmp_path / "timeout.sqlite3"),
             store_database=SQLiteFile(tmp_path / "timeout-workflow-store.sqlite3"),
@@ -465,7 +473,8 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
             execution = RunExecution(
                 graph=Graph(run),
                 input_state={"messages": [{"role": "user", "content": "wait"}]},
-                response_scheduler=response_scheduler(OutputProjector(output)),
+                response_scheduler=response_scheduler(projector),
+                event_output_projector=projector,
                 normalizer=V3EventNormalizer("Main Agent"),
                 middleware_runtime=noop_middleware_runtime(),
                 media_response=noop_media_response(),
@@ -533,10 +542,12 @@ def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:
                 self.codes.append(code)
 
         diagnostics = RecordingDiagnostics()
+        projector = OutputProjector(output_renderer())
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [], "shared_vars": {}},
-            response_scheduler=response_scheduler(OutputProjector(output_renderer())),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -669,12 +680,12 @@ def test_graph_recursion_failure_uses_step_limit_error() -> None:
                 assert transformers
                 raise GraphRecursionError("private graph state")
 
+        projector = OutputProjector(output_renderer())
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "loop"}]},
-            response_scheduler=response_scheduler(
-                OutputProjector(output_renderer())
-            ),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -752,10 +763,12 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
 
         output = output_renderer({"lifecycle": "{{message}}"})
         diagnostics = RecordingDiagnostics()
+        projector = OutputProjector(output, run_output=run_output_renderer())
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "fail"}]},
-            response_scheduler=response_scheduler(OutputProjector(output)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
@@ -788,10 +801,15 @@ def test_classified_graph_failure_emits_matching_lifecycle_error() -> None:
                 )
 
         output = output_renderer({"lifecycle": "{{phase}}:{{error_code}}"})
+        projector = OutputProjector(
+            output,
+            run_output=run_output_renderer("{{phase}}:{{error_code}}"),
+        )
         execution = RunExecution(
             graph=Graph(),
             input_state={"messages": [{"role": "user", "content": "fail"}]},
-            response_scheduler=response_scheduler(OutputProjector(output)),
+            response_scheduler=response_scheduler(projector),
+            event_output_projector=projector,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),

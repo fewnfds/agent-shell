@@ -1,66 +1,31 @@
 # Workflow Event Output
 
-Workflow Event Output 是可复用的 Workflow 组件，不属于 Agent capability。每个 Workflow 通过 `workflow_event_output_id` 可绑定零或一个；不绑定时，Workflow-owned 的 non-Agent 事件不会写入 OpenAI 响应。canvas Agent Node 产生的事件仍使用各 Main Agent 的[Agent Event Output](agent-event-output-config.md)。
-
-它与 Agent Event Output 使用同一文件化扩展模式：一份配置独占一个 Python package，`main.py` 必须只提供恰好一个同步单参 `def output(event)`，不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。所有 Workflow 事件在同一函数内按 `event["event_type"]` 分支；函数必须返回 `str`，空字符串表示过滤。
-可从 `GET /api/python-package-templates/workflow-event-output` 加载内置示例，保存后源码与示例解耦。`内置示例-default` 展示全部 Workflow-owned 事件；`内置示例-lifecycle-progress` 只展示 lifecycle 和 custom 进度，过滤 State snapshot、task、checkpoint、debug 与其他事件。
-
-非空返回值在这里确定后携带原事件的 request/invocation身份进入 Response Stream scheduler。调度器只排序和节流发送，不能再次按事件类型或 Workflow Node隐藏、替换、包装该文本，也不会自行生成 queued、waiting或 producing文案。需要可见运行状态时，由本组件对真实 lifecycle/custom等事件返回状态文本。
-
-内置示例使用与 Agent Event Output 相同的 HTML `details` 结构，并为 `custom`、`lifecycle`、`values`、`updates`、`tasks`、
-`checkpoints`、`input`、`input.requested`、`debug` 和 `other` 分别保留分支。各分支都在同一个 `output(event)` 中按需处理；
-返回空字符串只过滤 OpenAI 响应投影，不改变已经产生的 LangGraph v3 event，也不会刷新当前输出原子的空闲倒计时；该 event 是否出现在运行历史或 checkpoint 取决于独立观测与持久化边界。
-
-下面是只投影 `values` 的最小示例；完整 10 分支源码位于 `examples/workflow-components/workflow-event-output/default/main.py`：
+Workflow Event Output 是可复用 Workflow 组件。`main.py` 的协议入口是同步 `output(event, origin)`：`event` 为 LangGraph v3 原始 `ProtocolEvent`，`origin` 为 Agent Shell Run、Workflow 和 Node 身份。它只负责把 Workflow-owned event 投影为文本；返回空字符串表示过滤。
 
 ```python
-def output(event):
-    if event["event_type"] != "values":
+def output(event, origin):
+    method = event.get("method")
+    if method != "custom":
         return ""
-    return (
-        '<details type="workflow"><summary>*Workflow values*</summary>'
-        f'{event["message"]}</details>\n'
-    )
+    params = event.get("params", {})
+    data = params.get("data") if isinstance(params, dict) else None
+    return f"Workflow progress: {data}\n"
+
+
+def run_output(event, origin):
+    if event.get("type") == "agent_shell.workflow_run":
+        return f"Workflow {event.get('status', '')}\n"
+    return ""
 ```
 
-## 公共字段
+`event` 保持官方 envelope：`seq` 严格递增，`method` 是 channel，`params.namespace` 是从 root 到 nested graph 的 segment 路径，`params.timestamp` 是 wall-clock timestamp，`params.data` 是 channel-specific Python payload。不得期待 `event_type`、`phase`、`message`、`workflow_node_id` 等平台重新封装字段；Node 和 Agent 身份从 `origin` 获取。
 
-所有 Workflow 事件都含有 Agent Event Output 文档列出的公共字段：`event_type`、`phase`、`sequence`、`timestamp`、
-`namespace`、`agent_name`、`node`、`message`、`data`、`source_type`、`workflow_node_id`、`agent_profile_id`、
-`subagent_profile_id`。`event_type` 使用下表中的 Workflow v3 method 分类。
+`origin` 字段为 `lifecycle_id`、`workflow_run_id`、`parent_workflow_run_id`、`workflow_id`、`workflow_role`、`background_task_id`、`run_depth`、`workflow_node_id`、`node_invocation_id`、`agent_profile_id` 和 `subagent_profile_id`。它只保存 Shell 产品身份；model run、Tool、namespace、seq 和 payload 细节继续从 `event` 读取。无法证明归属时不猜测身份。
 
-## 各 Workflow 事件 dict
+函数签名必须恰好是 `def output(event, origin)`，不接受异步函数、默认参数或额外参数。异常或非字符串返回值以 `event_output.execution_failed`（502）终止运行；依赖未准备好时返回 `python_package.dependencies_not_ready`（409）。原始事件不会因过滤而丢失，Response Stream Scheduler 仅负责所有 Run 之间的先后、公平排队和节流。
 
-| `event_type` | 附加 key | `data` 的 Python 值 |
-| --- | --- | --- |
-| `custom` | `channel`, `data_json` | `get_stream_writer()` 或 v3 custom event 写出的原始 Python payload |
-| `lifecycle` | `status`, `finish_reason`, `error_code` | Workflow/script lifecycle envelope `dict` |
-| `values` | `channel`, `data_json` | LangGraph `values` 模式的完整 Workflow State，通常为 `dict` |
-| `updates` | `channel`, `data_json` | LangGraph `updates` 模式的 node-to-update `dict`，值可能继续包含消息或 `Command` 等 Python 对象 |
-| `tasks` | `channel`, `data_json` | LangGraph task 事件的 Python payload，通常为 task 描述 `dict` 或集合 |
-| `checkpoints` | `channel`, `data_json` | checkpoint 事件的 Python payload，通常为 `dict` |
-| `input` | `channel`, `data_json` | 图输入事件的 Python payload，通常为输入 State `dict` |
-| `input.requested` | `channel`, `data_json` | 请求外部输入/中断相关的 Python payload |
-| `debug` | `channel`, `data_json` | LangGraph debug payload，通常为 `dict` |
-| `other` | `channel`, `data_json` | 当前未归入上述 method 的原始 payload；`channel` 保留原 method 名 |
+Shell Run 开始、完成、失败状态不是官方 ProtocolEvent。需要显示这些产品状态时，在同一个 package 中提供可选同步 `run_output(run_event, origin)`；它接收 `type="agent_shell.workflow_run"` 的小型产品事件。不要把该状态写回 `event`。
 
-`channel` 对已知 State 类事件等于事件 method；`data_json` 是用于显示和简单拼接的 JSON 文本。要访问完整 State、消息对象、`Command` 或其他 Python 值，应使用 `event["data"]`。这些对象来自锁定 LangChain/LangGraph 版本的 v3 语义 payload，
-不保证本身 JSON-compatible；本页外层 `event` dict 和字段名才是 Agent Shell 的稳定输出脚本 contract。
-`custom` payload 为 `str` 时，`message` 保持原始字符串，`data_json` 保持带 JSON 字符串引号的合法 JSON 文本。payload 为其他类型时，`message` 与 `data_json` 都使用紧凑 JSON 文本。
+Workflow 通过 `workflow_event_output_id` 绑定零或一个组件。`custom`、`values`、`updates`、`tasks`、`checkpoints`、`input`、`input.requested`、`debug` 等 channel 的原始 Python payload 可直接读取；是否进入历史、checkpoint 或 debug journal 由各自观测边界决定。canvas Agent Node 的 ProtocolEvent 由 Agent Event Output 处理，Workflow-owned non-Agent event 由本组件处理。
 
-`output(event)` 抛异常或返回非字符串时以 `event_output.execution_failed`（502）终止本次运行；声明了尚未就绪的依赖时，请求期返回 `python_package.dependencies_not_ready`（409）。公开错误响应使用结构化摘要；组件源码以受信任服务进程权限执行。
-
-创建时先从 `GET /api/python-package-templates/workflow-event-output` 取得精确 `key` 与 `revision`，再提交：
-
-```json
-{
-  "name": "Workflow 输出",
-  "python_package": {"folder": ""},
-  "python_package_template": {
-    "key": "内置示例-default",
-    "revision": "<catalog revision>"
-  }
-}
-```
-
-endpoint 为 `POST /api/blocks/workflow-event-output`。新建时 folder 必须为空且 revision 必须与 catalog 一致；保存后 package folder 等于配置名称，`package.json.id` 等于配置 UUID。重命名会同步移动目录，复制会生成新的名称目录和 manifest UUID。
+从 `GET /api/python-package-templates/workflow-event-output` 取得模板 `key` 与 `revision`，提交到 `POST /api/blocks/workflow-event-output`。package folder 等于配置名称，manifest ID 等于配置 UUID。

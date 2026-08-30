@@ -304,20 +304,31 @@ def agent_event_output_payload(
     include_lifecycle: bool = True,
 ) -> dict[str, object]:
     lifecycle_branch = (
-        '    if event["event_type"] == "lifecycle":\n'
+        'def run_output(event, origin):\n'
+        '    if event.get("type") == "agent_shell.workflow_run":\n'
         '        return f\'<status phase="{event["phase"]}">{event["status"]}</status>\'\n'
+        '    return ""\n'
         if include_lifecycle
-        else ""
+        else 'def run_output(event, origin):\n    return ""\n'
     )
     return _python_output_payload(
         client,
         "agent-event-output",
         name,
-        'def output(event):\n'
-        '    if event["event_type"] == "assistant_text":\n'
-        '        return event["message"]\n'
-        f"{lifecycle_branch}"
-        '    return ""\n',
+        'def output(event, origin):\n'
+        '    if event.get("method") != "messages":\n'
+        '        return ""\n'
+        '    data = event.get("params", {}).get("data", ())\n'
+        '    if not isinstance(data, (list, tuple)) or len(data) != 2:\n'
+        '        return ""\n'
+        '    payload = data[0]\n'
+        '    if not isinstance(payload, dict):\n'
+        '        return str(getattr(payload, "text", "") or "")\n'
+        '    if payload.get("event") == "content-block-delta":\n'
+        '        delta = payload.get("delta", {})\n'
+        '        return str(delta.get("text", "")) if isinstance(delta, dict) else ""\n'
+        '    return ""\n\n'
+        f"{lifecycle_branch}",
     )
 
 
@@ -325,7 +336,7 @@ def workflow_event_output_payload(
     client: TestClient,
     name: str = "Visible workflow events",
     *,
-    source: str = 'def output(event):\n    return ""\n',
+    source: str = 'def output(event, origin):\n    return ""\n',
 ) -> dict[str, object]:
     return _python_output_payload(
         client,

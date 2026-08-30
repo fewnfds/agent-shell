@@ -12,9 +12,9 @@ Custom Middleware：在 Agent lifecycle、model call 或 Tool call 周围增加�
 
 Command：执行确定性 State transition、Branch Edge selection 和运行时 Agent task dispatch。同步 `create_command()` 返回 async Node callable。
 
-Agent Event Output：过滤和渲染 Agent event。同步 `output(event)` 返回 `str`。
+Agent Event Output：过滤和渲染 Agent event。同步 `output(event, origin)` 返回 `str`。
 
-Workflow Event Output：过滤和渲染 Workflow-owned event。同步 `output(event)` 返回 `str`。
+Workflow Event Output：过滤和渲染 Workflow-owned event。同步 `output(event, origin)` 返回 `str`。
 
 各接口的行为 owner：
 
@@ -179,26 +179,32 @@ Agent Shell 使用 async Agent execution path；同步 hook 需要对应 async h
 
 ## 8. Event Output contract
 
-Agent Event Output 和 Workflow Event Output 都只有一个同步 entry：
+Agent Event Output 和 Workflow Event Output 的 protocol entry 都是同步双参数函数：
 
 ```python
-def output(event):
-    if (
-        event["event_type"] == "assistant_text"
-        and event["phase"] == "delta"
-    ):
-        return event["message"]
+def output(event, origin):
+    if event.get("method") != "messages":
+        return ""
+    params = event.get("params", {})
+    data = params.get("data") if isinstance(params, dict) else None
+    if isinstance(data, (list, tuple)) and len(data) == 2:
+        payload = data[0]
+        if isinstance(payload, dict) and payload.get("event") == "content-block-delta":
+            delta = payload.get("delta")
+            return str(delta.get("text", "")) if isinstance(delta, dict) else ""
     return ""
 ```
 
 系统约束：
 
-- `output(event)` 必须返回 `str`；
-- 所属 scope 的所有 event type 都进入同一个 function；
-- 读取 event-specific field 前先判断 `event_type`；
-- `assistant_text`和`reasoning`按`start / delta / end`投影，首尾修饰只放在 start/end分支；
+- `output(event, origin)` 必须返回 `str`；
+- `event` 是 LangGraph v3 原始 ProtocolEvent，`origin` 只保存 Agent Shell Lifecycle/Run/Workflow/Node/Agent 身份；
+- 读取 channel-specific payload 前先判断 `event["method"]`；
+- `messages`、`tools`、`custom`、`values`、`updates`、`tasks`、`input`、`lifecycle` 等官方 channel 原样传递；
 - 空字符串只过滤公开渲染文本；
 - Event Output 不更新 State、不选择 successor，也不处理顶层 HTTP error。
+
+Shell 合成的 Run 状态不是 ProtocolEvent。需要输出开始、完成或失败状态时，可选提供同步 `run_output(run_event, origin)`；它只处理 `type="agent_shell.workflow_run"` 的产品状态。
 
 Agent Event Output 处理 Agent-owned event。Workflow Event Output 处理 Workflow-owned non-Agent event。
 
@@ -214,9 +220,9 @@ from langgraph.config import get_stream_writer
 get_stream_writer()("Command selected branch review.\n")
 ```
 
-只在 `command(state, runtime)` 等 runtime callable 内获取 writer。不要在 module top level、factory 或 `output(event)` 中调用。
+只在 `command(state, runtime)` 等 runtime callable 内获取 writer。不要在 module top level、factory 或 `output(event, origin)` 中调用。
 
-这些数据在 LangGraph v3 stream 中成为 `custom` event。Command 属于 Workflow，因此需要 Workflow 引用 Workflow Event Output，并由其 `custom` branch 返回非空字符串，才会进入 OpenAI response。
+这些数据在 LangGraph v3 stream 中成为 `custom` event。Command 属于 Workflow，因此需要 Workflow 引用 Workflow Event Output，并由其 `output(event, origin)` 的 `custom` branch 返回非空字符串，才会进入 OpenAI response。
 
 Agent Node 内 Tool 或 Middleware 写出的 `custom` event 使用该 Agent 的 Agent Event Output projection。
 

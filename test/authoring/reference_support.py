@@ -74,7 +74,7 @@ def make_client(tmp_path: Path, monkeypatch) -> TestClient:
     )
     output_template.mkdir(parents=True, exist_ok=True)
     (output_template / "main.py").write_text(
-        'def output(event):\n    return event["message"]\n',
+        'def output(event, origin):\n    return ""\n',
         encoding="utf-8",
     )
     tool_template = (

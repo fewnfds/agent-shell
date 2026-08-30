@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -10,10 +10,14 @@ from agent_shell.python_packages.packages import (
     resolve_python_package,
     scan_python_package,
 )
+from agent_shell.runtime.errors import AgentRuntimeError
 
 
 EventOutputKind = Literal["agent", "workflow"]
-EventOutputCallable = Callable[[dict[str, object]], object]
+ProtocolEvent = Mapping[str, object]
+EventOutputOrigin = Mapping[str, object]
+EventOutputCallable = Callable[[ProtocolEvent, EventOutputOrigin], object]
+EventRunOutputCallable = Callable[[Mapping[str, object], EventOutputOrigin], object]
 
 _SPECS: dict[EventOutputKind, tuple[PythonPackageAdapter, str]] = {
     "agent": ("agent-event-output", "agent-event-output"),
@@ -21,7 +25,7 @@ _SPECS: dict[EventOutputKind, tuple[PythonPackageAdapter, str]] = {
 }
 _FAMILY = "event-output"
 _ENTRYPOINT = "output"
-_PARAMETERS = ("event",)
+_PARAMETERS = ("event", "origin")
 
 
 def _scan(
@@ -134,6 +138,7 @@ class EventOutputPackageRuntime:
             factory_parameters=_PARAMETERS,
         )
         self._outputs: dict[str, EventOutputCallable] = {}
+        self._run_outputs: dict[str, EventRunOutputCallable | None] = {}
         self._closed = False
 
     def output_for(
@@ -155,16 +160,71 @@ class EventOutputPackageRuntime:
         self._outputs[binding_id] = output
         return output
 
+    def run_output_for(
+        self,
+        binding_id: str,
+        package_owner_id: str,
+        reference: dict[str, Any],
+    ) -> EventRunOutputCallable | None:
+        """Load the optional Shell-owned run-status hook from an output package.
+
+        ``output`` remains the sole protocol-event entrypoint.  ``run_output``
+        is intentionally separate because synthetic lifecycle status is a
+        product event, not a LangGraph ProtocolEvent.
+        """
+        if binding_id in self._run_outputs:
+            return self._run_outputs[binding_id]
+        module, _metadata, _package_dir = self._loader.load(
+            binding_id,
+            self._binding_kind,
+            0,
+            str(reference["folder"]),
+            package_owner_id=package_owner_id,
+        )
+        function = getattr(module, "run_output", None)
+        if function is None:
+            self._run_outputs[binding_id] = None
+            return None
+        import inspect
+
+        if not callable(function) or inspect.iscoroutinefunction(function):
+            raise AgentRuntimeError(
+                "python_package.entrypoint_invalid",
+                "The event output package has an invalid run_output entrypoint.",
+                status_code=422,
+            )
+        signature = inspect.signature(function)
+        parameters = tuple(signature.parameters.values())
+        if (
+            tuple(parameter.name for parameter in parameters) != ("event", "origin")
+            or any(
+                parameter.kind
+                in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+                or parameter.default is not inspect.Parameter.empty
+                for parameter in parameters
+            )
+        ):
+            raise AgentRuntimeError(
+                "python_package.entrypoint_invalid",
+                "The run_output entrypoint must accept exactly event and origin.",
+                status_code=422,
+            )
+        self._run_outputs[binding_id] = function
+        return function
+
     async def close(self) -> None:
         if self._closed:
             return
         self._closed = True
         self._loader.close()
         self._outputs.clear()
+        self._run_outputs.clear()
 
 
 __all__ = [
     "EventOutputCallable",
+    "EventOutputOrigin",
+    "EventRunOutputCallable",
     "EventOutputPackageRuntime",
     "resolve_agent_event_output_package",
     "resolve_workflow_event_output_package",

@@ -110,7 +110,7 @@ POST /api/blocks/agent-event-output
 }
 ```
 
-服务端会生成该 configuration UUID 独占的 package。只需要 Assistant text 时，output function 对`assistant_text/delta`返回`event["message"]`，其他 event或 phase返回空字符串；流式 delta与非流式完整正文使用同一 additive phase contract。
+服务端会生成该 configuration UUID 独占的 package。只需要 Assistant text 时，`output(event, origin)` 读取 `messages` payload 的 `content-block-delta` 与其中的 `delta.text`（或 `delta.reasoning`），其他 channel 或 payload 返回空字符串；流式与非流式消息都按 LangGraph v3 原始 envelope 处理。
 
 创建和自定义 Python package 的完整流程见[编写 Python extension](06-python-extensions.md)。字段说明见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
 
