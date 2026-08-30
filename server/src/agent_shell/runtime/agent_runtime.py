@@ -1090,17 +1090,17 @@ class AgentRuntime:
         *,
         graph: Any,
         input_state: dict[str, Any],
+        workflow_built: tuple[tuple[str, BuiltAgent], ...],
+        identity: WorkflowRunIdentity,
+        context: WorkflowRuntimeContext,
+        workflow_node_kinds: Mapping[str, str],
         request_id: str = "",
         public_model: str = "",
-        workflow_built: tuple[tuple[str, BuiltAgent], ...] = (),
         agent_event_outputs: Mapping[str, EventOutputCallable] | None = None,
         workflow_event_output: EventOutputCallable | None = None,
         workflow_run_output: EventRunOutputCallable | None = None,
         event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = (),
         command_runtime: CommandPackageRuntime | None = None,
-        identity: WorkflowRunIdentity | None = None,
-        context: WorkflowRuntimeContext | None = None,
-        workflow_node_kinds: Mapping[str, str] | None = None,
         run_config: dict[str, Any] | None = None,
         durability: str | None = None,
         owns_lifecycle: bool = False,
@@ -1129,7 +1129,7 @@ class AgentRuntime:
             )
         else:
             projector = OutputProjector(None)
-        journal_node_kinds = dict(workflow_node_kinds or {})
+        journal_node_kinds = dict(workflow_node_kinds)
         for node_id, node_type in journal_node_kinds.items():
             if node_type == "command":
                 workflow_sources[node_id] = WorkflowNodeSource(
@@ -1146,9 +1146,9 @@ class AgentRuntime:
             if response_stream_policy is not None
             else ResponseStreamPolicy()
         )
-        lifecycle_identity = identity.lifecycle_id if identity is not None else ""
-        run_identity = identity.workflow_run_id if identity is not None else ""
-        workflow_identity = identity.workflow_id if identity is not None else ""
+        lifecycle_identity = identity.lifecycle_id
+        run_identity = identity.workflow_run_id
+        workflow_identity = identity.workflow_id
         usage_accumulator = RunUsageAccumulator()
         origin_resolver = RunEventOriginResolver(
             identity,
