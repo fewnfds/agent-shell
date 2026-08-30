@@ -59,7 +59,7 @@ from agent_shell.runtime.response_scheduler import (
     PresentationFrame,
     ResponseEventInput,
 )
-from agent_shell.runtime.response_presentation import to_response_signal
+from agent_shell.runtime.response_presentation import ResponseEvent, to_response_signal
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.media_outputs import MediaOutputStore
@@ -508,6 +508,53 @@ class RunExecution:
         def project_event(event: OutputEvent, *, text: str = "") -> list[str]:
             return project_input(event, text=text)
 
+        def project_run_event(
+            phase: str,
+            *,
+            status: str,
+            finish_reason: str = "",
+            error_code: str = "",
+        ) -> list[str]:
+            if not self.public_output:
+                return []
+            scheduler = self.response_scheduler
+            assert scheduler is not None
+            origin_run_id, origin_workflow_id = response_origin()
+            if not scheduler.accepting(origin_run_id, origin_workflow_id):
+                return []
+            run_event: dict[str, object] = {
+                "type": "agent_shell.workflow_run",
+                "phase": phase,
+                "status": status,
+                "finish_reason": finish_reason,
+                "error_code": error_code,
+            }
+            projector = self.event_output_projector
+            resolver = self.origin_resolver
+            origin = resolver.resolve({}, ()) if resolver is not None else {}
+            text = (
+                projector.render_run(run_event, origin)
+                if projector is not None
+                else ""
+            )
+            scheduler.publish(
+                ResponseEventInput(
+                    lifecycle_id=scheduler.lifecycle_id,
+                    origin_run_id=origin_run_id,
+                    origin_workflow_id=origin_workflow_id,
+                    event=ResponseEvent(
+                        kind="lifecycle",
+                        phase=phase,
+                        namespace="root",
+                        source_type="non_agent",
+                        data=run_event,
+                    ),
+                    text=text,
+                ),
+                now=loop.time(),
+            )
+            return take_response_output()
+
         def event_origin(
             envelope: Mapping[str, object],
             normalized: tuple[OutputEvent | ModelCallBoundary, ...] = (),
@@ -526,21 +573,6 @@ class RunExecution:
             if projector is None:
                 return "", origin
             return projector.render(envelope, origin), origin
-
-        def render_run_event(event: OutputEvent) -> str:
-            projector = self.event_output_projector
-            resolver = self.origin_resolver
-            if projector is None:
-                return ""
-            origin = resolver.resolve({}, (event,)) if resolver is not None else {}
-            run_event = {
-                "type": "agent_shell.workflow_run",
-                "phase": event.phase,
-                "status": event.values.get("status", event.message),
-                "finish_reason": event.values.get("finish_reason", ""),
-                "error_code": event.values.get("error_code", ""),
-            }
-            return projector.render_run(run_event, origin)
 
         def raw_atomic_event(
             envelope: Mapping[str, object], origin: Mapping[str, object]
@@ -591,18 +623,12 @@ class RunExecution:
                         now=loop.time(),
                     )
             try:
-                error_event = self.normalizer.lifecycle(
+                parts.extend(project_run_event(
                     "error",
                     status="failed",
                     finish_reason="error",
                     error_code=error_code,
-                )
-                parts.extend(
-                    project_event(
-                        error_event,
-                        text=render_run_event(error_event),
-                    )
-                )
+                ))
             except Exception:
                 # A broken user lifecycle projector must not replace the safe
                 # runtime error that is already crossing the public boundary.
@@ -631,11 +657,7 @@ class RunExecution:
         journal: WorkflowRunJournal | None = None
         start_run()
         try:
-            start_event = self.normalizer.lifecycle("start", status="running")
-            for rendered in project_event(
-                start_event,
-                text=render_run_event(start_event),
-            ):
+            for rendered in project_run_event("start", status="running"):
                 if rendered:
                     yield rendered
             remaining_timeout = float(self.execution_timeout_seconds)
@@ -858,14 +880,10 @@ class RunExecution:
                                 yield rendered
             if journal is not None:
                 journal.finish_open_spans("completed")
-            end_event = self.normalizer.lifecycle(
+            for rendered in project_run_event(
                 "end",
                 status="completed",
                 finish_reason=self.finish_reason,
-            )
-            for rendered in project_event(
-                end_event,
-                text=render_run_event(end_event),
             ):
                 if rendered:
                     yield rendered
