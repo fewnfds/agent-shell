@@ -645,7 +645,10 @@ def build_api_server_router(
                 param="model",
             )
         try:
-            execution = await request_snapshot.start_workflow(
+            lifecycle_coordinator = runtime.create_lifecycle_coordinator(
+                request_snapshot
+            )
+            execution = await lifecycle_coordinator.start_parent_workflow(
                 workflow,
                 messages,
                 request_id=getattr(request.state, "request_id", ""),

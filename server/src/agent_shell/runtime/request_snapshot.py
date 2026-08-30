@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -20,6 +20,8 @@ from agent_shell.runtime.background_tasks import (
     BackgroundTaskStatus,
 )
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
+from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.blocks import BlockStore
@@ -30,21 +32,16 @@ from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
-from agent_shell.workflow import workflow_document_sha256
-from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
+from agent_shell.workflow import WorkflowGraphDocumentV1, workflow_document_sha256
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class RequestRuntimeSnapshot:
-    """Build Workflow and background Runs from one immutable config catalog."""
+    """Immutable configuration catalog and runtime materialization inputs."""
 
     _workflows: WorkflowStore
     _runtime: AgentRuntime
     _runtime_factory: Callable[[], AgentRuntime]
-    _workflow_lifecycle: WorkflowLifecycleService
-    _background_tasks: BackgroundTaskManager
-    _response_scheduler: LifecycleResponseScheduler | None = None
 
     def workflow_by_name(self, name: str) -> dict[str, Any] | None:
         return self._workflows.get_item_by_name(name)
@@ -52,24 +49,48 @@ class RequestRuntimeSnapshot:
     def workflow_by_id(self, workflow_id: str) -> dict[str, Any] | None:
         return self._workflows.get_item(workflow_id)
 
-    async def start_workflow(
+    def workflow_document(
+        self,
+        workflow_id: str,
+    ) -> WorkflowGraphDocumentV1 | None:
+        return self._workflows.get_graph(workflow_id)
+
+    def parent_runtime(self) -> AgentRuntime:
+        return self._runtime
+
+    def new_child_runtime(self) -> AgentRuntime:
+        return self._runtime_factory()
+
+
+@dataclass(slots=True)
+class LifecycleRunCoordinator:
+    """Mutable parent/child Run coordination for one request Lifecycle."""
+
+    _snapshot: RequestRuntimeSnapshot
+    _workflow_lifecycle: WorkflowLifecycleService
+    _background_tasks: BackgroundTaskManager
+    _response_scheduler: LifecycleResponseScheduler | None = field(
+        default=None,
+        init=False,
+    )
+
+    async def start_parent_workflow(
         self,
         workflow: Mapping[str, Any],
         raw_messages: object,
         **kwargs: Any,
     ) -> RunExecution:
-        document = self._workflows.get_graph(str(workflow["id"]))
+        document = self._snapshot.workflow_document(str(workflow["id"]))
         if document is None:
             raise RuntimeError("the captured Workflow no longer exists")
-        execution = await self._runtime.start_workflow(
+        execution = await self._snapshot.parent_runtime().start_workflow(
             document,
             raw_messages,
             workflow_snapshot=workflow,
             background_runtime=self,
             **kwargs,
         )
-        if workflow.get("workflow_role") == "parent":
-            self._response_scheduler = execution.response_scheduler
+        self._response_scheduler = execution.response_scheduler
         return execution
 
     async def start_background_workflow(
@@ -81,7 +102,7 @@ class RequestRuntimeSnapshot:
         shared_vars: Mapping[str, Any],
         workflow_task: Mapping[str, Any] | None = None,
     ) -> BackgroundTaskHandle:
-        target = self._workflows.get_item(target_workflow_id)
+        target = self._snapshot.workflow_by_id(target_workflow_id)
         if (
             target is None
             or not target["enabled"]
@@ -92,7 +113,7 @@ class RequestRuntimeSnapshot:
                 "The selected child Workflow does not exist or is disabled.",
                 status_code=422,
             )
-        document = self._workflows.get_graph(target_workflow_id)
+        document = self._snapshot.workflow_document(target_workflow_id)
         if document is None:
             raise AgentRuntimeError(
                 "background_workflow_target_not_found",
@@ -108,7 +129,7 @@ class RequestRuntimeSnapshot:
             messages = await self._workflow_lifecycle.messages(
                 caller.lifecycle_id
             )
-            child_runtime = self._runtime_factory()
+            child_runtime = self._snapshot.new_child_runtime()
             response_scheduler = self._response_scheduler
             return await child_runtime.start_workflow(
                 document,
@@ -273,6 +294,14 @@ class RequestSnapshotRuntime:
             _workflows=workflows,
             _runtime=runtime,
             _runtime_factory=runtime_factory,
+        )
+
+    def create_lifecycle_coordinator(
+        self,
+        snapshot: RequestRuntimeSnapshot,
+    ) -> LifecycleRunCoordinator:
+        return LifecycleRunCoordinator(
+            _snapshot=snapshot,
             _workflow_lifecycle=self._workflow_lifecycle,
             _background_tasks=self._background_tasks,
         )

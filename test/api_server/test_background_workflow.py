@@ -80,6 +80,9 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
             assert parent_response.status_code == 200, parent_response.text
             parent = parent_response.json()
         snapshot = client.app.state.agent_runtime.capture()
+        coordinator = client.app.state.agent_runtime.create_lifecycle_coordinator(
+            snapshot
+        )
         disabled = client.put(
             f"/api/workflows/{child['id']}/draft",
             json=client.get(f"/api/workflows/{child['id']}/graph").json(),
@@ -110,7 +113,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                         "parent-thread" if parent_checkpointer_enabled else None
                     ),
                 ),
-                background_runtime=snapshot,
+                background_runtime=coordinator,
             )
             assert context.background_runs is not None
             try:
@@ -219,11 +222,14 @@ def test_child_agent_and_workflow_events_join_the_parent_lifecycle_response(
         parent = create_workflow(client, name="Output Parent")
         save_linear_workflow_graph(client, parent, main_agent)
         snapshot = client.app.state.agent_runtime.capture()
+        coordinator = client.app.state.agent_runtime.create_lifecycle_coordinator(
+            snapshot
+        )
         portal = client.portal
         assert portal is not None
 
         async def scenario() -> tuple[str, str]:
-            parent_execution = await snapshot.start_workflow(
+            parent_execution = await coordinator.start_parent_workflow(
                 parent,
                 [{"role": "user", "content": "run parent and child"}],
                 request_id="shared-output-request",

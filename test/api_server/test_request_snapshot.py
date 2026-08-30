@@ -13,6 +13,14 @@ def test_snapshot_freezes_workflow_metadata(
         )
 
         snapshot = client.app.state.agent_runtime.capture()
+        snapshot_fields = snapshot.__dataclass_fields__
+        assert "_response_scheduler" not in snapshot_fields
+        assert "_workflow_lifecycle" not in snapshot_fields
+        assert "_background_tasks" not in snapshot_fields
+        coordinator = client.app.state.agent_runtime.create_lifecycle_coordinator(
+            snapshot
+        )
+        assert "_response_scheduler" in coordinator.__dataclass_fields__
         changed = client.put(
             f"/api/workflows/{workflow['id']}",
             json={
