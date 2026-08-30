@@ -58,6 +58,7 @@ from agent_shell.runtime.response_scheduler import (
     PresentationFrame,
     ResponseEventInput,
 )
+from agent_shell.runtime.response_presentation import to_response_signal
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.media_outputs import MediaOutputStore
@@ -446,9 +447,11 @@ class RunExecution:
             )
 
         def projection_stream() -> EventOutputProjectionStream:
-            scheduler = self.response_scheduler
-            assert scheduler is not None
-            return self.output_projection_stream or scheduler.projection_stream
+            stream = self.output_projection_stream
+            if stream is None:
+                stream = EventOutputProjectionStream()
+                self.output_projection_stream = stream
+            return stream
 
         def response_accepting() -> bool:
             scheduler = self.response_scheduler
@@ -489,7 +492,7 @@ class RunExecution:
                         lifecycle_id=scheduler.lifecycle_id,
                         origin_run_id=origin_run_id,
                         origin_workflow_id=origin_workflow_id,
-                        event=projected.event,
+                        event=to_response_signal(projected.event),
                         text=projected.text,
                         segment_end_text=projected.segment_end_text,
                     ),
@@ -838,7 +841,7 @@ class RunExecution:
                                     lifecycle_id=scheduler.lifecycle_id,
                                     origin_run_id=origin_run_id,
                                     origin_workflow_id=origin_workflow_id,
-                                    event=projected.event,
+                                    event=to_response_signal(projected.event),
                                     text=projected.text,
                                     segment_end_text=projected.segment_end_text,
                                 ),
@@ -1278,7 +1281,6 @@ class AgentRuntime:
         if effective_response_scheduler is None:
             effective_response_scheduler = LifecycleResponseScheduler(
                 scheduler_policy,
-                projection_stream=output_projection_stream,
                 lifecycle_id=lifecycle_identity,
                 origin_run_id=run_identity,
                 origin_workflow_id=workflow_identity,

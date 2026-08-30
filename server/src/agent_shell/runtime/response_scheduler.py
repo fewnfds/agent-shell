@@ -5,12 +5,13 @@ from collections import deque
 from dataclasses import dataclass, replace
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.output_projection import EventOutputProjectionStream
 from agent_shell.runtime.response_presentation import (
     PresentationFrame,
+    ResponseEvent,
+    ResponseModelCallBoundary,
     ResponsePresentationWriter,
+    to_response_signal,
 )
-from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +19,7 @@ class ResponseEventInput:
     lifecycle_id: str
     origin_run_id: str
     origin_workflow_id: str
-    event: OutputEvent | ModelCallBoundary
+    event: ResponseEvent | ResponseModelCallBoundary
     text: str = ""
     segment_end_text: str = ""
 
@@ -28,9 +29,9 @@ class _ToolTransaction:
     lane_id: str
     turn_id: str
     call_id: str
-    declaration: OutputEvent | None = None
+    declaration: ResponseEvent | None = None
     declaration_text: str = ""
-    outcome: OutputEvent | None = None
+    outcome: ResponseEvent | None = None
     outcome_text: str = ""
     queued: bool = False
 
@@ -42,7 +43,6 @@ class LifecycleResponseScheduler:
         self,
         policy: ResponseStreamPolicy,
         *,
-        projection_stream: EventOutputProjectionStream,
         lifecycle_id: str,
         origin_run_id: str,
         origin_workflow_id: str,
@@ -51,7 +51,6 @@ class LifecycleResponseScheduler:
         self.lifecycle_id = lifecycle_id
         self.origin_run_id = origin_run_id
         self.origin_workflow_id = origin_workflow_id
-        self.projection_stream = projection_stream
         self._writer = ResponsePresentationWriter(self.policy)
         self._tools: dict[tuple[str, str, str], _ToolTransaction] = {}
         self._pending_frames: deque[PresentationFrame] = deque()
@@ -85,25 +84,23 @@ class LifecycleResponseScheduler:
             return []
         self._writer.begin(now=now)
         self._validate_input(item)
-        event = self._scoped_event(item)
-        if isinstance(event, ModelCallBoundary):
+        event = self._scoped_event(
+            to_response_signal(item.event),
+            run_id=item.origin_run_id,
+        )
+        if isinstance(event, ResponseModelCallBoundary):
             self._writer.handle_boundary(event)
         else:
             lane_id = self._writer.event_lane_id(event)
             self._writer.remember_lane(lane_id, event)
-            if event.event_type in {"assistant_text", "reasoning"}:
+            if event.kind == "content":
                 self._writer.handle_content(
                     event,
                     lane_id=lane_id,
                     text=item.text,
                     segment_end_text=item.segment_end_text,
                 )
-            elif event.event_type in {
-                "tool_call",
-                "tool_result",
-                "tool_error",
-                "tool_progress",
-            }:
+            elif event.kind == "tool":
                 self._handle_tool(event, item.text, lane_id=lane_id)
             else:
                 self._writer.queue_text(
@@ -112,9 +109,7 @@ class LifecycleResponseScheduler:
                     turn_id=self._writer.turn_id(event, lane_id),
                 )
             if (
-                event.event_type == "lifecycle"
-                and event.workflow_node_id
-                and event.phase in {"end", "error"}
+                event.terminal
             ):
                 self._writer.mark_terminal(lane_id)
         self._writer.expire_owner(now)
@@ -252,11 +247,12 @@ class LifecycleResponseScheduler:
 
     def _scoped_event(
         self,
-        item: ResponseEventInput,
-    ) -> OutputEvent | ModelCallBoundary:
-        prefix = self._lane_prefix(item.origin_run_id)
-        event = item.event
-        if isinstance(event, ModelCallBoundary):
+        event: ResponseEvent | ResponseModelCallBoundary,
+        *,
+        run_id: str,
+    ) -> ResponseEvent | ResponseModelCallBoundary:
+        prefix = self._lane_prefix(run_id)
+        if isinstance(event, ResponseModelCallBoundary):
             return replace(
                 event,
                 source_key=prefix + (event.source_key or "unknown"),
@@ -274,19 +270,19 @@ class LifecycleResponseScheduler:
 
     def _handle_tool(
         self,
-        event: OutputEvent,
+        event: ResponseEvent,
         text: str,
         *,
         lane_id: str,
     ) -> None:
-        if event.event_type == "tool_progress":
+        if event.tool_kind == "progress":
             self._writer.queue_text(
                 lane_id,
                 text,
                 turn_id=self._writer.turn_id(event, lane_id),
             )
             return
-        if event.event_type == "tool_call":
+        if event.tool_kind == "call":
             turn_id = self._writer.turn_id(event, lane_id)
             self._writer.note_non_content_successor(
                 lane_id=lane_id,
@@ -295,7 +291,7 @@ class LifecycleResponseScheduler:
             )
             if event.phase not in {"end", "error"}:
                 return
-            call_id = event.values.get("tool_call_id", "")
+            call_id = event.tool_call_id
             if not call_id:
                 self._writer.queue_text(lane_id, text, turn_id=turn_id)
                 return
@@ -307,7 +303,7 @@ class LifecycleResponseScheduler:
             transaction.declaration_text = text
             self._queue_tool_if_ready(transaction)
             return
-        call_id = event.values.get("tool_call_id", "")
+        call_id = event.tool_call_id
         transaction = self._find_tool_transaction(lane_id, call_id)
         if transaction is None:
             turn_id = self._writer.turn_id(event, lane_id)
@@ -399,5 +395,7 @@ class LifecycleResponseScheduler:
 __all__ = [
     "LifecycleResponseScheduler",
     "PresentationFrame",
+    "ResponseEvent",
     "ResponseEventInput",
+    "ResponseModelCallBoundary",
 ]

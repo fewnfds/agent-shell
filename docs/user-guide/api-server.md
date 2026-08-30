@@ -42,7 +42,7 @@ Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume �
 
 Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作流组件】中的 Response Stream Scheduling 配置。未装配时使用内置默认；装配后从当前请求冻结的 Configuration Repository 快照读取 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Child Run Workflow 不接受该引用。组件只调度 Agent/Workflow Event Output 已批准的文本，不拥有事件可见性或修饰规则。
 
-`stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，当前 Parent Run 的规范化 LangGraph v3 事件通过 typed input 进入它；任一时刻只有一个 lane 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
+`stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，各 participating Run 的 Event Output producer 将已投影文本和内部调度信号提交给它；任一时刻只有一个 lane 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
 响应流策略作用于整个 Lifecycle。每个 Lifecycle 只有一个 Parent Run Workflow，因此 Parent Workflow只保存组件引用并随启动快照冻结，这只是配置管理归属。策略只配置 request/node invocation 输出原子、空闲让位时间、批次软大小和最小发送间隔。所有规范化事件先经过所属 Agent Event Output 或 Workflow Event Output；脚本返回空字符串时不进入响应且不刷新writer lease，返回非空字符串时才作为公开文本交给scheduler排队。无正文的content/request/Node terminal控制边界仍可关闭segment或释放atom。reasoning与assistant text使用统一的additive `start / delta / end`投影：流式delta实时进入脚本，非流式完整正文机械展开为单个delta，已有真实delta时finish snapshot不重复正文。Tool call与terminal outcome分别投影，再作为不可插队的原子项输出；`message-finish`不代表关联Tool已经完成，慢Tool等待超过空闲时间后只释放当前位置。同一invocation的下一次model request开始或Node terminal是前一个request的确定结束边界，不等待idle timeout才让位。
 

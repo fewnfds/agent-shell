@@ -31,6 +31,9 @@ from agent_shell.runtime.output_stream import (
 _SCHEDULER_PROJECTORS: weakref.WeakKeyDictionary[LifecycleResponseScheduler, object] = (
     weakref.WeakKeyDictionary()
 )
+_SCHEDULER_STREAMS: weakref.WeakKeyDictionary[
+    LifecycleResponseScheduler, EventOutputProjectionStream
+] = weakref.WeakKeyDictionary()
 
 
 def _render_template(template: str, event: dict[str, object]) -> str:
@@ -141,11 +144,11 @@ def response_scheduler(
         projector = OutputProjector(None, run_output=run_output)
     scheduler = LifecycleResponseScheduler(
         policy or ResponseStreamPolicy(),
-        projection_stream=EventOutputProjectionStream(),
         lifecycle_id="",
         origin_run_id="",
         origin_workflow_id="",
     )
+    _SCHEDULER_STREAMS[scheduler] = EventOutputProjectionStream()
     # Keep the projector outside the scheduler. RunExecution receives it
     # explicitly; workflow event helpers use this test-only association to
     # exercise the raw-event boundary without reaching into production state.
@@ -155,6 +158,12 @@ def response_scheduler(
 
 def scheduler_projector(scheduler: LifecycleResponseScheduler):
     return _SCHEDULER_PROJECTORS[scheduler]
+
+
+def scheduler_projection_stream(
+    scheduler: LifecycleResponseScheduler,
+) -> EventOutputProjectionStream:
+    return _SCHEDULER_STREAMS[scheduler]
 
 
 @pytest.fixture

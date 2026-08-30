@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import weakref
 
 import pytest
 
@@ -9,6 +10,7 @@ from agent_shell.runtime.output_projection import EventOutputProjectionStream
 from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
+    ResponseEvent,
     ResponseEventInput,
 )
 
@@ -18,6 +20,9 @@ from .support import output_renderer
 LIFECYCLE_ID = "lifecycle-1"
 RUN_ID = "run-parent"
 WORKFLOW_ID = "workflow-parent"
+_PROJECTION_STREAMS: weakref.WeakKeyDictionary[
+    LifecycleResponseScheduler, EventOutputProjectionStream
+] = weakref.WeakKeyDictionary()
 
 
 def _policy(**updates: object) -> ResponseStreamPolicy:
@@ -33,13 +38,42 @@ def _policy(**updates: object) -> ResponseStreamPolicy:
 def _scheduler(
     policy: ResponseStreamPolicy | None = None,
 ) -> LifecycleResponseScheduler:
-    return LifecycleResponseScheduler(
+    scheduler = LifecycleResponseScheduler(
         policy or _policy(),
-        projection_stream=EventOutputProjectionStream(),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
     )
+    _PROJECTION_STREAMS[scheduler] = EventOutputProjectionStream()
+    return scheduler
+
+
+def _projection_stream(
+    scheduler: LifecycleResponseScheduler,
+) -> EventOutputProjectionStream:
+    return _PROJECTION_STREAMS[scheduler]
+
+
+def test_scheduler_accepts_private_response_signal() -> None:
+    scheduler = _scheduler(_policy(queue={"send_interval_seconds": 0}))
+    frames = scheduler.submit(
+        ResponseEventInput(
+            lifecycle_id=LIFECYCLE_ID,
+            origin_run_id=RUN_ID,
+            origin_workflow_id=WORKFLOW_ID,
+            event=ResponseEvent(
+                kind="event",
+                phase="end",
+                sequence=1,
+                source_type="script",
+                source_key="script|node",
+                cycle_key="node:invocation",
+            ),
+            text="private-signal",
+        ),
+        now=0,
+    )
+    assert [frame.text for frame in frames] == ["private-signal"]
 
 
 def _event(
@@ -100,7 +134,7 @@ def _submit(
         text, segment_end_text = _projected_text(event)
     return [
         frame.text
-        for projected in scheduler.projection_stream.project(
+        for projected in _projection_stream(scheduler).project(
             event,
             text=text,
             segment_end_text=segment_end_text,
@@ -589,9 +623,9 @@ def test_content_projection_is_additive_and_media_remains_atomic() -> None:
 
 
 def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
+    projection_stream = EventOutputProjectionStream()
     scheduler = LifecycleResponseScheduler(
         _policy(queue={"send_interval_seconds": 0}),
-        projection_stream=EventOutputProjectionStream(),
         lifecycle_id=LIFECYCLE_ID,
         origin_run_id=RUN_ID,
         origin_workflow_id=WORKFLOW_ID,
@@ -605,7 +639,7 @@ def test_non_streaming_whole_content_uses_the_same_phase_contract() -> None:
     ) -> list[str]:
         return [
             frame.text
-            for projected in scheduler.projection_stream.project(
+            for projected in projection_stream.project(
                 event,
                 text=text,
                 segment_end_text=segment_end_text,
@@ -1055,7 +1089,7 @@ def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None
         text, segment_end_text = _projected_text(event)
         return [
             frame.text
-            for projected in scheduler.projection_stream.project(
+            for projected in _projection_stream(scheduler).project(
                 event,
                 text=text,
                 segment_end_text=segment_end_text,

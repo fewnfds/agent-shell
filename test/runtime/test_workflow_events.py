@@ -13,7 +13,12 @@ from agent_shell.workflow.events import (
     emit_workflow_custom_event,
 )
 
-from .support import output_renderer, response_scheduler, scheduler_projector
+from .support import (
+    output_renderer,
+    response_scheduler,
+    scheduler_projection_stream,
+    scheduler_projector,
+)
 
 
 MAIN_A = "11111111-1111-4111-8111-111111111111"
@@ -81,7 +86,7 @@ def _schedule(scheduler, event: OutputEvent) -> list[str]:
     }
     text = projector.render(raw, origin)
     frames = []
-    for projected in scheduler.projection_stream.project(event, text=text):
+    for projected in scheduler_projection_stream(scheduler).project(event, text=text):
         frames.extend(
             scheduler.submit(
                 ResponseEventInput(

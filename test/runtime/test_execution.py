@@ -338,7 +338,6 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
         output = OutputProjector(output_renderer())
         scheduler = LifecycleResponseScheduler(
             ResponseStreamPolicy(),
-            projection_stream=EventOutputProjectionStream(),
             lifecycle_id=lifecycle_id,
             origin_run_id=parent_run_id,
             origin_workflow_id=parent_workflow_id,

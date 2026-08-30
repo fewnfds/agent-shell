@@ -1,11 +1,108 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Literal
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.output_stream import ModelCallBoundary, OutputEvent
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseEvent:
+    """Minimal scheduler signal projected from a runtime event.
+
+    The scheduler only needs presentation metadata and control values.  Raw
+    LangGraph protocol envelopes and the normalizer's product event object stay
+    on the producer side of this boundary.
+    """
+
+    kind: Literal["content", "tool", "lifecycle", "event"]
+    phase: str
+    sequence: int = 0
+    namespace: str = "root"
+    source_type: str = ""
+    workflow_node_id: str = ""
+    agent_profile_id: str = ""
+    subagent_profile_id: str = ""
+    data: object = field(default=None, repr=False)
+    stream_id: str = ""
+    source_key: str = ""
+    cycle_key: str = ""
+    tool_kind: Literal["call", "result", "error", "progress", ""] = ""
+    tool_call_id: str = ""
+    terminal: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseModelCallBoundary:
+    """Scheduler signal delimiting one model message invocation."""
+
+    run_key: str
+    source_key: str = ""
+    cycle_key: str = ""
+    raw_seq: int = 0
+    phase: Literal["start", "end"] = "start"
+
+
+def to_response_signal(event: object) -> ResponseEvent | ResponseModelCallBoundary:
+    """Convert a normalizer event into the scheduler's private signal shape."""
+
+    if isinstance(event, ResponseEvent):
+        return event
+    if isinstance(event, ResponseModelCallBoundary) or (
+        hasattr(event, "run_key") and not hasattr(event, "event_type")
+    ):
+        return ResponseModelCallBoundary(
+            run_key=str(getattr(event, "run_key", "")),
+            source_key=str(getattr(event, "source_key", "") or ""),
+            cycle_key=str(getattr(event, "cycle_key", "") or ""),
+            raw_seq=int(getattr(event, "raw_seq", 0) or 0),
+            phase=("end" if getattr(event, "phase", "start") == "end" else "start"),
+        )
+
+    event_type = str(getattr(event, "event_type", "") or "")
+    values = getattr(event, "values", {})
+    if not isinstance(values, Mapping):
+        values = {}
+    kind = (
+        "content"
+        if event_type in {"assistant_text", "reasoning"}
+        else "tool"
+        if event_type in {"tool_call", "tool_result", "tool_error", "tool_progress"}
+        else "lifecycle"
+        if event_type == "lifecycle"
+        else "event"
+    )
+    tool_kind = (
+        {
+            "tool_call": "call",
+            "tool_result": "result",
+            "tool_error": "error",
+            "tool_progress": "progress",
+        }.get(event_type, "")
+    )
+    return ResponseEvent(
+        kind=kind,
+        phase=str(getattr(event, "phase", "") or ""),
+        sequence=int(getattr(event, "sequence", 0) or 0),
+        namespace=str(getattr(event, "namespace", "root") or "root"),
+        source_type=str(getattr(event, "source_type", "") or ""),
+        workflow_node_id=str(getattr(event, "workflow_node_id", "") or ""),
+        agent_profile_id=str(getattr(event, "agent_profile_id", "") or ""),
+        subagent_profile_id=str(getattr(event, "subagent_profile_id", "") or ""),
+        data=getattr(event, "data", None),
+        stream_id=str(getattr(event, "stream_id", "") or ""),
+        source_key=str(getattr(event, "source_key", "") or ""),
+        cycle_key=str(getattr(event, "cycle_key", "") or ""),
+        tool_kind=tool_kind,
+        tool_call_id=str(values.get("tool_call_id") or ""),
+        terminal=(
+            event_type == "lifecycle"
+            and bool(getattr(event, "workflow_node_id", ""))
+            and str(getattr(event, "phase", "")) in {"end", "error"}
+        ),
+    )
 
 
 FrameKind = Literal["content"]
@@ -96,13 +193,13 @@ class ResponsePresentationWriter:
         self._out = []
         return output
 
-    def remember_lane(self, lane_id: str, event: OutputEvent) -> None:
+    def remember_lane(self, lane_id: str, event: ResponseEvent) -> None:
         self._lane_meta[lane_id] = _LaneMeta(
             source_type=event.source_type,
             workflow_node_id=event.workflow_node_id,
         )
 
-    def handle_boundary(self, event: ModelCallBoundary) -> None:
+    def handle_boundary(self, event: ResponseModelCallBoundary) -> None:
         lane_id = self.boundary_lane_id(event)
         if event.phase == "start":
             previous = self._lane_turns.get(lane_id) or self._completed_turns.get(
@@ -120,7 +217,7 @@ class ResponsePresentationWriter:
 
     def handle_content(
         self,
-        event: OutputEvent,
+        event: ResponseEvent,
         *,
         lane_id: str,
         text: str,
@@ -393,13 +490,13 @@ class ResponsePresentationWriter:
             if self._open_block_id is not None:
                 return
 
-    def turn_id(self, event: OutputEvent, lane_id: str) -> str:
+    def turn_id(self, event: ResponseEvent, lane_id: str) -> str:
         if event.stream_id and ":" in event.stream_id:
             return event.stream_id.rsplit(":", 1)[0]
         return self._lane_turns.get(lane_id, "")
 
     @staticmethod
-    def event_lane_id(event: OutputEvent) -> str:
+    def event_lane_id(event: ResponseEvent) -> str:
         source_key = event.source_key.strip()
         if not source_key:
             source_key = "|".join(
@@ -415,7 +512,7 @@ class ResponsePresentationWriter:
         return f"{source_key}|{cycle_key}"
 
     @staticmethod
-    def boundary_lane_id(event: ModelCallBoundary) -> str:
+    def boundary_lane_id(event: ResponseModelCallBoundary) -> str:
         return f"{event.source_key or 'unknown'}|{event.cycle_key or 'root'}"
 
     def _close_turn_blocks(self, lane_id: str, turn_id: str) -> None:
@@ -711,11 +808,11 @@ class ResponsePresentationWriter:
             self._touch_atom(block.atom_id)
 
     @staticmethod
-    def _block_id(event: OutputEvent, lane_id: str) -> str:
+    def _block_id(event: ResponseEvent, lane_id: str) -> str:
         return f"{lane_id}|{event.stream_id or f'atomic:{event.sequence}'}"
 
     @staticmethod
-    def _is_media(event: OutputEvent) -> bool:
+    def _is_media(event: ResponseEvent) -> bool:
         return (
             isinstance(event.data, dict)
             and event.data.get("type") in {"image", "audio", "video", "file"}
@@ -737,4 +834,10 @@ class ResponsePresentationWriter:
         self._owner_deadline = None
 
 
-__all__ = ["PresentationFrame", "ResponsePresentationWriter"]
+__all__ = [
+    "PresentationFrame",
+    "ResponseEvent",
+    "ResponseModelCallBoundary",
+    "ResponsePresentationWriter",
+    "to_response_signal",
+]
