@@ -25,19 +25,6 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
             name="Background Child",
             workflow_role="child",
         )
-        event_output = workflow_event_output_payload(
-            client,
-            "Exploding child output",
-            source=(
-                "def output(event):\n"
-                "    raise RuntimeError('child public output must stay disabled')\n"
-            ),
-        )
-        output_response = client.post(
-            "/api/blocks/workflow-event-output",
-            json=event_output,
-        )
-        assert output_response.status_code == 200, output_response.text
         checkpointer = client.post(
             "/api/blocks/checkpointer",
             json={"name": "Background checkpoints", "durability": "async"},
@@ -58,7 +45,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                     )
                 },
                 "cancel_on_upstream_termination": False,
-                "workflow_event_output_id": output_response.json()["id"],
+                "workflow_event_output_id": None,
                 "checkpointer_id": (
                     checkpointer.json()["id"]
                     if child_checkpointer_enabled
@@ -174,3 +161,91 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
     assert run["run_kind"] == "workflow"
     assert run["status"] == "completed"
     assert (checkpoint_count > 0) is child_checkpointer_enabled
+
+
+def test_child_agent_and_workflow_events_join_the_parent_lifecycle_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client)
+        child = create_workflow(
+            client,
+            name="Output Child",
+            workflow_role="child",
+        )
+        child_output = client.post(
+            "/api/blocks/workflow-event-output",
+            json=workflow_event_output_payload(
+                client,
+                "Child workflow output",
+                source=(
+                    "def output(event):\n"
+                    "    if event['event_type'] == 'lifecycle':\n"
+                    "        return f\"<child-workflow>{event['phase']}\" "
+                    "+ '</child-workflow>'\n"
+                    "    return ''\n"
+                ),
+            ),
+        )
+        assert child_output.status_code == 200, child_output.text
+        child_response = client.put(
+            f"/api/workflows/{child['id']}",
+            json={
+                **{
+                    key: child[key]
+                    for key in (
+                        "name",
+                        "workflow_role",
+                        "description",
+                        "recursion_limit",
+                        "execution_timeout_seconds",
+                        "max_concurrency",
+                        "cancel_on_upstream_termination",
+                    )
+                },
+                "workflow_event_output_id": child_output.json()["id"],
+                "checkpointer_id": None,
+            },
+        )
+        assert child_response.status_code == 200, child_response.text
+        child = child_response.json()
+        save_linear_workflow_graph(client, child, main_agent)
+        parent = create_workflow(client, name="Output Parent")
+        save_linear_workflow_graph(client, parent, main_agent)
+        snapshot = client.app.state.agent_runtime.capture()
+        portal = client.portal
+        assert portal is not None
+
+        async def scenario() -> tuple[str, str]:
+            parent_execution = await snapshot.start_workflow(
+                parent,
+                [{"role": "user", "content": "run parent and child"}],
+                request_id="shared-output-request",
+                public_model=parent["name"],
+            )
+            assert parent_execution.context is not None
+            context = parent_execution.context
+            assert context.background_runs is not None
+            handle = await context.background_runs.start_workflow(
+                child["id"],
+                operation_id="child-output",
+                shared_vars={},
+            )
+            terminal = None
+            for _ in range(200):
+                terminal = (
+                    await context.background_runs.check([handle.task_id])
+                )[0]
+                if terminal.runtime_status not in {"pending", "running"}:
+                    break
+                await asyncio.sleep(0.01)
+            content, _usage = await parent_execution.run()
+            return terminal.runtime_status if terminal is not None else "", content
+
+        status, content = portal.call(scenario)
+
+    assert status == "succeeded"
+    assert "<child-workflow>start</child-workflow>" in content
+    assert "<child-workflow>end</child-workflow>" in content
+    assert content.count("runtime reply") == 2

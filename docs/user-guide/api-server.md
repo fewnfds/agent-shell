@@ -60,7 +60,7 @@ Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
 - 每次请求执行一次完整运行；`run_id` 是所有 Run 的执行身份，只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
 - background Workflow Run 通过 Runtime Context 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Command Dispatch 在请求内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
-- independent child/background Run 使用自己的 `RunExecution` 并保持 `public_output=false`；其事件接入 Parent Run response scheduler 的来源层级和 Event Output owner 尚未定义；
+- independent child/background Run 使用自己的 `RunExecution` 和 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；不同 Run 在公平队列中没有 parent/child 优先级；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
 - management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 一次清理完整匹配集中的已终止 Lifecycle，并返回删除数和保留的 active 记录数。详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。

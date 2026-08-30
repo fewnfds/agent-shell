@@ -8,7 +8,7 @@
 只有 enabled parent Workflow 出现在 `/v1/models`；child Workflow 不从 OpenAI-compatible 入口直接启动。两个页面复用同一配置表单和画布，
 编辑器工具栏显示当前角色并返回对应装配页。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
-Response Stream Scheduling 是【工作流组件】中的可复用配置，进入现有配置库统一管理。组件只包含输出原子、空闲让位时间、批次软大小和最小发送间隔。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 装配一个组件；未装配时使用内置默认调度。每个 Lifecycle 只有一个 Parent Run Workflow，因此引用保存在 Parent Workflow 方便配置管理，策略仍作用于一次公开 response 对应的整个 Lifecycle，并随请求配置快照冻结。Child Run Workflow 不拥有该引用；当前 scheduler 的事件 producer 是 Parent Run，independent child/background Run 是否接入同一 Lifecycle scheduler 保持待定。事件是否公开及其文本修饰由 Agent Event Output 或 Workflow Event Output 唯一决定，调度器不提供第二套可见性、活动文本、首尾修饰或 Node 覆写。字段与 API 示例见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
+Response Stream Scheduling 是【工作流组件】中的可复用配置，进入现有配置库统一管理。组件只包含输出原子、空闲让位时间、批次软大小和最小发送间隔。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 装配一个组件；未装配时使用内置默认调度。每个 Lifecycle 只有一个 Parent Run Workflow，因此引用保存在 Parent Workflow 方便配置管理，策略仍作用于一次公开 response 对应的整个 Lifecycle，并随请求配置快照冻结。Child Run Workflow 不拥有该引用；Parent Run 与公开 response 封口前启动的 independent child/background Run 都使用这个 Lifecycle scheduler，各 Run 先由自己的 Agent Event Output 或 Workflow Event Output 决定事件是否公开及其文本修饰。调度器只隔离不同 Run 的 lane 和 transaction，不提供 parent/child 优先级、第二套可见性、活动文本、首尾修饰或 Node 覆写。字段与 API 示例见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
 
 默认输出原子是 `request`：同一 AI model request 的 reasoning、assistant text和已完成 Tool transaction使用同一排队身份。当前原子每收到一个由 Event Output 产生的非空公开文本项都会重新开始空闲让位倒计时；脚本返回空字符串的 reasoning、assistant text或其他普通事件不会取得 writer，也不会延长已有 writer lease。持续产生公开文本时保持 writer，静默超过配置时间后让出，迟到事件从队尾恢复。`message-finish`只关闭模型正文 block，后续 Tool outcome仍可属于同一 request；同一 invocation 的下一次 model request开始或所属 Node terminal时，前一个request已有输出排完后立即让位。慢 Tool不会被timeout取消，Tool call与terminal outcome仍作为不可插队的一个输出项。没有稳定 AI request身份的Command、Workflow或其他非 AI事件各自形成singleton atom。
 
@@ -24,7 +24,7 @@ background Run 由应用级 Manager 管理。每个 Run 的官方 Runtime Contex
 Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_workflow()`、`check()`、`list()` 和 `cancel()`。启动命令立即返回 handle；查询不需要为了“检查状态”再走一个额外 Node。调用方负责把需要的 handle/snapshot 写入 `background_tasks` 或自己的 State channel，并自行编排循环、延时、retry 和结束条件。只允许启动 enabled child Workflow；需要让一个 Agent 在后台执行时创建 `Start -> Agent -> End` 子图，使该 Run 继续使用标准 Workflow checkpoint、事件和运行配置。
 
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
-`operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow，background output 由调用方显式读取和编排。
+`operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow。child 的公开事件在 response 开放期间进入 Lifecycle scheduler；需要跨 Run 持久交付的业务结果仍由调用方通过 Store 或 mapped Filesystem reference 显式读取和编排。
 
 【系统 / 运行历史】页面按一次 top-level request 列出 Lifecycle，并展示 root/background Run parent/child relationship、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及 single Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的 input、Agent invocation artifact、background task、Run/Event、Lifecycle Store 记录和诊断附件，并只为 `checkpoint_thread_id` 非空的 Run 汇总 Checkpoint State。
 Lifecycle 的 messages、task records、resolved mapping records，以及已启用 Run 的 checkpoint 默认持续保留，直到用户显式删除；删除时清理全部非空 Checkpoint Thread 和受管的生命周期动态目录。parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，删除返回冲突；

@@ -32,4 +32,4 @@ POST /api/blocks/response-stream-scheduling
 
 保存 response 中的组件 UUID，再写入 Parent Workflow metadata 的 `response_stream_scheduling_id`。组件引用会进入 Repository validation、copy 和 Configuration Bundle 依赖闭包；请求启动时从同一冻结 Repository 快照解析。删除组件不会改写引用方 UUID，Repository validation 会报告缺失引用。
 
-本组件只负责已经由 Agent Event Output 或 Workflow Event Output 批准的文本排序、Tool transaction 原子性、合批和节流发送。事件是否输出、正文内容和首尾修饰仍由对应 Event Output 唯一决定。当前调度输入来自 Parent Run；independent child/background Run events 是否接入保持待定。
+本组件只负责已经由 Agent Event Output 或 Workflow Event Output 批准的文本排序、Tool transaction 原子性、合批和节流发送。事件是否输出、正文内容和首尾修饰仍由对应 Event Output 唯一决定。Parent Run 与同一公开 response 生命周期内启动的 independent child/background Run 都向同一个 scheduler 提交已投影事件；Run identity 只隔离 lane 和 transaction，不形成 parent/child 优先级。

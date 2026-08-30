@@ -32,6 +32,7 @@ from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.workflow import workflow_document_sha256
 from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
 
 
 @dataclass(slots=True)
@@ -43,6 +44,7 @@ class RequestRuntimeSnapshot:
     _runtime_factory: Callable[[], AgentRuntime]
     _workflow_lifecycle: WorkflowLifecycleService
     _background_tasks: BackgroundTaskManager
+    _response_scheduler: LifecycleResponseScheduler | None = None
 
     def workflow_by_name(self, name: str) -> dict[str, Any] | None:
         return self._workflows.get_item_by_name(name)
@@ -59,13 +61,16 @@ class RequestRuntimeSnapshot:
         document = self._workflows.get_graph(str(workflow["id"]))
         if document is None:
             raise RuntimeError("the captured Workflow no longer exists")
-        return await self._runtime.start_workflow(
+        execution = await self._runtime.start_workflow(
             document,
             raw_messages,
             workflow_snapshot=workflow,
             background_runtime=self,
             **kwargs,
         )
+        if workflow.get("workflow_role") == "parent":
+            self._response_scheduler = execution.response_scheduler
+        return execution
 
     async def start_background_workflow(
         self,
@@ -104,6 +109,7 @@ class RequestRuntimeSnapshot:
                 caller.lifecycle_id
             )
             child_runtime = self._runtime_factory()
+            response_scheduler = self._response_scheduler
             return await child_runtime.start_workflow(
                 document,
                 messages,
@@ -120,7 +126,9 @@ class RequestRuntimeSnapshot:
                 initial_shared_vars=frozen_shared_vars,
                 initial_workflow_task=frozen_workflow_task,
                 background_runtime=self,
-                public_output=False,
+                public_output=response_scheduler is not None,
+                response_scheduler=response_scheduler,
+                response_consumer=False,
             )
 
         return await self._background_tasks.start_workflow(

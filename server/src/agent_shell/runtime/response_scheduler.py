@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.output_projection import EventOutputProjectionStream
@@ -54,13 +55,37 @@ class LifecycleResponseScheduler:
         self._writer = ResponsePresentationWriter(self.policy)
         self._tools: dict[tuple[str, str, str], _ToolTransaction] = {}
         self._pending_frames: deque[PresentationFrame] = deque()
+        self._published_frames: deque[PresentationFrame] = deque()
+        self._origins: dict[str, str] = {
+            origin_run_id: origin_workflow_id,
+        }
+        self._finished_origins: set[str] = set()
+        self._wakeup = asyncio.Event()
         self._last_batch_at: float | None = None
         self._finished = False
 
+    def register_origin(self, run_id: str, workflow_id: str) -> None:
+        existing = self._origins.get(run_id)
+        if existing is not None and existing != workflow_id:
+            raise ValueError("response origin Run is already bound to another Workflow")
+        if self._finished:
+            return
+        self._origins[run_id] = workflow_id
+        self._finished_origins.discard(run_id)
+
+    def accepting(self, run_id: str, workflow_id: str) -> bool:
+        return (
+            not self._finished
+            and self._origins.get(run_id) == workflow_id
+            and run_id not in self._finished_origins
+        )
+
     def submit(self, item: ResponseEventInput, *, now: float) -> list[PresentationFrame]:
+        if self._finished:
+            return []
         self._writer.begin(now=now)
         self._validate_input(item)
-        event = item.event
+        event = self._scoped_event(item)
         if isinstance(event, ModelCallBoundary):
             self._writer.handle_boundary(event)
         else:
@@ -97,6 +122,28 @@ class LifecycleResponseScheduler:
         self._collect_output()
         return self._take_due_batch(now)
 
+    def publish(self, item: ResponseEventInput, *, now: float) -> None:
+        if not self.accepting(item.origin_run_id, item.origin_workflow_id):
+            return
+        self._published_frames.extend(self.submit(item, now=now))
+        self._wakeup.set()
+
+    def advance_published(self, *, now: float) -> None:
+        if self._finished:
+            return
+        self._published_frames.extend(self.advance(now=now))
+
+    def take_published(self) -> list[PresentationFrame]:
+        output = list(self._published_frames)
+        self._published_frames.clear()
+        return output
+
+    def clear_wakeup(self) -> None:
+        self._wakeup.clear()
+
+    async def wait_for_wakeup(self) -> None:
+        await self._wakeup.wait()
+
     def advance(self, *, now: float) -> list[PresentationFrame]:
         self._writer.begin(now=now)
         if not self._finished:
@@ -123,14 +170,58 @@ class LifecycleResponseScheduler:
         self._writer.drain()
         self._collect_output()
         self._finished = True
-        return self._take_due_batch(now)
+        output = self._take_due_batch(now)
+        self._wakeup.set()
+        return output
+
+    def finish_origin(
+        self,
+        run_id: str,
+        workflow_id: str,
+        *,
+        now: float,
+    ) -> None:
+        if not self.accepting(run_id, workflow_id):
+            return
+        lane_prefix = self._lane_prefix(run_id)
+        self._writer.begin(now=now)
+        self._flush_terminal_tools(lane_prefix=lane_prefix)
+        self._writer.finish_lanes(lane_prefix)
+        self._writer.drain()
+        self._collect_output()
+        self._published_frames.extend(self._take_due_batch(now))
+        self._finished_origins.add(run_id)
+        self._wakeup.set()
+
+    def abort_origin(
+        self,
+        run_id: str,
+        workflow_id: str,
+        *,
+        now: float,
+    ) -> None:
+        if not self.accepting(run_id, workflow_id):
+            return
+        lane_prefix = self._lane_prefix(run_id)
+        self._writer.begin(now=now)
+        self._writer.abort_lanes(lane_prefix)
+        self._tools = {
+            key: value
+            for key, value in self._tools.items()
+            if not value.lane_id.startswith(lane_prefix)
+        }
+        self._writer.drain()
+        self._collect_output()
+        self._published_frames.extend(self._take_due_batch(now))
+        self._wakeup.set()
 
     def abort(self) -> list[PresentationFrame]:
         self._writer.begin()
         self._writer.abort()
         self._tools.clear()
         self._collect_output()
-        output = list(self._pending_frames)
+        output = [*self._published_frames, *self._pending_frames]
+        self._published_frames.clear()
         self._pending_frames.clear()
         self._last_batch_at = None
         return output
@@ -139,18 +230,47 @@ class LifecycleResponseScheduler:
         self._writer.discard()
         self._tools.clear()
         self._pending_frames.clear()
+        self._published_frames.clear()
+        self._finished = True
+        self._wakeup.set()
 
     @property
     def has_pending_output(self) -> bool:
-        return bool(self._pending_frames)
+        return bool(self._published_frames or self._pending_frames)
 
     def _validate_input(self, item: ResponseEventInput) -> None:
         if (
             item.lifecycle_id != self.lifecycle_id
-            or item.origin_run_id != self.origin_run_id
-            or item.origin_workflow_id != self.origin_workflow_id
+            or self._origins.get(item.origin_run_id) != item.origin_workflow_id
+            or item.origin_run_id in self._finished_origins
         ):
             raise ValueError("ResponseEventInput does not belong to this lifecycle scheduler")
+
+    @staticmethod
+    def _lane_prefix(run_id: str) -> str:
+        return f"run:{run_id}|"
+
+    def _scoped_event(
+        self,
+        item: ResponseEventInput,
+    ) -> OutputEvent | ModelCallBoundary:
+        prefix = self._lane_prefix(item.origin_run_id)
+        event = item.event
+        if isinstance(event, ModelCallBoundary):
+            return replace(
+                event,
+                source_key=prefix + (event.source_key or "unknown"),
+            )
+        source_key = event.source_key.strip() or "|".join(
+            str(value or "")
+            for value in (
+                event.source_type,
+                event.workflow_node_id,
+                event.agent_profile_id,
+                event.subagent_profile_id,
+            )
+        )
+        return replace(event, source_key=prefix + source_key)
 
     def _handle_tool(
         self,
@@ -228,10 +348,11 @@ class LifecycleResponseScheduler:
         ]
         return candidates[-1] if candidates else None
 
-    def _flush_terminal_tools(self) -> None:
+    def _flush_terminal_tools(self, *, lane_prefix: str = "") -> None:
         for transaction in self._tools.values():
             if (
-                transaction.declaration is None
+                (not lane_prefix or transaction.lane_id.startswith(lane_prefix))
+                and transaction.declaration is None
                 and transaction.outcome is not None
                 and not transaction.queued
             ):

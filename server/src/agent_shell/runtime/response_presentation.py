@@ -70,6 +70,7 @@ class ResponsePresentationWriter:
         self._ready_order: deque[str] = deque()
         self._ready_set: set[str] = set()
         self._atom_kinds: dict[str, Literal["request", "node_invocation", "event"]] = {}
+        self._atom_lanes: dict[str, str] = {}
         self._terminal_atoms: set[str] = set()
         self._atom_sequence = 0
         self._lane_meta: dict[str, _LaneMeta] = {}
@@ -269,6 +270,89 @@ class ResponsePresentationWriter:
             ):
                 self._queue_live_block(block)
         self._release_owner()
+
+    def finish_lanes(self, lane_prefix: str) -> None:
+        """Close one Run's lanes without finishing the Lifecycle writer."""
+
+        matching_atoms = {
+            atom_id
+            for atom_id, lane_id in self._atom_lanes.items()
+            if lane_id.startswith(lane_prefix)
+        }
+        self._terminal_atoms.update(matching_atoms)
+        if self._open_block_id is not None:
+            block = self._blocks[self._open_block_id]
+            if block.lane_id.startswith(lane_prefix):
+                block.strong_closed = True
+                self._close_open("run_terminal", refresh_owner=False)
+        for block in self._blocks.values():
+            if (
+                not block.lane_id.startswith(lane_prefix)
+                or block.strong_closed
+            ):
+                continue
+            block.strong_closed = True
+            if block.pending_fragments or (
+                block.segment_count == 0
+                and (block.start_text or block.end_text)
+            ):
+                self._queue_live_block(block)
+        owner = self._owner_atom_id
+        if (
+            owner in matching_atoms
+            and not self._atoms.get(owner)
+            and self._open_block_id is None
+        ):
+            self._release_owner()
+
+    def abort_lanes(self, lane_prefix: str) -> None:
+        """Abort and discard one Run's unfinished lanes only."""
+
+        matching_atoms = {
+            atom_id
+            for atom_id, lane_id in self._atom_lanes.items()
+            if lane_id.startswith(lane_prefix)
+        }
+        if self._open_block_id is not None:
+            block = self._blocks[self._open_block_id]
+            if block.lane_id.startswith(lane_prefix):
+                self._close_open(
+                    "abort",
+                    phase="abort",
+                    refresh_owner=False,
+                )
+        for atom_id in matching_atoms:
+            self._atoms.pop(atom_id, None)
+            self._atom_kinds.pop(atom_id, None)
+            self._atom_lanes.pop(atom_id, None)
+            self._terminal_atoms.discard(atom_id)
+            self._ready_set.discard(atom_id)
+        self._ready_order = deque(
+            atom_id
+            for atom_id in self._ready_order
+            if atom_id not in matching_atoms
+        )
+        matching_blocks = {
+            block_id
+            for block_id, block in self._blocks.items()
+            if block.lane_id.startswith(lane_prefix)
+        }
+        for block_id in matching_blocks:
+            self._blocks.pop(block_id, None)
+        self._successor_order = [
+            token for token in self._successor_order if token not in matching_blocks
+        ]
+        matching_lanes = {
+            lane_id
+            for lane_id in self._lane_meta
+            if lane_id.startswith(lane_prefix)
+        }
+        for lane_id in matching_lanes:
+            self._lane_meta.pop(lane_id, None)
+            self._lane_turns.pop(lane_id, None)
+            self._completed_turns.pop(lane_id, None)
+        if self._owner_atom_id in matching_atoms:
+            self._release_owner()
 
     def abort(self) -> None:
         if self._open_block_id is not None:
@@ -553,6 +637,7 @@ class ResponsePresentationWriter:
         kind: Literal["request", "node_invocation", "event"],
     ) -> str:
         self._atom_kinds.setdefault(atom_id, kind)
+        self._atom_lanes.setdefault(atom_id, lane_id)
         return atom_id
 
     def _mark_request_terminal(self, lane_id: str, turn_id: str) -> None:
@@ -641,6 +726,7 @@ class ResponsePresentationWriter:
         self._ready_order.clear()
         self._ready_set.clear()
         self._atom_kinds.clear()
+        self._atom_lanes.clear()
         self._terminal_atoms.clear()
         self._lane_turns.clear()
         self._completed_turns.clear()

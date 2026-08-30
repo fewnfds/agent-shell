@@ -295,6 +295,103 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
     )
 
 
+def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None:
+    async def scenario() -> str:
+        class QuietRun:
+            def __init__(self) -> None:
+                self.pulling = asyncio.Event()
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
+                return None
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                self.pulling.set()
+                await asyncio.Event().wait()
+                raise StopAsyncIteration
+
+            async def output(self):
+                return None
+
+        class QuietGraph:
+            def __init__(self, run: QuietRun) -> None:
+                self.run = run
+
+            async def astream_events(self, _input, **_kwargs):
+                return self.run
+
+        lifecycle_id = "shared-lifecycle"
+        parent_run_id = "parent-run"
+        parent_workflow_id = "parent-workflow"
+        child_run_id = "child-run"
+        child_workflow_id = "child-workflow"
+        output = OutputProjector(output_renderer())
+        scheduler = LifecycleResponseScheduler(
+            ResponseStreamPolicy(),
+            projection_stream=EventOutputProjectionStream(output),
+            lifecycle_id=lifecycle_id,
+            origin_run_id=parent_run_id,
+            origin_workflow_id=parent_workflow_id,
+        )
+        scheduler.register_origin(child_run_id, child_workflow_id)
+        quiet_run = QuietRun()
+        parent = RunExecution(
+            graph=QuietGraph(quiet_run),
+            input_state={},
+            response_scheduler=scheduler,
+            output_projection_stream=EventOutputProjectionStream(output),
+            normalizer=V3EventNormalizer("Parent Agent"),
+            middleware_runtime=noop_middleware_runtime(),
+            media_response=noop_media_response(),
+            context=WorkflowRuntimeContext.for_run(
+                request_id="request",
+                lifecycle_id=lifecycle_id,
+                run_id=parent_run_id,
+                workflow={"id": parent_workflow_id},
+            ),
+        )
+        child = RunExecution(
+            graph=EventGraph(
+                [
+                    message_envelope(
+                        AIMessageChunk(content="child-output", id="child-message"),
+                        run_id="child-model-run",
+                        agent_name="Child Agent",
+                    )
+                ]
+            ),
+            input_state={},
+            response_scheduler=scheduler,
+            output_projection_stream=EventOutputProjectionStream(output),
+            response_consumer=False,
+            normalizer=V3EventNormalizer("Child Agent"),
+            middleware_runtime=noop_middleware_runtime(),
+            media_response=noop_media_response(),
+            context=WorkflowRuntimeContext.for_run(
+                request_id="request",
+                lifecycle_id=lifecycle_id,
+                run_id=child_run_id,
+                parent_run_id=parent_run_id,
+                workflow={"id": child_workflow_id},
+            ),
+        )
+
+        stream = parent.stream_text()
+        notice_task = asyncio.create_task(anext(stream))
+        await asyncio.wait_for(quiet_run.pulling.wait(), timeout=1)
+        await child.execute()
+        notice = await asyncio.wait_for(notice_task, timeout=1)
+        await stream.aclose()
+        return notice
+
+    assert asyncio.run(scenario()) == "child-output"
+
+
 def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -> None:
     async def scenario() -> tuple[bool, dict[str, object], list[dict[str, object]]]:
         class BlockingRun:

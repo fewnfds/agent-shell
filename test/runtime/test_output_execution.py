@@ -177,54 +177,23 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:
-    class FinalLifecycleScheduler:
-        lifecycle_id = ""
-        origin_run_id = ""
-        origin_workflow_id = ""
+    def output(event: dict[str, object]) -> str:
+        if event["event_type"] != "lifecycle":
+            return ""
+        return "started" if event["phase"] == "start" else "finished"
 
-        def __init__(self) -> None:
-            self.pending = False
-            self.projection_stream = EventOutputProjectionStream(
-                OutputProjector(lambda _event: "")
-            )
-
-        @property
-        def has_pending_output(self) -> bool:
-            return self.pending
-
-        def submit(self, item, *, now: float) -> list[PresentationFrame]:
-            event = item.event
-            if not isinstance(event, OutputEvent) or event.event_type != "lifecycle":
-                return []
-            if event.phase == "start":
-                return [self._frame("started")]
-            self.pending = True
-            return []
-
-        def finish(self, *, now: float) -> list[PresentationFrame]:
-            return []
-
-        def next_deadline(self) -> float | None:
-            return 0.0 if self.pending else None
-
-        def advance(self, *, now: float) -> list[PresentationFrame]:
-            self.pending = False
-            return [self._frame("finished")]
-
-        @staticmethod
-        def _frame(text: str) -> PresentationFrame:
-            return PresentationFrame(
-                kind="content",
-                phase="atomic",
-                text=text,
-                lane_id="workflow",
-            )
+    payload = ResponseStreamPolicy().model_dump(mode="json")
+    payload["queue"]["send_interval_seconds"] = 0.01
+    scheduler = response_scheduler(
+        OutputProjector(output),
+        ResponseStreamPolicy.model_validate(payload),
+    )
 
     async def scenario() -> list[str]:
         execution = RunExecution(
             graph=EventGraph([]),
             input_state={"messages": []},
-            response_scheduler=FinalLifecycleScheduler(),  # type: ignore[arg-type]
+            response_scheduler=scheduler,
             normalizer=V3EventNormalizer("Main Agent"),
             middleware_runtime=noop_middleware_runtime(),
             media_response=noop_media_response(),
