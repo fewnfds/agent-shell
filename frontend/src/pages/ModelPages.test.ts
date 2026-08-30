@@ -41,6 +41,14 @@ function requirement(id: string, binding: string | null): ModelRequirementBindin
   return { id, name: 'Reasoning requirement', description: 'Use a reasoning-capable local model.', binding, connection: binding ? connection : null }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((accept) => {
+    resolve = accept
+  })
+  return { promise, resolve }
+}
+
 function i18n() {
   return createI18n({ legacy: false, locale: 'en', messages: { en: messages } })
 }
@@ -80,6 +88,25 @@ describe('model management pages', () => {
     await wrapper.get('select').setValue('')
     await flushPromises()
     expect(api.bindModelRequirement).toHaveBeenLastCalledWith('33333333-3333-4333-8333-333333333333', null)
+    wrapper.unmount()
+  })
+
+  it('serializes changes for each Model Requirement while its binding is saved', async () => {
+    const pending = deferred<ModelRequirementBinding>()
+    api.bindModelRequirement.mockReturnValueOnce(pending.promise)
+    const wrapper = await mountPage(ModelMappingPage, '/models/mapping')
+    const select = wrapper.get('select')
+
+    await select.setValue(connection.id)
+    expect(select.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.action-button').attributes('disabled')).toBeDefined()
+    await select.setValue('')
+    expect(api.bindModelRequirement).toHaveBeenCalledTimes(1)
+
+    pending.resolve(requirement('33333333-3333-4333-8333-333333333333', connection.id))
+    await flushPromises()
+    expect(select.attributes('disabled')).toBeUndefined()
+    expect((select.element as HTMLSelectElement).value).toBe(connection.id)
     wrapper.unmount()
   })
 

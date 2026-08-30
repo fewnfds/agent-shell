@@ -219,7 +219,7 @@ onMounted(() => {
       </LteAlert>
     </template>
 
-    <ConfigurationEditorLayout :loading="loading">
+    <ConfigurationEditorLayout :loading="loading || saving">
       <template #editor>
         <div class="mb-3">
           <RecordPicker

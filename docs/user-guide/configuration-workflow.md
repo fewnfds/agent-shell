@@ -38,6 +38,8 @@ parent Run 终止且 background task 经传播、Workflow 代码、Tool/Middlewa
 问题列表显示 current candidate Graph 的全部正式问题；点击问题可以选中对应 Node、Edge 或 Workflow，画布底部不承载问题 UI。Graph 不设置 Node、Edge 数量或 document 字节数的领域配额；实际可用规模取决于浏览器、请求、存储、LangGraph 和本机资源。同一个 Main Agent 可以被多个 Agent Node 重复引用；normal 端点可以连接 `Start -> Agent`、
 `Agent -> Agent` 和 `Agent -> End`，并允许一个 endpoint 连接多个 activation direction。同一个有向 `source Node ID -> target Node ID` 组合只能保存一条 Edge；重复 Agent invocation 由一条 Dispatch Edge 上的多个 `Send` 表达。保存直接覆盖 current Graph，重新打开时恢复 Node、Edge、position 和 viewport。草稿保存执行 wire validation 并原子设置 `enabled=false`；正式保存执行完整静态校验，通过后原子写入 Graph 并设置 `enabled=true`。current canvas revision 的预校验请求失败时，正式保存保持禁用并显示重新校验操作；正式失败不落盘。
 
+画布中的 Node、Edge、position 或 viewport 发生变化后，切换 Workflow、返回配置页、关闭或刷新浏览器都会触发未保存确认。确认离开后，编辑器按地址中的 Workflow UUID 重新读取 metadata 与 current Graph；尚未完成的旧加载、校验或保存响应不会写入新 Workflow 页面。草稿保存或正式保存成功后，当前 Graph 成为新的已保存基线。
+
 保存入口允许不完整 draft。publishable Graph 恰有一个 system Start 和一个 system End，且 Start 至少有一条合法 outgoing Edge；`Start -> End` 可以 publish，End 可以没有 incoming Edge。LangGraph runtime 允许 reachable leaf Node 在没有 successor message 时自然结束。每个 executable Node 都从 Start 可达；不满足 topology fact、Edge paradigm 或 LangGraph compile requirement 时，在 Agent assembly 和 Graph compile 前返回 422。
 
 普通可达叶子可以自然结束。多条路径集中结束时，路径显式汇聚到实际执行的 Node（例如 Command Node），再由该 Node 连接 End。End 表示逻辑终点；all-of fan-in 在全部声明的 source Node 完成后激活 target。互斥分支适合作为独立叶子或分别连接 End。

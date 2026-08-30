@@ -11,6 +11,7 @@ import {
   type WorkflowGraphDocument,
   type WorkflowNodeCatalogItem,
 } from '@/api'
+import { useConfirmation } from '@/composables/useConfirmation'
 import { en } from '@/locales/en'
 
 import WorkflowEditorPage from './WorkflowEditorPage.vue'
@@ -205,7 +206,15 @@ function i18n() {
   return createI18n({ legacy: false, locale: 'en', messages: { en } })
 }
 
-async function mountEditor() {
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((accept) => {
+    resolve = accept
+  })
+  return { promise, resolve }
+}
+
+async function mountEditorWorkspace() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -215,17 +224,22 @@ async function mountEditor() {
   })
   await router.push('/workflows/workflow-1/editor')
   await router.isReady()
-  const wrapper = mount(WorkflowEditorPage, {
+  const wrapper = mount({ template: '<RouterView />' }, {
     global: {
       plugins: [i18n(), router],
       stubs: { VueFlow: VueFlowStub },
     },
   })
   await flushPromises()
-  return wrapper
+  return { router, wrapper }
+}
+
+async function mountEditor() {
+  return (await mountEditorWorkspace()).wrapper
 }
 
 beforeEach(() => {
+  useConfirmation().cancel()
   vi.clearAllMocks()
   vi.spyOn(managementApi, 'getWorkflow').mockResolvedValue(workflow)
   vi.spyOn(managementApi, 'getWorkflowGraph').mockResolvedValue(graph)
@@ -258,6 +272,64 @@ afterEach(() => {
 })
 
 describe('WorkflowEditorPage', () => {
+  it('loads the latest routed Workflow and ignores an earlier response', async () => {
+    const firstMetadata = deferred<Workflow>()
+    const firstGraph = deferred<WorkflowGraphDocument>()
+    const secondWorkflow = { ...workflow, id: 'workflow-2', name: 'Latest Workflow' }
+    vi.mocked(managementApi.getWorkflow).mockImplementation((id) => (
+      id === workflow.id ? firstMetadata.promise : Promise.resolve(secondWorkflow)
+    ))
+    vi.mocked(managementApi.getWorkflowGraph).mockImplementation((id) => (
+      id === workflow.id ? firstGraph.promise : Promise.resolve(graph)
+    ))
+    const { router, wrapper } = await mountEditorWorkspace()
+
+    await router.push('/workflows/workflow-2/editor')
+    await flushPromises()
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Latest Workflow')
+
+    firstMetadata.resolve(workflow)
+    firstGraph.resolve(graph)
+    await flushPromises()
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Latest Workflow')
+    expect(wrapper.get('.workflow-editor-toolbar').text()).not.toContain('Research Workflow')
+    wrapper.unmount()
+  })
+
+  it('guards a dirty Graph and freezes an in-flight save to its original Workflow', async () => {
+    const secondWorkflow = { ...workflow, id: 'workflow-2', name: 'Second Workflow' }
+    vi.mocked(managementApi.getWorkflow).mockImplementation(async (id) => (
+      id === workflow.id ? workflow : secondWorkflow
+    ))
+    const pendingSave = deferred<WorkflowGraphDocument>()
+    vi.mocked(managementApi.saveWorkflowDraft).mockReturnValueOnce(pendingSave.promise)
+    const { router, wrapper } = await mountEditorWorkspace()
+
+    await wrapper.get('.workflow-node-library-item').trigger('click')
+    const save = wrapper.get('.workflow-editor-toolbar button[aria-label="Save draft"]')
+    await save.trigger('click')
+    await flushPromises()
+    expect(managementApi.saveWorkflowDraft).toHaveBeenCalledWith(
+      workflow.id,
+      expect.objectContaining({ definition: expect.any(Object) }),
+    )
+
+    const navigation = router.push('/workflows/workflow-2/editor')
+    await flushPromises()
+    expect(useConfirmation().current.value?.title).toBe(en.unsavedChanges.title)
+    useConfirmation().accept()
+    await navigation
+    await flushPromises()
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Second Workflow')
+
+    pendingSave.resolve(graph)
+    await flushPromises()
+    const toolbar = wrapper.get('.workflow-editor-toolbar')
+    expect(toolbar.text()).toContain('Second Workflow')
+    expect(toolbar.text()).toContain(en.workflows.status.published)
+    wrapper.unmount()
+  })
+
   it('keeps both icon rails visible while panels switch or close', async () => {
     const wrapper = await mountEditor()
     const leftDock = wrapper.get('.workflow-tool-dock--left')

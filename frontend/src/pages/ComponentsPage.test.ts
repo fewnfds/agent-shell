@@ -199,6 +199,24 @@ async function mountAt(path: string) {
   return { router, wrapper }
 }
 
+async function mountModelAt(path: string) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{
+      path: '/models/connections',
+      component: ComponentsPage,
+      props: { scope: 'model' },
+    }],
+  })
+  await router.push(path)
+  await router.isReady()
+  const wrapper = mount({ template: '<RouterView />' }, {
+    global: { plugins: [router] },
+  })
+  await settleComponentPage(wrapper)
+  return { router, wrapper }
+}
+
 async function settleComponentPage(wrapper: ReturnType<typeof mount>): Promise<void> {
   await vi.waitFor(() => {
     expect(
@@ -593,6 +611,83 @@ describe('ComponentsPage', () => {
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
       'common.copy', 'common.delete', 'common.new', 'common.save',
     ])
+    wrapper.unmount()
+  })
+
+  it('discards a model catalog response after the connection fields change', async () => {
+    const id = '00000000-0000-4000-8000-000000000078'
+    const firstCatalog = deferred<string[]>()
+    api.listModelConnections.mockResolvedValueOnce([modelConnection(id)])
+    api.getModelConnection.mockResolvedValueOnce(modelConnection(id))
+    api.listModelProviders.mockResolvedValueOnce({
+      langchain_version: '1.0.0',
+      providers: [
+        {
+          provider: 'openai', package: 'langchain-openai', class_name: 'ChatOpenAI',
+          installed: true, version: '1.0.0', documentation_url: 'https://example.invalid/openai',
+        },
+        {
+          provider: 'deepseek', package: 'langchain-deepseek', class_name: 'ChatDeepSeek',
+          installed: true, version: '1.0.0', documentation_url: 'https://example.invalid/deepseek',
+        },
+      ],
+    })
+    api.fetchModels
+      .mockReturnValueOnce(firstCatalog.promise)
+      .mockResolvedValueOnce(['deepseek-chat'])
+    const { wrapper } = await mountModelAt(`/models/connections?id=${id}`)
+
+    await wrapper.get('[data-testid="model-fetch-group"]').trigger('submit')
+    await wrapper.get('[data-testid="model-provider-input"]').setValue('deepseek')
+    await flushPromises()
+    await wrapper.get('[data-testid="model-fetch-group"]').trigger('submit')
+    await flushPromises()
+    expect(api.fetchModels).toHaveBeenCalledTimes(2)
+    expect(api.fetchModels).toHaveBeenLastCalledWith(
+      'deepseek',
+      'https://api.openai.com/v1',
+      null,
+      id,
+    )
+    expect(wrapper.text()).toContain('deepseek-chat')
+
+    firstCatalog.resolve(['stale-openai-model'])
+    await flushPromises()
+    expect(wrapper.text()).toContain('deepseek-chat')
+    expect(wrapper.text()).not.toContain('stale-openai-model')
+    wrapper.unmount()
+  })
+
+  it('does not project a component save after another resource is selected', async () => {
+    const firstId = '00000000-0000-4000-8000-000000000071'
+    const secondId = '00000000-0000-4000-8000-000000000072'
+    const mutation = deferred<SavedBlock>()
+    api.listBlockSummaries.mockImplementation(async (type: BlockType) => summaryCollection(
+      type === 'model-requirement'
+        ? [modelRequirementRecord(firstId)]
+        : [skillRecord(secondId)],
+    ))
+    api.getBlock.mockImplementation(async (type: BlockType, id: string) => (
+      type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)
+    ))
+    api.saveBlock.mockReturnValueOnce(mutation.promise)
+    const { router, wrapper } = await mountAt(`/agent-components/model-requirement?id=${firstId}`)
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+    expect(api.saveBlock).toHaveBeenCalledWith(
+      'model-requirement',
+      expect.objectContaining({ id: firstId }),
+    )
+    await router.push(`/agent-components/skill?id=${secondId}`)
+    await flushPromises()
+    mutation.resolve({ ...modelRequirementRecord(firstId), name: 'Late saved component' })
+    await flushPromises()
+
+    expect(wrapper.find('[data-editor="skill"]').exists()).toBe(true)
+    expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value)
+      .toBe('Skill configuration')
+    expect(wrapper.text()).not.toContain('Late saved component')
     wrapper.unmount()
   })
 

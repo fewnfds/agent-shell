@@ -122,6 +122,7 @@ export function useConfigurationResource<
 
   function resetDraft(notifyUser: boolean): void {
     loadSequence += 1
+    saving.value = false
     selectedId.value = ''
     form.value = definition.blank()
     clearFeedback()
@@ -141,6 +142,7 @@ export function useConfigurationResource<
 
   async function loadDetail(id: string): Promise<void> {
     const sequence = ++loadSequence
+    saving.value = false
     if (!id) {
       resetDraft(true)
       return
@@ -180,6 +182,7 @@ export function useConfigurationResource<
       return
     }
     const sequence = ++loadSequence
+    saving.value = false
     loading.value = true
     try {
       const loadedRecords = await loadRecords()
@@ -211,15 +214,19 @@ export function useConfigurationResource<
     }
     saving.value = true
     clearFeedback()
+    const sequence = loadSequence
     try {
+      const targetId = form.value.id
+      const payload = definition.payload(form.value)
       if (definition.validationRequest && definition.validate) {
         const state = await validateNow()
         if (state.status !== 'valid') return
       }
-      const payload = definition.payload(form.value)
-      const result = form.value.id
-        ? await definition.update(form.value.id, payload)
+      if (sequence !== loadSequence) return
+      const result = targetId
+        ? await definition.update(targetId, payload)
         : await definition.create(payload)
+      if (sequence !== loadSequence) return
       const saved = definition.normalize(result)
       form.value = saved
       selectedId.value = saved.id
@@ -228,9 +235,11 @@ export function useConfigurationResource<
       await router.replace(definition.location(saved.id))
       notify({ tone: 'success', title: t(definition.messages.saved) })
     } catch (error) {
-      setFailure(definition.messages.saveFailed, error)
+      if (sequence === loadSequence) {
+        setFailure(definition.messages.saveFailed, error)
+      }
     } finally {
-      saving.value = false
+      if (sequence === loadSequence) saving.value = false
     }
   }
 

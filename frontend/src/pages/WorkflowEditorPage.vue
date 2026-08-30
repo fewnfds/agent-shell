@@ -27,6 +27,7 @@ import WorkflowNodeTracker from '@/components/workflow/WorkflowNodeTracker.vue'
 import WorkflowProblemsPanel from '@/components/workflow/WorkflowProblemsPanel.vue'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import {
   newAgentCanvasNode,
   newCommandCanvasNode,
@@ -77,6 +78,7 @@ const validationError = ref('')
 const loadError = ref('')
 let validationTimer: ReturnType<typeof setTimeout> | undefined
 let validationGeneration = 0
+let loadGeneration = 0
 const workflowId = computed(() => String(route.params.id ?? ''))
 const workflowListPath = computed(() => (
   workflow.value?.workflow_role === 'child'
@@ -141,6 +143,15 @@ const graphRevision = computed(() => JSON.stringify({
     dispatchKey: edge.data.dispatchKey,
   })),
 }))
+const { markClean } = useUnsavedChanges(
+  () => loaded.value ? currentDocument() : null,
+  () => ({
+    title: t('unsavedChanges.title'),
+    description: t('unsavedChanges.description'),
+    confirmLabel: t('unsavedChanges.confirm'),
+    cancelLabel: t('common.cancel'),
+  }),
+)
 const selectedNode = computed(() => nodes.value.find((node) => node.selected) ?? null)
 const selectedEdge = computed(() => (
   selectedNode.value ? null : edges.value.find((edge) => edge.selected) ?? null
@@ -517,10 +528,19 @@ function currentDocument(): ReturnType<typeof workflowCanvasToDocument> | null {
   return workflowCanvasToDocument(nodes.value, edges.value, flow.value.getViewport())
 }
 
+function currentDocumentMatches(
+  document: NonNullable<ReturnType<typeof currentDocument>>,
+): boolean {
+  const current = currentDocument()
+  return current !== null && JSON.stringify(current) === JSON.stringify(document)
+}
+
 function scheduleValidation(delay = 350): void {
   if (!loaded.value) return
   validationGeneration += 1
   const generation = validationGeneration
+  const pageGeneration = loadGeneration
+  const targetWorkflowId = workflowId.value
   validating.value = true
   validationReady.value = false
   validationError.value = ''
@@ -536,17 +556,19 @@ function scheduleValidation(delay = 350): void {
       return
     }
     try {
-      const report = await managementApi.validateWorkflow(workflowId.value, document)
-      if (generation === validationGeneration) {
+      const report = await managementApi.validateWorkflow(targetWorkflowId, document)
+      if (generation === validationGeneration && pageGeneration === loadGeneration) {
         serverProblems.value = workflowServerProblems(report.issues)
         validationReady.value = true
       }
     } catch (error) {
-      if (generation === validationGeneration) {
+      if (generation === validationGeneration && pageGeneration === loadGeneration) {
         validationError.value = managementError.describe(error).display
       }
     } finally {
-      if (generation === validationGeneration) validating.value = false
+      if (generation === validationGeneration && pageGeneration === loadGeneration) {
+        validating.value = false
+      }
     }
   }, delay)
 }
@@ -557,16 +579,25 @@ function retryValidation(): void {
 
 async function saveDraft(): Promise<void> {
   if (!canSaveDraft.value) return
+  const generation = loadGeneration
+  const targetWorkflowId = workflowId.value
+  const document = currentDocument()
+  if (!document) return
   saving.value = true
   try {
-    const document = currentDocument()
-    if (!document) return
-    await managementApi.saveWorkflowDraft(workflowId.value, document)
+    await managementApi.saveWorkflowDraft(targetWorkflowId, document)
+    if (generation !== loadGeneration) return
     if (workflow.value) workflow.value = { ...workflow.value, enabled: false }
+    if (currentDocumentMatches(document)) markClean()
     notify({ tone: 'success', title: t('workflows.editor.draftSaved') })
   } catch (error) {
+    if (generation !== loadGeneration) return
     const presentation = managementError.describe(error)
-    if (error instanceof ManagementApiError && error.validation) {
+    if (
+      currentDocumentMatches(document)
+      && error instanceof ManagementApiError
+      && error.validation
+    ) {
       serverProblems.value = workflowServerProblems(error.validation.issues)
     }
     notify({
@@ -577,23 +608,34 @@ async function saveDraft(): Promise<void> {
         : presentation.display,
     })
   } finally {
-    saving.value = false
+    if (generation === loadGeneration) saving.value = false
   }
 }
 
 async function publish(): Promise<void> {
   if (!canPublish.value) return
+  const generation = loadGeneration
+  const targetWorkflowId = workflowId.value
+  const document = currentDocument()
+  if (!document) return
   saving.value = true
   try {
-    const document = currentDocument()
-    if (!document) return
-    await managementApi.publishWorkflow(workflowId.value, document)
+    await managementApi.publishWorkflow(targetWorkflowId, document)
+    if (generation !== loadGeneration) return
     if (workflow.value) workflow.value = { ...workflow.value, enabled: true }
-    serverProblems.value = []
+    if (currentDocumentMatches(document)) {
+      serverProblems.value = []
+      markClean()
+    }
     notify({ tone: 'success', title: t('workflows.editor.published') })
   } catch (error) {
+    if (generation !== loadGeneration) return
     const presentation = managementError.describe(error)
-    if (error instanceof ManagementApiError && error.validation) {
+    if (
+      currentDocumentMatches(document)
+      && error instanceof ManagementApiError
+      && error.validation
+    ) {
       serverProblems.value = workflowServerProblems(error.validation.issues)
     }
     notify({
@@ -604,27 +646,36 @@ async function publish(): Promise<void> {
         : presentation.display,
     })
   } finally {
-    saving.value = false
+    if (generation === loadGeneration) saving.value = false
   }
 }
 
-onBeforeMount(() => {
-  document.documentElement.classList.add('workflow-editor-active')
-})
-
-onMounted(async () => {
+async function loadWorkflow(id: string): Promise<void> {
+  const generation = ++loadGeneration
+  validationGeneration += 1
+  if (validationTimer !== undefined) {
+    clearTimeout(validationTimer)
+    validationTimer = undefined
+  }
+  loaded.value = false
+  saving.value = false
+  validating.value = false
+  validationReady.value = false
+  validationError.value = ''
+  loadError.value = ''
+  workflow.value = null
+  nodes.value = []
+  edges.value = []
+  serverProblems.value = []
+  markClean()
   try {
-    const [
-      metadata,
-      graph,
-      options,
-      catalog,
-    ] = await Promise.all([
-      managementApi.getWorkflow(workflowId.value),
-      managementApi.getWorkflowGraph(workflowId.value),
+    const [metadata, graph, options, catalog] = await Promise.all([
+      managementApi.getWorkflow(id),
+      managementApi.getWorkflowGraph(id),
       managementApi.getConfigurationOptions(),
       managementApi.listWorkflowNodeCatalog(),
     ])
+    if (generation !== loadGeneration) return
     workflow.value = metadata
     mainAgents.value = options.main_agents
     commands.value = options.components.command ?? []
@@ -636,14 +687,33 @@ onMounted(async () => {
     savedViewport.value = canvas.viewport
     loaded.value = true
     await nextTick()
+    if (generation !== loadGeneration) return
     await flow.value?.setViewport(canvas.viewport)
+    if (generation !== loadGeneration) return
+    markClean()
     scheduleValidation()
   } catch (error) {
-    loadError.value = managementError.describe(error).display
+    if (generation === loadGeneration) {
+      loadError.value = managementError.describe(error).display
+    }
   }
+}
+
+onBeforeMount(() => {
+  document.documentElement.classList.add('workflow-editor-active')
+})
+
+watch(workflowId, (id) => {
+  void loadWorkflow(id)
+})
+
+onMounted(() => {
+  void loadWorkflow(workflowId.value)
 })
 
 onUnmounted(() => {
+  loadGeneration += 1
+  validationGeneration += 1
   if (validationTimer !== undefined) clearTimeout(validationTimer)
   document.documentElement.classList.remove('workflow-editor-active')
 })

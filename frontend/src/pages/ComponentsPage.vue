@@ -163,6 +163,7 @@ const loadingResource = ref(false)
 let routeSequence = 0
 let catalogSequence = 0
 let resourceSequence = 0
+let modelCatalogSequence = 0
 let privateSkillSequence = 0
 let privateSkillLoadingSequence = 0
 let privateSkillMutationSequence = 0
@@ -172,10 +173,14 @@ let repositoryValidationPromise: Promise<ValidationReport> | null = null
 
 function invalidateResourceRequests(): void {
   resourceSequence += 1
+  modelCatalogSequence += 1
   privateSkillSequence += 1
+  saving.value = false
+  loadingModels.value = false
   loadingResource.value = false
   privateSkillLoading.value = false
   privateSkillMutating.value = false
+  models.value = []
 }
 
 function resourceRequestIsCurrent(
@@ -581,9 +586,12 @@ function upsertRecord(saved: EditorRecord): void {
 
 async function save(): Promise<void> {
   if (!activeType.value || !draft.value) return
+  const type = activeType.value
+  const ownerId = draft.value.id
+  const sequence = resourceSequence
   pageError.value = ''
-  const packageType = usesPythonExtension(activeType.value)
-  const privateAssetType = packageType || activeType.value === 'skill'
+  const packageType = usesPythonExtension(type)
+  const privateAssetType = packageType || type === 'skill'
   const packageDraft = packageType
     ? draft.value as BlockDraftBase & PythonPackageDraftState
     : null
@@ -595,14 +603,14 @@ async function save(): Promise<void> {
     pageError.value = t('errors.pythonPackageTemplateRequired')
     return
   }
-  const payload = payloadFromDraft(activeType.value, draft.value)
+  const payload = payloadFromDraft(type, draft.value)
   const existing = records.value.find((record) => (
     record.name === payload.name && record.id !== draft.value?.id
   ))
   let targetId = draft.value.id
   if (existing) {
-    if (privateAssetType || activeType.value === 'model-connection') {
-      pageError.value = t(activeType.value === 'model-connection'
+    if (privateAssetType || type === 'model-connection') {
+      pageError.value = t(type === 'model-connection'
         ? 'errors.modelConnectionNameConflict'
         : 'errors.configurationNameConflict')
       return
@@ -617,23 +625,26 @@ async function save(): Promise<void> {
     if (!accepted) return
     targetId = existing.id
   }
+  if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
 
   saving.value = true
   saveValidation.value = null
   try {
     const request = targetId ? { id: targetId, ...payload } : payload
-    const saved = activeType.value === 'model-connection'
+    const saved = type === 'model-connection'
       ? await managementApi.saveModelConnection(request)
-      : await managementApi.saveBlock(activeType.value, request)
-    const savedDraft = draftFromApi(activeType.value, saved)
+      : await managementApi.saveBlock(type, request)
+    if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
+    const savedDraft = draftFromApi(type, saved)
     if (packageType) {
       applyPythonPackageInspection(
         savedDraft as BlockDraftBase & PythonPackageDraftState,
-        await managementApi.inspectPythonPackage(activeType.value as ManagedComponentType, saved.id),
+        await managementApi.inspectPythonPackage(type as ManagedComponentType, saved.id),
       )
+      if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
     }
     draft.value = savedDraft
-    privateSkillPackage.value = activeType.value === 'skill'
+    privateSkillPackage.value = type === 'skill'
       ? ((saved as SavedBlock & { skill_package_contents?: SkillPackageInspection }).skill_package_contents ?? null)
       : null
     storedRecordInvalid.value = false
@@ -644,23 +655,24 @@ async function save(): Promise<void> {
     await router.replace(editorLocation(saved.id))
     notify({
       tone: 'success',
-      title: t(activeType.value === 'model-connection'
+      title: t(type === 'model-connection'
         ? 'models.connections.saved'
         : 'components.feedback.saved'),
     })
   } catch (error) {
+    if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
     if (error instanceof ManagementApiError && error.validation) {
       saveValidation.value = error.validation
     } else {
       notifyFailure(
-        activeType.value === 'model-connection'
+        type === 'model-connection'
           ? 'models.connections.saveFailed'
           : 'components.feedback.saveFailed',
         error,
       )
     }
   } finally {
-    saving.value = false
+    if (resourceRequestIsCurrent(sequence, type)) saving.value = false
   }
 }
 
@@ -745,24 +757,59 @@ async function fetchModels(request: {
   credential: string
   blockId: string
 }): Promise<void> {
+  modelCatalogSequence += 1
+  const sequence = modelCatalogSequence
+  const resourceGeneration = resourceSequence
   loadingModels.value = true
   pageError.value = ''
   try {
-    models.value = await managementApi.fetchModels(
+    const result = await managementApi.fetchModels(
       request.provider,
       request.baseUrl,
       request.credential || null,
       request.blockId,
     )
+    if (!modelCatalogRequestIsCurrent(sequence, resourceGeneration, request)) return
+    models.value = result
   } catch (error) {
-    pageError.value = managementError.describe(error).display
-    models.value = []
+    if (modelCatalogRequestIsCurrent(sequence, resourceGeneration, request)) {
+      pageError.value = managementError.describe(error).display
+      models.value = []
+    }
   } finally {
-    loadingModels.value = false
+    if (sequence === modelCatalogSequence) loadingModels.value = false
   }
 }
 
+function modelCatalogRequestIsCurrent(
+  sequence: number,
+  resourceGeneration: number,
+  request: { provider: string, baseUrl: string, credential: string, blockId: string },
+): boolean {
+  if (
+    sequence !== modelCatalogSequence
+    || resourceGeneration !== resourceSequence
+    || activeType.value !== 'model-connection'
+  ) return false
+  const current = draft.value as ModelDraft | null
+  return Boolean(current && current.id === request.blockId)
+}
+
 function updateDraft(value: BlockDraftBase): void {
+  if (activeType.value === 'model-connection' && draft.value) {
+    const previous = draft.value as ModelDraft
+    const current = value as ModelDraft
+    if (
+      previous.id !== current.id
+      || previous.provider !== current.provider
+      || previous.base_url !== current.base_url
+      || previous.credential_secret !== current.credential_secret
+    ) {
+      modelCatalogSequence += 1
+      loadingModels.value = false
+      models.value = []
+    }
+  }
   draft.value = value
 }
 
@@ -976,7 +1023,7 @@ onMounted(() => {
     <ConfigurationEditorLayout
       v-if="activeType && draft"
       layout-test-id="component-layout"
-      :loading="loading"
+      :loading="loading || saving"
       aside-test-id="inspector-region"
     >
       <template #editor>

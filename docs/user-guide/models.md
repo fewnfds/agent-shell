@@ -12,7 +12,7 @@
 
 ## Model Mapping
 
-在【模型 / 模型映射】(`/models/mapping`)中查看当前 Configuration Repository 的全部模型要求。`GET /api/model-requirements` 返回 `{id,name,description,binding,connection}` 投影；通过 `PUT /api/model-requirements/{requirement_id}/binding` 提交 `{connection_id: string|null}`，`null` 表示解绑。导入配置后，要求默认未绑定；根据要求的 name 与 description 选择模型连接并保存。
+在【模型 / 模型映射】(`/models/mapping`)中查看当前 Configuration Repository 的全部模型要求。`GET /api/model-requirements` 返回 `{id,name,description,binding,connection}` 投影；通过 `PUT /api/model-requirements/{requirement_id}/binding` 提交 `{connection_id: string|null}`，`null` 表示解绑。导入配置后，要求默认未绑定；根据要求的 name 与 description 选择模型连接并保存。单个 Model Requirement 的绑定请求完成前，对应选择框保持禁用；页面刷新也会等待当前绑定请求结束，避免两个写请求以网络完成顺序反转用户选择。
 
 同一个模型连接可以绑定多个模型要求。映射文件为 `data/config/model-bindings.yaml`，按 Repository UUID 分区。`binding==null` 或 `connection==null` 均显示 warning；repository validation 和运行装配返回 `model_requirement_unbound`。切换 Configuration Repository 后，模型连接列表保持不变，映射按仓库分别保存。
 请求进入 `POST /v1/chat/completions` 时会原子捕获所用 Repository 的配置和 `ModelResourceSnapshot`（连接、YAML、env 与 bindings）。捕获完成后修改或删除连接、解除绑定或切换 Repository，只对后续请求生效。

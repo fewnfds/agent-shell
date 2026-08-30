@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ManagementApiError } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
-import type { MainAgentProfile, SubagentProfile } from '@/domain/agents'
+import type { MainAgentProfile, SubagentProfile, ValidationReport } from '@/domain/agents'
 
 import {
   buttonByText,
@@ -149,6 +149,72 @@ describe('agent authoring pages', () => {
       expect.objectContaining({ component_name: 'Latest Subagent' }),
     )
     subagentPage.wrapper.unmount()
+  })
+
+  it('does not mutate an old MainAgent after validation outlives its route', async () => {
+    const firstId = '00000000-0000-0000-0000-000000000051'
+    const secondId = '00000000-0000-0000-0000-000000000052'
+    const validation = deferred<ValidationReport>()
+    const api = service({
+      getMainAgent: vi.fn(async (id) => ({
+        id,
+        name: id === firstId ? 'First MainAgent' : 'Second MainAgent',
+        capability_refs: [],
+        subagents: [],
+      })),
+      validateDraft: vi.fn(() => validation.promise),
+    })
+    const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+    await router.push({ path: '/agents/main', query: { id: secondId } })
+    await flushPromises()
+    validation.resolve({ valid: true, stage: 'draft_validation', issues: [] })
+    await flushPromises()
+
+    expect(api.updateMainAgent).not.toHaveBeenCalled()
+    expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value)
+      .toBe('Second MainAgent')
+    wrapper.unmount()
+  })
+
+  it('does not project an old MainAgent save response onto a newer route', async () => {
+    const firstId = '00000000-0000-0000-0000-000000000061'
+    const secondId = '00000000-0000-0000-0000-000000000062'
+    const mutation = deferred<MainAgentProfile>()
+    const api = service({
+      getMainAgent: vi.fn(async (id) => ({
+        id,
+        name: id === firstId ? 'First MainAgent' : 'Second MainAgent',
+        capability_refs: [],
+        subagents: [],
+      })),
+      updateMainAgent: vi.fn(() => mutation.promise),
+    })
+    const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+    expect(api.updateMainAgent).toHaveBeenCalledWith(firstId, expect.any(Object))
+    await router.push({ path: '/agents/main', query: { id: secondId } })
+    await flushPromises()
+    mutation.resolve({
+      id: firstId,
+      name: 'Late saved MainAgent',
+      capability_refs: [],
+      subagents: [],
+    })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.id).toBe(secondId)
+    expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value)
+      .toBe('Second MainAgent')
+    expect(getToastNotify()).not.toHaveBeenCalledWith({
+      tone: 'success',
+      title: 'agents.feedback.saved',
+    })
+    wrapper.unmount()
   })
 
   it('unlocks Agent editors when a pending route load is replaced by a new draft', async () => {

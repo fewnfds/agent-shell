@@ -226,7 +226,7 @@ onMounted(() => { void loadWorkspace() })
         @save="saveWorkflow"
       />
     </template>
-    <ConfigurationEditorLayout v-if="!loading" :loading="loading">
+    <ConfigurationEditorLayout v-if="!loading" :loading="saving">
       <template #editor>
         <RecordPicker :disabled="saving" :model-value="selectedId" :name="form.name" :records="records" @select="selectRecord" @update:name="updateName" />
         <div class="card mt-3">
