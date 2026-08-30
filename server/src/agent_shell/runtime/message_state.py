@@ -44,9 +44,6 @@ class MessageRunRegistry:
     def was_streamed(self, run_key: str) -> bool:
         return run_key in self._streamed_run_keys
 
-    def clear_stream_history(self) -> None:
-        self._streamed_run_keys.clear()
-
     def discard(self, run_key: str) -> None:
         self._runs.pop(run_key, None)
         self._active_main_runs.discard(run_key)

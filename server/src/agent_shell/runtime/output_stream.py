@@ -1267,13 +1267,11 @@ class V3EventNormalizer:
         run_keys = self._message_runs.active_main_runs | {key[0] for key in self._blocks}
         for run_key in sorted(run_keys):
             self._discard_message(run_key)
-        self._message_runs.clear_stream_history()
 
     def abort_main_agent_messages(self) -> None:
         run_keys = self._message_runs.active_main_runs | {key[0] for key in self._blocks}
         for run_key in list(run_keys):
             self._discard_message(run_key)
-        self._message_runs.clear_stream_history()
 
     def _subagent_for_namespace(self, namespace: str) -> str:
         """Resolve the nearest active Deep Agent subagent scope."""
