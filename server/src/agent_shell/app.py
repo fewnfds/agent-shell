@@ -66,7 +66,6 @@ from agent_shell.storage.file_config import (
     FileConfigRepository,
 )
 from agent_shell.storage.history_retention import HistoryRetentionStore
-from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
@@ -155,11 +154,6 @@ def create_app(
         mutations=configuration_mutations,
     )
     runtime_policy = RuntimePolicyStore(configuration)
-    media_outputs = MediaOutputStore(
-        application_database,
-        settings.resolved_media_outputs_dir(),
-        runtime_policy,
-    )
     system_log_settings = SystemLogSettingsStore(configuration)
     event_logger = SecurityEventLogger(
         logs_dir,
@@ -294,7 +288,7 @@ def create_app(
         runtime_dir=runtime_dir,
         skills_dir=lambda: configuration.skill_packages_root,
         provider_http_clients=provider_http_clients,
-        media_outputs=media_outputs,
+        files=file_manager,
         workflow_checkpoints=workflow_checkpoints,
         workflow_lifecycle=workflow_lifecycle,
         background_tasks=background_tasks,
@@ -322,7 +316,6 @@ def create_app(
         *application_database.file_permissions,
         *workflow_checkpoint_database.file_permissions,
         *workflow_store_database.file_permissions,
-        media_outputs.directory_permission,
         *event_logger.permission_statuses,
         runtime_diagnostic_details.directory_permission,
     )
@@ -549,7 +542,6 @@ def create_app(
     app.state.runtime_diagnostic_details = runtime_diagnostic_details
     app.state.api_server_store = api_server_store
     app.state.message_interception = message_interception
-    app.state.media_outputs = media_outputs
     app.state.runtime_policy = runtime_policy
     app.state.provider_http_clients = provider_http_clients
     app.state.event_feed = event_feed

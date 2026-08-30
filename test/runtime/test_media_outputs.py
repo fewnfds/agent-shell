@@ -8,15 +8,15 @@ import threading
 
 import pytest
 
-from agent_shell.runtime.media_response import MainAgentMediaResponse
+from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.media_events import MediaContentBlock
+from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.storage.database import SQLiteDatabase
-from agent_shell.storage.media_outputs import MediaOutputStore, MediaProjection
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 
 
-def test_database_initialization_drops_obsolete_history_tables(tmp_path: Path) -> None:
+def test_database_initialization_drops_obsolete_runtime_tables(tmp_path: Path) -> None:
     database_path = tmp_path / "data" / "state" / "agent-shell.sqlite3"
     database_path.parent.mkdir(parents=True)
     with sqlite3.connect(database_path) as connection:
@@ -25,6 +25,7 @@ def test_database_initialization_drops_obsolete_history_tables(tmp_path: Path) -
             "CREATE TABLE api_message_history_outputs (history_id TEXT PRIMARY KEY);"
             "CREATE TABLE agent_session_runs (id TEXT PRIMARY KEY);"
             "CREATE TABLE agent_session_run_outputs (run_id TEXT PRIMARY KEY);"
+            "CREATE TABLE media_output_assets (id TEXT PRIMARY KEY);"
         )
 
     database = SQLiteDatabase(database_path)
@@ -41,56 +42,49 @@ def test_database_initialization_drops_obsolete_history_tables(tmp_path: Path) -
         "api_message_history_outputs",
         "agent_session_runs",
         "agent_session_run_outputs",
+        "media_output_assets",
     } & tables
 
 
-def test_failed_file_cleanup_keeps_asset_index_for_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    database = SQLiteDatabase(tmp_path / "data" / "state" / "agent-shell.sqlite3")
-    store = MediaOutputStore(database, tmp_path / "data" / "media" / "outputs")
-    projection = store.persist(
-        request_id="request-1",
-        message_id="message-1",
-        block_index=0,
-        block={
-            "type": "image",
-            "mime_type": "image/png",
-            "base64": base64.b64encode(b"image").decode("ascii"),
-        },
+def test_media_output_becomes_a_file_manager_user_file(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    repository = FileConfigRepository(data_root)
+    policy = RuntimePolicyStore(repository)
+    files = FileManagerService(data_root, tmp_path / "runtime" / "tmp", policy)
+    response = MainAgentMediaResponse(files, "request-1", policy)
+
+    notification = asyncio.run(
+        response.project(
+            MediaContentBlock(
+                message_id="message-1",
+                block_index=0,
+                content={
+                    "type": "image",
+                    "mime_type": "image/png",
+                    "base64": base64.b64encode(b"image").decode("ascii"),
+                },
+            )
+        )
     )
-    assert projection.asset is not None
-    asset_id = str(projection.asset["id"])
-    target = tmp_path / str(projection.asset["relative_path"])
-    original_unlink = Path.unlink
 
-    def fail_target_unlink(path: Path, *args: object, **kwargs: object) -> None:
-        if path.resolve() == target.resolve():
-            raise PermissionError("test cleanup failure")
-        original_unlink(path, *args, **kwargs)
+    assert notification is not None
+    path = notification.rsplit("【", 1)[1].split("】", 1)[0]
+    assert path.startswith("data/files/generated/")
+    assert path.endswith(".png")
+    download = files.prepare_download(path)
+    assert download.path.read_bytes() == b"image"
+    directory = files.list_directory(path.rsplit("/", 1)[0])
+    assert [item["path"] for item in directory["items"]] == [path]
 
-    monkeypatch.setattr(Path, "unlink", fail_target_unlink)
-    store.finish_request("request-1")
-
-    with database.transaction() as connection:
-        retained = connection.execute(
-            "SELECT id FROM media_output_assets WHERE id = ?", (asset_id,)
-        ).fetchone()
-    assert retained is not None
-    assert target.exists()
-
-    monkeypatch.setattr(Path, "unlink", original_unlink)
-    store.cleanup_unreferenced()
-
-    with database.transaction() as connection:
-        removed = connection.execute(
-            "SELECT id FROM media_output_assets WHERE id = ?", (asset_id,)
-        ).fetchone()
-    assert removed is None
-    assert not target.exists()
+    renamed = files.rename(path, "renamed.png")
+    assert renamed["path"].endswith("/renamed.png")
+    assert files.delete(str(renamed["path"])) == {
+        "path": renamed["path"],
+        "deleted": True,
+    }
 
 
-def test_media_output_store_uses_the_configured_byte_limit(tmp_path: Path) -> None:
+def test_media_response_uses_the_configured_byte_limit(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     repository = FileConfigRepository(data_root)
     policy = RuntimePolicyStore(repository)
@@ -102,48 +96,54 @@ def test_media_output_store_uses_the_configured_byte_limit(tmp_path: Path) -> No
     }
     update["media_output_bytes"] = 4
     policy.update(update)
-    database = SQLiteDatabase(data_root / "state" / "agent-shell.sqlite3")
-    store = MediaOutputStore(database, data_root / "media" / "outputs", policy)
+    files = FileManagerService(data_root, tmp_path / "runtime" / "tmp", policy)
+    response = MainAgentMediaResponse(files, "request-1", policy)
 
-    projection = store.persist(
-        request_id="request-1",
-        message_id="message-1",
-        block_index=0,
-        block={
-            "type": "image",
-            "mime_type": "image/png",
-            "base64": base64.b64encode(b"12345").decode("ascii"),
-        },
+    notification = asyncio.run(
+        response.project(
+            MediaContentBlock(
+                message_id="message-1",
+                block_index=0,
+                content={
+                    "type": "image",
+                    "mime_type": "image/png",
+                    "base64": base64.b64encode(b"12345").decode("ascii"),
+                },
+            )
+        )
     )
 
-    assert projection.asset is None
-    assert projection.structured_block["reason"] == "content_invalid"
+    assert notification == "AI发送来了【图片】，但返回内容无法保存。"
 
 
-def test_cancelled_projection_waits_for_persistence_without_publishing() -> None:
+def test_cancelled_projection_waits_for_file_save_without_publishing() -> None:
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()
 
-    class BlockingStore:
-        def persist(self, **_kwargs: object) -> MediaProjection:
+    class BlockingFiles:
+        def save_generated_file(
+            self, path: str, content: bytes
+        ) -> dict[str, object]:
             started.set()
             release.wait(timeout=2)
             finished.set()
-            return MediaProjection(
-                notification="saved",
-                structured_block={"type": "image"},
-                asset={"id": "asset-1"},
-            )
+            return {"path": path, "kind": "file", "size": len(content)}
 
     async def run() -> None:
-        response = MainAgentMediaResponse(BlockingStore(), "request-1")  # type: ignore[arg-type]
+        response = MainAgentMediaResponse(  # type: ignore[arg-type]
+            BlockingFiles(), "request-1"
+        )
         task = asyncio.create_task(
             response.project(
                 MediaContentBlock(
                     message_id="message-1",
                     block_index=0,
-                    content={"type": "image"},
+                    content={
+                        "type": "image",
+                        "mime_type": "image/png",
+                        "base64": base64.b64encode(b"image").decode("ascii"),
+                    },
                 )
             )
         )
@@ -155,6 +155,5 @@ def test_cancelled_projection_waits_for_persistence_without_publishing() -> None
         with pytest.raises(asyncio.CancelledError):
             await task
         assert finished.is_set()
-        assert response.assets == []
 
     asyncio.run(run())

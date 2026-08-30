@@ -31,7 +31,6 @@ REGISTERED_WRITE_MODULES = {
     "storage/atomic_files.py",
     "storage/database.py",
     "storage/file_config.py",
-    "storage/media_outputs.py",
     "storage/model_connections.py",
     "storage/permissions.py",
     "storage/runtime_diagnostic_details.py",

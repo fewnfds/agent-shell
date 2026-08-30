@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from agent_shell.file_manager import FileManagerService
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
@@ -28,7 +29,6 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
-from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
@@ -226,7 +226,7 @@ class RequestSnapshotRuntime:
         runtime_dir: Path,
         skills_dir: Path | Callable[[], Path],
         provider_http_clients: ProviderHttpClients,
-        media_outputs: MediaOutputStore,
+        files: FileManagerService,
         workflow_checkpoints: WorkflowCheckpointService,
         workflow_lifecycle: WorkflowLifecycleService,
         background_tasks: BackgroundTaskManager,
@@ -239,7 +239,7 @@ class RequestSnapshotRuntime:
         self._runtime_dir = runtime_dir
         self._skills_dir_source = skills_dir
         self._provider_http_clients = provider_http_clients
-        self._media_outputs = media_outputs
+        self._files = files
         self._workflow_checkpoints = workflow_checkpoints
         self._workflow_lifecycle = workflow_lifecycle
         self._background_tasks = background_tasks
@@ -279,7 +279,7 @@ class RequestSnapshotRuntime:
                     repository_id=_repository_id,
                     runtime_policy=self._runtime_policy,
                 ),
-                self._media_outputs,
+                self._files,
                 python_packages_dir=python_packages_dir,
                 runtime_dir=self._runtime_dir,
                 blocks=blocks,

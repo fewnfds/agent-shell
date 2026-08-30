@@ -16,6 +16,7 @@ from agent_shell.contracts import (
     FilesystemBlock,
     ResponseStreamSchedulingBlock,
 )
+from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
@@ -62,7 +63,6 @@ from agent_shell.runtime.response_presentation import (
 )
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
-from agent_shell.storage.media_outputs import MediaOutputStore
 from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
@@ -934,7 +934,7 @@ class AgentRuntime:
     def __init__(
         self,
         builder: AgentBuilder,
-        media_outputs: MediaOutputStore,
+        files: FileManagerService,
         *,
         blocks: BlockStore | None = None,
         python_packages_dir: Path | None = None,
@@ -945,7 +945,7 @@ class AgentRuntime:
         runtime_policy: RuntimePolicyStore | None = None,
     ) -> None:
         self._builder = builder
-        self._media_outputs = media_outputs
+        self._files = files
         self._blocks = blocks
         self._python_packages_dir = python_packages_dir
         self._runtime_dir = runtime_dir
@@ -1173,7 +1173,11 @@ class AgentRuntime:
         return RunExecution(
             graph=graph,
             input_state=input_state,
-            media_response=MainAgentMediaResponse(self._media_outputs, request_id),
+            media_response=MainAgentMediaResponse(
+                self._files,
+                request_id,
+                self._runtime_policy,
+            ),
             response_scheduler=effective_response_scheduler,
             usage_accumulator=usage_accumulator,
             origin_resolver=origin_resolver,

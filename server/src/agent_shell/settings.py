@@ -302,9 +302,6 @@ class Settings(BaseSettings):
     def resolved_files_dir(self) -> Path:
         return self.data_root / "files"
 
-    def resolved_media_outputs_dir(self) -> Path:
-        return self.data_root / "media" / "outputs"
-
     def resolved_python_templates_dir(self) -> Path:
         return self.data_root / "templates"
 
@@ -326,7 +323,6 @@ class Settings(BaseSettings):
             self.data_root / "config",
             self.data_root / "state",
             self.resolved_files_dir(),
-            self.resolved_media_outputs_dir(),
             self.resolved_python_templates_dir() / "agent" / "custom_tool",
             self.resolved_python_templates_dir() / "workflow" / "command",
             self.resolved_python_templates_dir() / "workflow" / "workflow_event_output",

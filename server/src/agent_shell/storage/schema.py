@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS agent_session_runs;
 DROP TABLE IF EXISTS api_message_history_outputs;
 DROP TABLE IF EXISTS api_message_history;
 DROP TABLE IF EXISTS workflow_runs;
+DROP TABLE IF EXISTS media_output_assets;
 
 -- Runtime diagnostics are operational failure records, not successful Run history.
 DROP TABLE IF EXISTS runtime_diagnostics;
@@ -214,22 +215,5 @@ ON workflow_model_requests(run_id, sequence);
 
 CREATE INDEX IF NOT EXISTS idx_workflow_model_requests_agent
 ON workflow_model_requests(lifecycle_id, agent_type, agent_id, sequence);
-
-CREATE TABLE IF NOT EXISTS media_output_assets (
-    id TEXT PRIMARY KEY,
-    request_id TEXT NOT NULL,
-    message_id TEXT NOT NULL,
-    block_index INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    media_type TEXT NOT NULL CHECK (media_type IN ('image', 'audio', 'video', 'file')),
-    mime_type TEXT NOT NULL,
-    relative_path TEXT NOT NULL UNIQUE,
-    byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
-    original_filename TEXT NOT NULL,
-    finalized INTEGER NOT NULL CHECK (finalized IN (0, 1))
-);
-
-CREATE INDEX IF NOT EXISTS idx_media_output_assets_request
-ON media_output_assets(request_id);
 
 """

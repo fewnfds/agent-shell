@@ -514,6 +514,22 @@ class FileManagerService:
             raise
         return {"path": normalized, "kind": "file", "size": size}
 
+    def save_generated_file(self, path: str, content: bytes) -> dict[str, Any]:
+        """Persist one program-generated user file through File Manager ownership."""
+        target, normalized, _, _ = self._creation_target(path, "upload")
+        if os.path.lexists(target):
+            raise FileManagerError(
+                409,
+                "file_already_exists",
+                "errors.fileAlreadyExists",
+                "A file or directory already exists at the destination.",
+            )
+        try:
+            write_bytes_atomic(target, content)
+        except OSError as exc:
+            raise self._operation_failed() from exc
+        return {"path": normalized, "kind": "file", "size": len(content)}
+
     def _archive_targets(self, paths: list[str]) -> list[Path]:
         if not paths:
             raise FileManagerError(
