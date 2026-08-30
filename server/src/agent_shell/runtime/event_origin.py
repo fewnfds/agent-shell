@@ -95,9 +95,6 @@ class RunEventOriginResolver:
         main_agent_names: Sequence[str] = (),
         workflow_agent_names: Mapping[str, str] | None = None,
         workflow_subagent_profile_ids: Mapping[str, Mapping[str, str]] | None = None,
-        subagent_profile_ids: Mapping[str, str] | None = None,
-        default_agent_profile_id: str = "",
-        default_workflow_node_id: str = "",
     ) -> None:
         self._identity = identity
         self._sources = dict(workflow_sources or {})
@@ -113,12 +110,6 @@ class RunEventOriginResolver:
             }
             for node_id, profiles in (workflow_subagent_profile_ids or {}).items()
         }
-        self._subagent_profile_ids = {
-            str(name): str(profile_id)
-            for name, profile_id in (subagent_profile_ids or {}).items()
-        }
-        self._default_agent_profile_id = default_agent_profile_id
-        self._default_workflow_node_id = default_workflow_node_id
         self._active_subagents: dict[str, str] = {}
 
     def resolve(self, event: Mapping[str, object]) -> ResolvedEventOrigin:
@@ -153,22 +144,16 @@ class RunEventOriginResolver:
             or active_subagent
             or graph_name
             or workflow_agent_name
-            or (
-                self._default_main_agent_name()
-                if method == "messages"
-                or (source is not None and source.source_type == "agent")
-                else ""
-            )
         )
 
         agent_profile_id = (
             source.agent_profile_id
             if source is not None
-            else (self._default_agent_profile_id if agent_name else "")
+            else ""
         )
         profiles = self._workflow_subagent_profile_ids.get(
             workflow_node_id,
-            self._subagent_profile_ids,
+            {},
         )
         subagent_profile_id = (
             profiles.get(agent_name, "")
@@ -227,7 +212,7 @@ class RunEventOriginResolver:
             name, separator, invocation_id = segment.partition(":")
             if name in self._sources:
                 return name, invocation_id if separator else ""
-        return self._default_workflow_node_id, ""
+        return "", ""
 
     def _active_subagent(self, namespace: str) -> str:
         scope = _namespace_scope(namespace)
@@ -238,9 +223,6 @@ class RunEventOriginResolver:
                 if best is None or candidate[0] > best[0]:
                     best = candidate
         return best[1] if best is not None else ""
-
-    def _default_main_agent_name(self) -> str:
-        return next(iter(self._main_agent_names), "")
 
     def _output_origin(
         self,

@@ -19,7 +19,7 @@ def test_workflow_run_has_stable_openai_completion_reason() -> None:
         graph=None,
         input_state={},
         response_scheduler=None,
-        middleware_runtime=noop_middleware_runtime(),
+        middleware_runtimes=(noop_middleware_runtime(),),
         media_response=noop_media_response(),
     )
     assert execution.finish_reason == "stop"
@@ -75,7 +75,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
             input_state={"messages": [{"role": "user", "content": "cancel me"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             cancel_background_children=cancel_children,
         )
@@ -133,7 +133,7 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             graph=None,
             input_state={},
             response_scheduler=None,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             identity=identity,
             context=WorkflowRuntimeContext.for_run(identity=identity),
@@ -174,7 +174,7 @@ def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
             input_state={"messages": []},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             origin_resolver=event_origin_resolver(),
             execution_timeout_seconds=0.1,
@@ -250,7 +250,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
                 ResponseStreamPolicy.model_validate(payload),
             ),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             origin_resolver=event_origin_resolver(),
         )
@@ -336,7 +336,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             input_state={},
             response_scheduler=scheduler,
             event_output_projector=output,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             identity=parent_identity,
             context=WorkflowRuntimeContext.for_run(identity=parent_identity),
@@ -355,7 +355,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             response_scheduler=scheduler,
             event_output_projector=output,
             response_consumer=False,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             origin_resolver=event_origin_resolver("Child Agent"),
             identity=child_identity,
@@ -451,7 +451,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 input_state={"messages": [{"role": "user", "content": "wait"}]},
                 response_scheduler=response_scheduler(projector),
                 event_output_projector=projector,
-                middleware_runtime=noop_middleware_runtime(),
+                middleware_runtimes=(noop_middleware_runtime(),),
                 media_response=noop_media_response(),
                 execution_timeout_seconds=0.01,
                 lifecycle_service=lifecycle,
@@ -523,7 +523,7 @@ def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:
             input_state={"messages": [], "shared_vars": {}},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
         )
@@ -593,7 +593,7 @@ def test_silent_execution_skips_public_projectors_observers_and_media() -> None:
             graph=Graph(),
             input_state={"shared_vars": {}},
             response_scheduler=response_scheduler(ExplodingProjector()),  # type: ignore[arg-type]
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=ExplodingMediaResponse(),  # type: ignore[arg-type]
             origin_resolver=event_origin_resolver(),
             public_output=False,
@@ -621,7 +621,7 @@ def test_graph_recursion_failure_uses_step_limit_error() -> None:
             input_state={"messages": [{"role": "user", "content": "loop"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
         )
         with pytest.raises(AgentRuntimeError) as captured:
@@ -703,7 +703,7 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
             input_state={"messages": [{"role": "user", "content": "fail"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
         )
@@ -743,7 +743,7 @@ def test_classified_graph_failure_emits_matching_lifecycle_error() -> None:
             input_state={"messages": [{"role": "user", "content": "fail"}]},
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
         )
         stream = execution.stream_text()

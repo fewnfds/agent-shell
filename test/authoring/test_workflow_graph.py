@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import asyncio
+import warnings
 
 import pytest
 from deepagents.backends import StateBackend
@@ -104,6 +105,65 @@ def graph_payload(*agent_ids: str) -> dict[str, object]:
 
 def valid_main_agent(_main_agent_id: str) -> ValidationReport:
     return ValidationReport(stage="workflow_publish")
+
+
+def test_compiled_agent_wrapper_exposes_canvas_node_namespace_in_v3_stream() -> None:
+    admission, document = admit_workflow_document(graph_payload(AGENT_A))
+    assert admission.valid is True
+    assert document is not None
+
+    def answer(_state: AgentShellState) -> dict[str, list[AIMessage]]:
+        return {"messages": [AIMessage(content="hello")]}
+
+    agent_graph = (
+        StateGraph(AgentShellState)
+        .add_node("model", answer)
+        .add_edge(START, "model")
+        .add_edge("model", END)
+        .compile(name="Writer")
+    )
+    graph = compile_workflow(
+        document,
+        node_agents={
+            "agent-1": _built_agent(
+                agent_graph,
+                agent_id=AGENT_A,
+                agent_name="Writer",
+            )
+        },
+        store=InMemoryStore(),
+    )
+
+    async def collect_events() -> list[dict[str, object]]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            stream = await graph.astream_events(
+                {
+                    "shared_vars": {},
+                    "agent_invocations": {},
+                    "background_tasks": {},
+                },
+                version="v3",
+                context=WorkflowRuntimeContext(
+                    lifecycle_id="lifecycle-1",
+                    workflow_run_id="run-1",
+                    workflow_id="workflow-1",
+                ),
+            )
+            events = []
+            async with stream:
+                async for event in stream:
+                    events.append(event)
+            return events
+
+    events = asyncio.run(collect_events())
+    message = next(event for event in events if event.get("method") == "messages")
+    namespace = message["params"]["namespace"]
+
+    assert len(namespace) == 1
+    node_id, separator, invocation_id = namespace[0].partition(":")
+    assert (node_id, separator) == ("agent-1", ":")
+    assert invocation_id
 
 
 def test_catalog_exposes_the_first_supported_node_and_handle_paradigms() -> None:
@@ -1392,8 +1452,8 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
                 middleware_runtime=_MiddlewareRuntime(),  # type: ignore[arg-type]
             )
 
-        def _execution(self, built: BuiltAgent, **kwargs):
-            return {"built": built, **kwargs}
+        def _workflow_execution(self, **kwargs):
+            return kwargs
 
     runtime = RecordingRuntime()
     execution = asyncio.run(

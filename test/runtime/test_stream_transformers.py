@@ -112,7 +112,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
         origin_resolver=event_origin_resolver(),
-        middleware_runtime=noop_middleware_runtime(),
+        middleware_runtimes=(noop_middleware_runtime(),),
         media_response=noop_media_response(),
     )
 
@@ -171,7 +171,7 @@ def test_agent_execution_projects_real_tool_result() -> None:
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
         origin_resolver=event_origin_resolver(),
-        middleware_runtime=noop_middleware_runtime(),
+        middleware_runtimes=(noop_middleware_runtime(),),
         media_response=noop_media_response(),
     )
 
@@ -237,7 +237,7 @@ def test_agent_execution_preserves_raw_finish_projection_as_segment_end() -> Non
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
         origin_resolver=event_origin_resolver(),
-        middleware_runtime=noop_middleware_runtime(),
+        middleware_runtimes=(noop_middleware_runtime(),),
         media_response=noop_media_response(),
     )
 

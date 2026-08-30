@@ -103,7 +103,7 @@ def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> No
     assert origin["node_invocation_id"] == "invoke-9"
 
 
-def test_run_origin_does_not_promote_a_default_agent_node_to_workflow_scope() -> None:
+def test_run_origin_stays_at_workflow_scope() -> None:
     identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="lifecycle-1",
@@ -116,8 +116,6 @@ def test_run_origin_does_not_promote_a_default_agent_node_to_workflow_scope() ->
         workflow_sources={
             "agent-a": WorkflowNodeSource("agent", "agent-a", "profile-a")
         },
-        default_workflow_node_id="agent-a",
-        default_agent_profile_id="profile-a",
     )
 
     origin = resolver.run_origin()

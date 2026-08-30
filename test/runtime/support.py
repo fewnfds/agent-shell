@@ -12,7 +12,7 @@ from agent_shell.runtime.agent_builder import _build_chat_model
 from agent_shell.runtime.agent_runtime import RunExecution
 
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.event_origin import RunEventOriginResolver
+from agent_shell.runtime.event_origin import RunEventOriginResolver, WorkflowNodeSource
 from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
@@ -142,8 +142,11 @@ def event_origin_resolver(
 ) -> RunEventOriginResolver:
     return RunEventOriginResolver(
         None,
+        workflow_sources={
+            "agent-a": WorkflowNodeSource("agent", "agent-a", "test-agent-profile")
+        },
         main_agent_names=(main_agent_name,),
-        default_agent_profile_id="test-agent-profile",
+        workflow_agent_names={"agent-a": main_agent_name},
     )
 
 
@@ -176,7 +179,9 @@ def message_envelope(
     return {
         "method": "messages",
         "params": {
-            "namespace": namespace or [],
+            "namespace": (
+                namespace if namespace is not None else ["agent-a:invoke-1"]
+            ),
             "timestamp": timestamp,
             "data": (
                 payload,

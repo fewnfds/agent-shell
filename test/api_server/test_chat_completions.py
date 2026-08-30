@@ -225,7 +225,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
     from agent_shell.runtime.agent_runtime import AgentRuntime
 
     captured: dict[str, object] = {}
-    original_execution = AgentRuntime._execution
+    original_execution = AgentRuntime._workflow_execution
 
     def observe_execution(self, *args, **kwargs):
         captured["run_config"] = kwargs.get("run_config")
@@ -241,7 +241,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
         )
         return execution
 
-    monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
+    monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
     with make_client(tmp_path, monkeypatch) as client:
         current_policy = client.get("/api/system/runtime-policy").json()
         updated_policy = {
@@ -303,7 +303,7 @@ def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapsh
     from agent_shell.runtime.agent_runtime import AgentRuntime
 
     captured: dict[str, object] = {}
-    original_execution = AgentRuntime._execution
+    original_execution = AgentRuntime._workflow_execution
 
     def observe_execution(self, *args, **kwargs):
         captured["response_stream_policy"] = kwargs.get(
@@ -311,7 +311,7 @@ def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapsh
         )
         return original_execution(self, *args, **kwargs)
 
-    monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
+    monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
     with make_client(tmp_path, monkeypatch) as client:
         scheduling = client.post(
             "/api/blocks/response-stream-scheduling",
@@ -366,7 +366,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
     from agent_shell.runtime.agent_runtime import AgentRuntime
 
     captured: list[dict[str, object]] = []
-    original_execution = AgentRuntime._execution
+    original_execution = AgentRuntime._workflow_execution
 
     def observe_execution(self, *args, **kwargs):
         captured.append(
@@ -379,7 +379,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
         )
         return original_execution(self, *args, **kwargs)
 
-    monkeypatch.setattr(AgentRuntime, "_execution", observe_execution)
+    monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         for durability in ("exit", "async", "sync"):

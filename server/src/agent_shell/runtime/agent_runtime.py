@@ -120,14 +120,12 @@ class RunExecution:
     graph: Any
     input_state: dict[str, Any]
     response_scheduler: LifecycleResponseScheduler | None
-    middleware_runtime: MiddlewarePackageRuntime | None
     media_response: MainAgentMediaResponse
     usage_accumulator: RunUsageAccumulator = field(default_factory=RunUsageAccumulator)
     event_stream: RunEventStream = field(init=False)
     origin_resolver: RunEventOriginResolver | None = None
     event_output_projector: OutputProjector | WorkflowOutputProjector | None = None
     response_consumer: bool = True
-    tool_runtime: ToolPackageRuntime | None = None
     middleware_runtimes: tuple[MiddlewarePackageRuntime, ...] = ()
     tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
     command_runtime: CommandPackageRuntime | None = None
@@ -282,19 +280,9 @@ class RunExecution:
             async for part in self._stream_text_inner():
                 yield part
         finally:
-            runtimes = tuple(
-                runtime
-                for runtime in (self.middleware_runtime, *self.middleware_runtimes)
-                if runtime is not None
-            )
-            for runtime in runtimes:
+            for runtime in self.middleware_runtimes:
                 await runtime.close()
-            tool_runtimes = tuple(
-                runtime
-                for runtime in (self.tool_runtime, *self.tool_runtimes)
-                if runtime is not None
-            )
-            for runtime in tool_runtimes:
+            for runtime in self.tool_runtimes:
                 await runtime.close()
             if self.command_runtime is not None:
                 await self.command_runtime.close()
@@ -1097,13 +1085,11 @@ class AgentRuntime:
                 ) from exc
         return resolved
 
-    def _execution(
+    def _workflow_execution(
         self,
-        built: BuiltAgent | None,
         *,
-        graph: Any | None = None,
-        input_state: dict[str, Any] | None = None,
-        workflow_node_id: str = "",
+        graph: Any,
+        input_state: dict[str, Any],
         request_id: str = "",
         public_model: str = "",
         workflow_built: tuple[tuple[str, BuiltAgent], ...] = (),
@@ -1126,21 +1112,7 @@ class AgentRuntime:
         response_consumer: bool = True,
         workflow_debug_capture_enabled: bool | None = None,
     ) -> RunExecution:
-        if built is None:
-            if graph is None or input_state is None:
-                raise ValueError(
-                    "a Workflow execution requires a graph and input state"
-                )
-            effective_graph = graph
-            effective_input_state = input_state
-        else:
-            effective_graph = graph if graph is not None else built.graph
-            effective_input_state = (
-                input_state if input_state is not None else built.input_state
-            )
-        workflow_agents = workflow_built or (
-            ((workflow_node_id, built),) if built is not None else ()
-        )
+        workflow_agents = workflow_built
         workflow_sources = {
             node_id: WorkflowNodeSource(
                 source_type="agent",
@@ -1189,9 +1161,6 @@ class AgentRuntime:
                 node_id: agent.subagent_profile_ids
                 for node_id, agent in workflow_agents
             },
-            subagent_profile_ids=(built.subagent_profile_ids if built is not None else {}),
-            default_agent_profile_id=(built.agent_id if built is not None else ""),
-            default_workflow_node_id=workflow_node_id,
         )
         effective_response_scheduler = response_scheduler
         if effective_response_scheduler is None:
@@ -1202,10 +1171,8 @@ class AgentRuntime:
                 origin_workflow_id=workflow_identity,
             )
         return RunExecution(
-            graph=effective_graph,
-            input_state=effective_input_state,
-            middleware_runtime=(built.middleware_runtime if built is not None else None),
-            tool_runtime=(built.tool_runtime if built is not None else None),
+            graph=graph,
+            input_state=input_state,
             media_response=MainAgentMediaResponse(self._media_outputs, request_id),
             response_scheduler=effective_response_scheduler,
             usage_accumulator=usage_accumulator,
@@ -1213,12 +1180,12 @@ class AgentRuntime:
             event_output_projector=projector,
             response_consumer=response_consumer,
             middleware_runtimes=tuple(
-                agent.middleware_runtime
-                for _, agent in workflow_agents[1:]
+                agent.middleware_runtime for _, agent in workflow_agents
             ),
             tool_runtimes=tuple(
                 agent.tool_runtime
-                for _, agent in workflow_agents[1:]
+                for _, agent in workflow_agents
+                if agent.tool_runtime is not None
             ),
             command_runtime=command_runtime,
             event_output_runtimes=event_output_runtimes,
@@ -1727,8 +1694,6 @@ class AgentRuntime:
                     context=assembly_diagnostic_context,
                 )
             raise
-        first_node_id = built_agents[0][0] if built_agents else ""
-        built = built_agents[0][1] if built_agents else None
         input_state: dict[str, Any] = {
             "shared_vars": deepcopy(dict(initial_shared_vars or {})),
             "agent_invocations": {},
@@ -1746,11 +1711,9 @@ class AgentRuntime:
                     resolved_workflow_run_id,
                 )
 
-        return self._execution(
-            built,
+        return self._workflow_execution(
             graph=graph,
             input_state=input_state,
-            workflow_node_id=first_node_id,
             workflow_built=tuple(built_agents),
             request_id=request_id,
             public_model=public_model,

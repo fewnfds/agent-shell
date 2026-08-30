@@ -76,7 +76,7 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
             origin_resolver=event_origin_resolver(),
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
         )
         parts = [part async for part in execution.stream_text()]
@@ -126,7 +126,7 @@ def test_execution_does_not_repeat_whole_ai_message_after_streamed_deltas() -> N
         response_scheduler=response_scheduler(projector),
         event_output_projector=projector,
         origin_resolver=event_origin_resolver(),
-        middleware_runtime=noop_middleware_runtime(),
+        middleware_runtimes=(noop_middleware_runtime(),),
         media_response=noop_media_response(),
     )
 
@@ -195,7 +195,7 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                 response_scheduler=response_scheduler(projector),
                 event_output_projector=projector,
                 origin_resolver=event_origin_resolver(),
-                middleware_runtime=noop_middleware_runtime(),
+                middleware_runtimes=(noop_middleware_runtime(),),
                 media_response=noop_media_response(),
                 identity=identity,
                 context=WorkflowRuntimeContext.for_run(identity=identity),
@@ -243,7 +243,7 @@ def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> Non
             response_scheduler=scheduler,
             event_output_projector=projector,
             origin_resolver=event_origin_resolver(),
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
         )
         return [part async for part in execution.stream_text()]
@@ -273,7 +273,7 @@ def test_non_string_lifecycle_output_stays_behind_the_runtime_error_boundary() -
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
             origin_resolver=event_origin_resolver(),
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
         )
         with pytest.raises(AgentRuntimeError) as captured:
@@ -321,7 +321,7 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
             response_scheduler=response_scheduler(projector),
             event_output_projector=projector,
             origin_resolver=event_origin_resolver(),
-            middleware_runtime=noop_middleware_runtime(),
+            middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
         )

@@ -23,9 +23,9 @@ def _resolver() -> RunEventOriginResolver:
         },
         main_agent_names=("Main Agent",),
         workflow_agent_names={"agent-a": "Main Agent"},
-        subagent_profile_ids={"Researcher": "profile-researcher"},
-        default_agent_profile_id="profile-main",
-        default_workflow_node_id="agent-a",
+        workflow_subagent_profile_ids={
+            "agent-a": {"Researcher": "profile-researcher"},
+        },
     )
 
 
@@ -175,7 +175,7 @@ def test_tool_channels_emit_only_scheduler_control_shape() -> None:
     delta_event = {
         "method": "tools",
         "params": {
-            "namespace": [],
+            "namespace": ["agent-a:invoke-1"],
             "timestamp": 2,
             "data": {
                 "event": "tool-output-delta",
@@ -187,7 +187,7 @@ def test_tool_channels_emit_only_scheduler_control_shape() -> None:
     finish_event = {
         "method": "tools",
         "params": {
-            "namespace": [],
+            "namespace": ["agent-a:invoke-1"],
             "timestamp": 3,
             "data": {
                 "event": "tool-finished",
@@ -199,7 +199,7 @@ def test_tool_channels_emit_only_scheduler_control_shape() -> None:
     failure_event = {
         "method": "tools",
         "params": {
-            "namespace": [],
+            "namespace": ["agent-a:invoke-1"],
             "timestamp": 4,
             "data": {
                 "event": "tool-failed",
@@ -234,7 +234,7 @@ def test_subagent_content_and_lifecycle_keep_subagent_origin() -> None:
             "timestamp": 1,
             "data": {
                 "event": "started",
-                "namespace": ["task:research"],
+                "namespace": ["agent-a:invoke-1", "task:research"],
                 "graph_name": "Researcher",
             },
         },
@@ -249,7 +249,7 @@ def test_subagent_content_and_lifecycle_keep_subagent_origin() -> None:
         },
         run_id="run-subagent",
         agent_name="Researcher",
-        namespace=["task:research"],
+        namespace=["agent-a:invoke-1", "task:research"],
     )
     content_origin = resolver.resolve(content)
     content_signals, _ = stream.consume(content, content_origin)
