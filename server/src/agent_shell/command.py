@@ -29,7 +29,7 @@ DispatchKey = Annotated[
     StringConstraints(strip_whitespace=True),
     Field(min_length=1, max_length=64),
 ]
-TaskId = Annotated[
+_TaskId = Annotated[
     str,
     StringConstraints(strip_whitespace=True),
     Field(min_length=1, max_length=128),
@@ -47,19 +47,19 @@ class CommandBlock(BaseModel):
     python_package: PythonPackageReference
 
 
-class CommandDispatchItem(BaseModel):
+class _CommandNodeDispatch(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    task_id: TaskId
+    task_id: _TaskId
     dispatch_key: DispatchKey
     payload: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class CommandResult(BaseModel):
+class _CommandNodeResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     activate: list[BranchKey] = Field(default_factory=list)
-    dispatch: list[CommandDispatchItem] = Field(default_factory=list)
+    dispatch: list[_CommandNodeDispatch] = Field(default_factory=list)
     update: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("activate")
@@ -73,8 +73,8 @@ class CommandResult(BaseModel):
     @classmethod
     def unique_task_ids(
         cls,
-        values: list[CommandDispatchItem],
-    ) -> list[CommandDispatchItem]:
+        values: list[_CommandNodeDispatch],
+    ) -> list[_CommandNodeDispatch]:
         task_ids = [item.task_id for item in values]
         if len(task_ids) != len(set(task_ids)):
             raise ValueError("command dispatch task IDs must be unique")
@@ -130,7 +130,7 @@ async def run_command(
     runtime: Runtime[WorkflowRuntimeContext],
     allowed_branches: Collection[str],
     allowed_dispatch_keys: Collection[str] = (),
-) -> CommandResult:
+) -> _CommandNodeResult:
     from agent_shell.runtime.state import WorkflowState, validate_workflow_state_update
 
     original_state = _detached(state)
@@ -140,7 +140,7 @@ async def run_command(
             state=script_state,
             runtime=runtime,
         )
-        result = CommandResult.model_validate(value)
+        result = _CommandNodeResult.model_validate(value)
         mutation_update = _state_delta(original_state, script_state)
         update = {**mutation_update, **result.update}
         unsupported_updates = sorted(
@@ -168,7 +168,7 @@ async def run_command(
                 "command dispatched tasks without a matching Workflow edge: "
                 + ", ".join(unknown_dispatches)
             )
-        return CommandResult(
+        return _CommandNodeResult(
             activate=activate,
             dispatch=result.dispatch,
             update=update,
@@ -181,10 +181,7 @@ __all__ = [
     "BranchKey",
     "CommandBlock",
     "CommandCallable",
-    "CommandDispatchItem",
     "CommandError",
-    "CommandResult",
     "DispatchKey",
-    "TaskId",
     "run_command",
 ]
