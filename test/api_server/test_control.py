@@ -1,7 +1,43 @@
 from __future__ import annotations
 
+from threading import Thread
+
 from .support import *
 from agent_shell.storage.file_config import FileConfigRepository
+
+
+def test_api_server_events_publish_from_worker_thread() -> None:
+    hub = ApiServerEventHub()
+
+    async def receive() -> str:
+        stream = hub.stream()
+        pending: asyncio.Task[str] | None = None
+        try:
+            assert await anext(stream) == ": connected\n\n"
+            pending = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0)
+            errors: list[BaseException] = []
+
+            def publish() -> None:
+                try:
+                    hub.publish_nowait({"type": "runtime_diagnostic"})
+                except BaseException as exc:
+                    errors.append(exc)
+
+            worker = Thread(target=publish)
+            worker.start()
+            worker.join()
+            assert errors == []
+            return await asyncio.wait_for(pending, timeout=1)
+        finally:
+            if pending is not None and not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await stream.aclose()
+
+    received = asyncio.run(receive(), debug=True)
+
+    assert received == 'data: {"type":"runtime_diagnostic"}\n\n'
 
 def test_api_key_is_write_only_and_takes_effect_immediately(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

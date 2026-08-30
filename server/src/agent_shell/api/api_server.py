@@ -114,23 +114,44 @@ class MessageInterceptionState:
 
 class ApiServerEventHub:
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[dict[str, object]]] = set()
+        self._subscribers: set[
+            tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, object]]]
+        ] = set()
+        self._subscribers_lock = Lock()
 
     async def publish(self, event: dict[str, object]) -> None:
         self.publish_nowait(event)
 
     def publish_nowait(self, event: dict[str, object]) -> None:
-        for queue in tuple(self._subscribers):
-            if queue.full():
-                try:
-                    queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-            queue.put_nowait(event)
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        with self._subscribers_lock:
+            subscribers = tuple(self._subscribers)
+        for owner_loop, queue in subscribers:
+            if owner_loop is current_loop:
+                self._deliver_nowait(queue, event)
+            elif not owner_loop.is_closed():
+                owner_loop.call_soon_threadsafe(self._deliver_nowait, queue, event)
+
+    @staticmethod
+    def _deliver_nowait(
+        queue: asyncio.Queue[dict[str, object]],
+        event: dict[str, object],
+    ) -> None:
+        if queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        queue.put_nowait(event)
 
     async def stream(self) -> AsyncIterator[str]:
         queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=50)
-        self._subscribers.add(queue)
+        subscription = (asyncio.get_running_loop(), queue)
+        with self._subscribers_lock:
+            self._subscribers.add(subscription)
         try:
             yield ": connected\n\n"
             while True:
@@ -143,7 +164,8 @@ class ApiServerEventHub:
                     event, ensure_ascii=False, separators=(",", ":")
                 ) + "\n\n"
         finally:
-            self._subscribers.discard(queue)
+            with self._subscribers_lock:
+                self._subscribers.discard(subscription)
 
 
 def _openai_error(
