@@ -114,7 +114,8 @@ def test_template_create_persists_identity_only_and_projects_recursive_paths(
         ).read_text(encoding="utf-8")
     )
     assert stored["payload"] == {
-        "python_package": {"folder": created["name"]}
+        "python_package": {"folder": created["name"]},
+        "mcp_refs": [],
     }
     assert package.status_code == 200, package.text
     projection = package.json()

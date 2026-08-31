@@ -1408,6 +1408,10 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
                     return "lifecycle-id"
 
             self._workflow_lifecycle = Lifecycle()
+
+            async def discover_mcp(_references):
+                return None
+
             self._builder = type(
                 "Builder",
                 (),
@@ -1422,7 +1426,9 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
                             subagents=(),
                             subagent_nodes={},
                         )
-                    )
+                    ),
+                    "discover_mcp": staticmethod(discover_mcp),
+                    "bind_mcp_runtime": staticmethod(lambda runtime: None),
                 },
             )()
 

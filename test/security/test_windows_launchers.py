@@ -97,6 +97,17 @@ def test_windows_runtime_removes_uv_python_aliases_after_pip_install() -> None:
     assert bootstrap.rindex(cleanup) > bootstrap.index(pip_install)
 
 
+def test_windows_runtime_accepts_locked_wheel_path_files_only() -> None:
+    bootstrap = (
+        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    ).read_text(encoding="utf-8")
+
+    path_file_filter = (
+        '$_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"'
+    )
+    assert bootstrap.count(path_file_filter) == 2
+
+
 def test_windows_runtime_unwraps_powershell_file_system_exceptions_for_retry() -> None:
     bootstrap = (
         REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"

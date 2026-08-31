@@ -24,11 +24,13 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
         workspace,
         mapped_directory_paths_by_filesystem,
         disabled_capabilities,
+        mcp_references,
     ):
         assert filesystem_mode == "composite"
         assert scope == "subagent"
         assert owner_id in {"reader-id", "writer-id"}
         assert disabled_capabilities == frozenset()
+        assert mcp_references == ()
         assert workflow_node_id is None
         assert mapped_directory_paths_by_filesystem == {
             "reader-filesystem": {"/reader/": Path("reader-root")}

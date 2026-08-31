@@ -413,13 +413,15 @@ try {
     Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse |
         Remove-Item -Force
 
-    # Legacy namespace packages may ship a wheel-owned *-nspkg.pth file. It is
-    # part of the locked distribution and does not link the runtime to a source
-    # checkout. All other .pth files remain forbidden because uv editable
-    # installs and arbitrary path injection use that surface.
+    # Legacy namespace packages and pywin32 may ship wheel-owned .pth files.
+    # They are part of locked distributions and do not link the runtime to a
+    # source checkout. All other .pth files remain forbidden because uv
+    # editable installs and arbitrary path injection use that surface.
     $editableLinks = @(
         Get-ChildItem -LiteralPath $installTarget -Filter "*.pth" -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notlike "*-nspkg.pth" }
+            Where-Object {
+                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"
+            }
     )
     $directUrls = @(Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse -ErrorAction SilentlyContinue)
     if ($editableLinks.Count -gt 0 -or $directUrls.Count -gt 0) {
@@ -456,7 +458,9 @@ try {
         Remove-Item -Force
     $editableLinks = @(
         Get-ChildItem -LiteralPath $sitePackages -Filter "*.pth" -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notlike "*-nspkg.pth" }
+            Where-Object {
+                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"
+            }
     )
     $directUrls = @(Get-ChildItem -LiteralPath $sitePackages -Filter "direct_url.json" -File -Recurse -ErrorAction SilentlyContinue)
     if ($editableLinks.Count -gt 0 -or $directUrls.Count -gt 0) {
