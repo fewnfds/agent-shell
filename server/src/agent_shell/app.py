@@ -157,6 +157,7 @@ def create_app(
     )
     mcp_resources = McpResourceStore(
         settings.data_root,
+        runtime_root=runtime_dir,
         environment=environment,
         mutations=configuration_mutations,
     )

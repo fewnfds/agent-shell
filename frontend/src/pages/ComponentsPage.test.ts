@@ -29,6 +29,12 @@ const api = vi.hoisted(() => ({
   copyModelConnection: vi.fn(),
   deleteModelConnection: vi.fn(),
   fetchModels: vi.fn(),
+  listMcpConnections: vi.fn(),
+  getMcpConnection: vi.fn(),
+  saveMcpConnection: vi.fn(),
+  copyMcpConnection: vi.fn(),
+  deleteMcpConnection: vi.fn(),
+  installMcpConnection: vi.fn(),
   validateDraft: vi.fn(),
   validateRepository: vi.fn(),
   listCustomToolTemplates: vi.fn(),
@@ -160,6 +166,26 @@ function modelConnection(id: string, name = 'Local model') {
   }
 }
 
+function mcpConnection(id: string, status: 'not_installed' | 'ready' = 'not_installed') {
+  return {
+    id,
+    name: 'Browser MCP',
+    transport: 'stdio' as const,
+    package_source: 'npm' as const,
+    package: '@playwright/mcp',
+    version: '0.0.1',
+    args: [],
+    env: {},
+    installation: {
+      status,
+      package_source: 'npm' as const,
+      package: '@playwright/mcp',
+      version: '0.0.1',
+      entrypoint: null,
+    },
+  }
+}
+
 function privateSkillInspection(ownerId: string, skillName: string): SkillPackageInspection {
   return {
     folder: ownerId,
@@ -211,6 +237,25 @@ async function mountModelAt(path: string) {
   await router.push(path)
   await router.isReady()
   const wrapper = mount({ template: '<RouterView />' }, {
+    global: { plugins: [router] },
+  })
+  await settleComponentPage(wrapper)
+  return { router, wrapper }
+}
+
+async function mountMcpAt(path: string) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{
+      path: '/mcp/connections',
+      component: ComponentsPage,
+      props: { scope: 'mcp' },
+    }],
+  })
+  await router.push(path)
+  await router.isReady()
+  const wrapper = mount(ComponentsPage, {
+    props: { scope: 'mcp' },
     global: { plugins: [router] },
   })
   await settleComponentPage(wrapper)
@@ -287,6 +332,12 @@ beforeEach(() => {
   api.copyModelConnection.mockRejectedValue(new Error('unexpected model connection copy'))
   api.deleteModelConnection.mockResolvedValue({ ok: true })
   api.fetchModels.mockResolvedValue([])
+  api.listMcpConnections.mockResolvedValue([])
+  api.getMcpConnection.mockRejectedValue(new Error('unexpected MCP connection load'))
+  api.saveMcpConnection.mockRejectedValue(new Error('unexpected MCP connection save'))
+  api.copyMcpConnection.mockRejectedValue(new Error('unexpected MCP connection copy'))
+  api.deleteMcpConnection.mockResolvedValue({ ok: true })
+  api.installMcpConnection.mockRejectedValue(new Error('unexpected MCP connection install'))
   api.validateDraft.mockResolvedValue({ valid: true, stage: 'draft_validation', issues: [] })
   api.validateRepository.mockResolvedValue({ valid: true, stage: 'repository_load', issues: [] })
   api.listCustomToolTemplates.mockResolvedValue({ catalog: [], errors: {} })
@@ -612,6 +663,31 @@ describe('ComponentsPage', () => {
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
       'common.copy', 'common.delete', 'common.new', 'common.save',
     ])
+    wrapper.unmount()
+  })
+
+  it('installs and refreshes only a saved clean Managed Local MCP connection', async () => {
+    const id = '00000000-0000-4000-8000-000000000079'
+    const declared = mcpConnection(id)
+    const installed = mcpConnection(id, 'ready')
+    api.listMcpConnections.mockResolvedValueOnce([declared])
+    api.getMcpConnection.mockResolvedValueOnce(declared)
+    api.installMcpConnection.mockResolvedValueOnce({
+      connection: installed,
+      tools: ['browser_navigate', 'browser_snapshot'],
+    })
+    const { wrapper } = await mountMcpAt(`/mcp/connections?id=${id}`)
+
+    expect(wrapper.find('[data-editor="mcp-connection"]').exists()).toBe(true)
+    await buttonByText(wrapper, 'mcp.installation.install').trigger('click')
+    await flushPromises()
+
+    expect(api.installMcpConnection).toHaveBeenCalledWith(id)
+    expect(wrapper.text()).toContain('mcp.installation.status.ready')
+    expect(toastNotify).toHaveBeenCalledWith(expect.objectContaining({
+      tone: 'success',
+      title: 'mcp.installation.succeeded',
+    }))
     wrapper.unmount()
   })
 

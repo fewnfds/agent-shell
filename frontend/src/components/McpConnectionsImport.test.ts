@@ -26,6 +26,7 @@ beforeEach(() => {
     connections: [{
       name: 'browser',
       transport: 'stdio',
+      package_source: 'npm',
       values: [{ target: 'env', name: 'TOKEN', source: 'secret' }],
     }],
   })
@@ -33,9 +34,17 @@ beforeEach(() => {
     id: '11111111-1111-4111-8111-111111111111',
     name: 'browser',
     transport: 'stdio',
-    command: 'npx',
+    package_source: 'npm',
+    package: '@playwright/mcp',
+    version: '0.0.1',
     args: [],
     env: { TOKEN: { source: 'literal', value: 'demo' } },
+    installation: {
+      status: 'not_installed',
+      package_source: 'npm',
+      package: '@playwright/mcp',
+      version: '0.0.1',
+    },
   }])
 })
 
@@ -45,7 +54,7 @@ describe('MCP connection JSON import', () => {
       attachTo: document.body,
       global: { plugins: [i18n()] },
     })
-    const json = '{"mcpServers":{"browser":{"command":"npx","env":{"TOKEN":"demo"}}}}'
+    const json = '{"mcpServers":{"browser":{"command":"npx","args":["-y","@playwright/mcp@0.0.1"],"env":{"TOKEN":"demo"}}}}'
 
     await wrapper.get('button').trigger('click')
     await flushPromises()

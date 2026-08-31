@@ -162,12 +162,26 @@ interface McpConnectionBase {
   name: string
 }
 
+export interface McpInstallation {
+  status: 'not_installed' | 'ready' | 'failed'
+  package_source: 'npm' | 'pypi'
+  package: string
+  version: string
+  entrypoint?: string | null
+  error_code?: string
+  entrypoints?: string[]
+}
+
 export interface McpStdioConnection extends McpConnectionBase {
   transport: 'stdio'
-  command: string
+  package_source: 'npm' | 'pypi'
+  package: string
+  version: string
+  entrypoint?: string | null
   args: string[]
   cwd?: string | null
   env: Record<string, McpConfiguredValue>
+  installation: McpInstallation
 }
 
 export interface McpHttpConnection extends McpConnectionBase {
@@ -177,6 +191,11 @@ export interface McpHttpConnection extends McpConnectionBase {
 }
 
 export type McpConnection = McpStdioConnection | McpHttpConnection
+
+export interface McpInstallationResult {
+  connection: McpStdioConnection
+  tools: string[]
+}
 
 export interface McpRequirementBinding {
   id: string
@@ -196,6 +215,7 @@ export interface McpImportPreviewValue {
 export interface McpImportPreviewConnection {
   name: string
   transport: 'stdio' | 'http'
+  package_source?: 'npm' | 'pypi'
   values: McpImportPreviewValue[]
 }
 

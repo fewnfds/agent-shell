@@ -1,4 +1,9 @@
-import type { BlockPayload, McpConfiguredValue, McpConnection } from '@/api'
+import type {
+  BlockPayload,
+  McpConfiguredValue,
+  McpConnection,
+  McpInstallation,
+} from '@/api'
 
 import {
   cleanName,
@@ -21,10 +26,14 @@ interface McpConnectionDraftBase extends BlockDraftBase {
 
 export interface McpStdioConnectionDraft extends McpConnectionDraftBase {
   transport: 'stdio'
-  command: string
+  package_source: 'npm' | 'pypi'
+  package: string
+  version: string
+  entrypoint: string
   args: string[]
   cwd: string
   values: McpConfiguredValueDraft[]
+  installation: McpInstallation
 }
 
 export interface McpHttpConnectionDraft extends McpConnectionDraftBase {
@@ -66,10 +75,20 @@ export const mcpConnectionAdapter = {
       id: '',
       name: '',
       transport: 'stdio',
-      command: '',
+      package_source: 'npm',
+      package: '',
+      version: '',
+      entrypoint: '',
       args: [],
       cwd: '',
       values: [],
+      installation: {
+        status: 'not_installed',
+        package_source: 'npm',
+        package: '',
+        version: '',
+        entrypoint: null,
+      },
     }
   },
   fromApi(value: McpConnection): McpConnectionDraft {
@@ -85,10 +104,14 @@ export const mcpConnectionAdapter = {
     return {
       ...base,
       transport: 'stdio',
-      command: value.command,
+      package_source: value.package_source,
+      package: value.package,
+      version: value.version,
+      entrypoint: stringValue(value.entrypoint),
       args: [...value.args],
       cwd: stringValue(value.cwd),
       values: configuredValues(value.env),
+      installation: value.installation,
     }
   },
   toPayload(value: McpConnectionDraft): BlockPayload {
@@ -104,7 +127,10 @@ export const mcpConnectionAdapter = {
     return {
       ...common,
       transport: 'stdio',
-      command: value.command.trim(),
+      package_source: value.package_source,
+      package: value.package.trim(),
+      version: value.version.trim(),
+      ...(value.entrypoint.trim() ? { entrypoint: value.entrypoint.trim() } : {}),
       args: value.args,
       ...(value.cwd.trim() ? { cwd: value.cwd.trim() } : {}),
       env: valuesPayload(value.values),

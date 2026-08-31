@@ -32,7 +32,74 @@ describe('MCP Connection editor', () => {
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
       transport: 'stdio',
+      package_source: 'npm',
+      package: '',
+      version: '',
       values: [],
+      installation: { status: 'not_installed' },
     })
+  })
+
+  it('emits installation only for a saved clean local package declaration', async () => {
+    const wrapper = mount(McpConnectionEditor, {
+      props: {
+        canInstall: true,
+        modelValue: {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Browser MCP',
+          transport: 'stdio',
+          package_source: 'npm',
+          package: '@playwright/mcp',
+          version: '0.0.1',
+          entrypoint: '',
+          args: [],
+          cwd: '',
+          values: [],
+          installation: {
+            status: 'not_installed',
+            package_source: 'npm',
+            package: '@playwright/mcp',
+            version: '0.0.1',
+          },
+        },
+      },
+      global: { plugins: [i18n()] },
+    })
+
+    await wrapper.get('section:nth-of-type(3) button').trigger('click')
+
+    expect(wrapper.emitted('install')).toHaveLength(1)
+  })
+
+  it('does not project an installed environment onto a changed entrypoint', async () => {
+    const wrapper = mount(McpConnectionEditor, {
+      props: {
+        canInstall: false,
+        modelValue: {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Browser MCP',
+          transport: 'stdio',
+          package_source: 'npm',
+          package: '@playwright/mcp',
+          version: '0.0.1',
+          entrypoint: 'playwright-mcp',
+          args: [],
+          cwd: '',
+          values: [],
+          installation: {
+            status: 'ready',
+            package_source: 'npm',
+            package: '@playwright/mcp',
+            version: '0.0.1',
+            entrypoint: 'playwright-mcp',
+          },
+        },
+      },
+      global: { plugins: [i18n()] },
+    })
+
+    await wrapper.get('#mcp-entrypoint').setValue('')
+
+    expect(wrapper.text()).toContain('Not installed')
   })
 })

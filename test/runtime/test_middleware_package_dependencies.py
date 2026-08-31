@@ -218,7 +218,7 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
     )
     fake_uv = tmp_path / "uv.exe"
     fake_uv.write_bytes(b"fake")
-    monkeypatch.setattr(dependencies, "_ensure_uv", lambda *_args: fake_uv)
+    monkeypatch.setattr(dependencies, "ensure_uv", lambda *_args: fake_uv)
     monkeypatch.setattr(dependencies, "_core_constraints", lambda: ("pydantic==2.12.5",))
     calls: list[list[str]] = []
 

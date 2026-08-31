@@ -129,9 +129,11 @@ def _frontend_packages(root: Path) -> list[tuple[str, str, str, str, str]]:
 def _render(root: Path) -> str:
     rows = _frontend_packages(root) + _runtime_packages(root)
     runtime_lock = json.loads((root / "packaging/windows/runtime-lock.json").read_text(encoding="utf-8"))
+    mcp_runtime_lock = json.loads((root / "packaging/windows/mcp-runtime-lock.json").read_text(encoding="utf-8"))
     rows.extend(
         [
             ("runtime", "CPython", runtime_lock["python"], "PSF-2.0", "https://www.python.org/"),
+            ("runtime", "Node.js", mcp_runtime_lock["node"]["version"], "MIT", "https://nodejs.org/"),
             ("runtime", "uv", runtime_lock["uv"]["version"], "Apache-2.0 OR MIT", "https://github.com/astral-sh/uv"),
         ]
     )
@@ -142,7 +144,7 @@ def _render(root: Path) -> str:
     lines = [
         "# Third-party notices",
         "",
-        "Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, and `packaging/windows/runtime-lock.json`.",
+        "Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.",
         f"Counts: npm {counts['npm']}, pypi {counts['pypi']}, runtime {counts['runtime']}. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.",
         "",
         "`Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.",

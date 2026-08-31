@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from pydantic import ValidationError
 
 from agent_shell.api.errors import management_error
@@ -11,6 +13,7 @@ from agent_shell.mcp.importing import (
     mcp_import_preview,
     normalize_mcp_servers_import,
 )
+from agent_shell.mcp.installation import McpInstallationError
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.mcp_connections import (
@@ -127,6 +130,43 @@ def build_mcp_connection_router(
     @router.get("/api/mcp-connections/{connection_id}")
     async def get_mcp_connection(connection_id: str) -> dict[str, Any]:
         return connection_or_404(connection_id)
+
+    @router.post("/api/mcp-connections/{connection_id}/install")
+    async def install_mcp_connection(connection_id: str) -> dict[str, Any]:
+        connection = connection_or_404(connection_id)
+        if connection.get("transport") != "stdio":
+            raise management_error(
+                422,
+                code="mcp_installation_not_applicable",
+                message_key="errors.mcpInstallationNotApplicable",
+                message="Remote HTTP MCP connections do not require local installation.",
+            )
+        try:
+            await run_in_threadpool(
+                resources.install_connection,
+                connection_id,
+            )
+            resolved = resources.resolve_connection(connection_id)
+            client = MultiServerMCPClient({"installation_test": resolved})
+            tools = await client.get_tools(server_name="installation_test")
+        except McpInstallationError as exc:
+            raise management_error(
+                409,
+                code=exc.code,
+                message_key="errors.mcpInstallationFailed",
+                message="The managed local MCP package could not be installed.",
+            ) from exc
+        except Exception as exc:
+            raise management_error(
+                502,
+                code="mcp_connection_test_failed",
+                message_key="errors.mcpConnectionTestFailed",
+                message="The installed MCP Server could not complete Tool discovery.",
+            ) from exc
+        return {
+            "connection": resources.get_connection(connection_id),
+            "tools": [str(tool.name) for tool in tools],
+        }
 
     @router.post("/api/mcp-connections")
     async def create_mcp_connection(payload: dict[str, Any]) -> dict[str, Any]:

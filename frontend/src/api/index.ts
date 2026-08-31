@@ -55,6 +55,7 @@ import type {
   ModelConnection,
   ModelRequirementBinding,
   McpConnection,
+  McpInstallationResult,
   McpImportPreview,
   McpImportValueSources,
   McpRequirementBinding,
@@ -185,6 +186,12 @@ export const managementApi = {
 
   copyMcpConnection(id: string, name: string): Promise<McpConnection> {
     return managementRequest(`${recordPath('/api/mcp-connections', id)}/copy`, jsonBody({ name }))
+  },
+
+  installMcpConnection(id: string): Promise<McpInstallationResult> {
+    return managementRequest(`${recordPath('/api/mcp-connections', id)}/install`, {
+      method: 'POST',
+    })
   },
 
   deleteMcpConnection(id: string): Promise<{ ok: boolean }> {

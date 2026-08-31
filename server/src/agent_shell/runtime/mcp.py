@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent_shell.mcp.contracts import McpReference
+from agent_shell.mcp.installation import McpInstallationError
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.storage.mcp_connections import (
     McpResourceSnapshot,
@@ -99,6 +100,12 @@ class McpRunRuntime:
                 raise AgentRuntimeError(
                     "mcp_connection_secret_missing",
                     "An attached MCP Connection is missing a required secret value.",
+                    status_code=409,
+                ) from exc
+            except McpInstallationError as exc:
+                raise AgentRuntimeError(
+                    exc.code,
+                    str(exc),
                     status_code=409,
                 ) from exc
             if connection["transport"] == "http":

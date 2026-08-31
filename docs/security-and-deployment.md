@@ -59,6 +59,10 @@ Windows Middleware 包可以声明公开 PyPI 的二进制 wheel 依赖。第三
 包名仿冒、恶意更新和依赖接管都属于供应链风险。平台固定公开 PyPI、拒绝 requirements 中的 URL/索引配置，
 并约束核心版本，但这不代替维护者对包名、发布者、版本和许可证的审查。
 
+Managed Local MCP 软件包同样是受信任的本地代码。管理台只接受 npm/PyPI 包名与精确版本，使用软件内锁定的 Node.js 或 CPython/uv toolchain，在每条 Connection 独立的 `runtime/mcp/` 环境中安装；PyPI 只接受当前 Windows x64/CPython 3.12 可用的 wheel，不调用宿主编译器。依赖隔离防止其修改核心或 Python 扩展依赖，但不是进程、文件或网络 sandbox。npm 安装阶段可以执行软件包的标准安装脚本，运行阶段 MCP Server 继承 Agent Shell 服务账号权限以及该 Connection 明确配置的 env/cwd。维护者必须审查包名、发布者、版本、安装脚本、许可证和 Server 对外提供的 Tool；不要把版本锁与 SHA/requirements lock 误解为软件包可信证明。
+
+MCP Connection 声明、安装 lock 和 secret 位于 `data/`，可执行软件包、内部 Node toolchain、下载 cache 与运行状态位于可重建的 `runtime/mcp/`。备份或迁移 `data/` 后，需要在目标软件中联网重新安装本地 MCP；Configuration Bundle 不包含 Connection、secret、安装 lock 或依赖。HTTP MCP 不下载本地代码。
+
 Middleware 包没有 sandbox，以 Agent Shell 服务进程权限运行。它可以修改消息、实例文件、持久 Skill、mapped 目录和服务账号可访问的其他宿主资源，也可以发起网络或进程操作。平台不备份、不回滚、不加锁，也不协调多个包的文件或变量冲突。
 
 项目 filesystem 的 mapped directories 可读写宿主真实目录。只映射 Agent 确实需要的路径；写入、编辑和递归删除工具按最小权限启用。Agent 看到的 Skill namespace 始终只读。

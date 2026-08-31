@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 from uuid import UUID, uuid5
 
+from packaging.version import InvalidVersion, Version
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -26,6 +27,7 @@ from agent_shell.configuration.identity import (
     new_configuration_id,
     require_configuration_id,
 )
+from agent_shell.mcp.installation import McpInstallationManager
 from agent_shell.storage.atomic_files import write_text_atomic
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 from agent_shell.storage.environment import (
@@ -38,6 +40,12 @@ from agent_shell.storage.file_config import _dump_yaml
 
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+_NPM_PACKAGE = re.compile(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
+_NPM_VERSION = re.compile(
+    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$"
+)
+_PYPI_PACKAGE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+_ENTRYPOINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 McpStringValue = Annotated[str, StringConstraints(strip_whitespace=False)]
 
@@ -71,10 +79,31 @@ class _McpConnectionBase(BaseModel):
 
 class McpStdioConnection(_McpConnectionBase):
     transport: Literal["stdio"]
-    command: Annotated[str, Field(min_length=1)]
+    package_source: Literal["npm", "pypi"]
+    package: Annotated[str, Field(min_length=1)]
+    version: Annotated[str, Field(min_length=1)]
+    entrypoint: str | None = None
     args: list[str] = Field(default_factory=list)
     cwd: str | None = None
     env: dict[str, McpConfiguredValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def package_declaration(self) -> "McpStdioConnection":
+        if self.package_source == "npm":
+            if _NPM_PACKAGE.fullmatch(self.package) is None:
+                raise ValueError("MCP npm package name is invalid")
+            if _NPM_VERSION.fullmatch(self.version) is None:
+                raise ValueError("MCP npm package version must be exact")
+        else:
+            if _PYPI_PACKAGE.fullmatch(self.package) is None:
+                raise ValueError("MCP PyPI package name is invalid")
+            try:
+                Version(self.version)
+            except InvalidVersion as exc:
+                raise ValueError("MCP PyPI package version must be exact") from exc
+        if self.entrypoint is not None and _ENTRYPOINT.fullmatch(self.entrypoint) is None:
+            raise ValueError("MCP package entrypoint is invalid")
+        return self
 
     @field_validator("cwd")
     @classmethod
@@ -156,6 +185,7 @@ def _secret_reference(connection_id: str, channel: str, target_name: str) -> str
 def _public_record(
     record: dict[str, Any],
     environment: EnvironmentSnapshot,
+    installations: McpInstallationManager,
 ) -> dict[str, Any]:
     result = deepcopy(record)
     field = _value_map_field(record)
@@ -177,6 +207,9 @@ def _public_record(
             ),
         }
     result[field] = projected
+    installation = installations.status(str(record["id"]), record)
+    if installation is not None:
+        result["installation"] = installation
     return result
 
 
@@ -232,6 +265,7 @@ class McpResourceSnapshot:
     _records: tuple[dict[str, Any], ...]
     _environment: EnvironmentSnapshot
     _bindings: dict[str, dict[str, str]]
+    _installations: McpInstallationManager
 
     @classmethod
     def capture(
@@ -239,19 +273,28 @@ class McpResourceSnapshot:
         records: list[dict[str, Any]],
         environment: EnvironmentSnapshot,
         bindings: dict[str, dict[str, str]],
+        installations: McpInstallationManager,
     ) -> "McpResourceSnapshot":
-        return cls(tuple(deepcopy(records)), environment, deepcopy(bindings))
+        return cls(
+            tuple(deepcopy(records)),
+            environment,
+            deepcopy(bindings),
+            installations,
+        )
 
     def list_connections(self) -> list[dict[str, Any]]:
         return sorted(
-            (_public_record(item, self._environment) for item in self._records),
+            (
+                _public_record(item, self._environment, self._installations)
+                for item in self._records
+            ),
             key=lambda item: (str(item.get("name", "")).casefold(), str(item["id"])),
         )
 
     def get_connection(self, connection_id: str) -> dict[str, Any] | None:
         return next(
             (
-                _public_record(item, self._environment)
+                _public_record(item, self._environment, self._installations)
                 for item in self._records
                 if item["id"] == connection_id
             ),
@@ -271,7 +314,7 @@ class McpResourceSnapshot:
             values = _resolved_value_map(item, self._environment)
             if values:
                 resolved[field] = values
-            return resolved
+            return self._installations.resolve_connection(str(item["id"]), resolved)
         raise KeyError(connection_id)
 
     def copy_input(self, connection_id: str) -> dict[str, Any]:
@@ -296,6 +339,7 @@ class McpResourceStore:
         self,
         data_root: Path,
         *,
+        runtime_root: Path | None = None,
         environment: InstanceEnvironmentStore | None = None,
         mutations: ConfigurationMutationCoordinator | None = None,
     ) -> None:
@@ -304,6 +348,10 @@ class McpResourceStore:
         self.data_root = data_root.resolve()
         self.root = self.data_root / "config" / "mcp-connections"
         self.bindings_path = self.data_root / "config" / "mcp-bindings.yaml"
+        self._installations = McpInstallationManager(
+            self.data_root,
+            runtime_root or self.data_root.parent / "runtime",
+        )
         self._mutations = mutations or ConfigurationMutationCoordinator()
         self._environment = environment or InstanceEnvironmentStore(
             self.data_root / "config" / "agent-shell.env",
@@ -374,7 +422,10 @@ class McpResourceStore:
 
     def _snapshot_unlocked(self) -> McpResourceSnapshot:
         return McpResourceSnapshot.capture(
-            self._documents(), self._environment.snapshot(), self._load_bindings()
+            self._documents(),
+            self._environment.snapshot(),
+            self._load_bindings(),
+            self._installations,
         )
 
     def snapshot(self) -> McpResourceSnapshot:
@@ -468,7 +519,11 @@ class McpResourceStore:
                     pass
                 raise
             self._revision += 1
-            return _public_record(stored, self._environment.snapshot())
+            return _public_record(
+                stored,
+                self._environment.snapshot(),
+                self._installations,
+            )
 
     def save_connections_atomic(
         self,
@@ -543,7 +598,14 @@ class McpResourceStore:
                     pass
                 raise
             self._revision += 1
+            self._installations.remove(connection_id)
             return True
+
+    def install_connection(self, connection_id: str) -> dict[str, Any]:
+        connection_id = require_configuration_id(connection_id, label="MCP connection id")
+        with self._lock:
+            declared = self._snapshot_unlocked().copy_input(connection_id)
+            return self._installations.install(connection_id, declared)
 
     def set_binding(self, repository_id: str, requirement_id: str, connection_id: str | None) -> None:
         if repository_id:

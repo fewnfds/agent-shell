@@ -58,7 +58,7 @@ git pull --ff-only
 | LangChain core/graph | `langchain 1.3.18`；`langchain-core 1.6.1`；`langgraph 1.2.11`；LangSmith `0.11.2` |
 | 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
 
-第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一锁文件或 runtime lock 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。
+第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一依赖锁、`packaging/windows/runtime-lock.json` 或 `packaging/windows/mcp-runtime-lock.json` 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。`mcp-runtime-lock.json` 只锁定 Managed Local npm MCP 按需使用的内部 Node.js，不进入核心 Python runtime fingerprint；前端源码构建使用的 Node.js 22 仍由开发机提供。
 
 无范围的 `uv lock --upgrade` 会把 FastAPI、Provider SDK 和开发依赖等无关行为面一起带入，不作为日常升级入口。依赖升级先用 `uv tree --outdated` 扫描，再按单一影响面使用 scoped `--upgrade-package` 推进。LangChain 系的版本边界、LangSmith `>=0.11.2,<0.12` 的理由和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)。
 

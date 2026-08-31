@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 from contextlib import closing
 from pathlib import Path
+import json
 import socket
-import sys
 
 from langchain_core.messages import ToolMessage
 from mcp.server.fastmcp import FastMCP
+import pytest
 import uvicorn
 
+from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.mcp import McpRunRuntime
 from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.validation.assembly import ResolvedMcpReference
@@ -37,6 +39,29 @@ def resolved_reference(*, tools: list[str] | None = None) -> ResolvedMcpReferenc
             "namespace": "calc",
         },
     )
+
+
+def managed_resources(tmp_path: Path) -> McpResourceStore:
+    lock_root = tmp_path / "packaging" / "windows"
+    lock_root.mkdir(parents=True)
+    (lock_root / "runtime-lock.json").write_text(
+        json.dumps({
+            "schema": 1,
+            "platform": "windows-x64",
+            "python": "3.12.13",
+            "uv": {"version": "0.12.2", "url": "uv", "sha256": "uv"},
+        }),
+        encoding="utf-8",
+    )
+    (lock_root / "mcp-runtime-lock.json").write_text(
+        json.dumps({
+            "schema": 1,
+            "platform": "windows-x64",
+            "node": {"version": "22.23.2", "url": "node", "sha256": "node"},
+        }),
+        encoding="utf-8",
+    )
+    return McpResourceStore(tmp_path, runtime_root=tmp_path / "runtime")
 
 
 def test_empty_mcp_references_leave_runtime_disabled(tmp_path: Path) -> None:
@@ -84,44 +109,31 @@ async def discover_and_call(resources: McpResourceStore) -> None:
     assert [message.content for message in messages] == ["Calculate 2 + 3"]
 
 
-def test_stdio_mcp_adapter_discovers_filters_and_calls_tools(tmp_path: Path) -> None:
-    server = tmp_path / "calculator_server.py"
-    server.write_text(
-        "from mcp.server.fastmcp import FastMCP\n"
-        "mcp = FastMCP('Calculator')\n"
-        "@mcp.tool()\n"
-        "def add(a: int, b: int) -> int:\n"
-        "    return a + b\n"
-        "@mcp.tool()\n"
-        "def multiply(a: int, b: int) -> int:\n"
-        "    return a * b\n"
-        "@mcp.tool()\n"
-        "def fail() -> None:\n"
-        "    raise ValueError('expected failure')\n"
-        "@mcp.resource('memo://welcome')\n"
-        "def welcome() -> str:\n"
-        "    return 'Calculator resource'\n"
-        "@mcp.prompt()\n"
-        "def calculation_prompt(expression: str) -> str:\n"
-        "    return f'Calculate {expression}'\n"
-        "if __name__ == '__main__':\n"
-        "    mcp.run(transport='stdio')\n",
-        encoding="utf-8",
-    )
-    resources = McpResourceStore(tmp_path)
+def test_uninstalled_local_mcp_fails_before_tool_discovery(tmp_path: Path) -> None:
+    resources = managed_resources(tmp_path)
     resources.save_connection(
         CONNECTION_ID,
         {
             "name": "Calculator stdio",
             "transport": "stdio",
-            "command": sys.executable,
-            "args": [str(server)],
+            "package_source": "pypi",
+            "package": "calculator-mcp",
+            "version": "1.0.0",
+            "args": [],
             "env": {},
         },
     )
     resources.set_binding(REPOSITORY_ID, REQUIREMENT_ID, CONNECTION_ID)
 
-    asyncio.run(discover_and_call(resources))
+    with pytest.raises(AgentRuntimeError) as raised:
+        asyncio.run(
+            McpRunRuntime.discover(
+                resources.snapshot(),
+                REPOSITORY_ID,
+                (resolved_reference(),),
+            )
+        )
+    assert raised.value.code == "mcp_installation_not_ready"
 
 
 def test_streamable_http_mcp_adapter_discovers_and_calls_tools(tmp_path: Path) -> None:

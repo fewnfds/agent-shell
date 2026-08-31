@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+from pathlib import PurePath
 import re
 from typing import Any, Literal
 
@@ -11,6 +12,14 @@ from agent_shell.storage.mcp_connections import MCP_CONNECTION_ADAPTER
 
 
 _ENV_REFERENCE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
+_NPM_RECIPE = re.compile(
+    r"^(?P<package>(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*)@"
+    r"(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?)$"
+)
+_PYPI_RECIPE = re.compile(
+    r"^(?P<package>[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)=="
+    r"(?P<version>[^=<>!~\s]+)$"
+)
 McpImportedValueSource = Literal["literal", "secret"]
 
 
@@ -86,6 +95,58 @@ def _transport(server: dict[str, Any]) -> str:
     return normalized_values[0]
 
 
+def _managed_package_recipe(
+    server_name: str,
+    command: str,
+    args: list[str],
+) -> tuple[str, str, str, str | None, list[str]]:
+    executable = PurePath(command.strip()).name.casefold()
+    if executable in {"npx", "npx.cmd", "npx.exe"}:
+        remaining = list(args)
+        if remaining and remaining[0] in {"-y", "--yes"}:
+            remaining.pop(0)
+        if not remaining:
+            raise ValueError(f"MCP npx server {server_name!r} requires an exact package recipe")
+        matched = _NPM_RECIPE.fullmatch(remaining.pop(0))
+        if matched is None:
+            raise ValueError(
+                f"MCP npx server {server_name!r} requires package@exact-version"
+            )
+        return (
+            "npm",
+            matched.group("package"),
+            matched.group("version"),
+            None,
+            remaining,
+        )
+    if executable in {"uvx", "uvx.exe"}:
+        remaining = list(args)
+        entrypoint: str | None = None
+        if len(remaining) >= 3 and remaining[0] == "--from":
+            recipe = remaining[1]
+            entrypoint = remaining[2]
+            remaining = remaining[3:]
+        elif remaining:
+            recipe = remaining.pop(0)
+        else:
+            raise ValueError(f"MCP uvx server {server_name!r} requires an exact package recipe")
+        matched = _PYPI_RECIPE.fullmatch(recipe)
+        if matched is None:
+            raise ValueError(
+                f"MCP uvx server {server_name!r} requires package==exact-version"
+            )
+        return (
+            "pypi",
+            matched.group("package"),
+            matched.group("version"),
+            entrypoint,
+            remaining,
+        )
+    raise ValueError(
+        f"MCP stdio server {server_name!r} is not a supported managed npx or uvx recipe"
+    )
+
+
 def normalize_mcp_servers_import(
     document: object,
     *,
@@ -124,6 +185,9 @@ def normalize_mcp_servers_import(
                 raise ValueError(f"MCP stdio server {server_name!r} requires command")
             if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
                 raise ValueError(f"MCP stdio server {server_name!r} args must be strings")
+            package_source, package, version, entrypoint, runtime_args = (
+                _managed_package_recipe(server_name, command, args)
+            )
             env = _string_map(server.get("env"), label=f"MCP server {server_name!r} env")
             unexpected = sorted(set(overrides.headers) | (set(overrides.env) - set(env)))
             if unexpected:
@@ -134,8 +198,11 @@ def normalize_mcp_servers_import(
             candidate: dict[str, Any] = {
                 "name": server_name.strip(),
                 "transport": "stdio",
-                "command": command,
-                "args": args,
+                "package_source": package_source,
+                "package": package,
+                "version": version,
+                "entrypoint": entrypoint,
+                "args": runtime_args,
                 "env": {
                     name: {
                         "source": overrides.env.get(name, "secret"),
@@ -190,6 +257,11 @@ def mcp_import_preview(document: object) -> dict[str, Any]:
             {
                 "name": connection["name"],
                 "transport": connection["transport"],
+                **(
+                    {"package_source": connection["package_source"]}
+                    if connection["transport"] == "stdio"
+                    else {}
+                ),
                 "values": [
                     {"target": field, "name": name, "source": configured["source"]}
                     for name, configured in connection.get(field, {}).items()

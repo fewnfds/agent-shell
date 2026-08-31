@@ -250,9 +250,17 @@ function createApi() {
     id: '44444444-4444-4444-8444-444444444444',
     name: 'Browser MCP',
     transport: 'stdio',
-    command: 'npx',
-    args: ['playwright-mcp'],
+    package_source: 'npm',
+    package: '@playwright/mcp',
+    version: '0.0.1',
+    args: [],
     env: {},
+    installation: {
+      status: 'not_installed',
+      package_source: 'npm',
+      package: '@playwright/mcp',
+      version: '0.0.1',
+    },
   }
   const listMcpConnections = vi.fn(async () => [mcpConnection])
   const copyBlock = vi.fn(async () => {

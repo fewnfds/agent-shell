@@ -126,6 +126,7 @@ const draft = ref<BlockDraftBase | null>(null)
 const currentEditor = shallowRef<Component | null>(null)
 const loading = ref(true)
 const saving = ref(false)
+const installingMcp = ref(false)
 const pageError = ref('')
 const saveValidation = ref<ValidationReport | null>(null)
 const storedRecordInvalid = ref(false)
@@ -245,6 +246,11 @@ const editorProps = computed<Record<string, unknown>>(() => {
         loadingModels: loadingModels.value,
         providers: providers.value?.providers ?? [],
         loadingProviders: loading.value,
+      }
+    case 'mcp-connection':
+      return {
+        canInstall: Boolean(draft.value?.id) && !isDirty.value,
+        installing: installingMcp.value,
       }
     case 'custom-tool':
       return {
@@ -719,6 +725,45 @@ async function save(): Promise<void> {
   }
 }
 
+async function installMcp(): Promise<void> {
+  if (
+    activeType.value !== 'mcp-connection'
+    || !draft.value?.id
+    || isDirty.value
+    || installingMcp.value
+  ) return
+  const id = draft.value.id
+  const sequence = resourceSequence
+  installingMcp.value = true
+  pageError.value = ''
+  try {
+    const result = await managementApi.installMcpConnection(id)
+    if (!resourceRequestIsCurrent(sequence, 'mcp-connection') || draft.value?.id !== id) return
+    upsertRecord(result.connection)
+    draft.value = draftFromApi('mcp-connection', result.connection)
+    markClean()
+    notify({
+      tone: 'success',
+      title: t('mcp.installation.succeeded', { count: result.tools.length }),
+    })
+  } catch (error) {
+    if (!resourceRequestIsCurrent(sequence, 'mcp-connection') || draft.value?.id !== id) return
+    try {
+      const refreshed = await managementApi.getMcpConnection(id)
+      if (resourceRequestIsCurrent(sequence, 'mcp-connection') && draft.value?.id === id) {
+        upsertRecord(refreshed)
+        draft.value = draftFromApi('mcp-connection', refreshed)
+        markClean()
+      }
+    } catch {
+      // The original install/test error is the actionable failure.
+    }
+    notifyFailure('mcp.installation.failed', error)
+  } finally {
+    installingMcp.value = false
+  }
+}
+
 async function openCopy(): Promise<void> {
   if (!draft.value?.id || !activeType.value) return
   copyName.value = ''
@@ -1040,7 +1085,7 @@ onMounted(() => {
         :copying="copying"
         :deleting="deleting"
         :has-selection="Boolean(draft?.id)"
-        :loading="loading"
+        :loading="loading || installingMcp"
         :saving="saving"
         @copy="openCopy"
         @delete="removeCurrent"
@@ -1073,7 +1118,7 @@ onMounted(() => {
     <ConfigurationEditorLayout
       v-if="activeType && draft"
       layout-test-id="component-layout"
-      :loading="loading || saving"
+      :loading="loading || saving || installingMcp"
       aside-test-id="inspector-region"
     >
       <template #editor>
@@ -1108,6 +1153,7 @@ onMounted(() => {
             @add-skill="addPrivateSkill"
             @remove-skill="removePrivateSkill"
             @fetch-models="fetchModels"
+            @install="installMcp"
             @update:model-value="updateDraft"
           />
         </div>

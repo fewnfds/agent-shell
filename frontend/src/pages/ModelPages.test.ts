@@ -32,7 +32,7 @@ const messages = {
     mapping: {
       warningTitle: 'MCP mapping needed', warning: '{count} MCP unbound', description: 'Description',
       connection: 'Connection', unbound: 'Unbound', empty: 'No MCP requirements', loadFailed: 'Load failed',
-      stdioSummary: '{name} · stdio · {command}', httpSummary: '{name} · HTTP · {url}',
+      stdioSummary: "{name} · Local package · {package}{'@'}{version}", httpSummary: '{name} · HTTP · {url}',
     },
   },
   models: {
@@ -52,9 +52,17 @@ const mcpConnection: McpConnection = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Browser MCP',
   transport: 'stdio',
-  command: 'npx',
-  args: ['playwright-mcp'],
+  package_source: 'npm',
+  package: '@playwright/mcp',
+  version: '0.0.1',
+  args: [],
   env: {},
+  installation: {
+    status: 'not_installed',
+    package_source: 'npm',
+    package: '@playwright/mcp',
+    version: '0.0.1',
+  },
 }
 function requirement(id: string, binding: string | null): ModelRequirementBinding {
   return { id, name: 'Reasoning requirement', description: 'Use a reasoning-capable local model.', binding, connection: binding ? connection : null }
@@ -166,7 +174,7 @@ describe('MCP mapping page', () => {
     const wrapper = await mountPage(McpMappingPage, '/models/mapping')
     expect(wrapper.get('[data-testid="mcp-mapping-cards"]').text()).toContain('browser')
     expect(wrapper.text()).toContain('Navigate and inspect web pages.')
-    expect(wrapper.get(`option[value="${mcpConnection.id}"]`).text()).toContain('npx')
+    expect(wrapper.get(`option[value="${mcpConnection.id}"]`).text()).toContain('@playwright/mcp@0.0.1')
 
     await wrapper.get('select').setValue(mcpConnection.id)
     await flushPromises()

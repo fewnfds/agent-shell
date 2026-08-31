@@ -94,6 +94,12 @@ function setSource(server: string, target: 'env' | 'headers', name: string, sour
   }
 }
 
+function transportSummary(connection: McpImportPreview['connections'][number]): string {
+  return connection.transport === 'stdio'
+    ? t('mcp.import.localPackage', { source: connection.package_source === 'pypi' ? 'PyPI' : 'npm' })
+    : t('mcp.connections.transportHttp')
+}
+
 async function commit(): Promise<void> {
   if (!canImport.value) return
   busy.value = true
@@ -138,10 +144,10 @@ function closeAfterBusy(): void {
           <thead><tr><th>{{ t('mcp.import.server') }}</th><th>{{ t('mcp.import.transport') }}</th><th>{{ t('mcp.import.valueName') }}</th><th>{{ t('mcp.import.valueSource') }}</th></tr></thead>
           <tbody>
             <template v-for="connection in preview.connections" :key="connection.name">
-              <tr v-if="!connection.values.length"><td>{{ connection.name }}</td><td>{{ connection.transport }}</td><td class="text-body-secondary">{{ t('mcp.import.noValues') }}</td><td /></tr>
+              <tr v-if="!connection.values.length"><td>{{ connection.name }}</td><td>{{ transportSummary(connection) }}</td><td class="text-body-secondary">{{ t('mcp.import.noValues') }}</td><td /></tr>
               <tr v-for="value in connection.values" :key="`${connection.name}:${value.target}:${value.name}`">
                 <td>{{ connection.name }}</td>
-                <td>{{ connection.transport }}</td>
+                <td>{{ transportSummary(connection) }}</td>
                 <td><span class="badge text-bg-secondary me-2">{{ value.target }}</span><code>{{ value.name }}</code></td>
                 <td>
                   <select class="form-select" data-testid="mcp-import-value-source" :value="selectedSource(connection.name, value.target, value.name)" @change="setSource(connection.name, value.target, value.name, ($event.target as HTMLSelectElement).value as 'literal' | 'secret')">

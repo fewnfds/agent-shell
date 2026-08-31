@@ -19,7 +19,11 @@ const unboundCount = computed(() => requirements.value.filter((item) => !item.bi
 
 function connectionSummary(connection: McpConnection): string {
   return connection.transport === 'stdio'
-    ? t('mcp.mapping.stdioSummary', { name: connection.name, command: connection.command })
+    ? t('mcp.mapping.stdioSummary', {
+        name: connection.name,
+        package: connection.package,
+        version: connection.version,
+      })
     : t('mcp.mapping.httpSummary', { name: connection.name, url: connection.url })
 }
 

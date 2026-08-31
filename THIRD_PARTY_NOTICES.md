@@ -1,7 +1,7 @@
 # Third-party notices
 
-Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, and `packaging/windows/runtime-lock.json`.
-Counts: npm 94, pypi 113, runtime 2. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
+Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.
+Counts: npm 94, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
 
 `Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.
 
@@ -215,4 +215,5 @@ Counts: npm 94, pypi 113, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | yarl | `1.24.5` | Apache-2.0 | https://pypi.org/project/yarl/1.24.5/ |
 | pypi | zstandard | `0.25.0` | BSD-3-Clause | https://pypi.org/project/zstandard/0.25.0/ |
 | runtime | CPython | `3.12.13` | PSF-2.0 | https://www.python.org/ |
+| runtime | Node.js | `22.23.2` | MIT | https://nodejs.org/ |
 | runtime | uv | `0.12.2` | Apache-2.0 OR MIT | https://github.com/astral-sh/uv |
