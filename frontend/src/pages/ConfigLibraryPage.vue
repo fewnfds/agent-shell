@@ -99,6 +99,7 @@ const categoryItems = computed<SectionNavItem[]>(() => [
   ...componentCategoryItems.value,
   ...agentCategoryItems.value,
   { id: 'model-connection', label: t('capabilities.model-connection.label') },
+  { id: 'mcp-connection', label: t('capabilities.mcp-connection.label') },
   { id: 'parent-workflow', label: t('capabilities.parent-workflow.label') },
   { id: 'child-workflow', label: t('capabilities.child-workflow.label') },
 ])
@@ -116,6 +117,10 @@ const currentCategoryLabel = computed(() => currentCategory.value
 const detailValue = computed<Record<string, unknown>>(() => (
   detailItem.value ? { ...detailItem.value } : {}
 ))
+
+function isInstanceConnectionCategory(category: LibraryCategoryId | null): category is 'model-connection' | 'mcp-connection' {
+  return category === 'model-connection' || category === 'mcp-connection'
+}
 
 async function refreshValidationIfOwned(): Promise<void> {
   await refreshRepositoryValidation()
@@ -154,6 +159,15 @@ async function listCategory(
       total: items.length,
     }
   }
+  if (category === 'mcp-connection') {
+    const items = (await api.value.listMcpConnections()).filter((item) => (
+      matchesSearchText(request.query, [item.name, item.id, item.transport])
+    ))
+    return {
+      rows: items.slice(query.offset, query.offset + request.pageSize),
+      total: items.length,
+    }
+  }
   const result = await api.value.listBlockSummaries(category, query)
   return { rows: result.items, total: result.total }
 }
@@ -168,12 +182,13 @@ async function getCategoryItem(
     return api.value.getWorkflow(id)
   }
   if (category === 'model-connection') return api.value.getModelConnection(id)
+  if (category === 'mcp-connection') return api.value.getMcpConnection(id)
   return api.value.getBlock(category, id)
 }
 
 async function downloadBundle(item: LibraryItem): Promise<void> {
   const category = currentCategory.value
-  if (!category || category === 'model-connection') return
+  if (!category || isInstanceConnectionCategory(category)) return
   const download = await api.value.exportConfigurationBundle(bundleRoot(category, item.id))
   triggerBrowserDownload(download.blob, download.filename)
 }
@@ -242,6 +257,8 @@ async function copyCurrentItem(): Promise<void> {
       await api.value.copyWorkflow(source.id, copyName.value)
     } else if (category === 'model-connection') {
       await api.value.copyModelConnection(source.id, copyName.value)
+    } else if (category === 'mcp-connection') {
+      await api.value.copyMcpConnection(source.id, copyName.value)
     } else {
       await api.value.copyBlock(category, source.id, copyName.value)
     }
@@ -346,7 +363,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
       tone: 'secondary',
       run: downloadBundle,
       failureTitle: () => t('library.bundle.exportFailed'),
-      visible: () => currentCategory.value !== 'model-connection',
+      visible: () => !isInstanceConnectionCategory(currentCategory.value),
     },
     {
       key: 'delete-configuration',
@@ -368,6 +385,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         else if (category === 'subagent-profile') await api.value.deleteSubagent(item.id)
         else if (category === 'parent-workflow' || category === 'child-workflow') await api.value.deleteWorkflow(item.id)
         else if (category === 'model-connection') await api.value.deleteModelConnection(item.id)
+        else if (category === 'mcp-connection') await api.value.deleteMcpConnection(item.id)
         else await api.value.deleteBlock(category, item.id)
         if (detailItem.value?.id === item.id) closeDetail()
         await refreshValidationIfOwned()
@@ -381,7 +399,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     label: () => t('library.deleteFiltered.action'),
     busyLabel: () => t('common.deleting'),
     icon: 'delete',
-    enabled: (context) => currentCategory.value !== 'model-connection' && context.hasAppliedFilters && context.total > 0,
+    enabled: (context) => !isInstanceConnectionCategory(currentCategory.value) && context.hasAppliedFilters && context.total > 0,
     confirm: (context) => ({
       title: t('library.deleteFiltered.title'),
       description: t('library.deleteFiltered.description', { count: context.total }),
@@ -392,7 +410,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
     run: async (context) => {
       const category = currentCategory.value
       if (!category) return { deleted: 0 }
-      if (category === 'model-connection') return { deleted: 0 }
+      if (isInstanceConnectionCategory(category)) return { deleted: 0 }
       const query = context.applied.query
       if (!query) return { deleted: 0 }
       const result = category === 'main-agent'

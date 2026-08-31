@@ -65,6 +65,7 @@ function mediaQuery(query: string) {
 function titleKeyForPath(path: string): string {
   if (path === '/files') return 'navigation.files'
   if (path.startsWith('/system/')) return 'navigation.system'
+  if (path.startsWith('/mcp')) return 'navigation.mcp'
   if (path.startsWith('/agents/')) return 'navigation.agents'
   if (path.startsWith('/workflows')) return 'navigation.workflows'
   if (path.startsWith('/agent-components')) return 'components.title'
@@ -86,6 +87,7 @@ async function mountShell(path = '/', api = createShellApi()) {
       '/files',
       '/system/events',
       '/models',
+      '/mcp',
       '/agents',
       '/agent-components',
       '/workflow-components',
@@ -147,7 +149,7 @@ describe('AppShell', () => {
     expect(shell.find('a[href="/system/files"]').exists()).toBe(false)
     expect(shell.find('a[href="/agents/main"]').exists()).toBe(false)
     expect(shell.find('a[href^="/agent-components/"]').exists()).toBe(false)
-    expect(shell.findAll('.app-sidebar .nav-link')).toHaveLength(10)
+    expect(shell.findAll('.app-sidebar .nav-link')).toHaveLength(11)
   })
 
   it('renders the localized route title beside the navigation toggle', async () => {

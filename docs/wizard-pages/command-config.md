@@ -36,6 +36,27 @@ def create_command():
 - `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Shell Lifecycle、Workflow Run、Workflow 和 Node invocation scope 使用 `lifecycle_id`、`workflow_run_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id` 等明确字段，Store 位于 `runtime.store`，background Run 命令位于 `runtime.context.background_runs`；LangGraph 的 thread、run、checkpoint、task 和 retry/attempt 信息直接读取 `runtime.execution_info`；
 - 脚本可以修改 `state` 副本，也可以显式返回 `update`。mutation delta 与 `update` 合并时，显式 `update` 覆盖同名顶层 channel。
 
+## MCP
+
+Command 配置通过 ordered `mcp_refs` 装配零个或多个 MCP Requirement。未装配时 `runtime.context.mcp` 为 `None`；装配后得到只属于当前 Command 的窄 facade，不暴露 MCP Connection、secret、client 或 session。
+
+```python
+async def command(state, runtime):
+    mcp = runtime.context.mcp
+    if mcp is None:
+        return {"update": {}}
+    result = await mcp.call_tool(
+        "browser",
+        "navigate",
+        {"url": "https://example.com"},
+    )
+    if result.status == "error":
+        raise RuntimeError(str(result.content))
+    return {"update": {"shared_vars": {"browser_result": result.content}}}
+```
+
+`available_tools()` 返回 `namespace -> raw Tool names`；`call_tool(namespace, tool_name, arguments)` 只能调用当前 Command allowlist 内的 Tool，并返回带 `success|error` status 的 LangChain `ToolMessage`。`get_resources(namespace, uris=...)` 与 `get_prompt(namespace, prompt_name, arguments=...)` 要求该 namespace 已装配，并保留 LangChain MCP adapter 的返回对象。完整连接、映射和 secret 说明见 [MCP 连接、映射与调用](../user-guide/mcp.md)。
+
 ## 返回 contract
 
 返回对象包含三个可独立省略的字段：

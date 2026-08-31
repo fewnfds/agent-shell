@@ -3,14 +3,18 @@ import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ModelConnection, ModelRequirementBinding } from '@/api'
+import type { McpConnection, McpRequirementBinding, ModelConnection, ModelRequirementBinding } from '@/api'
 
+import McpMappingPage from './McpMappingPage.vue'
 import ModelMappingPage from './ModelMappingPage.vue'
 
 const api = vi.hoisted(() => ({
   listModelConnections: vi.fn(),
   listModelRequirements: vi.fn(),
   bindModelRequirement: vi.fn(),
+  listMcpConnections: vi.fn(),
+  listMcpRequirements: vi.fn(),
+  bindMcpRequirement: vi.fn(),
 }))
 
 vi.mock('@/api', async (importOriginal) => {
@@ -20,9 +24,16 @@ vi.mock('@/api', async (importOriginal) => {
 
 const messages = {
   navigation: {
-    system: 'System', models: 'Models',
+    system: 'System', models: 'Models', mcp: 'MCP',
     sectionAriaLabel: 'Current section',
     sections: { modelConnections: 'Model connections', modelMapping: 'Model mapping' },
+  },
+  mcp: {
+    mapping: {
+      warningTitle: 'MCP mapping needed', warning: '{count} MCP unbound', description: 'Description',
+      connection: 'Connection', unbound: 'Unbound', empty: 'No MCP requirements', loadFailed: 'Load failed',
+      stdioSummary: '{name} · stdio · {command}', httpSummary: '{name} · HTTP · {url}',
+    },
   },
   models: {
     mapping: {
@@ -37,8 +48,26 @@ const connection: ModelConnection = {
   id: '11111111-1111-4111-8111-111111111111', name: 'Local GPT', provider: 'openai', base_url: 'https://example.test/v1',
   credential: { status: 'masked' }, model: 'gpt-local', provider_settings: {}, tool_choice: null, response_format: null, model_settings: {},
 }
+const mcpConnection: McpConnection = {
+  id: '22222222-2222-4222-8222-222222222222',
+  name: 'Browser MCP',
+  transport: 'stdio',
+  command: 'npx',
+  args: ['playwright-mcp'],
+  env: {},
+}
 function requirement(id: string, binding: string | null): ModelRequirementBinding {
   return { id, name: 'Reasoning requirement', description: 'Use a reasoning-capable local model.', binding, connection: binding ? connection : null }
+}
+function mcpRequirement(id: string, binding: string | null): McpRequirementBinding {
+  return {
+    id,
+    name: 'Browser access',
+    description: 'Navigate and inspect web pages.',
+    namespace: 'browser',
+    binding,
+    connection: binding ? mcpConnection : null,
+  }
 }
 
 function deferred<T>() {
@@ -72,6 +101,9 @@ beforeEach(() => {
   api.listModelConnections.mockResolvedValue([connection])
   api.listModelRequirements.mockResolvedValue([requirement('33333333-3333-4333-8333-333333333333', null)])
   api.bindModelRequirement.mockImplementation(async (_id: string, connectionId: string | null) => requirement('33333333-3333-4333-8333-333333333333', connectionId))
+  api.listMcpConnections.mockResolvedValue([mcpConnection])
+  api.listMcpRequirements.mockResolvedValue([mcpRequirement('44444444-4444-4444-8444-444444444444', null)])
+  api.bindMcpRequirement.mockImplementation(async (_id: string, connectionId: string | null) => mcpRequirement('44444444-4444-4444-8444-444444444444', connectionId))
 })
 
 describe('model management pages', () => {
@@ -125,6 +157,20 @@ describe('model management pages', () => {
     }])
     const wrapper = await mountPage(ModelMappingPage, '/models/mapping')
     expect(wrapper.find('[role="alert"]').text()).toContain('1 unbound')
+    wrapper.unmount()
+  })
+})
+
+describe('MCP mapping page', () => {
+  it('shows namespace and binds a requirement to one instance connection', async () => {
+    const wrapper = await mountPage(McpMappingPage, '/models/mapping')
+    expect(wrapper.get('[data-testid="mcp-mapping-cards"]').text()).toContain('browser')
+    expect(wrapper.text()).toContain('Navigate and inspect web pages.')
+    expect(wrapper.get(`option[value="${mcpConnection.id}"]`).text()).toContain('npx')
+
+    await wrapper.get('select').setValue(mcpConnection.id)
+    await flushPromises()
+    expect(api.bindMcpRequirement).toHaveBeenCalledWith('44444444-4444-4444-8444-444444444444', mcpConnection.id)
     wrapper.unmount()
   })
 })

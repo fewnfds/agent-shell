@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from agent_shell.configuration.identity import ConfigurationName
+from agent_shell.mcp.contracts import McpReference
 from agent_shell.python_packages.contracts import PythonPackageReference
 from agent_shell.runtime.context import WorkflowRuntimeContext
 
@@ -45,6 +46,18 @@ class CommandBlock(BaseModel):
 
     name: ConfigurationName
     python_package: PythonPackageReference
+    mcp_refs: list[McpReference] = Field(default_factory=list)
+
+    @field_validator("mcp_refs")
+    @classmethod
+    def unique_mcp_requirements(
+        cls,
+        values: list[McpReference],
+    ) -> list[McpReference]:
+        requirement_ids = [item.requirement_id for item in values]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ValueError("Command mcp_refs must not contain duplicates")
+        return values
 
 
 class _CommandNodeDispatch(BaseModel):

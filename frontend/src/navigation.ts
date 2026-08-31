@@ -9,6 +9,7 @@ export const navigationItems: NavigationItem[] = [
   { path: '/system', labelKey: 'navigation.system', icon: 'bi-gear' },
   { path: '/files', labelKey: 'navigation.files', icon: 'bi-folder' },
   { path: '/models', labelKey: 'navigation.models', icon: 'bi-robot' },
+  { path: '/mcp', labelKey: 'navigation.mcp', icon: 'bi-plugin' },
   { path: '/agents', labelKey: 'navigation.agents', icon: 'bi-robot' },
   { path: '/agent-components', labelKey: 'navigation.components', icon: 'bi-boxes' },
   { path: '/workflows', labelKey: 'navigation.workflows', icon: 'bi-diagram-3' },
@@ -32,6 +33,13 @@ interface SectionNavigationGroup {
 }
 
 const sectionNavigationGroups: SectionNavigationGroup[] = [
+  {
+    prefix: '/mcp',
+    items: [
+      { path: '/mcp/connections', labelKey: 'navigation.sections.mcpConnections' },
+      { path: '/mcp/mapping', labelKey: 'navigation.sections.mcpMapping' },
+    ],
+  },
   {
     prefix: '/models',
     items: [

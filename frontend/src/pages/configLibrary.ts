@@ -10,6 +10,7 @@ import type {
   MainAgent,
   MainAgentSummary,
   ModelConnection,
+  McpConnection,
   NamedDownload,
   SavedBlock,
   Subagent,
@@ -20,10 +21,10 @@ import type {
   WorkflowSummary,
 } from '@/api'
 
-export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'parent-workflow' | 'child-workflow' | 'model-connection'
-export type LibraryItem = ConfigurationSummary | MainAgentSummary | ModelConnection | SubagentSummary | WorkflowSummary
-export type LibraryDetailItem = SavedBlock | MainAgent | ModelConnection | Subagent | Workflow
-type BundleCategoryId = Exclude<LibraryCategoryId, 'model-connection'>
+export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'parent-workflow' | 'child-workflow' | 'model-connection' | 'mcp-connection'
+export type LibraryItem = ConfigurationSummary | MainAgentSummary | ModelConnection | McpConnection | SubagentSummary | WorkflowSummary
+export type LibraryDetailItem = SavedBlock | MainAgent | ModelConnection | McpConnection | Subagent | Workflow
+type BundleCategoryId = Exclude<LibraryCategoryId, 'model-connection' | 'mcp-connection'>
 type SummaryRequest = { q?: string, offset?: number, limit?: number }
 
 export interface ConfigLibraryApi {
@@ -34,22 +35,26 @@ export interface ConfigLibraryApi {
   listSubagentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<SubagentSummary>>
   listWorkflowSummaries(role?: WorkflowRole, request?: SummaryRequest): Promise<ConfigurationCollection<WorkflowSummary>>
   listModelConnections(): Promise<ModelConnection[]>
+  listMcpConnections(): Promise<McpConnection[]>
   getBlock(type: ManagedComponentType, id: string): Promise<SavedBlock>
   getMainAgent(id: string): Promise<MainAgent>
   getSubagent(id: string): Promise<Subagent>
   getWorkflow(id: string): Promise<Workflow>
   getModelConnection(id: string): Promise<ModelConnection>
+  getMcpConnection(id: string): Promise<McpConnection>
   copyBlock(type: ManagedComponentType, id: string, name: string): Promise<SavedBlock>
   copyMainAgent(id: string, name: string): Promise<MainAgent>
   copySubagent(id: string, componentName: string): Promise<Subagent>
   copyWorkflow(id: string, name: string): Promise<Workflow>
   copyModelConnection(id: string, name: string): Promise<ModelConnection>
+  copyMcpConnection(id: string, name: string): Promise<McpConnection>
   deleteBlock(type: ManagedComponentType, id: string): Promise<{ ok: boolean }>
   deleteUnsupportedBlock(id: string): Promise<{ ok: boolean }>
   deleteMainAgent(id: string): Promise<{ ok: boolean }>
   deleteSubagent(id: string): Promise<{ ok: boolean }>
   deleteWorkflow(id: string): Promise<{ ok: boolean }>
   deleteModelConnection(id: string): Promise<{ ok: boolean }>
+  deleteMcpConnection(id: string): Promise<{ ok: boolean }>
   deleteBlocks(type: ManagedComponentType, ids: string[]): Promise<{ deleted: number }>
   deleteBlocksMatching(type: ManagedComponentType, query: string): Promise<{ deleted: number }>
   deleteMainAgents(ids: string[]): Promise<{ deleted: number }>
@@ -69,7 +74,7 @@ export const agentLibraryCategories = [
 ] as const
 
 export const workflowLibraryCategories = ['parent-workflow', 'child-workflow'] as const
-export const globalLibraryCategories = ['configuration-repositories', 'model-connection'] as const
+export const globalLibraryCategories = ['configuration-repositories', 'model-connection', 'mcp-connection'] as const
 
 export function routeCategory(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -84,6 +89,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (category === 'parent-workflow') return { path: '/workflows/parents', query: { id } }
   if (category === 'child-workflow') return { path: '/workflows/children', query: { id } }
   if (category === 'model-connection') return { path: '/models/connections', query: { id } }
+  if (category === 'mcp-connection') return { path: '/mcp/connections', query: { id } }
   if (
     category === 'checkpointer'
     || category === 'workflow-event-output'

@@ -14,6 +14,7 @@ from agent_shell.contracts import (
     CheckpointerBlock,
     CheckpointDurability,
     FilesystemBlock,
+    McpRequirementBlock,
     ResponseStreamSchedulingBlock,
 )
 from agent_shell.file_manager import FileManagerService
@@ -71,7 +72,7 @@ from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.validation import validate_workflow_executable
 from agent_shell.validation import ValidationReport
-from agent_shell.validation.assembly import StaticAssembly
+from agent_shell.validation.assembly import ResolvedMcpReference, StaticAssembly
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import ToolCallTransformer
@@ -1042,6 +1043,43 @@ class AgentRuntime:
             await self._builder.close_failed_build()
             raise
 
+    def _resolved_command_mcp_references(
+        self,
+        command_id: str,
+        command: Any,
+    ) -> tuple[ResolvedMcpReference, ...]:
+        references: list[ResolvedMcpReference] = []
+        for reference in command.mcp_refs:
+            requirement_id = str(reference.requirement_id)
+            requirement = (
+                self._blocks.get_block_internal("mcp-requirement", requirement_id)
+                if self._blocks is not None
+                else None
+            )
+            if requirement is None:
+                raise AgentRuntimeError(
+                    "configuration.reference_not_found",
+                    "A Command references an MCP requirement that does not exist.",
+                    status_code=422,
+                )
+            try:
+                McpRequirementBlock.model_validate(
+                    {key: value for key, value in requirement.items() if key != "id"}
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "assembly.referenced_block_invalid",
+                    "A Command references an invalid MCP requirement.",
+                    status_code=422,
+                ) from exc
+            references.append(
+                ResolvedMcpReference(
+                    reference=reference.model_dump(mode="json"),
+                    requirement=requirement,
+                )
+            )
+        return tuple(references)
+
     async def _resolved_mapped_directory_paths_by_filesystem(
         self,
         lifecycle_id: str,
@@ -1466,6 +1504,7 @@ class AgentRuntime:
         workflow_run_output: EventRunOutputCallable | None = None
         command_runtime: CommandPackageRuntime | None = None
         commands: dict[str, Any] = {}
+        mcp_runtime = None
         workspace = None
         checkpoint_binding: WorkflowCheckpointBinding | None = None
 
@@ -1510,9 +1549,34 @@ class AgentRuntime:
                         assemblies[main_agent_id],
                     )
                 )
+            command_mcp_references = {
+                node_id: self._resolved_command_mcp_references(command_id, block)
+                for node_id, (command_id, block) in command_blocks.items()
+            }
+            all_mcp_references: list[ResolvedMcpReference] = []
+            for _agent_node, assembly in resolved_agents:
+                all_mcp_references.extend(assembly.mcp_references)
+                for subagent in assembly.subagent_nodes.values():
+                    all_mcp_references.extend(subagent.mcp_references)
+            for references in command_mcp_references.values():
+                all_mcp_references.extend(references)
+            mcp_runtime = await self._builder.discover_mcp(
+                tuple(all_mcp_references)
+            )
+            self._builder.bind_mcp_runtime(mcp_runtime)
+            mcp_commands_by_node = (
+                {
+                    node_id: mcp_runtime.commands_for(references)
+                    for node_id, references in command_mcp_references.items()
+                    if references
+                }
+                if mcp_runtime is not None
+                else {}
+            )
             context = WorkflowRuntimeContext.for_run(
                 identity=identity,
                 background_runtime=background_runtime,
+                mcp_commands_by_node=mcp_commands_by_node,
             )
 
             output_id = (workflow_snapshot or {}).get("workflow_event_output_id")

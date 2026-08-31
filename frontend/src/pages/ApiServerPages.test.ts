@@ -158,6 +158,7 @@ describe('ApiServerSettingsPage', () => {
       '/system',
       '/files',
       '/models',
+      '/mcp',
       '/agents',
       '/agent-components',
       '/workflows',

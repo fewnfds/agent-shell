@@ -2,13 +2,13 @@
 
 ## 列表与 Repository 切换
 
-【配置库】的【组件配置】（Configuration Repository）与 Component、Agent、Workflow 分类复用通用表格，但 Repository 列表和组件配置列表是两个独立页面；顶部固定为全局、工作流、工作流组件、代理和代理组件五组。全局组还包含【模型连接】；Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除，已应用筛选且命中记录后才可批量删除，模型连接支持查看、编辑、复制和删除，不提供 Bundle 下载或批量删除。
+【配置库】的【组件配置】（Configuration Repository）与 Component、Agent、Workflow 分类复用通用表格，但 Repository 列表和组件配置列表是两个独立页面；顶部固定为全局、工作流、工作流组件、代理和代理组件五组。全局组还包含【模型连接】与【MCP 连接】；Component、Agent 和 Workflow 支持搜索、查看、编辑、复制、下载、删除，已应用筛选且命中记录后才可批量删除，两类实例 Connection 支持查看、编辑、复制和删除，不提供 Bundle 下载或批量删除。
 
 普通列表只读取 summary 和当前页，打开详情或编辑时再读取该记录的完整配置；筛选与分页由 Management API 返回 `total` 和当前 Repository revision。配置修改、Bundle、Repository 切换和运行快照仍由后端在需要时读取完整 Repository，这些原子边界不依赖浏览器持有整仓数据。
 
-Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。模型连接与 credential 不随 Repository 复制或下载，repository-scoped 模型映射会按新 Model Requirement UUID 复制。
+Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。Model/MCP Connection 与 secret 不随 Repository 复制或下载，repository-scoped Model/MCP Mapping 会按新 Requirement UUID 复制。
 
-系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template 和模型连接属于实例域，切换 Repository 时保持不变。模型映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置和模型资源视图，后续切换只影响新请求。
+系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
 
 - 编辑会跳转到对应页面，并以记录 UUID 确定更新目标；
 - 复制会创建新 UUID，副本名称经过当前校验；Python private package 与 Skill package 按配置名称目录一起复制，manifest owner 改为新 UUID；
@@ -19,13 +19,13 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - 引用方保留已删除目标的 UUID，Repository 校验会产生 `configuration.reference_not_found`；UUID 存在但 target type 错误时产生 `configuration.reference_type_mismatch`；
 - 首页和配置库显示 active Repository 的全部问题；Component、Main Agent、Subagent 和 Workflow 编辑页只显示当前 owner 的问题；
 - 引用选择器会显示“配置已缺失”和原 UUID。用户可以改选现存配置，或在该字段允许时移除引用；页面加载与 catalog 刷新不会改写 payload；
-- 单项与批量删除使用同一语义，每条记录保存为独立 YAML 文件。Active Repository 仍不能删除；Model Connection 和 repository-scoped model binding 仍由实例级模型资源管理。
+- 单项与批量删除使用同一语义，每条记录保存为独立 YAML 文件。Active Repository 仍不能删除；Model/MCP Connection 和 repository-scoped binding 仍由各自的实例级资源 owner 管理。
 
 ## 校验与存储位置
 
 Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看、编辑、整库复制、下载和切换；整库复制会重写仍存在的 target UUID，已悬空 UUID 保持不变并在副本中继续报警。Agent 装配、Workflow publish 和运行会重新校验并拒绝不完整引用；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
-Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_repos/<repository-name>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_packages/` 与 `skill_packages/`。`data/config/` 保存实例私有 Model Connection、repository-scoped model binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
+Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_repos/<repository-name>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_packages/` 与 `skill_packages/`。`data/config/` 保存实例私有 Model/MCP Connection、repository-scoped Model/MCP binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
 
 ## 原子配置 Bundle API
 

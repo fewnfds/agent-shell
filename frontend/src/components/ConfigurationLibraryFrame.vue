@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { CapabilityManifest, WorkflowComponentManifest } from '@/api'
+import type { CapabilityManifest, ResourceComponentManifest, WorkflowComponentManifest } from '@/api'
 
 import ConfigurationLibraryNav from '@/components/ConfigurationLibraryNav.vue'
 
 withDefaults(defineProps<{
-  manifests: readonly (CapabilityManifest | WorkflowComponentManifest)[]
+  manifests: readonly (CapabilityManifest | ResourceComponentManifest | WorkflowComponentManifest)[]
   layoutTestId?: string
   contentTestId?: string
   asideTestId?: string
@@ -26,4 +26,3 @@ withDefaults(defineProps<{
     </aside>
   </div>
 </template>
-

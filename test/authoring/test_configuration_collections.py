@@ -55,11 +55,32 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
     ).json()
     assert refreshed["repository_revision"] > first_revision
 
+    mcp_requirement = client.post(
+        "/api/blocks/mcp-requirement",
+        json={
+            "name": "Browser access",
+            "description": "Browser automation tools.",
+            "namespace": "browser",
+        },
+    )
+    assert mcp_requirement.status_code == 200
+    mcp_summary_response = client.get(
+        "/api/blocks/mcp-requirement", params={"view": "summary"}
+    ).json()
+    mcp_summary = mcp_summary_response["items"]
+    assert mcp_summary == [{
+        "id": mcp_requirement.json()["id"],
+        "name": "Browser access",
+        "namespace": "browser",
+    }]
+
     options = client.get("/api/configuration-options")
     assert options.status_code == 200
-    assert options.json()["repository_revision"] == refreshed["repository_revision"]
+    assert options.json()["repository_revision"] == mcp_summary_response["repository_revision"]
     assert options.json()["components"]["system-prompt"] == refreshed["items"]
+    assert options.json()["components"]["mcp-requirement"] == mcp_summary
     assert "system_prompt" not in options.text
+    assert "Browser automation tools." not in options.text
 
     for path in ("/api/main-agents", "/api/subagents", "/api/workflows"):
         collection = client.get(path, params={"view": "summary"})

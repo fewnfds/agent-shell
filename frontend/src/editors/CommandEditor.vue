@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { LocalizedMessagePayload } from '@/api'
+import type { ConfigurationSummary, LocalizedMessagePayload } from '@/api'
+import McpReferencesEditor from '@/components/McpReferencesEditor.vue'
 import PythonPackageEditor from '@/components/PythonPackageEditor.vue'
 import {
   type CommandCatalogItem,
@@ -15,11 +16,13 @@ const props = withDefaults(defineProps<{
   catalog?: CommandCatalogItem[]
   errors?: Record<string, LocalizedMessagePayload>
   loading?: boolean
+  mcpRequirements?: ConfigurationSummary[]
 }>(), {
   defaults: undefined,
   catalog: () => [],
   errors: () => ({}),
   loading: false,
+  mcpRequirements: () => [],
 })
 const emit = defineEmits<{
   'update:modelValue': [value: CommandDraft]
@@ -45,6 +48,11 @@ function updatePackage(value: PythonPackageDraftState): void {
       :saved="Boolean(draft.id)"
       @refresh="emit('refresh')"
       @update:model-value="updatePackage"
+    />
+    <McpReferencesEditor
+      v-model:references="draft.mcp_refs"
+      id-prefix="command-mcp"
+      :requirements="mcpRequirements"
     />
   </div>
 </template>

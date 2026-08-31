@@ -86,6 +86,7 @@ def _build_subagent_spec(
             mapped_directory_paths_by_filesystem
         ),
         disabled_capabilities=node.disabled_capabilities,
+        mcp_references=node.mcp_references,
     )
     enable_deepagents_trace_inputs(
         [*child.middleware, *child.extra_middleware],

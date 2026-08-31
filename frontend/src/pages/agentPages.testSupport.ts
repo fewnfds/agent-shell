@@ -128,6 +128,7 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
     capability_refs: [],
     tool_refs: [],
     middleware_refs: [],
+    mcp_refs: [],
     subagents: [],
   }
   const subagent: SubagentProfile = {
@@ -139,11 +140,13 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       capability_overrides: [],
       tool_refs: [],
       middleware_refs: [],
+      mcp_refs: [],
     },
   }
   const base: AgentAuthoringService = {
     getCatalog: vi.fn(async () => ({
       block_types: [modelManifest, promptManifest],
+      resource_component_types: [],
       workflow_component_types: [],
       editor_defaults: {},
     })),

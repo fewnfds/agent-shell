@@ -3,13 +3,13 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import type { CapabilityManifest, WorkflowComponentManifest } from '@/api'
+import type { CapabilityManifest, ResourceComponentManifest, WorkflowComponentManifest } from '@/api'
 import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
 import { agentLibraryCategories, globalLibraryCategories, routeCategory, workflowLibraryCategories } from '@/pages/configLibrary'
 
 const props = defineProps<{
-  manifests: readonly (CapabilityManifest | WorkflowComponentManifest)[]
+  manifests: readonly (CapabilityManifest | ResourceComponentManifest | WorkflowComponentManifest)[]
 }>()
 
 const { t } = useI18n()
@@ -22,13 +22,17 @@ const activeCategoryId = computed(() => (
     : routeCategory(route.params.type)
 ))
 const agentComponentItems = computed<SectionNavItem[]>(() => props.manifests
-  .filter((manifest): manifest is CapabilityManifest => 'subagent_policy' in manifest)
+  .filter((manifest): manifest is CapabilityManifest | ResourceComponentManifest => (
+    'subagent_policy' in manifest || 'resource_component' in manifest
+  ))
   .map((manifest) => ({
   id: manifest.type,
   label: t(`capabilities.${manifest.type}.label`),
 })))
 const workflowComponentItems = computed<SectionNavItem[]>(() => props.manifests
-  .filter((manifest): manifest is WorkflowComponentManifest => !('subagent_policy' in manifest))
+  .filter((manifest): manifest is WorkflowComponentManifest => (
+    !('subagent_policy' in manifest) && !('resource_component' in manifest)
+  ))
   .map((manifest) => ({
     id: manifest.type,
     label: t(`capabilities.${manifest.type}.label`),

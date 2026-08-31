@@ -26,6 +26,7 @@ from agent_shell.python_packages.validation import PythonPackageValidationServic
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
     ResolvedSubagentEdge,
+    ResolvedMcpReference,
     StaticAssembly,
     SubagentNodeKey,
 )
@@ -685,6 +686,61 @@ class ConfigurationValidationService:
             )
         return tuple(selected), issues
 
+    def _load_mcp_references(
+        self,
+        references: list[dict[str, Any]],
+        *,
+        scope: str,
+        owner_id: str,
+        owner_name: str,
+        path_prefix: str,
+        block_overrides: dict[tuple[str, str], dict[str, Any]] | None = None,
+    ) -> tuple[tuple[ResolvedMcpReference, ...], list[ValidationIssue]]:
+        selected: list[ResolvedMcpReference] = []
+        issues: list[ValidationIssue] = []
+        for index, reference in enumerate(references):
+            requirement_id = str(reference.get("requirement_id", ""))
+            path = f"{path_prefix}[{index}].requirement_id"
+            override_key = ("mcp-requirement", requirement_id)
+            prospective = bool(block_overrides and override_key in block_overrides)
+            requirement = (
+                block_overrides[override_key]
+                if prospective
+                else self._blocks.get_block_internal("mcp-requirement", requirement_id)
+            )
+            if requirement is None:
+                issues.append(
+                    self.reference_issue(
+                        scope=scope,
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        owner_type=scope,
+                        path=path,
+                        reference_id=requirement_id,
+                        expected_type="mcp-requirement",
+                    )
+                )
+                continue
+            issue = self._block_contract_issue(
+                "mcp-requirement",
+                requirement,
+                scope=scope,
+                owner_id=owner_id,
+                owner_name=owner_name,
+                path=path,
+                stored=not prospective,
+            )
+            if issue is not None:
+                issues.append(issue)
+                continue
+            selected.append(
+                ResolvedMcpReference(
+                    reference=dict(reference),
+                    requirement=requirement,
+                )
+            )
+        return tuple(selected), issues
+
     def _resolve_capability_subject(
         self,
         references: dict[str, str],
@@ -936,6 +992,15 @@ class ConfigurationValidationService:
             block_overrides=block_overrides,
         )
         issues.extend(middleware_issues)
+        mcp_references, mcp_issues = self._load_mcp_references(
+            list(main_agent.get("mcp_refs", [])),
+            scope="main_agent",
+            owner_id=owner_id,
+            owner_name=owner_name,
+            path_prefix="mcp_refs",
+            block_overrides=block_overrides,
+        )
+        issues.extend(mcp_issues)
 
         delegation_selected = selected.get("subagent") is not None
         root_references = list(main_agent.get("subagents", []))
@@ -1028,6 +1093,14 @@ class ConfigurationValidationService:
                 path_prefix="settings.tool_refs",
                 block_overrides=block_overrides,
             )
+            child_mcp_references, child_mcp_issues = self._load_mcp_references(
+                settings["mcp_refs"],
+                scope="subagent",
+                owner_id=profile_id,
+                owner_name=str(profile["name"]),
+                path_prefix="settings.mcp_refs",
+                block_overrides=block_overrides,
+            )
 
             subagent_name = str(profile["name"])
             child_blocks, child_issues, child_filesystem_mode = (
@@ -1053,6 +1126,7 @@ class ConfigurationValidationService:
                 child_issues.append(child_tool_issue)
             child_issues.extend(child_tool_issues)
             child_issues.extend(child_middleware_issues)
+            child_issues.extend(child_mcp_issues)
             issues.extend(child_issues)
             if child_issues:
                 continue
@@ -1065,6 +1139,7 @@ class ConfigurationValidationService:
                 blocks=child_blocks,
                 tool_blocks=child_tool_blocks,
                 middleware_blocks=child_middleware_blocks,
+                mcp_references=child_mcp_references,
                 filesystem_mode=child_filesystem_mode,
                 disabled_capabilities=frozenset(child_disabled_capabilities),
             )
@@ -1104,6 +1179,7 @@ class ConfigurationValidationService:
             blocks=selected,
             tool_blocks=tool_blocks,
             middleware_blocks=middleware_blocks,
+            mcp_references=mcp_references,
             filesystem_mode=filesystem_mode,
             disabled_capabilities=disabled_capabilities,
             subagents=resolved_subagents,

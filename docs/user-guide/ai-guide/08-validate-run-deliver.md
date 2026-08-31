@@ -12,6 +12,7 @@ Repository validation
   -> publish 同一份 Graph document
   -> 回读 enabled Workflow 和 Graph
   -> Model Mapping
+  -> MCP Mapping
   -> Python dependency status
   -> API Server
   -> /v1/models
@@ -113,7 +114,24 @@ GET /api/model-connections
 
 未绑定时不要发起真实 Agent invocation。运行 assembly 会返回 `model_requirement_unbound`。
 
-## 6. Python dependency status
+## 6. MCP Mapping
+
+Graph 中没有引用 MCP 的 Main Agent、Subagent 或 Command 时跳过本节。
+
+读取：
+
+```text
+GET /api/mcp-requirements
+GET /api/mcp-connections
+```
+
+沿可达 Main Agent、Subagent 和 Command 的 ordered `mcp_refs` 检查每个 MCP Requirement。用户先建立实际可用的 MCP Connection，再通过 `PUT /api/mcp-requirements/<requirement UUID>/binding` 提交用户选择的 `connection_id`。回读 Requirement projection，确认 binding 指向预期 Connection。
+
+Connection 中每个 secret env/Header 的状态必须为 `masked`；`missing` 表示该 slot 尚无值。AI 不读取实例 `agent-shell.env`，也不要求用户在对话中粘贴 secret。未绑定、Connection 缺失、secret 缺失或 `include` 中的原始 Tool name 不存在都会在 Agent Graph 构造前失败，不应描述为已验证。
+
+Management API 没有单独的“测试 MCP”入口。以一次覆盖目标 Agent/Command 路径的真实 Workflow invocation 验证 Tool discovery 和调用；Resource/Prompt 只有 Command 显式调用时才被读取，不会自动成为 Agent Tool。
+
+## 7. Python dependency status
 
 对 enabled Workflow 可达的 Python-backed Component 调用：
 
@@ -131,7 +149,7 @@ GET /api/blocks/<type>/<component UUID>/python-package
 
 static validation 不证明 Provider、third-party API、动态 import 或真实业务路径可用。只有一次真实 invocation 能覆盖 runtime path。
 
-## 7. 准备 API Server
+## 8. 准备 API Server
 
 先读取当前状态：
 
@@ -181,7 +199,7 @@ POST /api/api-server/start
 
 API Key 只用于 `/v1/*`，不写入 Graph、Component、日志或交付报告。
 
-## 8. 确认 Workflow 可发现
+## 9. 确认 Workflow 可发现
 
 ```http
 GET /v1/models
@@ -200,7 +218,7 @@ Authorization: Bearer ${AGENT_SHELL_API_KEY}
 
 child Workflow 不出现在 `/v1/models`。
 
-## 9. 发起一次真实 invocation
+## 10. 发起一次真实 invocation
 
 使用精确 Workflow name 发起 non-streaming request：
 
@@ -231,29 +249,31 @@ Content-Type: application/json
 
 - Agent Workflow：确认 AAP 或其他输入 owner 把目标材料交给正确 Agent，并得到 Agent Event Output；
 - Command Workflow：确认预期 branch、State update、task 生成、worker input、routing key、downstream completion 和 termination；
+- MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
 - background Workflow：确认 handle 持久化、check、result handoff、业务 exit 和可选 finalizer；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
 纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
 
-## 10. Invocation 失败
+## 11. Invocation 失败
 
 保留 HTTP status、structured error code、request ID 和非敏感 issue。按 owner 定位：
 
 1. 检查 Workflow enabled state 和 role；
-2. 检查 Model Mapping；
-3. 检查 Python dependency status；
-4. 检查 Provider endpoint、model capability 和 credential missing state；
-5. 通过 `GET /api/workflow-lifecycles` 找到当前 Lifecycle；
-6. 读取 Lifecycle detail、events 和失败 Run；
-7. 根据 `run_id`、Node invocation、event type 和 checkpoint 修正一个 owner；
-8. 使用同一个可复现输入重试。
+2. 检查 Model Mapping 与 MCP Mapping；
+3. 检查 MCP secret slot、Tool discovery 和 consumer allowlist；
+4. 检查 Python dependency status；
+5. 检查 Provider endpoint、model capability 和 credential missing state；
+6. 通过 `GET /api/workflow-lifecycles` 找到当前 Lifecycle；
+7. 读取 Lifecycle detail、events 和失败 Run；
+8. 根据 `run_id`、Node invocation、event type 和 checkpoint 修正一个 owner；
+9. 使用同一个可复现输入重试。
 
 常见 HTTP 范围：
 
 - `401` 或 `403`：credential domain、Authorization header 或访问范围；
 - `404`：endpoint、Repository、UUID 或 Workflow name；
-- `409`：名称冲突、未绑定模型、operation conflict 或当前状态不允许；
+- `409`：名称冲突、未绑定 Model/MCP Requirement、缺少 MCP secret/Tool、operation conflict 或当前状态不允许；
 - `422`：payload、Graph、package 或 assembly 不符合 contract；
 - `5xx`：Runtime、Provider、外部服务或系统资源失败。
 
@@ -261,7 +281,7 @@ Content-Type: application/json
 
 Lifecycle 和 Run 观测见[Runtime observability](../runtime-observability.md)。
 
-## 11. Configuration Bundle import
+## 12. Configuration Bundle import
 
 如果当前任务是导入 Bundle，先按[管理配置库](../configuration-library.md)完成 export、preview、resolution、trusted-code review 和 import。
 
@@ -269,16 +289,17 @@ import 后：
 
 1. 记录新 target UUID；
 2. 重新建立 Model Mapping；
-3. 完成 Filesystem path binding；
-4. 审查 Python source、`requirements.txt` 和 Skill package；
-5. 回到本章执行 Repository validation；
-6. 对完整 Graph document执行 candidate validation；
-7. 显式 publish；
-8. 检查 dependency、`/v1/models` 和真实 invocation。
+3. 重新建立 MCP Mapping；
+4. 完成 Filesystem path binding；
+5. 审查 Python source、`requirements.txt` 和 Skill package；
+6. 回到本章执行 Repository validation；
+7. 对完整 Graph document执行 candidate validation；
+8. 显式 publish；
+9. 检查 dependency、`/v1/models` 和真实 invocation。
 
-Configuration UUID 在导入后改变。Graph-local Node ID 和 Edge ID 保持不变。Model Connection 和 credential 不随 Bundle 迁移。
+Configuration UUID 在导入后改变。Graph-local Node ID 和 Edge ID 保持不变。Model/MCP Connection、binding 和 secret 不随 Bundle 迁移。
 
-## 12. 交付报告
+## 13. 交付报告
 
 使用简短报告：
 
@@ -293,12 +314,14 @@ Created or reused
 - Main Agent: <name and UUID, or not used>
 - Model Requirement: <name, UUID and capability summary, or not used>
 - Model Connection: <user-managed name or UUID, or pending>
+- MCP Requirement/Connection: <names and UUIDs, not used or pending>
 - Components: <type, name and UUID>
 
 Validation
 - Repository validation: <result>
 - Graph validation: <valid and stage>
 - Dependency status: <ready, not used or pending>
+- MCP Mapping and invocation: <verified, not used or pending>
 - /v1/models: <found, not applicable or not checked>
 - Real invocation: <input summary and observable result>
 
@@ -308,13 +331,14 @@ Not tested or user action
 
 报告可以包含 Configuration UUID 和非敏感名称。不要包含 token、API Key、Provider credential、完整私密消息或用户文件正文。
 
-## 13. 完成判定
+## 14. 完成判定
 
 与用户需求相符的真实 invocation 成功，并且可观察结果符合预期时，本轮配置任务具备运行验收证据。
 
 以下情况可以记录为未验证项后交付：
 
 - 用户尚未提供 Model Connection 或 Provider credential；
+- 用户尚未提供 MCP Connection、binding 或所需 secret；
 - AI 进程缺少 `AGENT_SHELL_MANAGEMENT_TOKEN` 或 `AGENT_SHELL_API_KEY`；
 - 外部 API、文件或业务环境不可访问；
 - 用户要求保持 Workflow draft；

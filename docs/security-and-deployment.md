@@ -22,7 +22,7 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 ## Secret 与用户内容
 
-Provider credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接 YAML 只保存 credential 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
+Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接与 MCP 连接 YAML 只保存 secret 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
 不要提交 Git 或公开分享。
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
@@ -40,7 +40,7 @@ Provider credential、API Key、管理密码和 LangSmith API Key 保存在实�
 
 配置 Bundle 是 management-only 的 ZIP 导入/导出入口，用于迁移单个配置根及其声明式依赖闭包。它不承担实例备份；
 不会包含 `system.yaml`、`agent-shell.env`、credential value/environment reference、SQLite、运行历史、日志、媒体、普通文件、
-Python template、`skills-template` 公共素材或 runtime cache。模型要求会随配置导入，模型连接和 credential 需要在目标实例单独维护并完成模型映射。
+Python template、`skills-template` 公共素材或 runtime cache。模型要求和 MCP 要求会随配置导入；模型/MCP 连接与 credential 需要在目标实例单独维护并完成各自映射。
 Skill Component 导出的是该 Component 已拥有的 Skill 独立包。
 
 平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。

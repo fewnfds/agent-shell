@@ -8,9 +8,13 @@ describe('configuration library routes', () => {
     const globalModelRoute = router.resolve('/library/model-connection').matched.at(-1)
     const repositoryRoute = router.resolve('/library/configuration-repositories').matched.at(-1)
     const systemRoute = router.resolve('/system/model-connections').matched.at(-1)
+    const mcpConnectionRoute = router.resolve('/mcp/connections').matched.at(-1)
+    const mcpMappingRoute = router.resolve('/mcp/mapping').matched.at(-1)
 
     expect(globalModelRoute?.components?.default).toBe(libraryRoute?.components?.default)
     expect(repositoryRoute?.components?.default).not.toBe(libraryRoute?.components?.default)
     expect(systemRoute?.name).toBeUndefined()
+    expect(mcpConnectionRoute?.props.default).toEqual({ scope: 'mcp' })
+    expect(mcpMappingRoute?.components?.default).not.toBe(mcpConnectionRoute?.components?.default)
   })
 })

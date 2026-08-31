@@ -2,7 +2,7 @@
 
 只有 Workflow Graph 包含 Agent Node 时才读本章。Command、Start 和 End 不需要 Main Agent 或模型。
 
-完成结果是一个满足目标行为的 Main Agent，以及已经记录或完成的 Model Mapping。
+完成结果是一个满足目标行为的 Main Agent，以及已经记录或完成的 Model Mapping；使用 MCP 时还包括 MCP Requirement、consumer Tool selection 与 MCP Mapping。
 
 ## 1. Main Agent assembly
 
@@ -26,9 +26,14 @@ Agent Event Output ---+
 Model Connection
   -> Model Mapping
   -> Model Requirement
+
+MCP Connection
+  -> MCP Mapping
+  -> MCP Requirement
+  -> Main Agent / Subagent ordered mcp_refs
 ```
 
-Main Agent 还可以引用 System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、Skill package 和 Subagent。Agent Node 每次执行时物化该 Main Agent 的完整 assembly。
+Main Agent 还可以引用 System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 Subagent。Agent Node 每次执行时物化该 Main Agent 的完整 assembly。
 
 ## 2. Model Requirement
 
@@ -145,11 +150,12 @@ POST /api/main-agents
   ],
   "tool_refs": [],
   "middleware_refs": [],
+  "mcp_refs": [],
   "subagents": []
 }
 ```
 
-`tool_refs`、`middleware_refs` 和 `subagents` 分别保存 Custom Tool、Custom Middleware 和 direct Subagent 的有序引用。
+`tool_refs`、`middleware_refs`、`mcp_refs` 和 `subagents` 分别保存 Custom Tool、Custom Middleware、MCP Requirement 和 direct Subagent 的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
 
 创建后保存 Main Agent UUID。Agent Node 只引用这个 UUID，不在 Graph Node 内重复保存模型、Tool 或 prompt 配置。
 
@@ -293,11 +299,13 @@ Main Agent 和 synchronous Subagent 共享 current Run 的 Deep Agents StateBack
 
 路径、来源权限和 Skill package 见[Filesystem Backend](../../wizard-pages/filesystem-config.md)，工具字段见[Filesystem Tools](../../wizard-pages/filesystem-tools-config.md)。
 
-## 9. Custom Tool、Custom Middleware 和 Skill
+## 9. Custom Tool、Custom Middleware、MCP 和 Skill
 
 每个 `tool_refs` item 引用一个独立 Custom Tool package。Main Agent 和 Subagent 分别维护自己的 ordered Tool list。
 
 每个 `middleware_refs` item 引用一个独立 Custom Middleware package。顺序必须与预期 hook composition 一致。
+
+每个 `mcp_refs` item 引用一个 Repository-owned MCP Requirement，并独立保存 `all|include` Tool selection。它不引用实例 Connection UUID；Requirement 通过 MCP Mapping 绑定本机 Connection。MCP Server 公布的 Tool 已由 LangChain adapter 转为标准 `BaseTool`，不需要再创建 Custom Tool package。
 
 创建 Skill Component 时，先读取 `GET /api/skills`，再提交当前实例存在的 template path：
 
@@ -337,7 +345,8 @@ POST /api/subagents
   "settings": {
     "capability_overrides": [],
     "tool_refs": [],
-    "middleware_refs": []
+    "middleware_refs": [],
+    "mcp_refs": []
   }
 }
 ```
@@ -354,7 +363,7 @@ POST /api/subagents
 
 Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem Backend 或 Filesystem Tools 时使用 capability override。required Model Requirement、Filesystem Backend 与 Filesystem Tools 不能 disabled；Skill package 随 CompositeBackend 一起继承或替换。
 
-Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_refs` 和 `settings.middleware_refs` 装配。
+Custom Tool、Custom Middleware 和 MCP Requirement 由 Subagent 自己的 ordered `settings.tool_refs`、`settings.middleware_refs` 和 `settings.mcp_refs` 装配。
 
 当前支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent tree。
 
@@ -368,9 +377,10 @@ Custom Tool 和 Custom Middleware 由 Subagent 自己的 ordered `settings.tool_
 - Main Agent 引用了当前 Catalog 要求的全部 required capability；
 - 用户建立的 Model Connection 已记录；
 - Model Mapping 已完成，或明确列为运行前用户操作；
+- 目标 Agent/Subagent 使用 MCP 时，MCP Requirement、Tool selection 与 Mapping 已完成，或明确列为运行前用户操作；
 - System Prompt 只保存稳定角色和规则；
 - 动态 request、task 和 upstream material 有明确输入入口；
-- Tool、Middleware 和 Subagent reference 已保存在目标 Agent，Skill 独立包由 CompositeBackend 引用；
+- Tool、Middleware、MCP 和 Subagent reference 已保存在目标 Agent，Skill 独立包由 CompositeBackend 引用；
 - 所有 Configuration reference 使用 API 返回的 UUID。
 
 创建或修改 Custom Tool、Custom Middleware 时继续阅读[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。随后阅读[构建 Workflow Graph](05-build-workflow-graph.md)。

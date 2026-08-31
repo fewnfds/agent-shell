@@ -12,6 +12,7 @@ from agent_shell.contracts import MANAGED_COMPONENT_MODELS
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 from agent_shell.validation.references import (
     REFERENCE_ISSUE_CODES,
@@ -42,13 +43,15 @@ class RepositoryValidationService:
         configuration_validation: ConfigurationValidationService,
         *,
         model_resources: ModelResourceStore | None = None,
+        mcp_resources: McpResourceStore | None = None,
     ) -> None:
         self._repository = repository
         self._blocks = blocks
         self._configuration_validation = configuration_validation
         self._model_resources = model_resources
+        self._mcp_resources = mcp_resources
         self._cache_lock = threading.Lock()
-        self._cached_context: tuple[str, int, int] | None = None
+        self._cached_context: tuple[str, int, int, int] | None = None
         self._cached_report: ValidationReport | None = None
 
     @staticmethod
@@ -66,7 +69,12 @@ class RepositoryValidationService:
             if self._model_resources is not None
             else 0
         )
-        context = (repository_id, repository_revision, model_revision)
+        mcp_revision = (
+            self._mcp_resources.revision()
+            if self._mcp_resources is not None
+            else 0
+        )
+        context = (repository_id, repository_revision, model_revision, mcp_revision)
         with self._cache_lock:
             if context == self._cached_context and self._cached_report is not None:
                 return self._cached_report
@@ -194,6 +202,29 @@ class RepositoryValidationService:
                             path="binding",
                             message="The model requirement is not bound to a local model connection.",
                             message_key="validation.issue.modelRequirementUnbound",
+                            message_args={},
+                            severity="warning",
+                        )
+                    )
+        if self._mcp_resources is not None:
+            available = {item["id"] for item in self._mcp_resources.list_connections()}
+            for requirement in components.get("mcp-requirement", []):
+                requirement_id = str(requirement.get("id", ""))
+                connection_id = self._mcp_resources.get_binding(
+                    self._repository.repository_id,
+                    requirement_id,
+                )
+                if not connection_id or connection_id not in available:
+                    issues.append(
+                        ValidationIssue(
+                            code="mcp_requirement_unbound",
+                            scope="block",
+                            owner_id=requirement_id,
+                            owner_name=str(requirement.get("name", "")),
+                            owner_type="mcp-requirement",
+                            path="binding",
+                            message="The MCP requirement is not bound to a local MCP Connection.",
+                            message_key="validation.issue.mcpRequirementUnbound",
                             message_args={},
                             severity="warning",
                         )

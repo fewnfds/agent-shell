@@ -15,6 +15,12 @@ class ResolvedSubagentEdge:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedMcpReference:
+    reference: dict[str, Any]
+    requirement: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedSubagent:
     key: SubagentNodeKey
     component_name: str
@@ -25,6 +31,7 @@ class ResolvedSubagent:
     filesystem_mode: FilesystemMode
     tool_blocks: tuple[dict[str, Any], ...] = ()
     middleware_blocks: tuple[dict[str, Any], ...] = ()
+    mcp_references: tuple[ResolvedMcpReference, ...] = ()
     disabled_capabilities: frozenset[str] = frozenset()
 
 
@@ -39,3 +46,4 @@ class StaticAssembly:
     subagent_nodes: dict[SubagentNodeKey, ResolvedSubagent]
     tool_blocks: tuple[dict[str, Any], ...] = ()
     middleware_blocks: tuple[dict[str, Any], ...] = ()
+    mcp_references: tuple[ResolvedMcpReference, ...] = ()

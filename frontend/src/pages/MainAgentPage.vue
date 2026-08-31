@@ -7,6 +7,7 @@ import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vu
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
+import McpReferencesEditor from '@/components/McpReferencesEditor.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import SubagentReferencesEditor from '@/components/SubagentReferencesEditor.vue'
 import ToolReferencesEditor from '@/components/ToolReferencesEditor.vue'
@@ -99,6 +100,7 @@ const {
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
 const subagentProfiles = ref<SubagentProfile[]>([])
+const mcpRequirements = ref<StoredBlock[]>([])
 
 const obsoleteReferences = computed(() => {
   const supported = new Set<string>(
@@ -145,6 +147,7 @@ async function loadWorkspace(): Promise<void> {
     ])
     manifests.value = catalog.block_types.filter((item) => item.agent_selectable !== false).sort((left, right) => left.order - right.order)
     subagentProfiles.value = options.subagents.map(normalizeSubagent)
+    mcpRequirements.value = options.components['mcp-requirement'] ?? []
     blocks.value = Object.fromEntries(manifests.value.map((manifest) => [
       manifest.type,
       options.components[manifest.type] ?? [],
@@ -355,6 +358,12 @@ onMounted(() => {
           v-model:references="form.middleware_refs"
           id-prefix="main-agent-middleware"
           :middlewares="capabilityBlocks('custom-middleware')"
+        />
+
+        <McpReferencesEditor
+          v-model:references="form.mcp_refs"
+          id-prefix="main-agent-mcp"
+          :requirements="mcpRequirements"
         />
 
         <SubagentReferencesEditor

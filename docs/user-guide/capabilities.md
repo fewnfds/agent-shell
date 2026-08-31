@@ -17,11 +17,14 @@
 | Subagent Delegation | synchronous Subagent 的提示与 `task` 说明 | 可选 | 只用于 top-level Main Agent |
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
+| MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |
 | 检查点保存器（Checkpointer） | 为明确选择它的 Workflow 持久化 LangGraph State 检查点，并配置写入时机 | Workflow metadata 可选绑定 | 不属于 Agent capability |
 | Workflow Event Output | 用文件化 Python 扩展把 Workflow-owned v3 事件投影为响应字符串 | Workflow 可选绑定 | 不属于 Agent capability |
 | Command | 读取完整 Workflow State/Context，更新 State、激活具名 Branch Edge，并通过 Dispatch Edge 动态 Send Agent task | canvas Node 引用 | 不属于 Agent capability |
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
+
+MCP Requirement 是 Repository resource component，不进入 Agent capability manifest。Main Agent、Subagent 与 Command 各自通过 ordered `mcp_refs` 引用，并选择服务器全部 Tool 或原始 Tool name allowlist；连接、映射、secret 和调用方式见 [MCP 连接、映射与调用](mcp.md)。
 
 Skill Template 允许多层目录；遇到某层的 `SKILL.md` 时，该目录成为完整 Skill 边界并结束该分支扫描。`GET /api/skills` catalog 使用规范相对路径列出合法 Template，并报告不符合 contract 的 Template；选择器只显示合法项。创建 Skill Component 时会复制所选目录到以 Component 配置名称命名、由 Component UUID 拥有的 Skill 独立包，Template 与 Component 随后独立维护。独立包可由用户或 AI 直接编辑；同名 Add 保留现有文件，可先删除并刷新。独立包问题在组件页载入或刷新时显示 warning，组件仍可保存。Agent 不直接选择 Skill Component；CompositeBackend 通过 `skill_package_id` 引用独立包并只读挂载 `/skills/`，LocalShellBackend 不装配 Skill。
 

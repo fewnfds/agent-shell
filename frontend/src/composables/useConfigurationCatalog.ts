@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 
-import type { CapabilityManifest, CatalogResponse, WorkflowComponentManifest } from '@/api'
+import type { CapabilityManifest, CatalogResponse, ResourceComponentManifest, WorkflowComponentManifest } from '@/api'
 
-export type ConfigurationCatalogManifest = CapabilityManifest | WorkflowComponentManifest
+export type ConfigurationCatalogManifest = CapabilityManifest | ResourceComponentManifest | WorkflowComponentManifest
 
 export function useConfigurationCatalog(
   loadCatalogRequest: () => Promise<CatalogResponse>,
@@ -19,6 +19,7 @@ export function useConfigurationCatalog(
       const catalog = await loadCatalogRequest()
       manifests.value = [
         ...catalog.block_types,
+        ...(catalog.resource_component_types ?? []),
         ...catalog.workflow_component_types,
       ].sort((left, right) => left.order - right.order)
     } catch (cause) {
@@ -31,4 +32,3 @@ export function useConfigurationCatalog(
 
   return { manifests, ready, error, load }
 }
-

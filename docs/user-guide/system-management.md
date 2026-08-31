@@ -35,13 +35,14 @@ data/
   logs/diagnostics/*.log
 ```
 
-它包含管理密码、API Key、Provider credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和历史，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型连接和模型映射。`agent-shell.sqlite3` 保存 Lifecycle Run Registry/Event Journal 和结构化 runtime 失败诊断，`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph Debug checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和历史，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存 Lifecycle Run Registry/Event Journal 和结构化 runtime 失败诊断，`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph Debug checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/config_repos/<repository-name>/python_packages/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 
 模型连接是实例私有资源：Provider、endpoint、具体 model 和请求参数保存在 `data/config/model-connections/<uuid>.yaml`，credential value 保存在 `data/config/agent-shell.env`。
 `data/config/model-bindings.yaml` 按 Configuration Repository 保存模型要求到模型连接的映射。模型连接和映射都不进入配置 Bundle。
-切换 Configuration Repository 只改变可装配配置和当前使用的 repository-scoped binding；上述系统设置、secret、SQLite 数据、普通文件、模板和模型连接保持不变。
+MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Header 的值保存在 `data/config/agent-shell.env`；`data/config/mcp-bindings.yaml` 按 Configuration Repository 保存 MCP 要求到 MCP 连接的映射。MCP 连接、映射和 secret 都不进入配置 Bundle。
+切换 Configuration Repository 只改变可装配配置和当前使用的 repository-scoped binding；上述系统设置、secret、SQLite 数据、普通文件、模板和 Model/MCP Connection 保持不变。
 
 ## 文件管理
 
@@ -56,7 +57,7 @@ data/
 - 编辑期间不锁定磁盘文件，外部编辑器和文件管理页面都可以修改同一文件；
 - 文件操作不跟随符号链接或 Windows reparse point（含 `data/` 根与每段路径的检查）；
 - `data/config/`、Repository metadata/import journal、`data/state/`、`data/logs/`、`runtime/`、外部映射和其他宿主路径不开放；
-- 系统设置、env secret、模型连接和模型映射只通过对应页面管理；
+- 系统设置、env secret、模型连接/映射和 MCP 连接/映射只通过对应页面管理；
 - 递归删除没有回收站。
 
 `data/templates/` 用于按 `agent/custom_tool/`、`agent/custom_middleware/`、`agent/agent_event_output/`、
@@ -65,9 +66,11 @@ data/
 
 ## 配置管理
 
-【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python private package、Skill package 和 repository-scoped 模型映射，并把 Workflow 固定为 disabled；模型连接和 credential 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
+【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python private package、Skill package 和 repository-scoped Model/MCP Mapping，并把 Workflow 固定为 disabled；Model/MCP Connection 和 secret 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
 
 【配置库 / 全局 / 模型连接】直接复用模型连接的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】；模型映射边界见[模型](models.md)。
+
+【配置库 / 全局 / MCP 连接】直接复用 MCP 连接的通用列表，只提供查看、编辑、复制和删除，不提供下载或筛选后批量删除。编辑与 JSON 导入位于【MCP / MCP 连接】，Repository binding 位于【MCP / MCP 映射】；完整边界见 [MCP 连接、映射与调用](mcp.md)。
 
 ## 系统设置
 

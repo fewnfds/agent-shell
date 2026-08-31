@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Mapping
 
 from agent_shell.runtime.background_commands import (
     BackgroundRunCaller,
@@ -8,6 +9,7 @@ from agent_shell.runtime.background_commands import (
     BackgroundRunRuntime,
 )
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.mcp import McpCommands
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +28,8 @@ class WorkflowRuntimeContext:
     agent_profile_id: str = ""
     node_invocation_id: str = ""
     background_runs: BackgroundRunCommands | None = None
+    mcp: McpCommands | None = None
+    _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
 
     @classmethod
     def for_run(
@@ -33,11 +37,13 @@ class WorkflowRuntimeContext:
         *,
         identity: WorkflowRunIdentity,
         background_runtime: BackgroundRunRuntime | None = None,
+        mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
         context = cls(
             lifecycle_id=identity.lifecycle_id,
             workflow_run_id=identity.workflow_run_id,
             workflow_id=identity.workflow_id,
+            _mcp_commands_by_node=mcp_commands_by_node,
         )
         if background_runtime is None:
             return context
@@ -72,6 +78,11 @@ class WorkflowRuntimeContext:
             workflow_node_id=workflow_node_id,
             node_invocation_id=node_invocation_id,
             background_runs=background_runs,
+            mcp=(
+                self._mcp_commands_by_node.get(workflow_node_id)
+                if self._mcp_commands_by_node is not None
+                else None
+            ),
         )
 
     def for_workflow_agent(
@@ -89,6 +100,7 @@ class WorkflowRuntimeContext:
                 node_invocation_id=node_invocation_id,
             ),
             agent_profile_id=agent_profile_id,
+            mcp=None,
         )
 
 __all__ = ["WorkflowRuntimeContext"]

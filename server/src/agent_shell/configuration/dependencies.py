@@ -136,6 +136,15 @@ def _main_agent_references(
             target_component_type="custom-middleware",
             location=("middleware_refs", index, "middleware_id"),
         )
+    for index, item in enumerate(_records(payload.get("mcp_refs", []))):
+        yield _reference(
+            owner,
+            path=f"mcp_refs[{index}].requirement_id",
+            target_id=item.get("requirement_id"),
+            target_kind="component",
+            target_component_type="mcp-requirement",
+            location=("mcp_refs", index, "requirement_id"),
+        )
     for index, item in enumerate(_records(payload.get("subagents", []))):
         yield _reference(
             owner,
@@ -149,19 +158,27 @@ def _main_agent_references(
 def _component_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
-    if owner.component_type != "filesystem":
-        return
-    skill_package_id = owner.payload.get("skill_package_id")
-    if skill_package_id is None:
-        return
-    yield _reference(
-        owner,
-        path="skill_package_id",
-        target_id=skill_package_id,
-        target_kind="component",
-        target_component_type="skill",
-        location=("skill_package_id",),
-    )
+    if owner.component_type == "filesystem":
+        skill_package_id = owner.payload.get("skill_package_id")
+        if skill_package_id is not None:
+            yield _reference(
+                owner,
+                path="skill_package_id",
+                target_id=skill_package_id,
+                target_kind="component",
+                target_component_type="skill",
+                location=("skill_package_id",),
+            )
+    if owner.component_type == "command":
+        for index, item in enumerate(_records(owner.payload.get("mcp_refs", []))):
+            yield _reference(
+                owner,
+                path=f"mcp_refs[{index}].requirement_id",
+                target_id=item.get("requirement_id"),
+                target_kind="component",
+                target_component_type="mcp-requirement",
+                location=("mcp_refs", index, "requirement_id"),
+            )
 
 
 def _subagent_references(
@@ -200,6 +217,15 @@ def _subagent_references(
             target_kind="component",
             target_component_type="custom-middleware",
             location=("settings", "middleware_refs", index, "middleware_id"),
+        )
+    for index, item in enumerate(_records(settings.get("mcp_refs", []))):
+        yield _reference(
+            owner,
+            path=f"settings.mcp_refs[{index}].requirement_id",
+            target_id=item.get("requirement_id"),
+            target_kind="component",
+            target_component_type="mcp-requirement",
+            location=("settings", "mcp_refs", index, "requirement_id"),
         )
 
 

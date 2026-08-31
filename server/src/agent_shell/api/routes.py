@@ -83,6 +83,18 @@ WORKFLOW_COMPONENT_CATALOG = (
     },
 )
 
+RESOURCE_COMPONENT_CATALOG = (
+    {
+        "type": "mcp-requirement",
+        "terminology_key": "mcp-requirement",
+        "label": "MCP Requirement",
+        "order": 1,
+        "icon_key": "plugin",
+        "editor_key": "mcp_requirement",
+        "resource_component": True,
+    },
+)
+
 
 def build_router(
     configuration: FileConfigRepository,
@@ -124,6 +136,14 @@ def build_router(
         value = payload.get("python_package")
         return dict(value) if isinstance(value, dict) else {}
 
+    def block_summaries(block_type: str) -> list[dict[str, str]]:
+        return block_store.list_block_summaries(
+            block_type,
+            fields=("id", "name", "namespace")
+            if block_type == "mcp-requirement"
+            else ("id", "name"),
+        )
+
     @router.get("/api/configuration-options")
     async def get_configuration_options() -> dict[str, object]:
         repository_id, repository_revision = configuration.repository_context()
@@ -131,7 +151,7 @@ def build_router(
             "repository_id": repository_id,
             "repository_revision": repository_revision,
             "components": {
-                component_type: block_store.list_block_summaries(component_type)
+                component_type: block_summaries(component_type)
                 for component_type in MANAGED_COMPONENT_MODELS
             },
             "main_agents": config_store.list_item_summaries("main_agents"),
@@ -205,6 +225,7 @@ def build_router(
     async def catalog() -> dict:
         return {
             "block_types": BLOCK_CATALOG,
+            "resource_component_types": RESOURCE_COMPONENT_CATALOG,
             "workflow_component_types": WORKFLOW_COMPONENT_CATALOG,
             "editor_defaults": editor_defaults(),
         }
@@ -402,7 +423,7 @@ def build_router(
         items = (
             [project_block(block_type, item) for item in block_store.list_blocks(block_type)]
             if view == "full"
-            else block_store.list_block_summaries(block_type)
+            else block_summaries(block_type)
         )
         return configuration_collection(
             items,

@@ -10,14 +10,15 @@
 1. [启动并认识管理台](user-guide/getting-started.md)
 2. [创建组件](user-guide/capabilities.md)
 3. [管理模型连接与模型映射](user-guide/models.md)
-4. [装配 Main Agent 与 Subagent](user-guide/configuration-workflow.md)
-5. [使用 Agent Additional Prompt](user-guide/agent-additional-prompt.md)
-6. [使用 Custom Middleware 包](user-guide/middleware-packages.md)
-7. [管理配置库](user-guide/configuration-library.md)
-8. [调用 API Server](user-guide/api-server.md)
-9. [查看日志中心与运行历史](user-guide/runtime-observability.md)
-10. [管理数据、文件与系统设置](user-guide/system-management.md)
-11. [安全与部署](security-and-deployment.md)
+4. [管理 MCP 连接、映射与调用](user-guide/mcp.md)
+5. [装配 Main Agent 与 Subagent](user-guide/configuration-workflow.md)
+6. [使用 Agent Additional Prompt](user-guide/agent-additional-prompt.md)
+7. [使用 Custom Middleware 包](user-guide/middleware-packages.md)
+8. [管理配置库](user-guide/configuration-library.md)
+9. [调用 API Server](user-guide/api-server.md)
+10. [查看日志中心与运行历史](user-guide/runtime-observability.md)
+11. [管理数据、文件与系统设置](user-guide/system-management.md)
+12. [安全与部署](security-and-deployment.md)
 
 组件与 Agent 的逐字段契约见 [组件说明](wizard-pages/README.md) 与 [Agent 配置](agent-pages/README.md)。
 

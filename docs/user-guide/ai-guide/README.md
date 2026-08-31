@@ -15,7 +15,7 @@
 5. LangChain、LangGraph 和 Deep Agents 官方文档；
 6. 模型记忆。
 
-Catalog key、template revision、UUID、Node handle、Model Connection、Model Mapping 和当前设置必须从实例读取。不要从示例或模型记忆猜测动态值。
+Catalog key、template revision、UUID、Node handle、Model/MCP Connection、Model/MCP Mapping 和当前设置必须从实例读取。不要从示例或模型记忆猜测动态值。
 
 Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭环的能力。官方框架支持某项功能，不代表 Agent Shell 当前 Catalog 已经提供该功能。
 
@@ -32,7 +32,7 @@ OpenAI-compatible API 使用 `/v1/*`，负责发现和运行已经 enabled 的 p
 ```text
 OpenAI-compatible messages[]
   -> 按 model 选择 enabled parent Workflow name
-  -> 捕获当前配置和模型资源快照
+  -> 捕获当前配置与 Model/MCP 资源快照
   -> 创建 Lifecycle 与 parent Run
   -> 保存不可变 request messages[]
   -> 物化 Workflow Graph、Agent、Middleware 和 Python extension
@@ -60,6 +60,8 @@ Component
 ```
 
 Model Connection 是当前实例私有资源。Model Requirement 是可迁移的能力描述。Model Mapping 把当前 Configuration Repository 中的 Model Requirement 绑定到本机 Model Connection。
+
+MCP Connection 也是当前实例私有资源。Repository-owned MCP Requirement 保存稳定 namespace，MCP Mapping 把它绑定到本机 MCP Connection；Main Agent、Subagent 和 Command 再通过各自的 ordered `mcp_refs` 选择可用 Tool。
 
 Workflow Graph 决定 Node activation、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop。Component 为 Agent、Workflow Node 或 output projection 提供配置。
 
@@ -89,7 +91,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
   -> 保存 Graph draft
   -> 验证同一份完整 Graph document
   -> publish
-  -> 检查模型映射和 Python dependency
+  -> 检查 Model/MCP Mapping 和 Python dependency
   -> 确认 /v1/models
   -> 发起与任务相符的真实 invocation
   -> 交付验收结果
@@ -151,6 +153,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - 准备发布的 Graph validation 返回 `valid=true`；
 - Workflow 已按任务要求 publish，或用户明确要求保持 draft；
 - 所有可达 Agent 使用的 Model Requirement 已绑定；
+- 所有可达 Agent、Subagent 和 Command 使用的 MCP Requirement 已绑定，所需 secret slot 不为 `missing`；
 - 可达 Python extension 的 dependency status 满足运行条件；
 - 至少一次最接近用户需求的真实 invocation 得到可解释结果，或外部阻塞已经明确记录；
 - 没有意外遗留的 active background task；
@@ -162,6 +165,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 - Configuration Repository、Configuration Bundle；
 - Model Connection、Model Requirement、Model Mapping；
+- MCP Connection、MCP Requirement、MCP Mapping、MCP Tool；
 - Main Agent、Subagent、Agent Node、Agent invocation；
 - Agent Event Output、Workflow Event Output；
 - System Prompt、Agent Additional Prompt（AAP）；

@@ -29,6 +29,7 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
@@ -233,6 +234,7 @@ class RequestSnapshotRuntime:
         runtime_diagnostics: RuntimeDiagnostics,
         runtime_policy: RuntimePolicyStore,
         model_resources: ModelResourceStore | None = None,
+        mcp_resources: McpResourceStore | None = None,
     ) -> None:
         self._configuration = configuration
         self._python_packages_dir_source = python_packages_dir
@@ -246,6 +248,7 @@ class RequestSnapshotRuntime:
         self._runtime_diagnostics = runtime_diagnostics
         self._runtime_policy = runtime_policy
         self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
+        self._mcp_resources = mcp_resources or McpResourceStore(configuration.data_root)
 
     def capture(self) -> RequestRuntimeSnapshot:
         with self._configuration.request_snapshot_context() as context:
@@ -254,6 +257,7 @@ class RequestSnapshotRuntime:
         configs = AgentConfigStore(repository)
         workflows = WorkflowStore(repository)
         model_resources = self._model_resources.snapshot()
+        mcp_resources = self._mcp_resources.snapshot()
         secrets = ProviderSecretResolver(repository, model_resources)
         python_package_validation = PythonPackageValidationService(
             packages_dir=python_packages_dir,
@@ -276,6 +280,7 @@ class RequestSnapshotRuntime:
                     provider_http_clients=self._provider_http_clients,
                     store=self._workflow_lifecycle.store,
                     model_resources=model_resources,
+                    mcp_resources=mcp_resources,
                     repository_id=_repository_id,
                     runtime_policy=self._runtime_policy,
                 ),

@@ -4,6 +4,7 @@ import { exceptionRetryAdapter } from './blocks/exceptionRetry'
 import { filesystemAdapter } from './blocks/filesystem'
 import { filesystemToolsAdapter } from './blocks/filesystemTools'
 import { modelRequirementAdapter } from './blocks/modelRequirement'
+import { mcpRequirementAdapter } from './blocks/mcpRequirement'
 import { agentEventOutputAdapter } from './blocks/agentEventOutput'
 import { promptCachingAdapter } from './blocks/promptCaching'
 import { skillAdapter } from './blocks/skill'
@@ -46,8 +47,16 @@ export type {
   FilesystemToolsDraft,
 } from './blocks/filesystemTools'
 export type { ModelRequirementDraft } from './blocks/modelRequirement'
+export type { McpRequirementDraft } from './blocks/mcpRequirement'
 export type { ModelApiRecord, ModelDraft, ModelProviderSettingInput } from './blocks/model'
 export { modelAdapter } from './blocks/model'
+export type {
+  McpConfiguredValueDraft,
+  McpConnectionDraft,
+  McpHttpConnectionDraft,
+  McpStdioConnectionDraft,
+} from './blocks/mcpConnection'
+export { mcpConnectionAdapter } from './blocks/mcpConnection'
 export type {
   AgentEventOutputCatalogItem,
   AgentEventOutputDraft,
@@ -92,6 +101,7 @@ export {
   filesystemAdapter,
   filesystemToolsAdapter,
   modelRequirementAdapter,
+  mcpRequirementAdapter,
   agentEventOutputAdapter,
   promptCachingAdapter,
   skillAdapter,
@@ -123,6 +133,7 @@ export const blockTypes = [
 
 export const managedComponentTypes = [
   ...blockTypes,
+  'mcp-requirement',
   'checkpointer',
   'workflow-event-output',
   'response-stream-scheduling',
@@ -143,6 +154,7 @@ export const blockAdapters = {
   'todo-list': todoListAdapter,
   summarization: summarizationAdapter,
   'prompt-caching': promptCachingAdapter,
+  'mcp-requirement': mcpRequirementAdapter,
   checkpointer: checkpointerAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'response-stream-scheduling': responseStreamSchedulingAdapter,

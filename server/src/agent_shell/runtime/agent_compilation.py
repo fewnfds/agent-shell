@@ -10,6 +10,7 @@ from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.json_values import json_safe
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.models import ValidationIssue, ValidationReport
+from agent_shell.validation.assembly import ResolvedMcpReference
 
 
 def _debug_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -82,6 +83,7 @@ class ProfileMaterializer(Protocol):
             str, Mapping[str, Path]
         ] | None = None,
         disabled_capabilities: frozenset[str] = frozenset(),
+        mcp_references: tuple[ResolvedMcpReference, ...] = (),
     ) -> MaterializedAgentProfile: ...
 
 

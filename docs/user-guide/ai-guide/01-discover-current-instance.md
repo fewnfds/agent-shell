@@ -48,7 +48,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 4. `GET /api/configuration-options`，取得当前 Repository 的引用摘要；
 5. 读取准备复用、修改或排查的完整对象；
 6. 需要 Python-backed component 时，读取对应 template catalog；
-7. 需要 Agent Node 时，读取 Model Requirement、Model Connection 和 binding 状态；
+7. 需要 Agent Node 时，读取 Model Requirement、Model Connection 和 binding 状态；Agent、Subagent 或 Command 使用 MCP 时，同时读取 MCP Requirement、MCP Connection 和 binding 状态；
 8. `GET /api/validation/repository`，记录写入前已有的 error 和 warning。
 
 不要根据模型记忆猜测 Catalog key、template revision、UUID、Node handle 或 active Repository。
@@ -63,13 +63,15 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 - `GET /api/workflows?workflow_role=parent` 返回 parent Workflow；role 可以改为 `child`；
 - `GET /api/model-connections` 返回当前实例私有 Model Connection 的 masked 或 missing projection；
 - `GET /api/model-requirements` 返回当前 Repository 的 Model Requirement 和本机 binding projection；
+- `GET /api/mcp-connections` 返回当前实例私有 MCP Connection；每个 secret env/Header 只显示 `masked` 或 `missing`；
+- `GET /api/mcp-requirements` 返回当前 Repository 的 MCP Requirement 和本机 binding/Connection projection；
 - `GET /api/skills` 返回可选择的 Skill Template；
 - `GET /api/python-package-templates/{kind}` 返回 Python template catalog；
 - `GET /api/validation/repository` 返回当前 Repository validation report。
 
 当前 Python template kind 包括 `custom-tool`、`middleware`、`agent-event-output`、`workflow-event-output` 和 `command`。仍应以当前实例 endpoint response 为准。
 
-Model Connection 不属于 Configuration Repository，也不进入 Configuration Bundle。Model Requirement、Component、Agent 和 Workflow 属于 active Repository。
+Model Connection 与 MCP Connection 不属于 Configuration Repository，也不进入 Configuration Bundle。Model Requirement、MCP Requirement、其他 Component、Agent 和 Workflow 属于 active Repository。
 
 ## 4. 正确读取 collection
 
@@ -91,6 +93,7 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
   "active_repository_id": "<repository UUID>",
   "components": {
     "model_requirement": null,
+    "mcp_requirements": [],
     "agent_event_output": null,
     "command": null,
     "checkpointer": null,
@@ -109,6 +112,9 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
   "model_binding": {
     "requirement_id": null,
     "connection_id": null
+  },
+  "mcp_bindings": {
+    "<requirement UUID>": "<connection UUID>"
   }
 }
 ```
@@ -144,6 +150,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 需要特别处理的对象：
 
 - Model Connection credential 是 write-only input，GET 中的 masked metadata 不能回写为 credential；
+- MCP Connection 的 secret env/Header value 是 write-only input；更新时只提交新的 secret value，或保留对应 `masked|missing` 状态，不能把状态文本当作 secret value；
 - Python-backed Component 的 source file 通过 File Manager 管理，不塞入普通 Component PUT；
 - Workflow Graph 使用 `/draft`、`/validate` 和 `/graph` endpoint，不通过 Workflow metadata PUT 保存；
 - API Server 的 API Key 使用 `keep`、`replace` 或 `clear` command，修改前先读取当前 configured 状态。
@@ -168,6 +175,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 - active Configuration Repository 已记录；
 - Component Catalog 和 Workflow Node Catalog 已读取；
 - configuration options 和目标完整对象已读取；
+- 目标运行路径使用 MCP 时，相关 Connection、Requirement、binding 与 secret slot 状态已读取；
 - 需要的 template identity 来自当前 catalog；
 - reference ledger 已建立；
 - 写入前已有的 Repository issue 已记录；

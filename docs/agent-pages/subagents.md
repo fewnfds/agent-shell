@@ -16,6 +16,12 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
     ],
     "middleware_refs": [
       {"middleware_id": "middleware-uuid"}
+    ],
+    "mcp_refs": [
+      {
+        "requirement_id": "mcp-requirement-uuid",
+        "tool_selection": {"mode": "all", "tools": []}
+      }
     ]
   }
 }
@@ -23,7 +29,7 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
 
 对允许覆写的 capability，未保存 override 表示 `inherit`，即继承 Main Agent 的最终选择；持久化的 `mode` 只有 `replace` 和 `disabled`。required 且可继承的 `model-requirement`、`filesystem` 和 `filesystem-tools` 不能关闭。委派能力 `subagent` 和 Agent Event Output `agent-event-output` 是 `top-level-only`，只属于 Main Agent。Skill 不单独覆写；CompositeBackend 的 `skill_package_id` 随 Backend 一起继承或替换。完整策略见[能力配置](../user-guide/capabilities.md)。
 
-`tool_refs` 和 `middleware_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。Filesystem Backend 与 Filesystem Tools 未覆写时分别继承，显式替换时使用该 Subagent 的最终组合。
+`tool_refs`、`middleware_refs` 和 `mcp_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。每条 MCP 引用独立保存全部或指定原始 Tool name 的选择。Filesystem Backend 与 Filesystem Tools 未覆写时分别继承，显式替换时使用该 Subagent 的最终组合。
 
 `component_name` 是配置显示名；`name` 是模型可见 routing name，必须匹配 `^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一 Main Agent 的 direct children 中按大小写不敏感方式保持唯一。Subagent contract 没有 `settings.subagents` 字段，因此不能再引用 child。运行时将每个 direct child 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置；Shell 不编译第二套 child graph，也不提供循环引用。
 

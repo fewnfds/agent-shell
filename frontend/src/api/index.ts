@@ -54,6 +54,10 @@ import type {
   ModelProviderCatalog,
   ModelConnection,
   ModelRequirementBinding,
+  McpConnection,
+  McpImportPreview,
+  McpImportValueSources,
+  McpRequirementBinding,
   PythonPackageInspection,
   MainAgent,
   MainAgentPayload,
@@ -158,6 +162,55 @@ export const managementApi = {
 
   bindModelRequirement(id: string, connectionId: string | null): Promise<ModelRequirementBinding> {
     return managementRequest(`${recordPath('/api/model-requirements', id)}/binding`, {
+      method: 'PUT',
+      body: JSON.stringify({ connection_id: connectionId }),
+    })
+  },
+
+  listMcpConnections(): Promise<McpConnection[]> {
+    return managementRequest('/api/mcp-connections')
+  },
+
+  getMcpConnection(id: string): Promise<McpConnection> {
+    return managementRequest(recordPath('/api/mcp-connections', id))
+  },
+
+  saveMcpConnection<T extends object>(data: T & { id?: string }): Promise<McpConnection> {
+    const id = typeof data.id === 'string' ? data.id : ''
+    return managementRequest(id ? recordPath('/api/mcp-connections', id) : '/api/mcp-connections', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(withoutId(data)),
+    })
+  },
+
+  copyMcpConnection(id: string, name: string): Promise<McpConnection> {
+    return managementRequest(`${recordPath('/api/mcp-connections', id)}/copy`, jsonBody({ name }))
+  },
+
+  deleteMcpConnection(id: string): Promise<{ ok: boolean }> {
+    return managementRequest(recordPath('/api/mcp-connections', id), { method: 'DELETE' })
+  },
+
+  previewMcpConnectionsImport(document: unknown): Promise<McpImportPreview> {
+    return managementRequest('/api/mcp-connections/import/preview', jsonBody({ document }))
+  },
+
+  importMcpConnections(
+    document: unknown,
+    valueSources: McpImportValueSources,
+  ): Promise<McpConnection[]> {
+    return managementRequest('/api/mcp-connections/import', jsonBody({
+      document,
+      value_sources: valueSources,
+    }))
+  },
+
+  listMcpRequirements(): Promise<McpRequirementBinding[]> {
+    return managementRequest('/api/mcp-requirements')
+  },
+
+  bindMcpRequirement(id: string, connectionId: string | null): Promise<McpRequirementBinding> {
+    return managementRequest(`${recordPath('/api/mcp-requirements', id)}/binding`, {
       method: 'PUT',
       body: JSON.stringify({ connection_id: connectionId }),
     })

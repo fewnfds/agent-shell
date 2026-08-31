@@ -26,6 +26,7 @@ describe('agent profile adapters', () => {
       }],
       tool_refs: [],
       middleware_refs: [],
+      mcp_refs: [],
       subagents: [{ subagent_id: '00000000-0000-0000-0000-000000000020' }],
     })
   })
@@ -41,6 +42,7 @@ describe('agent profile adapters', () => {
       capability_overrides: [],
       tool_refs: [],
       middleware_refs: [],
+      mcp_refs: [],
     })
   })
 
@@ -57,6 +59,7 @@ describe('agent profile adapters', () => {
         capability_overrides: [],
         tool_refs: [],
         middleware_refs: [],
+        mcp_refs: [],
       },
     })
   })

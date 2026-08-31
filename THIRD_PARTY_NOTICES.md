@@ -1,7 +1,7 @@
 # Third-party notices
 
 Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, and `packaging/windows/runtime-lock.json`.
-Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
+Counts: npm 94, pypi 113, runtime 2. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
 
 `Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.
 
@@ -156,6 +156,7 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | langchain-deepseek | `1.1.0` | MIT | https://pypi.org/project/langchain-deepseek/1.1.0/ |
 | pypi | langchain-google-genai | `4.3.7` | MIT | https://pypi.org/project/langchain-google-genai/4.3.7/ |
 | pypi | langchain-google-vertexai | `3.2.4` | MIT | https://pypi.org/project/langchain-google-vertexai/3.2.4/ |
+| pypi | langchain-mcp-adapters | `0.3.2` | MIT | https://pypi.org/project/langchain-mcp-adapters/0.3.2/ |
 | pypi | langchain-openai | `1.6.0` | MIT | https://pypi.org/project/langchain-openai/1.6.0/ |
 | pypi | langchain-protocol | `0.0.19` | MIT | https://pypi.org/project/langchain-protocol/0.0.19/ |
 | pypi | langchain-xai | `1.3.0` | MIT | https://pypi.org/project/langchain-xai/1.3.0/ |
@@ -165,6 +166,7 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | langgraph-prebuilt | `1.1.0` | MIT | https://pypi.org/project/langgraph-prebuilt/1.1.0/ |
 | pypi | langgraph-sdk | `0.4.4` | MIT | https://pypi.org/project/langgraph-sdk/0.4.4/ |
 | pypi | langsmith | `0.11.2` | MIT | https://pypi.org/project/langsmith/0.11.2/ |
+| pypi | mcp | `1.29.1` | MIT | https://pypi.org/project/mcp/1.29.1/ |
 | pypi | multidict | `6.7.1` | Apache License 2.0 | https://pypi.org/project/multidict/6.7.1/ |
 | pypi | numexpr | `2.14.2` | MIT | https://pypi.org/project/numexpr/2.14.2/ |
 | pypi | numpy | `2.5.1` | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | https://pypi.org/project/numpy/2.5.1/ |
@@ -182,9 +184,11 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | pydantic | `2.13.4` | MIT | https://pypi.org/project/pydantic/2.13.4/ |
 | pypi | pydantic-core | `2.46.4` | MIT | https://pypi.org/project/pydantic-core/2.46.4/ |
 | pypi | pydantic-settings | `2.14.2` | MIT | https://pypi.org/project/pydantic-settings/2.14.2/ |
+| pypi | pyjwt | `2.13.0` | MIT | https://pypi.org/project/pyjwt/2.13.0/ |
 | pypi | python-dateutil | `2.9.0.post0` | Dual License | https://pypi.org/project/python-dateutil/2.9.0.post0/ |
 | pypi | python-dotenv | `1.2.2` | BSD-3-Clause | https://pypi.org/project/python-dotenv/1.2.2/ |
 | pypi | python-multipart | `0.0.32` | Apache-2.0 | https://pypi.org/project/python-multipart/0.0.32/ |
+| pypi | pywin32 | `312` | PSF | https://pypi.org/project/pywin32/312/ |
 | pypi | pyyaml | `6.0.3` | MIT | https://pypi.org/project/pyyaml/6.0.3/ |
 | pypi | referencing | `0.37.0` | MIT | https://pypi.org/project/referencing/0.37.0/ |
 | pypi | regex | `2026.7.19` | Apache-2.0 AND CNRI-Python | https://pypi.org/project/regex/2026.7.19/ |
@@ -194,6 +198,7 @@ Counts: npm 94, pypi 108, runtime 2. Run `server/.venv/Scripts/python.exe packag
 | pypi | six | `1.17.0` | MIT | https://pypi.org/project/six/1.17.0/ |
 | pypi | sniffio | `1.3.1` | MIT OR Apache-2.0 | https://pypi.org/project/sniffio/1.3.1/ |
 | pypi | sqlite-vec | `0.1.9` | MIT License, Apache License, Version 2.0 | https://pypi.org/project/sqlite-vec/0.1.9/ |
+| pypi | sse-starlette | `3.4.8` | BSD-3-Clause | https://pypi.org/project/sse-starlette/3.4.8/ |
 | pypi | starlette | `1.4.1` | BSD-3-Clause | https://pypi.org/project/starlette/1.4.1/ |
 | pypi | tenacity | `9.1.4` | Apache 2.0 | https://pypi.org/project/tenacity/9.1.4/ |
 | pypi | tiktoken | `0.13.0` | NOASSERTION | https://pypi.org/project/tiktoken/0.13.0/ |

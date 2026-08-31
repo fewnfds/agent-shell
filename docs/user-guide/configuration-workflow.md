@@ -50,6 +50,8 @@ Agent Node 引用的 `main_agent_id` 保存在 Graph definition 中。`normal` �
 
 Command Node 引用一份 `workflow-node/command` 配置独占 Python 包。它可以在一次调用中同时更新 State、激活 Branch Edge，并从 current Workflow State/Runtime Context 生成运行时数量的任务。compiler 把 Branch target 与 LangGraph `Send` 一起写入官方 `Command.goto`。同一个 Agent Node 可被不同 payload 多次调用，或由不同 `dispatch_key` 路由到不同 Agent Node。每次 dispatch invocation 都在 private Agent State 的 `workflow_task` 中得到任务，完成记录也保存该 task identity。完整配置与 item/rainfall 示例见[Command Node](../wizard-pages/command-config.md)。
 
+Command 配置还可以保存独立的 ordered `mcp_refs`。每条引用选择一个 MCP Requirement，并允许服务器全部 Tool 或一组服务器原始 Tool name；运行时只把该 Command 的装配投影为 `runtime.context.mcp` 窄 facade。Command 可以调用选定 Tool，也可以读取已装配服务器的 Resource/Prompt，但不能取得底层 MCP client、session、Connection 或 secret。配置与调用示例见 [MCP 连接、映射与调用](mcp.md)。
+
 ## Main Agent 与 Subagent
 
 在【代理 / Main Agent】选择模型要求和 Agent Event Output 等 capability。Main Agent 是完整 Agent 装配，由 Workflow 的 Agent Node 引用。需要同步委派时，先创建 Subagent 实体，再由 Main Agent 按顺序保存 `subagent_id` 引用并选择委派 capability。
@@ -59,6 +61,8 @@ Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。Backend 
 CompositeBackend 的每条映射或虚拟来源直接保存 `read-write|read-only|no-access` 权限，并可通过 `skill_package_id` 引用 Skill 独立包。Skill 引用、路径与权限随 Backend 一起被 Subagent 继承。LocalShellBackend 只使用固定真实工作区，不接受 Skill 包或 Composite 来源；`execute` 只有在 Tools 开启且 Backend 为 LocalShellBackend 时可见。
 
 Subagent settings 定义身份、说明、capability 覆写和自己的 ordered Middleware 引用。当前委派结构为一层同步 `Main -> Subagent`，运行时使用 Deep Agents 官方 dictionary-based CompiledSubAgent。Agent 内部通过 `SubAgentMiddleware`/`task` 委派；外层 Workflow 的节点和边负责多阶段、并行、条件和 join。
+
+Main Agent 与 Subagent 各自保存 ordered `mcp_refs`，MCP 不参与 capability inherit/replace。每条引用可开放服务器全部 Tool 或只开放原始 Tool name allowlist；运行时把发现到的 Tool 作为标准 LangChain `BaseTool` 加入对应 Agent。Requirement namespace 决定 Agent 可见前缀，同一服务器可被不同 Agent 使用不同 allowlist。Connection 和本机 binding 的配置方式见 [MCP 连接、映射与调用](mcp.md)。
 
 ## Custom Middleware
 

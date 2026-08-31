@@ -18,6 +18,7 @@ from agent_shell.storage.configuration_mutations import ConfigurationMutationCoo
 SYSTEM_SETTINGS_ENVIRONMENT_OWNER = "system-settings"
 API_SERVER_ENVIRONMENT_OWNER = "api-server"
 MODEL_CONNECTION_ENVIRONMENT_OWNER = "model-connections"
+MCP_CONNECTION_ENVIRONMENT_OWNER = "mcp-connections"
 
 _EXACT_OWNER_BY_NAME = {
     "AGENT_SHELL_MANAGEMENT_TOKEN": SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
@@ -27,12 +28,16 @@ _EXACT_OWNER_BY_NAME = {
 _MODEL_SECRET_ENVIRONMENT = re.compile(
     r"^AGENT_SHELL_MODEL_[0-9A-F]{32}_API_KEY$"
 )
+_MCP_SECRET_ENVIRONMENT = re.compile(
+    r"^AGENT_SHELL_MCP_[0-9A-F]{32}_[0-9A-F]{32}$"
+)
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ENVIRONMENT_OWNERS = frozenset(
     {
         SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
         API_SERVER_ENVIRONMENT_OWNER,
         MODEL_CONNECTION_ENVIRONMENT_OWNER,
+        MCP_CONNECTION_ENVIRONMENT_OWNER,
     }
 )
 
@@ -57,6 +62,8 @@ def environment_owner_for_name(name: str) -> str | None:
         return owner
     if is_model_secret_environment_name(name):
         return MODEL_CONNECTION_ENVIRONMENT_OWNER
+    if _MCP_SECRET_ENVIRONMENT.fullmatch(name) is not None:
+        return MCP_CONNECTION_ENVIRONMENT_OWNER
     return None
 
 
@@ -242,6 +249,7 @@ __all__ = [
     "EnvironmentSnapshot",
     "InstanceEnvironmentStore",
     "MODEL_CONNECTION_ENVIRONMENT_OWNER",
+    "MCP_CONNECTION_ENVIRONMENT_OWNER",
     "SYSTEM_SETTINGS_ENVIRONMENT_OWNER",
     "environment_owner_for_name",
     "is_model_secret_environment_name",

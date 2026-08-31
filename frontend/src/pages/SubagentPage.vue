@@ -7,6 +7,7 @@ import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vu
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
+import McpReferencesEditor from '@/components/McpReferencesEditor.vue'
 import ToolReferencesEditor from '@/components/ToolReferencesEditor.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
@@ -99,6 +100,7 @@ const {
 
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
+const mcpRequirements = ref<StoredBlock[]>([])
 const recordOptions = computed(() => profiles.value.map((profile) => ({
   id: profile.id,
   name: profile.component_name,
@@ -187,6 +189,7 @@ async function loadWorkspace(): Promise<void> {
         options.components[manifest.type] ?? [],
       ] as const)
     blocks.value = Object.fromEntries(entries)
+    mcpRequirements.value = options.components['mcp-requirement'] ?? []
     return options.subagents
   })
 }
@@ -433,6 +436,12 @@ onMounted(() => {
           v-model:references="form.settings.middleware_refs"
           id-prefix="subagent-middleware"
           :middlewares="capabilityBlocks('custom-middleware')"
+        />
+
+        <McpReferencesEditor
+          v-model:references="form.settings.mcp_refs"
+          id-prefix="subagent-mcp"
+          :requirements="mcpRequirements"
         />
       </template>
       <template #aside>

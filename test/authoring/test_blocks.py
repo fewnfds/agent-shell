@@ -35,6 +35,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
     catalog = client.get("/api/catalog").json()
     assert set(catalog) == {
         "block_types",
+        "resource_component_types",
         "workflow_component_types",
         "editor_defaults",
     }
@@ -55,6 +56,9 @@ def test_health_catalog_and_readiness_are_small_and_current(
     }
     assert [item["type"] for item in catalog["block_types"]] == list(PUBLIC_TYPES)
     assert [item["order"] for item in catalog["block_types"]] == list(range(1, 14))
+    assert [item["type"] for item in catalog["resource_component_types"]] == [
+        "mcp-requirement"
+    ]
     assert [item["type"] for item in catalog["workflow_component_types"]] == [
         "checkpointer",
         "workflow-event-output",

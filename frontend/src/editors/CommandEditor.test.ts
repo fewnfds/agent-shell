@@ -102,4 +102,28 @@ describe('CommandEditor', () => {
     expect(wrapper.text()).not.toContain('Empty template')
     expect(wrapper.find('option[value="__empty__"]').exists()).toBe(false)
   })
+
+  it('stores an ordered MCP requirement with a raw Tool allowlist', async () => {
+    const requirementId = '22222222-2222-4222-8222-222222222222'
+    const wrapper = mount(CommandEditor, {
+      props: {
+        modelValue: commandAdapter.blank(),
+        mcpRequirements: [{ id: requirementId, name: 'Browser MCP', namespace: 'browser' }],
+      },
+      global: { plugins: [i18n()] },
+    })
+
+    await wrapper.get('[data-action="add-mcp-reference"]').trigger('click')
+    await wrapper.get('[data-testid="mcp-requirement-reference"]').setValue(requirementId)
+    await wrapper.get('[data-testid="mcp-tool-selection-mode"]').setValue('include')
+    await wrapper.get('[data-testid="mcp-raw-tool-name"]').setValue('navigate')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      mcp_refs: [{
+        requirement_id: requirementId,
+        tool_selection: { mode: 'include', tools: ['navigate'] },
+      }],
+    })
+    expect(wrapper.text()).toContain('Browser MCP · browser')
+  })
 })

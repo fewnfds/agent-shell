@@ -5,6 +5,7 @@ from pathlib import Path
 from agent_shell.python_packages.dependencies import repository_restart_required
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.model_connections import ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceStore
 
 
 class ConfigurationRepositoryManagementService:
@@ -14,10 +15,12 @@ class ConfigurationRepositoryManagementService:
         self,
         repository: FileConfigRepository,
         model_resources: ModelResourceStore,
+        mcp_resources: McpResourceStore,
         runtime_root: Path,
     ) -> None:
         self._repository = repository
         self._model_resources = model_resources
+        self._mcp_resources = mcp_resources
         self._runtime_root = runtime_root
 
     def active_repository_restart_required(self) -> bool:
@@ -36,7 +39,14 @@ class ConfigurationRepositoryManagementService:
                     target_id,
                     target_ids,
                 )
+                self._mcp_resources.copy_repository_bindings(
+                    source_id,
+                    target_id,
+                    target_ids,
+                )
             except BaseException:
+                self._model_resources.remove_repository_bindings(target_id)
+                self._mcp_resources.remove_repository_bindings(target_id)
                 self._repository.delete_repository(target_id)
                 raise
             return copied
@@ -47,11 +57,25 @@ class ConfigurationRepositoryManagementService:
                 repository_id
             )
             try:
+                mcp_bindings = self._mcp_resources.remove_repository_bindings(
+                    repository_id
+                )
+            except BaseException:
+                self._model_resources.restore_repository_bindings(
+                    repository_id,
+                    bindings,
+                )
+                raise
+            try:
                 return self._repository.delete_repository(repository_id)
             except BaseException:
                 self._model_resources.restore_repository_bindings(
                     repository_id,
                     bindings,
+                )
+                self._mcp_resources.restore_repository_bindings(
+                    repository_id,
+                    mcp_bindings,
                 )
                 raise
 

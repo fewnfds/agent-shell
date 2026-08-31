@@ -11,6 +11,7 @@ import type {
   DraftValidationRequest as ApiDraftValidationRequest,
   MainAgent,
   MiddlewareReference as ApiMiddlewareReference,
+  McpReference as ApiMcpReference,
   ToolReference as ApiToolReference,
   MainAgentPayload as ApiMainAgentPayload,
   Subagent,
@@ -18,6 +19,7 @@ import type {
   SubagentReference as ApiSubagentReference,
   ValidationReport as ApiValidationReport,
 } from '@/api'
+import { mcpReferencePayload, normalizeMcpReference } from '@/domain/mcp'
 
 export type CapabilityType = BlockType
 type OverrideMode = 'inherit' | 'replace' | 'disabled'
@@ -29,6 +31,7 @@ export type StoredBlock = ConfigurationSummary
 export type SubagentReference = ApiSubagentReference
 export type MiddlewareReference = ApiMiddlewareReference
 export type ToolReference = ApiToolReference
+export type McpReference = ApiMcpReference
 
 export interface MainAgentProfile extends Omit<MainAgent, 'subagents'> {
   id: string
@@ -117,6 +120,7 @@ export function blankMainAgent(): MainAgentProfile {
     capability_refs: [],
     tool_refs: [],
     middleware_refs: [],
+    mcp_refs: [],
     subagents: [],
   }
 }
@@ -127,6 +131,7 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
   const subagents = Array.isArray(source.subagents) ? source.subagents : []
   const toolRefs = Array.isArray(source.tool_refs) ? source.tool_refs : []
   const middlewareRefs = Array.isArray(source.middleware_refs) ? source.middleware_refs : []
+  const mcpRefs = Array.isArray(source.mcp_refs) ? source.mcp_refs : []
   return {
     id: text(source.id),
     name: text(source.name),
@@ -142,6 +147,7 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
       const reference = record(item)
       return { middleware_id: text(reference.middleware_id) }
     }),
+    mcp_refs: mcpRefs.map(normalizeMcpReference),
     subagents: subagents.map(normalizeSubagentReference),
   }
 }
@@ -157,6 +163,7 @@ export function mainAgentPayload(value: MainAgentProfile): MainAgentPayload {
     middleware_refs: value.middleware_refs.map((reference) => ({
       middleware_id: reference.middleware_id,
     })),
+    mcp_refs: value.mcp_refs.map(mcpReferencePayload),
     subagents: value.subagents.map((reference) => ({
       subagent_id: reference.subagent_id,
     })),
@@ -182,6 +189,7 @@ export function blankSubagent(): SubagentProfile {
       capability_overrides: [],
       tool_refs: [],
       middleware_refs: [],
+      mcp_refs: [],
     },
   }
 }
@@ -198,6 +206,7 @@ export function normalizeSubagent(value: unknown): SubagentProfile {
   const toolRefs = Array.isArray(settings.tool_refs)
     ? settings.tool_refs
     : []
+  const mcpRefs = Array.isArray(settings.mcp_refs) ? settings.mcp_refs : []
   return {
     id: text(source.id),
     component_name: text(source.component_name),
@@ -220,6 +229,7 @@ export function normalizeSubagent(value: unknown): SubagentProfile {
         const reference = record(item)
         return { middleware_id: text(reference.middleware_id) }
       }),
+      mcp_refs: mcpRefs.map(normalizeMcpReference),
     },
   }
 }
@@ -260,6 +270,7 @@ export function subagentPayload(value: SubagentProfile): SubagentPayload {
       middleware_refs: value.settings.middleware_refs.map((reference) => ({
         middleware_id: reference.middleware_id,
       })),
+      mcp_refs: value.settings.mcp_refs.map(mcpReferencePayload),
     },
   }
 }

@@ -26,6 +26,7 @@ from agent_shell.capability_manifest import (
 )
 from agent_shell.configuration.identity import ConfigurationId, ConfigurationName
 from agent_shell.command import CommandBlock
+from agent_shell.mcp.contracts import McpReference
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
 from agent_shell.response_stream_policy import ResponseQueuePolicy
@@ -305,6 +306,28 @@ class ModelRequirementBlock(StrictBlock):
         str,
         StringConstraints(strip_whitespace=False, min_length=1),
         Field(max_length=100_000),
+    ]
+
+
+class McpRequirementBlock(StrictBlock):
+    """Portable MCP capability requirement.
+
+    Transport settings, credentials and instance bindings deliberately live
+    outside the Configuration Repository.
+    """
+
+    description: Annotated[
+        str,
+        StringConstraints(strip_whitespace=False, min_length=1),
+        Field(max_length=100_000),
+    ]
+    namespace: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=64,
+            pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
+        ),
     ]
 
 
@@ -810,6 +833,7 @@ class MainAgentProfile(StrictBlock):
     capability_refs: list[CapabilityReference] = Field(default_factory=list)
     tool_refs: list[ToolReference] = Field(default_factory=list)
     middleware_refs: list[MiddlewareReference] = Field(default_factory=list)
+    mcp_refs: list[McpReference] = Field(default_factory=list)
     subagents: list[SubagentReference] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -823,6 +847,9 @@ class MainAgentProfile(StrictBlock):
         middleware_ids = [item.middleware_id for item in self.middleware_refs]
         if len(middleware_ids) != len(set(middleware_ids)):
             raise ValueError("Main Agent middleware_refs must not contain duplicates")
+        mcp_requirement_ids = [item.requirement_id for item in self.mcp_refs]
+        if len(mcp_requirement_ids) != len(set(mcp_requirement_ids)):
+            raise ValueError("Main Agent mcp_refs must not contain duplicates")
         return self
 
 
@@ -864,6 +891,7 @@ class SubagentSettings(BaseModel):
     capability_overrides: list[CapabilityOverride] = Field(default_factory=list)
     tool_refs: list[ToolReference] = Field(default_factory=list)
     middleware_refs: list[MiddlewareReference] = Field(default_factory=list)
+    mcp_refs: list[McpReference] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_overrides(self) -> "SubagentSettings":
@@ -878,6 +906,9 @@ class SubagentSettings(BaseModel):
         middleware_ids = [item.middleware_id for item in self.middleware_refs]
         if len(middleware_ids) != len(set(middleware_ids)):
             raise ValueError("Subagent middleware_refs must not contain duplicates")
+        mcp_requirement_ids = [item.requirement_id for item in self.mcp_refs]
+        if len(mcp_requirement_ids) != len(set(mcp_requirement_ids)):
+            raise ValueError("Subagent mcp_refs must not contain duplicates")
         return self
 
 
@@ -921,7 +952,14 @@ WORKFLOW_COMPONENT_MODELS = {
     "response-stream-scheduling": ResponseStreamSchedulingBlock,
     "command": CommandBlock,
 }
-MANAGED_COMPONENT_MODELS = {**BLOCK_MODELS, **WORKFLOW_COMPONENT_MODELS}
+RESOURCE_COMPONENT_MODELS = {
+    "mcp-requirement": McpRequirementBlock,
+}
+MANAGED_COMPONENT_MODELS = {
+    **BLOCK_MODELS,
+    **RESOURCE_COMPONENT_MODELS,
+    **WORKFLOW_COMPONENT_MODELS,
+}
 
 def validate_provider_credential(payload: object) -> str | None:
     value = CREDENTIAL_VALUE_ADAPTER.validate_python(payload)

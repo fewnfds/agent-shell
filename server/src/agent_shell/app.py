@@ -27,6 +27,7 @@ from agent_shell.api.file_manager import build_file_manager_router
 from agent_shell.api.provider_integrations import build_provider_integrations_router
 from agent_shell.api.system_settings import build_system_settings_router
 from agent_shell.api.model_connections import build_model_connection_router
+from agent_shell.api.mcp_connections import build_mcp_connection_router
 from agent_shell.api.validation import build_validation_router
 from agent_shell.api.workflows import build_workflow_router
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
@@ -74,6 +75,7 @@ from agent_shell.storage.validation_settings import ConfigurationValidationSetti
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.storage.environment import InstanceEnvironmentStore
 from agent_shell.storage.model_connections import ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.repository import RepositoryValidationService
 from agent_shell.python_packages.validation import PythonPackageValidationService
@@ -153,6 +155,11 @@ def create_app(
         environment=environment,
         mutations=configuration_mutations,
     )
+    mcp_resources = McpResourceStore(
+        settings.data_root,
+        environment=environment,
+        mutations=configuration_mutations,
+    )
     runtime_policy = RuntimePolicyStore(configuration)
     system_log_settings = SystemLogSettingsStore(configuration)
     event_logger = SecurityEventLogger(
@@ -206,6 +213,7 @@ def create_app(
         block_store,
         configuration_validation,
         model_resources=model_resources,
+        mcp_resources=mcp_resources,
     )
     configuration_bundles = ConfigurationBundleService(
         configuration,
@@ -217,6 +225,7 @@ def create_app(
         ConfigurationRepositoryManagementService(
             configuration,
             model_resources,
+            mcp_resources,
             runtime_dir,
         )
     )
@@ -295,6 +304,7 @@ def create_app(
         runtime_diagnostics=runtime_diagnostics,
         runtime_policy=runtime_policy,
         model_resources=model_resources,
+        mcp_resources=mcp_resources,
     )
 
     frontend_dir = Path(__file__).resolve().parents[3] / "runtime" / "frontend_dist"
@@ -602,6 +612,13 @@ def create_app(
             configuration,
             block_store,
             model_resources,
+        )
+    )
+    app.include_router(
+        build_mcp_connection_router(
+            configuration,
+            block_store,
+            mcp_resources,
         )
     )
     app.include_router(

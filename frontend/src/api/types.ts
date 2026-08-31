@@ -26,7 +26,8 @@ export type WorkflowComponentType =
   | 'workflow-event-output'
   | 'response-stream-scheduling'
   | 'command'
-export type ManagedComponentType = BlockType | WorkflowComponentType
+export type ResourceComponentType = 'mcp-requirement'
+export type ManagedComponentType = BlockType | ResourceComponentType | WorkflowComponentType
 
 export interface CapabilityManifest {
   type: BlockType
@@ -51,8 +52,19 @@ export interface WorkflowComponentManifest {
   editor_key: string
 }
 
+export interface ResourceComponentManifest {
+  type: ResourceComponentType
+  terminology_key: string
+  label: string
+  order: number
+  icon_key: string
+  editor_key: string
+  resource_component: true
+}
+
 export interface CatalogResponse {
   block_types: CapabilityManifest[]
+  resource_component_types: ResourceComponentManifest[]
   workflow_component_types: WorkflowComponentManifest[]
   editor_defaults: Record<string, unknown>
 }
@@ -72,6 +84,7 @@ export type SavedBlock<TPayload extends BlockPayload = BlockPayload> = TPayload 
 export interface ConfigurationSummary {
   id: string
   name: string
+  namespace?: string
 }
 
 export type MainAgentSummary = ConfigurationSummary
@@ -138,6 +151,63 @@ export interface ModelRequirementBinding {
   description: string
   binding: string | null
   connection: ModelConnection | null
+}
+
+export type McpConfiguredValue =
+  | { source: 'literal', value: string }
+  | { source: 'secret', value?: string, status?: 'masked' | 'missing' }
+
+interface McpConnectionBase {
+  id: string
+  name: string
+}
+
+export interface McpStdioConnection extends McpConnectionBase {
+  transport: 'stdio'
+  command: string
+  args: string[]
+  cwd?: string | null
+  env: Record<string, McpConfiguredValue>
+}
+
+export interface McpHttpConnection extends McpConnectionBase {
+  transport: 'http'
+  url: string
+  headers: Record<string, McpConfiguredValue>
+}
+
+export type McpConnection = McpStdioConnection | McpHttpConnection
+
+export interface McpRequirementBinding {
+  id: string
+  name: string
+  description: string
+  namespace: string
+  binding: string | null
+  connection: McpConnection | null
+}
+
+export interface McpImportPreviewValue {
+  target: 'env' | 'headers'
+  name: string
+  source: 'literal' | 'secret'
+}
+
+export interface McpImportPreviewConnection {
+  name: string
+  transport: 'stdio' | 'http'
+  values: McpImportPreviewValue[]
+}
+
+export interface McpImportPreview {
+  connections: McpImportPreviewConnection[]
+}
+
+export interface McpImportValueSources {
+  [serverName: string]: {
+    env?: Record<string, 'literal' | 'secret'>
+    headers?: Record<string, 'literal' | 'secret'>
+  }
 }
 
 type ManagedFileKind = 'directory' | 'file' | 'unsupported'
@@ -383,6 +453,16 @@ export interface ResourceCatalog<TItem> {
 export interface CapabilityReference {
   type: string
   block_id: string
+}
+
+export interface McpToolSelection {
+  mode: 'all' | 'include'
+  tools: string[]
+}
+
+export interface McpReference {
+  requirement_id: string
+  tool_selection: McpToolSelection
 }
 
 export interface PythonPackageReference {
@@ -647,6 +727,7 @@ export interface MainAgentPayload {
   capability_refs: CapabilityReference[]
   tool_refs: ToolReference[]
   middleware_refs: MiddlewareReference[]
+  mcp_refs: McpReference[]
   subagents: SubagentReference[]
 }
 
@@ -662,6 +743,7 @@ export interface SubagentSettings {
   capability_overrides: CapabilityOverride[]
   tool_refs: ToolReference[]
   middleware_refs: MiddlewareReference[]
+  mcp_refs: McpReference[]
 }
 
 export interface SubagentPayload {
@@ -674,7 +756,7 @@ export interface SubagentPayload {
 export type Subagent = SubagentPayload & { id: string }
 
 type ValidationTarget =
-  | { kind: 'block'; type: BlockType; id?: string }
+  | { kind: 'block'; type: ManagedComponentType; id?: string }
   | { kind: 'main_agent'; type?: ''; id?: string }
   | { kind: 'model_connection'; type?: ''; id?: string }
   | { kind: 'subagent'; type?: ''; id?: string }

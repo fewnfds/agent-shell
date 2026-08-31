@@ -8,7 +8,9 @@ import {
   managementApi,
   ManagementApiError,
   type BlockPayload,
+  type ConfigurationSummary,
   type ModelConnection,
+  type McpConnection,
   type ModelProviderCatalog,
   type ManagedComponentType,
   type SkillPackageInspection,
@@ -20,6 +22,7 @@ import {
 import PageShell from '@/components/PageShell.vue'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
+import McpConnectionsImport from '@/components/McpConnectionsImport.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import SectionNav from '@/components/SectionNav.vue'
@@ -35,6 +38,7 @@ import { useToasts } from '@/composables/useToasts'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import {
   blockAdapters,
+  mcpConnectionAdapter,
   modelAdapter,
   type AgentEventOutputCatalogItem,
   type CommandCatalogItem,
@@ -51,8 +55,8 @@ import {
   type PythonPackageDraftState,
 } from '@/domain/blocks/pythonPackage'
 
-type EditorType = ManagedComponentType | 'model-connection'
-type EditorRecord = SavedBlock | ModelConnection
+type EditorType = ManagedComponentType | 'model-connection' | 'mcp-connection'
+type EditorRecord = SavedBlock | ModelConnection | McpConnection
 
 interface PageBlockAdapter {
   blank(defaults?: unknown): BlockDraftBase
@@ -67,7 +71,7 @@ interface EditorManifest {
 }
 
 const props = withDefaults(defineProps<{
-  scope?: 'agent' | 'model' | 'workflow'
+  scope?: 'agent' | 'model' | 'mcp' | 'workflow'
 }>(), {
   scope: 'agent',
 })
@@ -78,6 +82,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   checkpointer: () => import('@/editors/CheckpointerEditor.vue'),
   'response-stream-scheduling': () => import('@/editors/ResponseStreamSchedulingEditor.vue'),
   'model-requirement': () => import('@/editors/ModelRequirementEditor.vue'),
+  'mcp-requirement': () => import('@/editors/McpRequirementEditor.vue'),
   'system-prompt': () => import('@/editors/SystemPromptEditor.vue'),
   filesystem: () => import('@/editors/FilesystemEditor.vue'),
   'filesystem-tools': () => import('@/editors/FilesystemToolsEditor.vue'),
@@ -93,6 +98,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
   command: () => import('@/editors/CommandEditor.vue'),
   'model-connection': () => import('@/editors/ModelEditor.vue'),
+  'mcp-connection': () => import('@/editors/McpConnectionEditor.vue'),
 }
 
 const { t } = useI18n()
@@ -102,6 +108,8 @@ const router = useRouter()
 const componentBasePath = computed(() => (
   props.scope === 'model'
     ? '/models/connections'
+    : props.scope === 'mcp'
+      ? '/mcp/connections'
     : props.scope === 'workflow'
       ? '/workflow-components'
       : '/agent-components'
@@ -153,6 +161,7 @@ const workflowEventOutputErrors = ref<Record<string, LocalizedMessagePayload>>({
 const commandPackages = ref<CommandCatalogItem[]>([])
 const commandPackageErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const skills = ref<SkillCatalogItem[]>([])
+const mcpRequirements = ref<ConfigurationSummary[]>([])
 const skillPackages = ref<SkillPackageSummary[]>([])
 const skillErrors = ref<Record<string, LocalizedMessagePayload>>({})
 const privateSkillPackage = ref<SkillPackageInspection | null>(null)
@@ -267,6 +276,7 @@ const editorProps = computed<Record<string, unknown>>(() => {
         catalog: commandPackages.value,
         errors: commandPackageErrors.value,
         loading: loadingResource.value,
+        mcpRequirements: mcpRequirements.value,
       }
     case 'skill':
       return {
@@ -298,7 +308,9 @@ const editorProps = computed<Record<string, unknown>>(() => {
 })
 
 function adapter(type: EditorType): PageBlockAdapter {
-  return (type === 'model-connection' ? modelAdapter : blockAdapters[type]) as PageBlockAdapter
+  if (type === 'model-connection') return modelAdapter as PageBlockAdapter
+  if (type === 'mcp-connection') return mcpConnectionAdapter as PageBlockAdapter
+  return blockAdapters[type] as PageBlockAdapter
 }
 
 function blankDraft(type: EditorType): BlockDraftBase {
@@ -328,6 +340,7 @@ function validationPayloadFromDraft(
   value: BlockDraftBase,
 ): BlockPayload | null {
   const payload = payloadFromDraft(type, value)
+  if (type === 'mcp-connection') return null
   if (type === 'skill' && !value.id) return null
   if (!usesPythonExtension(type)) return payload
   if (!value.id) return null
@@ -347,7 +360,7 @@ function notifyFailure(titleKey: string, error: unknown): void {
 }
 
 async function isStoredRecordInvalid(id: string): Promise<boolean> {
-  if (activeType.value === 'model-connection') return false
+  if (activeType.value === 'model-connection' || activeType.value === 'mcp-connection') return false
   try {
     repositoryValidationPromise ??= managementApi.validateRepository()
     const report = await repositoryValidationPromise
@@ -388,7 +401,7 @@ const displayedValidation = computed<ConfigurationValidationState>(() => {
   return validation.value
 })
 
-const showDraftValidation = computed(() => (
+const showDraftValidation = computed(() => activeType.value !== 'mcp-connection' && (
   saveValidation.value !== null
   || !activeType.value
   || !draft.value
@@ -401,7 +414,9 @@ async function loadRoute(): Promise<void> {
   if (manifests.value.length === 0) return
   const requestedType = props.scope === 'model'
     ? 'model-connection'
-    : typeof route.params.type === 'string' ? route.params.type : ''
+    : props.scope === 'mcp'
+      ? 'mcp-connection'
+      : typeof route.params.type === 'string' ? route.params.type : ''
   const manifest = manifests.value.find((item) => item.type === requestedType)
   if (!manifest) {
     const fallback = manifests.value[0]
@@ -417,17 +432,22 @@ async function loadRoute(): Promise<void> {
   saveValidation.value = null
   try {
     const collectionChanged = loadedCollectionType !== manifest.type
-    const [collection, skillPackageCollection, modelProviders, editorModule] = await Promise.all([
+    const [collection, skillPackageCollection, modelProviders, mcpRequirementCollection, editorModule] = await Promise.all([
       !collectionChanged
         ? Promise.resolve(null)
         : manifest.type === 'model-connection'
           ? managementApi.listModelConnections()
+          : manifest.type === 'mcp-connection'
+            ? managementApi.listMcpConnections()
           : managementApi.listBlockSummaries(manifest.type),
       manifest.type === 'filesystem'
         ? managementApi.listBlockSummaries('skill')
         : Promise.resolve(null),
       manifest.type === 'model-connection'
         ? managementApi.listModelProviders()
+        : Promise.resolve(null),
+      manifest.type === 'command'
+        ? managementApi.listBlockSummaries('mcp-requirement')
         : Promise.resolve(null),
       editorLoaders[manifest.type](),
     ])
@@ -447,8 +467,12 @@ async function loadRoute(): Promise<void> {
       const [loaded, invalid, packageInspection] = await Promise.all([
         manifest.type === 'model-connection'
           ? managementApi.getModelConnection(id)
-          : managementApi.getBlock(manifest.type, id),
-        manifest.type === 'model-connection' ? Promise.resolve(false) : isStoredRecordInvalid(id),
+          : manifest.type === 'mcp-connection'
+            ? managementApi.getMcpConnection(id)
+            : managementApi.getBlock(manifest.type, id),
+        manifest.type === 'model-connection' || manifest.type === 'mcp-connection'
+          ? Promise.resolve(false)
+          : isStoredRecordInvalid(id),
         usesPythonExtension(manifest.type)
           ? managementApi.inspectPythonPackage(manifest.type as ManagedComponentType, id)
           : Promise.resolve(null),
@@ -482,6 +506,7 @@ async function loadRoute(): Promise<void> {
     }
     skillPackages.value = (skillPackageCollection?.items ?? []) as SkillPackageSummary[]
     providers.value = modelProviders
+    mcpRequirements.value = mcpRequirementCollection?.items ?? []
     draft.value = loadedDraft
     selectedId.value = loadedDraft.id
     markClean()
@@ -505,8 +530,12 @@ async function loadCatalog(): Promise<void> {
   loading.value = true
   pageError.value = ''
   try {
-    if (scope === 'model') {
-      manifests.value = [{ type: 'model-connection', editor_key: 'model', order: 1 }]
+    if (scope === 'model' || scope === 'mcp') {
+      manifests.value = [{
+        type: scope === 'model' ? 'model-connection' : 'mcp-connection',
+        editor_key: scope === 'model' ? 'model' : 'mcp_connection',
+        order: 1,
+      }]
       editorDefaults.value = {}
       await loadRoute()
       return
@@ -516,7 +545,7 @@ async function loadCatalog(): Promise<void> {
     manifests.value = (
       scope === 'workflow'
         ? catalog.workflow_component_types
-        : catalog.block_types
+        : [...catalog.block_types, ...(catalog.resource_component_types ?? [])]
     ).slice().sort((left, right) => left.order - right.order)
     editorDefaults.value = catalog.editor_defaults
     await loadRoute()
@@ -541,7 +570,7 @@ async function selectRecord(id: string): Promise<void> {
 }
 
 function editorLocation(id = ''): { path: string; query?: { id: string } } {
-  const path = props.scope === 'model'
+  const path = props.scope === 'model' || props.scope === 'mcp'
     ? componentBasePath.value
     : `${componentBasePath.value}/${activeType.value}`
   return { path, ...(id ? { query: { id } } : {}) }
@@ -584,6 +613,10 @@ function upsertRecord(saved: EditorRecord): void {
   else records.value[index] = saved
 }
 
+function addImportedConnections(connections: McpConnection[]): void {
+  for (const connection of connections) upsertRecord(connection)
+}
+
 async function save(): Promise<void> {
   if (!activeType.value || !draft.value) return
   const type = activeType.value
@@ -609,10 +642,14 @@ async function save(): Promise<void> {
   ))
   let targetId = draft.value.id
   if (existing) {
-    if (privateAssetType || type === 'model-connection') {
-      pageError.value = t(type === 'model-connection'
-        ? 'errors.modelConnectionNameConflict'
-        : 'errors.configurationNameConflict')
+    if (privateAssetType || type === 'model-connection' || type === 'mcp-connection') {
+      pageError.value = t(
+        type === 'model-connection'
+          ? 'errors.modelConnectionNameConflict'
+          : type === 'mcp-connection'
+            ? 'errors.mcpConnectionNameConflict'
+            : 'errors.configurationNameConflict',
+      )
       return
     }
     const accepted = await confirm({
@@ -633,7 +670,9 @@ async function save(): Promise<void> {
     const request = targetId ? { id: targetId, ...payload } : payload
     const saved = type === 'model-connection'
       ? await managementApi.saveModelConnection(request)
-      : await managementApi.saveBlock(type, request)
+      : type === 'mcp-connection'
+        ? await managementApi.saveMcpConnection(request)
+        : await managementApi.saveBlock(type, request)
     if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
     const savedDraft = draftFromApi(type, saved)
     if (packageType) {
@@ -657,6 +696,8 @@ async function save(): Promise<void> {
       tone: 'success',
       title: t(type === 'model-connection'
         ? 'models.connections.saved'
+        : type === 'mcp-connection'
+          ? 'mcp.connections.saved'
         : 'components.feedback.saved'),
     })
   } catch (error) {
@@ -667,6 +708,8 @@ async function save(): Promise<void> {
       notifyFailure(
         type === 'model-connection'
           ? 'models.connections.saveFailed'
+          : type === 'mcp-connection'
+            ? 'mcp.connections.saveFailed'
           : 'components.feedback.saveFailed',
         error,
       )
@@ -703,7 +746,9 @@ async function copyCurrent(): Promise<void> {
     try {
       const copied = activeType.value === 'model-connection'
         ? await managementApi.copyModelConnection(draft.value!.id, name)
-        : await managementApi.copyBlock(activeType.value!, draft.value!.id, name)
+        : activeType.value === 'mcp-connection'
+          ? await managementApi.copyMcpConnection(draft.value!.id, name)
+          : await managementApi.copyBlock(activeType.value!, draft.value!.id, name)
       upsertRecord(copied)
       repositoryValidationPromise = null
       copyOpen.value = false
@@ -736,6 +781,8 @@ async function removeCurrent(): Promise<void> {
     try {
       if (activeType.value === 'model-connection') {
         await managementApi.deleteModelConnection(id)
+      } else if (activeType.value === 'mcp-connection') {
+        await managementApi.deleteMcpConnection(id)
       } else {
         await managementApi.deleteBlock(activeType.value!, id)
       }
@@ -971,7 +1018,9 @@ watch(
     if (manifests.value.length === 0) return
     const requestedType = props.scope === 'model'
       ? 'model-connection'
-      : typeof route.params.type === 'string' ? route.params.type : ''
+      : props.scope === 'mcp'
+        ? 'mcp-connection'
+        : typeof route.params.type === 'string' ? route.params.type : ''
     if (requestedType === activeType.value && routeId() === (draft.value?.id ?? '')) return
     void loadRoute()
   },
@@ -985,6 +1034,7 @@ onMounted(() => {
 <template>
   <PageShell>
     <template #actions>
+      <McpConnectionsImport v-if="props.scope === 'mcp'" @imported="addImportedConnections" />
       <ConfigurationCrudActions
         :can-save="Boolean(draft)"
         :copying="copying"

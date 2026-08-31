@@ -31,9 +31,14 @@ class BlockStore:
         )
         return records
 
-    def list_block_summaries(self, block_type: str) -> list[dict[str, str]]:
+    def list_block_summaries(
+        self,
+        block_type: str,
+        *,
+        fields: tuple[str, ...] = ("id", "name"),
+    ) -> list[dict[str, str]]:
         records = self._repository.list_component_records(
-            block_type, fields=("id", "name")
+            block_type, fields=fields
         )
         return sorted(
             records,

@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import type {
   CapabilityManifest,
   CatalogResponse,
+  McpConnection,
   ModelConnection,
   SavedBlock,
   ValidationReport,
@@ -134,6 +135,7 @@ const messages = {
   },
   capabilities: {
     'model-connection': { label: 'Model connection' },
+    'mcp-connection': { label: 'MCP connection' },
     filesystem: { label: 'Filesystem' },
     model: { label: 'Model' },
     'main-agent': { label: 'Main Agent' },
@@ -205,6 +207,7 @@ function createApi() {
   let stored = [block]
   const getCatalog = vi.fn(async (): Promise<CatalogResponse> => ({
     block_types: manifests,
+    resource_component_types: [],
     workflow_component_types: [],
     editor_defaults: {},
   }))
@@ -243,6 +246,15 @@ function createApi() {
     model_settings: {},
   }
   const listModelConnections = vi.fn(async () => [modelConnection])
+  const mcpConnection: McpConnection = {
+    id: '44444444-4444-4444-8444-444444444444',
+    name: 'Browser MCP',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['playwright-mcp'],
+    env: {},
+  }
+  const listMcpConnections = vi.fn(async () => [mcpConnection])
   const copyBlock = vi.fn(async () => {
     stored = [...stored, copied]
     return copied
@@ -264,16 +276,19 @@ function createApi() {
     listSubagentSummaries,
     listWorkflowSummaries,
     listModelConnections,
+    listMcpConnections,
     getBlock: vi.fn(async (_type, id) => stored.find((item) => item.id === id) ?? block),
     getMainAgent: vi.fn(async () => ({ id: 'main-id', name: 'Main Agent' } as never)),
     getSubagent: vi.fn(async () => ({ id: 'subagent-id', component_name: 'Subagent' } as never)),
     getWorkflow: vi.fn(async () => ({ id: 'workflow-id', name: 'Workflow' } as never)),
     getModelConnection: vi.fn(async () => modelConnection),
+    getMcpConnection: vi.fn(async () => mcpConnection),
     copyBlock,
     copyMainAgent: vi.fn(),
     copySubagent: vi.fn(),
     copyWorkflow: vi.fn(),
     copyModelConnection: vi.fn(),
+    copyMcpConnection: vi.fn(),
     deleteBlock,
     deleteUnsupportedBlock,
     deleteBlocks: vi.fn(async (_type, ids) => deleteBlocks(ids)),
@@ -285,6 +300,7 @@ function createApi() {
     deleteSubagent: vi.fn(),
     deleteWorkflow: vi.fn(),
     deleteModelConnection: vi.fn(),
+    deleteMcpConnection: vi.fn(),
     deleteMainAgents: vi.fn(),
     deleteMainAgentsMatching: vi.fn(),
     deleteSubagents: vi.fn(),
@@ -419,6 +435,15 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper.find('[data-testid="repository-switcher"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="library-validation-region"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="library-global-group"] > span').text()).toBe('Global')
+  })
+
+  it('lists instance MCP Connections without offering Bundle download', async () => {
+    const api = createApi()
+    const { wrapper } = await mountPage(api.service, '/library/mcp-connection')
+
+    expect(api.service.listMcpConnections).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('Browser MCP')
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(false)
   })
 
   it('commits the same uploaded Bundle digest and target UUID plan', async () => {

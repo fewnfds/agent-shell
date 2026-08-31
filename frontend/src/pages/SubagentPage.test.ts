@@ -307,6 +307,7 @@ describe('Subagent authoring page', () => {
         ],
         tool_refs: [],
         middleware_refs: [],
+        mcp_refs: [],
       },
     })
     wrapper.unmount()

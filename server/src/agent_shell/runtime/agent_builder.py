@@ -68,6 +68,9 @@ from agent_shell.validation.assembly import StaticAssembly
 from agent_shell.python_requirements import parse_python_requirements
 from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceSnapshot
+from agent_shell.runtime.mcp import McpRunRuntime
+from agent_shell.validation.assembly import ResolvedMcpReference
 from agent_shell.tool_packages import ToolPackageRuntime
 
 
@@ -160,6 +163,7 @@ class AgentBuilder:
         provider_http_clients: ProviderHttpClients,
         store: BaseStore,
         model_resources: ModelResourceStore | ModelResourceSnapshot | None = None,
+        mcp_resources: McpResourceSnapshot | None = None,
         repository_id: str | None = None,
         runtime_policy: RuntimePolicyStore | None = None,
     ) -> None:
@@ -173,8 +177,31 @@ class AgentBuilder:
         self._store = store
         self._model_resources = model_resources or getattr(secrets, "model_connections", None)
         self._repository_id = repository_id or getattr(secrets, "repository_id", "")
+        self._mcp_resources = mcp_resources
+        self._mcp_runtime: McpRunRuntime | None = None
         self._tool_runtime: ToolPackageRuntime | None = None
         self._middleware_runtime: MiddlewarePackageRuntime | None = None
+
+    async def discover_mcp(
+        self,
+        references: tuple[ResolvedMcpReference, ...],
+    ) -> McpRunRuntime | None:
+        if self._mcp_resources is None:
+            if references:
+                raise AgentRuntimeError(
+                    "mcp_runtime_unavailable",
+                    "MCP runtime configuration is unavailable.",
+                    status_code=500,
+                )
+            return None
+        return await McpRunRuntime.discover(
+            self._mcp_resources,
+            self._repository_id,
+            references,
+        )
+
+    def bind_mcp_runtime(self, runtime: McpRunRuntime | None) -> None:
+        self._mcp_runtime = runtime
 
     async def close_failed_build(self) -> None:
         if self._tool_runtime is not None:
@@ -237,6 +264,7 @@ class AgentBuilder:
             str, Mapping[str, Path]
         ] | None = None,
         disabled_capabilities: frozenset[str] = frozenset(),
+        mcp_references: tuple[ResolvedMcpReference, ...] = (),
     ) -> MaterializedAgentProfile:
         requirement_id = references.get("model-requirement")
         if not requirement_id or "model-requirement" not in selected_blocks:
@@ -324,6 +352,27 @@ class AgentBuilder:
                     owner_id=owner_id,
                     owner_name=owner_name,
                     path="tool_refs",
+                ) from exc
+        if mcp_references:
+            if self._mcp_runtime is None:
+                raise configuration_error(
+                    "mcp_runtime_unavailable",
+                    "The selected MCP requirements are unavailable in this Workflow Run.",
+                    status_code=409,
+                    scope=scope,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="mcp_refs",
+                )
+            try:
+                tools.extend(self._mcp_runtime.tools_for(mcp_references))
+            except AgentRuntimeError as exc:
+                raise reported_error(
+                    exc,
+                    scope=scope,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="mcp_refs",
                 ) from exc
 
         middleware: list[Any] = []
@@ -614,6 +663,7 @@ class AgentBuilder:
                 mapped_directory_paths_by_filesystem
             ),
             disabled_capabilities=assembly.disabled_capabilities,
+            mcp_references=assembly.mcp_references,
         )
         enable_deepagents_trace_inputs(
             [*materialized.middleware, *materialized.extra_middleware],

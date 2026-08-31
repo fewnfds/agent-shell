@@ -15,6 +15,7 @@ const WorkflowsPage = () => import('@/pages/WorkflowsPage.vue')
 const WorkflowEditorPage = () => import('@/pages/WorkflowEditorPage.vue')
 const WorkflowLifecyclesPage = () => import('@/pages/WorkflowLifecyclesPage.vue')
 const ModelMappingPage = () => import('@/pages/ModelMappingPage.vue')
+const McpMappingPage = () => import('@/pages/McpMappingPage.vue')
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -22,6 +23,7 @@ export const router = createRouter({
     { path: '/', component: ApiServerSettingsPage, meta: { titleKey: 'apiServer.homeTitle' } },
     { path: '/workflows', redirect: '/workflows/parents' },
     { path: '/models', redirect: '/models/connections' },
+    { path: '/mcp', redirect: '/mcp/connections' },
     {
       path: '/models/connections',
       component: ComponentsPage,
@@ -29,6 +31,13 @@ export const router = createRouter({
       meta: { titleKey: 'navigation.models' },
     },
     { path: '/models/mapping', component: ModelMappingPage, meta: { titleKey: 'navigation.models' } },
+    {
+      path: '/mcp/connections',
+      component: ComponentsPage,
+      props: { scope: 'mcp' },
+      meta: { titleKey: 'navigation.mcp' },
+    },
+    { path: '/mcp/mapping', component: McpMappingPage, meta: { titleKey: 'navigation.mcp' } },
     {
       path: '/workflows/parents',
       component: WorkflowsPage,

@@ -49,6 +49,7 @@ def validate_configuration_snapshot(
 
     seen_ids: dict[str, str] = {}
     seen_names: dict[tuple[str, str], dict[str, str]] = {}
+    mcp_namespaces: dict[str, str] = {}
     for entity in iter_configuration_entities(config):
         entity_id = require_configuration_id(
             entity.payload.get("id"),
@@ -91,6 +92,16 @@ def validate_configuration_snapshot(
                 f"in the {scope[0]} scope"
             )
         scoped_names[collision_key] = entity_id
+
+        if entity.kind == "component" and entity.component_type == "mcp-requirement":
+            namespace = entity.payload.get("namespace")
+            if isinstance(namespace, str):
+                previous_namespace_id = mcp_namespaces.get(namespace)
+                if previous_namespace_id is not None:
+                    raise ValueError(
+                        f"MCP namespace {namespace!r} conflicts with {previous_namespace_id}"
+                    )
+                mcp_namespaces[namespace] = entity_id
 
         for reference in iter_configuration_references(entity):
             require_configuration_id(

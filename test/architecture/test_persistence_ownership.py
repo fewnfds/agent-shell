@@ -32,6 +32,7 @@ REGISTERED_WRITE_MODULES = {
     "storage/database.py",
     "storage/file_config.py",
     "storage/model_connections.py",
+    "storage/mcp_connections.py",
     "storage/permissions.py",
     "storage/runtime_diagnostic_details.py",
 }
