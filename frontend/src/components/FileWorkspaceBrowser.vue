@@ -490,7 +490,7 @@ defineExpose({ refresh: load })
                   type="button"
                   @click="startRename(item)"
                 >
-                  <i class="bi bi-pencil" aria-hidden="true" />
+                  <i class="bi bi-input-cursor-text" aria-hidden="true" />
                 </LteButton>
                 <LteButton
                   v-if="item.capabilities.delete"

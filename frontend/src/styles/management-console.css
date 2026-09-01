@@ -119,7 +119,7 @@ body {
   --bs-btn-hover-border-color: var(--bs-body-color);
 }
 
-:is(.action-button, .icon-action-button):has(.bi-pencil, .bi-arrow-up, .bi-arrow-down),
+:is(.action-button, .icon-action-button):has(.bi-input-cursor-text, .bi-arrow-up, .bi-arrow-down),
 :is(.action-button, .icon-action-button)[data-action="restore-default"],
 :is(.action-button, .icon-action-button)[data-action="restore-summary-prompt"] {
   --bs-btn-color: var(--bs-black);
