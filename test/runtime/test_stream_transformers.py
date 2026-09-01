@@ -245,3 +245,78 @@ def test_agent_execution_preserves_raw_finish_projection_as_segment_end() -> Non
         return [part async for part in execution.stream_text()]
 
     assert "".join(asyncio.run(collect())) == "<answer>ready</answer>"
+
+
+def test_agent_execution_uses_optional_segment_end_from_block_start() -> None:
+    segment_events: list[dict[str, object]] = []
+
+    def output(event: dict[str, object], origin: dict[str, object]) -> str:
+        if event.get("method") != "messages":
+            return ""
+        params = event.get("params")
+        data = params.get("data") if isinstance(params, dict) else None
+        if not isinstance(data, (list, tuple)) or len(data) != 2:
+            return ""
+        payload = data[0]
+        if not isinstance(payload, dict):
+            return ""
+        event_name = payload.get("event")
+        if event_name == "content-block-start":
+            return "<answer>"
+        if event_name == "content-block-delta":
+            delta = payload.get("delta")
+            return str(delta.get("text", "")) if isinstance(delta, dict) else ""
+        return ""
+
+    def segment_end(event: dict[str, object], origin: dict[str, object]) -> str:
+        segment_events.append(event)
+        return "</answer>"
+
+    events = [
+        message_envelope(
+            {"event": "message-start", "role": "ai", "id": "message-1"}
+        ),
+        message_envelope(
+            {
+                "event": "content-block-start",
+                "index": 0,
+                "content": {"type": "text", "text": ""},
+            }
+        ),
+        message_envelope(
+            {
+                "event": "content-block-delta",
+                "index": 0,
+                "delta": {"type": "text-delta", "text": "ready"},
+            }
+        ),
+        message_envelope(
+            {
+                "event": "content-block-finish",
+                "index": 0,
+                "content": {"type": "text", "text": "ready"},
+            }
+        ),
+        message_envelope({"event": "message-finish", "usage": {}}),
+    ]
+    projector = OutputProjector(output, segment_end=segment_end)
+    execution = RunExecution(
+        graph=EventGraph(events),
+        input_state={},
+        response_scheduler=response_scheduler(projector),
+        event_output_projector=projector,
+        origin_resolver=event_origin_resolver(),
+        middleware_runtimes=(noop_middleware_runtime(),),
+        media_response=noop_media_response(),
+    )
+
+    async def collect() -> list[str]:
+        return [part async for part in execution.stream_text()]
+
+    assert "".join(asyncio.run(collect())) == "<answer>ready</answer>"
+    assert len(segment_events) == 1
+    params = segment_events[0]["params"]
+    assert isinstance(params, dict)
+    data = params["data"]
+    assert isinstance(data, (list, tuple))
+    assert data[0]["event"] == "content-block-start"

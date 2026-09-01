@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 import shutil
 
 import pytest
@@ -144,12 +145,20 @@ def test_builtin_event_output_examples_are_loadable(
         (
             "agent-event-output",
             "agent-event-output",
-            {"内置示例-assistant-text-only", "内置示例-default"},
+            {
+                "内置示例-all-events",
+                "内置示例-assistant-text-only",
+                "内置示例-default",
+            },
         ),
         (
             "workflow-event-output",
             "workflow-event-output",
-            {"内置示例-default", "内置示例-lifecycle-progress"},
+            {
+                "内置示例-all-events",
+                "内置示例-default",
+                "内置示例-lifecycle-progress",
+            },
         ),
     ):
         catalog = client.get(
@@ -178,6 +187,152 @@ def test_builtin_event_output_examples_are_loadable(
                 "main.py",
                 "package.json",
             }
+
+
+def test_all_events_examples_render_streamed_and_atomic_event_families() -> None:
+    source_root = Path(__file__).resolve().parents[2] / "examples"
+    origin = {
+        "lifecycle_id": "lifecycle-1",
+        "workflow_run_id": "workflow-run-1",
+        "workflow_id": "workflow-1",
+        "workflow_role": "parent",
+        "run_depth": 0,
+        "workflow_node_id": "agent-node",
+        "node_invocation_id": "invoke-1",
+        "agent_profile_id": "agent-1",
+    }
+
+    def envelope(method: str, data: object, *, seq: int = 1) -> dict[str, object]:
+        return {
+            "method": method,
+            "seq": seq,
+            "params": {
+                "namespace": ["agent-node:invoke-1"],
+                "timestamp": 123,
+                "data": data,
+            },
+        }
+
+    def message(payload: dict[str, object], *, seq: int = 1) -> dict[str, object]:
+        return envelope(
+            "messages",
+            [payload, {"run_id": "model-run-1", "langgraph_node": "model"}],
+            seq=seq,
+        )
+
+    def assert_atomic(value: str) -> None:
+        assert value.startswith("<details open>")
+        assert value.endswith("</details>\n")
+        assert "font-size:0.78em" in value
+        assert "workflow_run_id=workflow-run-1" in value
+        assert " | " in value
+        assert "request_id=" not in value
+
+    def assert_stream_end(value: str) -> None:
+        assert value.startswith("</div>\n")
+        assert value.endswith("</details>\n")
+        assert "font-size:0.78em" in value
+        assert "workflow_run_id=workflow-run-1" in value
+        assert " | " in value
+
+    for relative_path in (
+        Path("agent-components/agent-event-output/all-events/main.py"),
+        Path("workflow-components/workflow-event-output/all-events/main.py"),
+    ):
+        namespace = runpy.run_path(str(source_root / relative_path))
+        output = namespace["output"]
+        segment_end = namespace["segment_end"]
+
+        assert_atomic(output(message({"event": "message-start", "id": "msg-1"}), origin))
+
+        text_start = message({
+            "event": "content-block-start",
+            "index": 0,
+            "content": {"type": "text", "text": ""},
+        })
+        assert output(text_start, origin).startswith("<details open>")
+        assert not output(text_start, origin).endswith("</details>\n")
+        assert_stream_end(segment_end(text_start, origin))
+        text_delta = message({
+            "event": "content-block-delta",
+            "index": 0,
+            "delta": {"type": "text-delta", "text": "<answer>"},
+        })
+        assert output(text_delta, origin) == "&lt;answer&gt;"
+        assert_stream_end(output(message({
+            "event": "content-block-finish",
+            "index": 0,
+            "content": {"type": "text", "text": "<answer>"},
+        }), origin))
+
+        reasoning_start = message({
+            "event": "content-block-start",
+            "index": 1,
+            "content": {"type": "reasoning", "reasoning": ""},
+        })
+        assert output(reasoning_start, origin).startswith("<details open>")
+        assert_stream_end(segment_end(reasoning_start, origin))
+        assert output(message({
+            "event": "content-block-delta",
+            "index": 1,
+            "delta": {"type": "reasoning-delta", "reasoning": "think"},
+        }), origin) == "think"
+        assert_stream_end(output(message({
+            "event": "content-block-finish",
+            "index": 1,
+            "content": {"type": "reasoning", "reasoning": "think"},
+        }), origin))
+
+        tool_start = message({
+            "event": "content-block-start",
+            "index": 2,
+            "content": {"type": "tool_call_chunk", "id": "call-1"},
+        })
+        assert output(tool_start, origin) == ""
+        assert_atomic(output(message({
+            "event": "content-block-finish",
+            "index": 2,
+            "content": {
+                "type": "tool_call",
+                "id": "call-1",
+                "name": "lookup",
+                "args": {"query": "value"},
+            },
+        }), origin))
+        assert_atomic(output(message({
+            "event": "content-block-finish",
+            "index": 3,
+            "content": {"type": "image", "url": "https://example.invalid/a.png"},
+        }), origin))
+        assert_atomic(output(message({"event": "message-finish", "usage": {}}), origin))
+        assert_atomic(output(message({"event": "error", "error": "failed"}), origin))
+
+        for tool_event in (
+            {"event": "tool-started", "tool_call_id": "call-1", "name": "lookup"},
+            {"event": "tool-output-delta", "tool_call_id": "call-1", "delta": "half"},
+            {"event": "tool-finished", "tool_call_id": "call-1", "output": "done"},
+            {"event": "tool-error", "tool_call_id": "call-1", "error": "failed"},
+        ):
+            assert_atomic(output(envelope("tools", tool_event), origin))
+        for lifecycle_event in (
+            {"event": "started", "graph_name": "worker"},
+            {"event": "completed", "graph_name": "worker"},
+            {"event": "failed", "graph_name": "worker"},
+        ):
+            assert_atomic(output(envelope("lifecycle", lifecycle_event), origin))
+        assert_atomic(output(envelope("values", {"answer": 42}), origin))
+        assert_atomic(output(envelope("custom", {"progress": "working"}), origin))
+        assert_atomic(output(envelope("future-channel", {"future": True}), origin))
+
+        if "run_output" in namespace:
+            for phase in ("start", "end", "error"):
+                assert_atomic(namespace["run_output"]({
+                    "type": "agent_shell.workflow_run",
+                    "phase": phase,
+                    "status": "failed" if phase == "error" else "completed",
+                    "finish_reason": "error" if phase == "error" else "stop",
+                    "error_code": "failure" if phase == "error" else "",
+                }, origin))
 
 
 def test_command_uses_component_crud_storage_and_repository_validation(

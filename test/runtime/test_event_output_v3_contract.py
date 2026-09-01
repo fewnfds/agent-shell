@@ -67,6 +67,35 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
     }
 
 
+def test_output_projector_passes_start_event_to_optional_segment_end() -> None:
+    event = {
+        "seq": 2,
+        "method": "messages",
+        "params": {
+            "namespace": ["agent-a:invoke-1"],
+            "data": [
+                {
+                    "event": "content-block-start",
+                    "index": 0,
+                    "content": {"type": "text", "text": ""},
+                },
+                {"run_id": "model-run-1"},
+            ],
+        },
+    }
+    origin = {"workflow_node_id": "agent-a", "agent_profile_id": "profile-a"}
+    seen: list[tuple[object, object]] = []
+
+    def segment_end(received_event, received_origin):
+        seen.append((received_event, received_origin))
+        return "</answer>"
+
+    projector = OutputProjector(lambda _event, _origin: "", segment_end=segment_end)
+
+    assert projector.render_segment_end(event, origin) == "</answer>"
+    assert seen == [(event, origin)]
+
+
 def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> None:
     identity = WorkflowRunIdentity(
         request_id="request-1",
@@ -154,6 +183,27 @@ def test_workflow_projector_selects_agent_or_workflow_package_from_origin() -> N
         "workflow_node_id": "script-node",
         "agent_profile_id": "",
     }) == "W:visible"
+
+
+def test_workflow_projector_selects_matching_segment_end_hook() -> None:
+    projector = WorkflowOutputProjector(
+        {"agent-a": lambda event, origin: ""},
+        segment_ends_by_node={
+            "agent-a": lambda event, origin: "agent-end",
+        },
+        workflow_output=lambda event, origin: "",
+        workflow_segment_end=lambda event, origin: "workflow-end",
+    )
+    event = {"method": "messages", "params": {"data": None}}
+
+    assert projector.render_segment_end(event, {
+        "workflow_node_id": "agent-a",
+        "agent_profile_id": "profile-a",
+    }) == "agent-end"
+    assert projector.render_segment_end(event, {
+        "workflow_node_id": "script-node",
+        "agent_profile_id": "",
+    }) == "workflow-end"
 
 
 def test_origin_resolver_keeps_workflow_agents_and_subagents_distinct() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -17,6 +18,7 @@ EventOutputKind = Literal["agent", "workflow"]
 ProtocolEvent = Mapping[str, object]
 EventOutputOrigin = Mapping[str, object]
 EventOutputCallable = Callable[[ProtocolEvent, EventOutputOrigin], object]
+EventSegmentEndCallable = Callable[[ProtocolEvent, EventOutputOrigin], object]
 EventRunOutputCallable = Callable[[Mapping[str, object], EventOutputOrigin], object]
 
 _SPECS: dict[EventOutputKind, tuple[PythonPackageAdapter, str]] = {
@@ -139,6 +141,7 @@ class EventOutputPackageRuntime:
             factory_parameters=_PARAMETERS,
         )
         self._outputs: dict[str, EventOutputCallable] = {}
+        self._segment_ends: dict[str, EventSegmentEndCallable | None] = {}
         self._run_outputs: dict[str, EventRunOutputCallable | None] = {}
         self._closed = False
 
@@ -161,6 +164,22 @@ class EventOutputPackageRuntime:
         self._outputs[binding_id] = output
         return output
 
+    def segment_end_for(
+        self,
+        binding_id: str,
+        package_owner_id: str,
+        reference: dict[str, Any],
+    ) -> EventSegmentEndCallable | None:
+        """Load the optional presentation-segment suffix hook."""
+
+        return self._optional_entrypoint_for(
+            self._segment_ends,
+            "segment_end",
+            binding_id,
+            package_owner_id,
+            reference,
+        )
+
     def workflow_run_output_for(
         self,
         binding_id: str,
@@ -175,8 +194,24 @@ class EventOutputPackageRuntime:
         """
         if self._kind != "workflow":
             raise RuntimeError("run_output belongs to Workflow Event Output")
-        if binding_id in self._run_outputs:
-            return self._run_outputs[binding_id]
+        return self._optional_entrypoint_for(
+            self._run_outputs,
+            "run_output",
+            binding_id,
+            package_owner_id,
+            reference,
+        )
+
+    def _optional_entrypoint_for(
+        self,
+        cache: dict[str, Callable[[Mapping[str, object], EventOutputOrigin], object] | None],
+        name: str,
+        binding_id: str,
+        package_owner_id: str,
+        reference: dict[str, Any],
+    ) -> Callable[[Mapping[str, object], EventOutputOrigin], object] | None:
+        if binding_id in cache:
+            return cache[binding_id]
         module, _metadata, _package_dir = self._loader.load(
             binding_id,
             self._binding_kind,
@@ -184,16 +219,15 @@ class EventOutputPackageRuntime:
             str(reference["folder"]),
             package_owner_id=package_owner_id,
         )
-        function = getattr(module, "run_output", None)
+        function = getattr(module, name, None)
         if function is None:
-            self._run_outputs[binding_id] = None
+            cache[binding_id] = None
             return None
-        import inspect
 
         if not callable(function) or inspect.iscoroutinefunction(function):
             raise AgentRuntimeError(
                 "python_package.entrypoint_invalid",
-                "The event output package has an invalid run_output entrypoint.",
+                f"The event output package has an invalid {name} entrypoint.",
                 status_code=422,
             )
         signature = inspect.signature(function)
@@ -209,10 +243,10 @@ class EventOutputPackageRuntime:
         ):
             raise AgentRuntimeError(
                 "python_package.entrypoint_invalid",
-                "The run_output entrypoint must accept exactly event and origin.",
+                f"The {name} entrypoint must accept exactly event and origin.",
                 status_code=422,
             )
-        self._run_outputs[binding_id] = function
+        cache[binding_id] = function
         return function
 
     async def close(self) -> None:
@@ -221,12 +255,14 @@ class EventOutputPackageRuntime:
         self._closed = True
         self._loader.close()
         self._outputs.clear()
+        self._segment_ends.clear()
         self._run_outputs.clear()
 
 
 __all__ = [
     "EventOutputCallable",
     "EventOutputOrigin",
+    "EventSegmentEndCallable",
     "EventRunOutputCallable",
     "EventOutputPackageRuntime",
     "resolve_agent_event_output_package",

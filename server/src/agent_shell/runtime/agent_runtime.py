@@ -27,6 +27,7 @@ from agent_shell.event_output_packages import (
     EventOutputCallable,
     EventRunOutputCallable,
     EventOutputPackageRuntime,
+    EventSegmentEndCallable,
 )
 from agent_shell.tool_packages import ToolPackageRuntime
 from agent_shell.runtime.errors import AgentRuntimeError
@@ -446,6 +447,7 @@ class RunExecution:
             event: ResponseEvent | ResponseModelCallBoundary,
             *,
             text: str = "",
+            segment_end_text: str = "",
         ) -> list[str]:
             if not self.public_output:
                 return []
@@ -461,6 +463,7 @@ class RunExecution:
                     origin_workflow_id=origin_workflow_id,
                     event=event,
                     text=text,
+                    segment_end_text=segment_end_text,
                 ),
                 now=loop.time(),
             )
@@ -529,6 +532,15 @@ class RunExecution:
             if projector is None:
                 return ""
             return projector.render(envelope, origin.output)
+
+        def render_protocol_segment_end(
+            envelope: Mapping[str, object],
+            origin,
+        ) -> str:
+            projector = self.event_output_projector
+            if projector is None:
+                return ""
+            return projector.render_segment_end(envelope, origin.output)
 
         def project_deadline() -> list[str]:
             if not self.public_output or not self.response_consumer:
@@ -758,9 +770,19 @@ class RunExecution:
                                                 raw_text if not text_attached else ""
                                             )
                                             text_attached = text_attached or bool(raw_text)
+                                            segment_end_text = (
+                                                render_protocol_segment_end(
+                                                    envelope,
+                                                    origin,
+                                                )
+                                                if event.kind == "content"
+                                                and event.phase == "start"
+                                                else ""
+                                            )
                                             projected = project_input(
                                                 event,
                                                 text=event_text,
+                                                segment_end_text=segment_end_text,
                                             )
                                         for rendered in projected:
                                             with pause_execution_timeout():
@@ -1135,7 +1157,9 @@ class AgentRuntime:
         request_id: str = "",
         public_model: str = "",
         agent_event_outputs: Mapping[str, EventOutputCallable] | None = None,
+        agent_event_segment_ends: Mapping[str, EventSegmentEndCallable] | None = None,
         workflow_event_output: EventOutputCallable | None = None,
+        workflow_event_segment_end: EventSegmentEndCallable | None = None,
         workflow_run_output: EventRunOutputCallable | None = None,
         event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = (),
         command_runtime: CommandPackageRuntime | None = None,
@@ -1162,7 +1186,9 @@ class AgentRuntime:
         if public_output:
             projector = WorkflowOutputProjector(
                 agent_event_outputs or {},
+                segment_ends_by_node=agent_event_segment_ends,
                 workflow_output=workflow_event_output,
+                workflow_segment_end=workflow_event_segment_end,
                 workflow_run_output=workflow_run_output,
             )
         else:
@@ -1500,7 +1526,9 @@ class AgentRuntime:
         agent_event_output_runtime: EventOutputPackageRuntime | None = None
         workflow_event_output_runtime: EventOutputPackageRuntime | None = None
         agent_event_outputs: dict[str, EventOutputCallable] = {}
+        agent_event_segment_ends: dict[str, EventSegmentEndCallable] = {}
         workflow_event_output: EventOutputCallable | None = None
+        workflow_event_segment_end: EventSegmentEndCallable | None = None
         workflow_run_output: EventRunOutputCallable | None = None
         command_runtime: CommandPackageRuntime | None = None
         commands: dict[str, Any] = {}
@@ -1654,6 +1682,13 @@ class AgentRuntime:
                     str(output_id),
                     output_block.python_package.model_dump(mode="json"),
                 )
+                workflow_event_segment_end = (
+                    workflow_event_output_runtime.segment_end_for(
+                        str(workflow_identity.get("id", "")) or "workflow",
+                        str(output_id),
+                        output_block.python_package.model_dump(mode="json"),
+                    )
+                )
                 workflow_run_output = (
                     workflow_event_output_runtime.workflow_run_output_for(
                         str(workflow_identity.get("id", "")) or "workflow",
@@ -1691,6 +1726,13 @@ class AgentRuntime:
                             built.event_output_reference,
                         )
                     )
+                    segment_end = agent_event_output_runtime.segment_end_for(
+                        agent_node.id,
+                        built.event_output_id,
+                        built.event_output_reference,
+                    )
+                    if segment_end is not None:
+                        agent_event_segment_ends[agent_node.id] = segment_end
                 if workspace is None:
                     workspace = built.workspace
                 for path, value in built.input_state.get("files", {}).items():
@@ -1786,7 +1828,9 @@ class AgentRuntime:
             request_id=request_id,
             public_model=public_model,
             agent_event_outputs=agent_event_outputs,
+            agent_event_segment_ends=agent_event_segment_ends,
             workflow_event_output=workflow_event_output,
+            workflow_event_segment_end=workflow_event_segment_end,
             workflow_run_output=workflow_run_output,
             event_output_runtimes=tuple(
                 runtime
