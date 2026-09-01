@@ -2,7 +2,7 @@
 
 本章验证 current Workflow 在当前实例中的配置、发布、发现与真实运行结果，并形成交付记录。
 
-`/api/*` 使用 AI 进程环境中的 `AGENT_SHELL_MANAGEMENT_TOKEN`。`/v1/*` 使用 `AGENT_SHELL_API_KEY`。两类 credential 不能互换，也不从实例 secret 文件读取。
+`/api/*` 使用 `AGENT_SHELL_MANAGEMENT_TOKEN`。`/v1/*` 使用 `AGENT_SHELL_API_KEY`。两类 credential 不能互换，并按[发现当前实例事实](01-discover-current-instance.md)的本地程序或运行平台注入边界使用，实际值不进入操作 Agent 上下文。
 
 ## 1. 验收顺序
 
@@ -127,7 +127,7 @@ GET /api/mcp-connections
 
 沿可达 Main Agent、Subagent 和 Command 的 ordered `mcp_refs` 检查每个 MCP Requirement。用户先建立实际可用的 MCP Connection，再通过 `PUT /api/mcp-requirements/<requirement UUID>/binding` 提交用户选择的 `connection_id`。回读 Requirement projection，确认 binding 指向预期 Connection。
 
-Connection 中每个 secret env/Header 的状态必须为 `masked`；`missing` 表示该 slot 尚无值。AI 不读取实例 `agent-shell.env`，也不要求用户在对话中粘贴 secret。未绑定、Connection 缺失、secret 缺失或 `include` 中的原始 Tool name 不存在都会在 Agent Graph 构造前失败，不应描述为已验证。
+Connection 中每个 secret env/Header 的状态必须为 `masked`；`missing` 表示该 slot 尚无值。MCP secret 由 Agent Shell 解析，操作 Agent 不提取其实际值，也不要求用户在对话中粘贴 secret。未绑定、Connection 缺失、secret 缺失或 `include` 中的原始 Tool name 不存在都会在 Agent Graph 构造前失败，不应描述为已验证。
 
 Management API 没有单独的“测试 MCP”入口。以一次覆盖目标 Agent/Command 路径的真实 Workflow invocation 验证 Tool discovery 和调用；Resource/Prompt 只有 Command 显式调用时才被读取，不会自动成为 Agent Tool。
 
@@ -159,11 +159,11 @@ GET /api/api-server
 
 response 只返回 API Key 是否 configured，不返回 secret value。
 
-如果 API Key 已 configured，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY`，在 HTTP client 边界直接引用该变量完成后续 `/v1/*` 调用。不要读取或输出它的值，也不要因为 GET 不回显 secret 就自动替换它。
+如果 API Key 已 configured，按第一章的认证边界取得 `AGENT_SHELL_API_KEY`，在同一本地程序或已注入该值的 HTTP client 中完成后续 `/v1/*` 调用。不要把它返回给操作 Agent，也不要因为 GET 不回显 secret 就自动替换它。
 
-如果 API Key 已 configured，但 `AGENT_SHELL_API_KEY` 缺失，报告缺少该环境变量，并把真实 `/v1/*` 验证记录为未验证项。不要读取 `data/config/agent-shell.env`，不要要求用户在对话中粘贴 API Key。
+如果本地程序或运行平台无法取得 `AGENT_SHELL_API_KEY`，报告该 key 为 `missing`，并把真实 `/v1/*` 验证记录为未验证项。不要通过读取工具打开 secret store，也不要要求用户在对话中粘贴 API Key。
 
-只有用户明确要求替换或当前尚未配置，并且 AI 进程环境中存在 `AGENT_SHELL_API_KEY` 时，才从该变量构造 write-only value：
+只有用户明确要求替换或当前尚未配置，并且本地执行边界已从对话之外取得新的 `AGENT_SHELL_API_KEY` 时，才用它构造 write-only value：
 
 ```http
 PUT /api/api-server
@@ -339,7 +339,7 @@ Not tested or user action
 
 - 用户尚未提供 Model Connection 或 Provider credential；
 - 用户尚未提供 MCP Connection、binding 或所需 secret；
-- AI 进程缺少 `AGENT_SHELL_MANAGEMENT_TOKEN` 或 `AGENT_SHELL_API_KEY`；
+- 本地程序或运行平台无法取得 `AGENT_SHELL_MANAGEMENT_TOKEN` 或 `AGENT_SHELL_API_KEY`；
 - 外部 API、文件或业务环境不可访问；
 - 用户要求保持 Workflow draft；
 - 当前任务只授权文档或静态配置检查。

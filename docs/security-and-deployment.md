@@ -104,13 +104,14 @@ api_server:
 `data/config/agent-shell.env` 使用 UTF-8 的标准 dotenv `KEY=value` 格式保存敏感变量，例如：
 
 ```dotenv
-AGENT_SHELL_API_KEY=<api-key>
 AGENT_SHELL_MANAGEMENT_TOKEN=<management-token>
-AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY=<model-credential>
+AGENT_SHELL_API_KEY=<api-key>
 LANGSMITH_API_KEY=<langsmith-api-key>
+AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY=<model-credential>
+AGENT_SHELL_MCP_<CONNECTION_UUID_WITHOUT_HYPHENS>_<SLOT_UUID_WITHOUT_HYPHENS>=<mcp-secret>
 ```
 
-管理页面按 key 排序写回；普通单行 token 使用裸值，需要保留空白或换行的值使用 dotenv 双引号。读取遵循 `python-dotenv` 的标准行为，包括空行、注释、引用值、`export` 前缀和重复 key 后值生效。文件必须使用 UTF-8 且无 BOM；NUL 或未知的 `AGENT_SHELL_*` key 会使启动失败。
+仓库根目录 `.env.example` 只说明这些产品 key 的格式，不参与运行。Model/MCP 的 UUID 部分使用无连字符的大写十六进制；reference 由 Agent Shell 生成和维护，不应手工推导。管理页面按 key 排序写回；普通单行 token 使用裸值，需要保留空白或换行的值使用 dotenv 双引号。读取遵循 `python-dotenv` 的标准行为，包括空行、注释、引用值、`export` 前缀和重复 key 后值生效。文件必须使用 UTF-8 且无 BOM；NUL 或未知的 `AGENT_SHELL_*` key 会使启动失败。
 
 模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；模型要求与模型连接的绑定关系位于 `data/config/model-bindings.yaml`。
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。

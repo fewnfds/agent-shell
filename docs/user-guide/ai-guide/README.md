@@ -121,8 +121,8 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 写入前：
 
-- 确认 base URL、credential domain、认证环境变量是否存在和 active Configuration Repository；
-- `/api/*` 只在 HTTP client 边界引用 AI 进程环境中的 `AGENT_SHELL_MANAGEMENT_TOKEN`，`/v1/*` 只引用 `AGENT_SHELL_API_KEY`；不读取实例 `data/config/agent-shell.env`，不要求用户在对话中发送 secret；
+- 确认 base URL、credential domain、认证 credential 是否可由本地程序或运行平台取得，以及 active Configuration Repository；
+- 按[发现当前实例事实](01-discover-current-instance.md)的认证边界使用 `AGENT_SHELL_MANAGEMENT_TOKEN` 和 `AGENT_SHELL_API_KEY`；操作 Agent 不打开或接收实例 secret store 的内容，不要求用户在对话中发送 secret；
 - 读取 `/api/catalog`、`/api/workflow-node-catalog` 和 `/api/configuration-options`；
 - 读取准备复用或修改的完整对象；
 - 读取需要使用的 Python template catalog；

@@ -4,7 +4,7 @@
 
 完成结果是一份当前实例的 reference ledger，以及继续设计 Workflow 所需的 Catalog、现有对象和配置状态。
 
-## 1. 确认地址和 credential domain
+## 1. 确认地址、登录方式和 credential domain
 
 默认 Management API base URL 是 `http://127.0.0.1:19100`。实际地址以用户提供的运行实例为准。
 
@@ -12,6 +12,8 @@ Agent Shell 使用两类 credential：
 
 - `/api/*` 使用 management token，负责配置、validation、API Server 控制和 Lifecycle 管理；
 - `/v1/*` 使用独立 API Key，负责列出和运行 enabled parent Workflow。
+
+Management API 没有提交密码后再换取 token 的登录接口。首次启动设置的管理密码就是 `/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
 
 `GET /api/health` 是匿名存活探测。其他 `/api/*` 请求通常需要：
 
@@ -25,9 +27,39 @@ Authorization: Bearer ${AGENT_SHELL_MANAGEMENT_TOKEN}
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-`${...}` 在本指南中表示 HTTP client 从 AI 进程环境注入值，不是要按字面发送的 header 内容。两类 credential 不能互换：`AGENT_SHELL_MANAGEMENT_TOKEN` 只用于 `/api/*`，`AGENT_SHELL_API_KEY` 只用于 `/v1/*`。
+`${...}` 在本指南中表示 HTTP client 在本地执行边界注入值，不是要按字面发送的 header 内容。两类 credential 不能互换：`AGENT_SHELL_MANAGEMENT_TOKEN` 只用于 `/api/*`，`AGENT_SHELL_API_KEY` 只用于 `/v1/*`。
 
-AI 只确认所需环境变量是 present 还是 missing，并在发出请求时直接引用它。不应打印、回显、转存或在命令参数中展开 secret；不应直接读取实例的 `agent-shell.env`；不应要求用户在对话、任务材料或交付报告中粘贴明文。登录失败时，应向用户报告，由用户配置后再继续。
+实际值位于 `<data-root>/config/agent-shell.env`。默认 data root 是 `<application-home>/data`；使用 `--data-dir` 启动时以该参数为准。仓库根目录的 [`.env.example`](../../../.env.example) 只说明当前 key 格式，不参与运行，也不保存实际值。
+
+用户已授权操作同一台机器上的实例时，操作 Agent 可以让本地程序使用 dotenv parser 加载所需认证 key，并在同一进程中完成 HTTP 请求。操作 Agent 不得通过文件读取工具、`cat`、`Get-Content` 或编辑器打开实际 secret store；不得让 dotenv mapping、secret value、Authorization Header、HTTP debug/trace 或含 secret 的异常进入工具输出；不得把值展开到命令参数、临时文件、对话、任务材料或交付报告。远程或隔离执行环境不能访问实例 secret store 时，由运行平台在对话之外注入 credential；缺失时只报告 key name 和 `missing` 状态。
+
+以下跨平台 Python 示例只把 `/api/readiness` response 返回给操作 Agent。其他语言使用相同边界：dotenv parser -> 进程内局部变量 -> HTTP client Header -> 非敏感 response。
+
+```python
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+from dotenv import dotenv_values
+
+
+data_root = Path("<data-root>")
+base_url = "http://127.0.0.1:19100"
+token = dotenv_values(
+    data_root / "config" / "agent-shell.env",
+    interpolate=False,
+).get("AGENT_SHELL_MANAGEMENT_TOKEN")
+if not token:
+    raise SystemExit("AGENT_SHELL_MANAGEMENT_TOKEN is missing")
+
+request = Request(
+    base_url + "/api/readiness",
+    headers={"Authorization": "Bearer " + token},
+)
+with urlopen(request) as response:
+    print(response.read().decode("utf-8"))
+```
+
+不要打印 `token`、dotenv mapping、`request.headers` 或完整 request。Model Connection credential、MCP secret 和 LangSmith API Key 由 Agent Shell 自己解析和使用；操作 Agent 通过 Management API 的 `masked`、`missing`、configured 状态及真实 Workflow invocation 验证它们，不从 secret store 提取这些值。
 
 先调用：
 
@@ -159,7 +191,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 
 读取 HTTP status、structured error code、`detail` 和 request ID。
 
-- `401` 或 `403`：检查 API domain、所需环境变量是否存在和 Authorization header 的变量引用；不要输出 credential value；
+- `401` 或 `403`：检查 API domain、本地程序或运行平台能否取得所需 credential，以及 Authorization header 的 key 引用；不要输出 credential value；
 - `404`：检查 base URL、endpoint、active Repository 和 UUID；
 - `409`：检查 Repository 状态、名称或 identity 冲突；
 - `422`：检查 query、payload shape 或当前 contract；
