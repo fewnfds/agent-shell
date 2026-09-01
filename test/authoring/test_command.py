@@ -15,9 +15,16 @@ from agent_shell.command import CommandError, run_command
 from agent_shell.command_packages import CommandPackageRuntime
 from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.state import AgentShellState
-from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespace
-from agent_shell.workflow import admit_workflow_document, compile_workflow
+from agent_shell.runtime.workflow_lifecycle import (
+    WorkflowLifecycleService,
+    lifecycle_invocations_namespace,
+)
+from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.workflow import admit_workflow_document
+from agent_shell.workflow.compiler import compile_workflow
+from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
 
 
@@ -33,6 +40,14 @@ def _runtime(**kwargs) -> Runtime[WorkflowRuntimeContext]:
 class _MiddlewareRuntime:
     async def close(self) -> None:
         return None
+
+
+class _Diagnostics:
+    def __init__(self) -> None:
+        self.errors: list[dict[str, object]] = []
+
+    def observation_error(self, exc, **kwargs) -> None:
+        self.errors.append({"error": exc, **kwargs})
 
 
 def _built_agent(agent_id: str, content: str) -> BuiltAgent:
@@ -69,6 +84,114 @@ def _built_agent_graph(agent_id: str, graph) -> BuiltAgent:
         subagent_profile_ids={},
         middleware_runtime=_MiddlewareRuntime(),  # type: ignore[arg-type]
     )
+
+
+def _command_monitoring_document() -> WorkflowGraphDocumentV1:
+    admission, document = admit_workflow_document(
+        {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "nodes": [
+                    {
+                        "id": "start",
+                        "type": "start",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                    {
+                        "id": "command",
+                        "type": "command",
+                        "type_version": 1,
+                        "config": {"command_id": COMMAND_ID},
+                    },
+                    {
+                        "id": "branch-agent",
+                        "type": "agent",
+                        "type_version": 1,
+                        "config": {"main_agent_id": AGENT_A},
+                    },
+                    {
+                        "id": "worker",
+                        "type": "agent",
+                        "type_version": 1,
+                        "config": {"main_agent_id": AGENT_B},
+                    },
+                    {
+                        "id": "end",
+                        "type": "end",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "start-command",
+                        "source": "start",
+                        "source_handle": "next",
+                        "target": "command",
+                        "target_handle": "in",
+                    },
+                    {
+                        "id": "command-branch",
+                        "source": "command",
+                        "source_handle": "branch",
+                        "target": "branch-agent",
+                        "target_handle": "in",
+                        "branch_key": "review",
+                    },
+                    {
+                        "id": "command-worker",
+                        "source": "command",
+                        "source_handle": "dispatch",
+                        "target": "worker",
+                        "target_handle": "in",
+                        "dispatch_key": "work",
+                    },
+                    {
+                        "id": "branch-end",
+                        "source": "branch-agent",
+                        "source_handle": "next",
+                        "target": "end",
+                        "target_handle": "in",
+                    },
+                    {
+                        "id": "worker-end",
+                        "source": "worker",
+                        "source_handle": "next",
+                        "target": "end",
+                        "target_handle": "in",
+                    },
+                ],
+            },
+            "layout": {},
+        }
+    )
+    assert admission.valid is True
+    assert document is not None
+    return document
+
+
+async def _create_monitored_run(
+    service: WorkflowLifecycleService,
+    document: WorkflowGraphDocumentV1,
+    *,
+    run_id: str,
+) -> str:
+    lifecycle_id = await service.create(
+        [{"role": "user", "content": "run the Command Node"}],
+        request_id=f"request-{run_id}",
+        run_id=run_id,
+        checkpoint_thread_id=None,
+        workflow_id=f"workflow-{run_id}",
+        workflow_name="Command monitoring test",
+        workflow_document=document,
+        monitoring_capture_enabled=True,
+    )
+    assert service.start_run(run_id)
+    return lifecycle_id
+
+
 def test_command_receives_complete_values_and_converts_state_mutation() -> None:
     async def command(state, runtime):
         state.setdefault("shared_vars", {})["workflow_id"] = runtime.context.workflow_id
@@ -325,6 +448,215 @@ def test_compiler_commits_update_and_ends_at_command_with_zero_targets() -> None
     )
 
     assert result["shared_vars"] == {"launched": True}
+
+
+def test_command_observation_persists_external_result(tmp_path: Path) -> None:
+    async def scenario() -> tuple[dict[str, Any], list[dict[str, object]]]:
+        document = _command_monitoring_document()
+        service = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "agent-shell.sqlite3"),
+            store_database=SQLiteFile(tmp_path / "workflow-store.sqlite3"),
+        )
+        await service.start()
+        try:
+            lifecycle_id = await _create_monitored_run(
+                service,
+                document,
+                run_id="command-success",
+            )
+
+            async def command(state, runtime):
+                return {
+                    "activate": ["review"],
+                    "dispatch": [
+                        {
+                            "task_id": "work:1",
+                            "dispatch_key": "work",
+                            "payload": {"item_id": 42},
+                        }
+                    ],
+                    "update": {"shared_vars": {"routed": True}},
+                }
+
+            graph = compile_workflow(
+                document,
+                node_agents={
+                    "branch-agent": _built_agent(AGENT_A, "reviewed"),
+                    "worker": _built_agent(AGENT_B, "worked"),
+                },
+                commands={"command": command},
+                store=service.store,
+                lifecycle_service=service,
+            )
+            result = await graph.ainvoke(
+                {"shared_vars": {}, "agent_invocations": {}, "files": {}},
+                context=WorkflowRuntimeContext(
+                    lifecycle_id=lifecycle_id,
+                    workflow_run_id="command-success",
+                    workflow_id="workflow-command-success",
+                ),
+            )
+            return result, service.command_observations(
+                lifecycle_id,
+                run_id="command-success",
+            )
+        finally:
+            await service.close()
+
+    result, observations = asyncio.run(scenario())
+    assert result["shared_vars"] == {"routed": True}
+    assert [item["phase"] for item in observations] == ["started", "completed"]
+    assert observations[0]["payload"] == {}
+    assert observations[1]["payload"] == {
+        "activate": ["review"],
+        "dispatch": [
+            {
+                "task_id": "work:1",
+                "dispatch_key": "work",
+                "payload": {"item_id": 42},
+            }
+        ],
+        "update": {"shared_vars": {"routed": True}},
+    }
+
+
+def test_command_observation_persists_only_safe_error_code(tmp_path: Path) -> None:
+    async def scenario() -> tuple[AgentRuntimeError, list[dict[str, object]]]:
+        document = _command_monitoring_document()
+        service = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "agent-shell.sqlite3"),
+            store_database=SQLiteFile(tmp_path / "workflow-store.sqlite3"),
+        )
+        await service.start()
+        try:
+            lifecycle_id = await _create_monitored_run(
+                service,
+                document,
+                run_id="command-failure",
+            )
+
+            async def command(state, runtime):
+                raise RuntimeError("private command failure details")
+
+            graph = compile_workflow(
+                document,
+                node_agents={
+                    "branch-agent": _built_agent(AGENT_A, "reviewed"),
+                    "worker": _built_agent(AGENT_B, "worked"),
+                },
+                commands={"command": command},
+                store=service.store,
+                lifecycle_service=service,
+            )
+            with pytest.raises(AgentRuntimeError) as raised:
+                await graph.ainvoke(
+                    {"shared_vars": {}, "agent_invocations": {}, "files": {}},
+                    context=WorkflowRuntimeContext(
+                        lifecycle_id=lifecycle_id,
+                        workflow_run_id="command-failure",
+                        workflow_id="workflow-command-failure",
+                    ),
+                )
+            observations = service.command_observations(
+                lifecycle_id,
+                run_id="command-failure",
+            )
+            return raised.value, observations
+        finally:
+            await service.close()
+
+    error, observations = asyncio.run(scenario())
+    assert error.code == "workflow.command_failed"
+    assert [item["phase"] for item in observations] == ["started", "failed"]
+    assert observations[1]["error_code"] == "workflow.command_failed"
+    assert observations[1]["payload"] == {}
+    assert "private command failure details" not in json.dumps(observations)
+
+
+def test_command_observation_writer_failure_is_partition_local(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def scenario() -> tuple[
+        dict[str, Any],
+        dict[str, object],
+        list[dict[str, object]],
+    ]:
+        document = _command_monitoring_document()
+        diagnostics = _Diagnostics()
+        service = WorkflowLifecycleService(
+            SQLiteDatabase(tmp_path / "agent-shell.sqlite3"),
+            store_database=SQLiteFile(tmp_path / "workflow-store.sqlite3"),
+            runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
+        )
+        await service.start()
+        try:
+            lifecycle_id = await _create_monitored_run(
+                service,
+                document,
+                run_id="command-writer-failure",
+            )
+
+            write_attempts = 0
+
+            def fail_observation(_record) -> None:
+                nonlocal write_attempts
+                write_attempts += 1
+                raise OSError("command observation writer unavailable")
+
+            monkeypatch.setattr(
+                service.monitoring,
+                "append_command_observation",
+                fail_observation,
+            )
+
+            async def command(state, runtime):
+                return {
+                    "activate": [],
+                    "dispatch": [],
+                    "update": {"shared_vars": {"command_completed": True}},
+                }
+
+            graph = compile_workflow(
+                document,
+                node_agents={
+                    "branch-agent": _built_agent(AGENT_A, "reviewed"),
+                    "worker": _built_agent(AGENT_B, "worked"),
+                },
+                commands={"command": command},
+                store=service.store,
+                lifecycle_service=service,
+            )
+            result = await graph.ainvoke(
+                {"shared_vars": {}, "agent_invocations": {}, "files": {}},
+                context=WorkflowRuntimeContext(
+                    lifecycle_id=lifecycle_id,
+                    workflow_run_id="command-writer-failure",
+                    workflow_id="workflow-command-writer-failure",
+                ),
+            )
+            second_result = await graph.ainvoke(
+                {"shared_vars": {}, "agent_invocations": {}, "files": {}},
+                context=WorkflowRuntimeContext(
+                    lifecycle_id=lifecycle_id,
+                    workflow_run_id="command-writer-failure",
+                    workflow_id="workflow-command-writer-failure",
+                ),
+            )
+            assert second_result["shared_vars"] == {"command_completed": True}
+            assert write_attempts == 1
+            return (
+                result,
+                service.monitoring.status("command-writer-failure") or {},
+                diagnostics.errors,
+            )
+        finally:
+            await service.close()
+
+    result, status, errors = asyncio.run(scenario())
+    assert result["shared_vars"] == {"command_completed": True}
+    assert status["command"] == "partial"
+    assert errors[0]["code"] == "runtime_command_observation_record_failed"
 
 
 def test_command_validates_dispatch_keys_task_ids_and_json_payloads() -> None:

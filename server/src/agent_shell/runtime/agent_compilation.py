@@ -7,44 +7,17 @@ from typing import Any, Mapping, Protocol
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.capabilities.exception_retry import ExceptionRetryRuntime
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.json_values import json_safe
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 from agent_shell.validation.assembly import ResolvedMcpReference
 
 
-def _debug_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
-    serialized = json_safe(inputs)
-    return serialized if isinstance(serialized, dict) else {}
-
-
-def enable_deepagents_trace_inputs(
-    middleware: list[Any] | tuple[Any, ...],
-    *,
-    debug_capture: bool,
-) -> None:
-    """Restore hook inputs for Deep Agents middleware in one compiled Run."""
-
-    if not debug_capture:
-        return
-    from langchain.agents.middleware import TracePolicy
-
-    for item in middleware:
-        if type(item).__module__.startswith("deepagents.middleware"):
-            item.trace_policy = TracePolicy(process_inputs=_debug_trace_inputs)
-
-
-def materialize_patch_tool_calls_middleware(*, debug_capture: bool) -> Any:
-    """Build the Deep Agents default replacement with Run-local tracing."""
+def materialize_patch_tool_calls_middleware() -> Any:
+    """Build the Deep Agents default middleware with its official trace policy."""
 
     from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 
-    middleware = PatchToolCallsMiddleware()
-    enable_deepagents_trace_inputs(
-        (middleware,),
-        debug_capture=debug_capture,
-    )
-    return middleware
+    return PatchToolCallsMiddleware()
 
 
 @dataclass(frozen=True, slots=True)

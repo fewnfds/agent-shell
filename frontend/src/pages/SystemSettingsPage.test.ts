@@ -41,7 +41,7 @@ const apiServerSettings: ApiServerSettings = {
 }
 
 const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  workflow_debug_capture_enabled: false,
+  runtime_monitoring_retention_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -58,7 +58,7 @@ const runtimePolicySettings: RuntimePolicySettings = {
   minimums: Object.fromEntries(
     Object.keys(runtimePolicyValues).map((key) => [
       key,
-      key === 'workflow_debug_capture_enabled' ? false : 1,
+      key === 'runtime_monitoring_retention_lifecycles' ? 0 : 1,
     ]),
   ) as RuntimePolicySettings['minimums'],
   configurable: true,
@@ -97,7 +97,7 @@ describe('SystemSettingsPage', () => {
     expect(wrapper.get('#configuration-validation-debounce-unit').text()).toBe('ms')
 
     await interval.setValue('500')
-    await wrapper.get('#workflow-debug-capture-enabled').setValue(true)
+    await wrapper.get('#runtime-policy-runtime_monitoring_retention_lifecycles').setValue('0')
     await wrapper.get('#runtime-policy-chat_completion_body_bytes').setValue('32')
     await wrapper.get('[data-testid="system-card-validation"]').trigger('submit')
     await flushPromises()
@@ -110,7 +110,7 @@ describe('SystemSettingsPage', () => {
     expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
       chat_completion_body_bytes: 32 * 1024 * 1024,
       provider_timeout_seconds: 600,
-      workflow_debug_capture_enabled: true,
+      runtime_monitoring_retention_lifecycles: 0,
     }))
     wrapper.unmount()
   })
@@ -148,7 +148,7 @@ describe('SystemSettingsPage', () => {
       'debounce_ms',
       'chat_completion_body_bytes',
       'provider_timeout_seconds',
-      'workflow_debug_capture_enabled',
+      'runtime_monitoring_retention_lifecycles',
       'cors_origins',
       'trusted_proxy_cidrs',
     ]) {

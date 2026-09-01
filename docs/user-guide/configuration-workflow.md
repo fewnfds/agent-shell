@@ -26,10 +26,11 @@ Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内�
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 `operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow。child 的公开事件在 response 开放期间进入 Lifecycle scheduler；需要跨 Run 持久交付的业务结果仍由调用方通过 Store 或 mapped Filesystem reference 显式读取和编排。
 
-【系统 / 运行历史】页面按一次 top-level request 列出 Lifecycle，并展示 root/background Run parent/child relationship、结构 Timeline、Checkpoint/Store 摘要、关联诊断以及 single Run/Lifecycle 完整运行详情 ZIP 下载。页面本身不展开运行正文；下载包固定汇总当前已经持久化的 input、Agent invocation artifact、background task、Run/Event、Lifecycle Store 记录和诊断附件，并只为 `checkpoint_thread_id` 非空的 Run 汇总 Checkpoint State。
-Lifecycle 的 messages、task records、resolved mapping records，以及已启用 Run 的 checkpoint 默认持续保留，直到用户显式删除；删除时清理全部非空 Checkpoint Thread 和受管的生命周期动态目录。parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，删除返回冲突；
-parent Run 终止且 background task 经传播、Workflow 代码、Tool/Middleware 或管理操作进入终态后，Lifecycle 可以删除。parent Workflow Graph 正常到达 End 后，background task 与 Lifecycle 按各自 lifecycle 继续保留；parent 取消或失败时，默认取消仍启用【父运行取消或失败时终止】的直接 child。
-删除开始后 Lifecycle 进入 `deleting` 并冻结 background Run 创建；清理失败时保留该状态，可由用户再次执行删除继续清场。
+【系统 / 运行监控】当前按一次 top-level request 列出 Lifecycle catalog，并显示 parent Workflow、状态、Run 数量、失败数、usage 和采集 profile。Lifecycle/Run 详情、Graph、事件和归档 read model 当前返回结构化 503；页面只提供目录、搜索、分页与删除管理。
+
+系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。root Run、全部 child Run 和全部 background task terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留普通/generated files、mapped directory、managed dynamic directory 与 diagnostics。
+
+parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，显式删除返回冲突。默认删除保留受管动态目录；只有 management API 的明确选项会验证并删除该目录。parent Workflow Graph 正常到达 End 后，background task 按自身 lifecycle 继续运行；parent 取消或失败时，默认取消仍启用【父运行取消或失败时终止】的直接 child。清理开始后 Lifecycle 进入 `deleting|purge_pending` 并冻结 background Run 创建；清理失败时保留状态供后续重试。
 
 【编辑 Flow】进入独立全屏 Vue Flow 页面。左右各有一条始终保留的工具图标轨；点击 active 图标只收起功能 panel，图标轨不会消失。左侧提供组件库、元素追踪和问题：组件库提供当前角色允许的 Agent 和 Command，可以点击或拖到画布；元素追踪列出当前全部 Node，
 点击条目会保持当前缩放、把 Node 平滑移到视口中心并打开右侧属性；存在问题时问题图标显示红色数量角标，点击后在左侧列出当前问题。右侧属性使用紧凑的 `key : value/control` 行，编辑所选 Node 或 Edge；空白点击会清除选择并收起属性，平移、缩放和拖动不会触发收起，重新打开空选择属性时显示 Workflow 名称和 State contract。

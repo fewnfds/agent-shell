@@ -242,20 +242,19 @@ launcher 正常到达 End 不触发 child 取消。
 
 Management API 只负责 observability 和 explicit cleanup，不提供从外部任意启动 background task 的 endpoint。
 
-常用 endpoint：
+当前可用 endpoint：
 
 - `GET /api/workflow-lifecycles` 分页列出 Lifecycle 和摘要；
-- `GET /api/workflow-lifecycles/{lifecycle_id}` 读取一个 Lifecycle 摘要；
-- `GET /api/workflow-lifecycles/{lifecycle_id}/events` 读取结构事件；
-- `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}` 读取 Run 摘要；
-- `GET /api/workflow-lifecycles/{lifecycle_id}/download` 下载 Lifecycle 完整运行详情 ZIP；
-- `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download` 下载单个 Run 详情 ZIP；
 - `DELETE /api/workflow-lifecycles/{lifecycle_id}` 显式清理一个 terminal Lifecycle；
 - `POST /api/workflow-lifecycles/delete` 按 query 清理匹配的 terminal Lifecycle。
 
-存在 active Run 或 task 时，单项删除返回 409。Lifecycle 没有定时 retention，正常 End 不自动删除。
+Lifecycle detail、events、single Run detail、Lifecycle download 和 single Run download endpoint 当前返回 `503 runtime_monitoring_read_model_unavailable`。监控 read model 完成前，不把底层持久化事实直接拼成 Timeline 或运行归档。
 
-Lifecycle summary 不返回 messages、Provider secret 或 resolved host path。download 属于 management-only 运行详情，按安全与部署边界处理。
+`runtime_monitoring_retention_lifecycles` 默认保留最近 `20` 个完整终态 Lifecycle；active Lifecycle 不占保留数量。值为 `0` 时关闭新 Lifecycle 的监控采集，并在其完整终态后清理运行控制数据。降低设置会立即收敛完整终态目录，提高设置不会恢复已经删除的数据。
+
+存在 active Run 或 task 时，单项删除返回 409。自动 retention 和管理台删除保留普通文件、generated/mapped directory 正文、受管动态目录和日志中心诊断。Management API 只有在调用方显式提交 `delete_dynamic_directories=true` 时才验证并删除对应的 Shell-created Lifecycle 动态目录。
+
+Lifecycle catalog 不返回 messages、Provider secret 或 resolved host path。后续运行归档仍属于 management-only 敏感数据，开放后按安全与部署边界处理。
 
 详细观测说明见[Runtime observability](../runtime-observability.md)。
 

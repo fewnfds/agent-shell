@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, TYPE_CHECKING
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages.utils import convert_to_openai_messages
@@ -23,6 +24,9 @@ from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespa
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
+
+if TYPE_CHECKING:
+    from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.workflow.validation import admit_workflow_document
 from agent_shell.workflow_contracts import WorkflowRole
 
@@ -115,7 +119,15 @@ def _make_agent_node(*, node_id: str, built_agent: Any):
             "messages": convert_to_openai_messages(result["messages"]),
         }
         if workflow_task:
-            invocation_artifact["workflow_task"] = deepcopy(workflow_task)
+            invocation_artifact["workflow_task"] = {
+                key: workflow_task[key]
+                for key in (
+                    "command_node_id",
+                    "command_invocation_id",
+                    "task_id",
+                    "dispatch_key",
+                )
+            }
         await runtime.store.aput(
             lifecycle_invocations_namespace(
                 runtime.context.lifecycle_id,
@@ -175,6 +187,7 @@ def _make_command_node(
     command: CommandCallable,
     command_targets: Mapping[str, str],
     dispatch_targets: Mapping[str, str],
+    lifecycle_service: WorkflowLifecycleService | None,
 ):
     async def call_command(
         state: WorkflowState,
@@ -187,6 +200,31 @@ def _make_command_node(
                 node_invocation_id=invocation_id,
             )
         )
+        monitoring_failed = False
+
+        def observe(phase: str, *, payload=None, error_code: str = "") -> None:
+            nonlocal monitoring_failed
+            if lifecycle_service is None or monitoring_failed:
+                return
+            try:
+                lifecycle_service.append_command_observation(
+                    {
+                        "lifecycle_id": runtime.context.lifecycle_id,
+                        "run_id": runtime.context.workflow_run_id,
+                        "invocation_id": invocation_id,
+                        "workflow_node_id": node_id,
+                        "occurred_at": datetime.now(timezone.utc).isoformat(
+                            timespec="milliseconds"
+                        ),
+                        "phase": phase,
+                        "error_code": error_code,
+                        "payload": payload or {},
+                    }
+                )
+            except Exception:
+                monitoring_failed = True
+
+        observe("started")
         try:
             result = await run_command(
                 command,
@@ -196,6 +234,7 @@ def _make_command_node(
                 allowed_dispatch_keys=dispatch_targets,
             )
         except CommandError as exc:
+            observe("failed", error_code="workflow.command_failed")
             raise AgentRuntimeError(
                 "workflow.command_failed",
                 "The Command Node script failed.",
@@ -222,6 +261,14 @@ def _make_command_node(
         branch_targets = [
             command_targets[branch] for branch in result.activate
         ]
+        observe(
+            "completed",
+            payload={
+                "activate": list(result.activate),
+                "dispatch": [item.model_dump(mode="json") for item in result.dispatch],
+                "update": deepcopy(result.update),
+            },
+        )
         return Command(update=result.update, goto=[*branch_targets, *sends])
 
     return call_command
@@ -235,6 +282,7 @@ def compile_workflow(
     workflow_role: WorkflowRole | None = None,
     checkpointer: Any | None = None,
     store: BaseStore | None = None,
+    lifecycle_service: WorkflowLifecycleService | None = None,
 ) -> Any:
     """Compile catalog-declared canvas nodes into an official StateGraph."""
 
@@ -314,6 +362,7 @@ def compile_workflow(
                     command=command,
                     command_targets=targets,
                     dispatch_targets=dispatches,
+                    lifecycle_service=lifecycle_service,
                 ),
                 destinations=tuple(
                     dict.fromkeys((*targets.values(), *dispatches.values()))

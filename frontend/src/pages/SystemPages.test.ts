@@ -62,7 +62,7 @@ function validationSettingsApi() {
 }
 
 const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  workflow_debug_capture_enabled: false,
+  runtime_monitoring_retention_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -81,7 +81,7 @@ function runtimePolicyApi() {
     minimums: Object.fromEntries(
       Object.keys(runtimePolicyValues).map((key) => [
         key,
-        key === 'workflow_debug_capture_enabled' ? false : 1,
+        key === 'runtime_monitoring_retention_lifecycles' ? 0 : 1,
       ]),
     ) as RuntimePolicySettings['minimums'],
     configurable: true,

@@ -43,4 +43,4 @@
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
 | Command Dispatch | Command 根据 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node |
 | Agent Event Output | Main Agent 拥有的 v3 运行事件到响应文本投影规则；Workflow 按稳定 Node/Agent source identity 选择规则 |
-| Workflow Lifecycle / 运行历史 | 系统区域 Workflow Lifecycle 下的 Run、结构事件、可选 Checkpoint/Store 摘要与关联诊断；只服务管理端 Debug，不提供 Resume |
+| Workflow Lifecycle / 运行监控 | 一次 top-level request 及其 root/background Workflow Run 的产品范围；当前持久化 Registry、冻结 Graph、实际 ProtocolEvent、Model/Command facts 和可选 Checkpoint/Store，并按完整终态数量保留；不提供 Resume |

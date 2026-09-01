@@ -5,6 +5,7 @@ import asyncio
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.errors import AgentRuntimeError
+from support import runtime_workflow_document
 
 from .support import *
 
@@ -101,6 +102,8 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                 ),
                 workflow_id="parent-workflow",
                 workflow_name="Parent Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
             )
             context = WorkflowRuntimeContext.for_run(
                 identity=WorkflowRunIdentity(
@@ -139,7 +142,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
                 if terminal.runtime_status not in {"pending", "running"}:
                     break
                 await asyncio.sleep(0.01)
-            run = client.app.state.workflow_lifecycle.history.get_run(
+            run = client.app.state.workflow_lifecycle.run(
                 handle.child_run_id
             )
             checkpoint_count = (

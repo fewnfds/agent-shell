@@ -37,10 +37,8 @@ from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
-from agent_shell.runtime.workflow_diagnostic_exports import (
-    WorkflowDiagnosticExportService,
-)
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
 from agent_shell.settings import (
     Settings,
     SettingsError,
@@ -251,15 +249,17 @@ def create_app(
         store=runtime_diagnostic_store,
         details=runtime_diagnostic_details,
     )
-    workflow_diagnostic_exports = WorkflowDiagnosticExportService(
-        workflow_lifecycle,
-        workflow_checkpoints,
-        runtime_diagnostics,
-        settings.resolved_runtime_dir() / "tmp",
-    )
+    workflow_lifecycle.set_runtime_diagnostics(runtime_diagnostics)
     background_tasks = BackgroundTaskManager(
         workflow_lifecycle,
         runtime_diagnostics=runtime_diagnostics,
+    )
+    runtime_cleanup = RuntimeCleanupCoordinator(
+        workflow_lifecycle,
+        background_tasks,
+        workflow_checkpoints,
+        runtime_policy,
+        runtime_diagnostics,
     )
     event_logger.set_failure_reporter(
         lambda exc, request_id: runtime_diagnostics.observation_error(
@@ -339,6 +339,7 @@ def create_app(
     async def lifespan(_: FastAPI):
         await workflow_lifecycle.start()
         await background_tasks.start()
+        await runtime_cleanup.startup_recover()
         try:
             event_logger.emit(
                 "security_configuration_loaded",
@@ -638,10 +639,7 @@ def create_app(
     app.include_router(
         build_workflow_lifecycle_router(
             workflow_lifecycle,
-            background_tasks,
-            workflow_checkpoints,
-            runtime_diagnostics,
-            workflow_diagnostic_exports,
+            runtime_cleanup,
         )
     )
     app.include_router(
@@ -663,7 +661,13 @@ def create_app(
     )
     app.include_router(build_file_manager_router(file_manager))
     app.include_router(build_provider_integrations_router())
-    app.include_router(build_system_settings_router(system_settings, runtime_policy))
+    app.include_router(
+        build_system_settings_router(
+            system_settings,
+            runtime_policy,
+            on_runtime_policy_updated=runtime_cleanup.enforce_retention,
+        )
+    )
     app.include_router(
         build_api_server_router(
             api_server_store,

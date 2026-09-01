@@ -61,7 +61,7 @@ class SystemSettingsUpdate(BaseModel):
 class RuntimePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    workflow_debug_capture_enabled: bool = Field(strict=True)
+    runtime_monitoring_retention_lifecycles: int = Field(strict=True, ge=0)
     chat_completion_body_bytes: int = Field(strict=True, ge=1)
     content_blocks: int = Field(strict=True, ge=1)
     decoded_block_bytes: int = Field(strict=True, ge=1)
@@ -91,6 +91,8 @@ def _with_active_url(payload: dict, request: Request) -> dict:
 def build_system_settings_router(
     settings: SystemSettingsService,
     runtime_policy: RuntimePolicyStore,
+    *,
+    on_runtime_policy_updated=None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -121,7 +123,7 @@ def build_system_settings_router(
     @router.put("/api/system/runtime-policy")
     async def update_runtime_policy(payload: RuntimePolicyUpdate) -> dict[str, object]:
         try:
-            return runtime_policy.update(payload.model_dump())
+            result = runtime_policy.update(payload.model_dump())
         except ValueError as exc:
             raise management_error(
                 422,
@@ -129,5 +131,8 @@ def build_system_settings_router(
                 message_key="errors.systemSettingsInvalid",
                 message=str(exc),
             ) from exc
+        if on_runtime_policy_updated is not None:
+            await on_runtime_policy_updated()
+        return result
 
     return router

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 from weakref import WeakValueDictionary
 
@@ -15,16 +15,27 @@ from langgraph.store.base import PutOp
 from langgraph.store.sqlite import AsyncSqliteStore
 
 from agent_shell.contracts import FilesystemBlock
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.input_messages import client_messages_sha
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 from agent_shell.storage.owned_paths import resolve_data_root_relative_path
-from agent_shell.storage.workflow_lifecycles import WorkflowLifecycleStore
-from agent_shell.storage.workflow_run_history import WorkflowRunHistoryStore
+from agent_shell.storage.runtime_managed_directories import RuntimeManagedDirectoryStore
+from agent_shell.storage.runtime_monitoring import RuntimeMonitoringStore
+from agent_shell.storage.runtime_registry import RuntimeRegistryStore
+from agent_shell.workflow.catalog import node_type_spec
+from agent_shell.workflow.contracts import (
+    WorkflowGraphDocumentV1,
+    workflow_document_sha256,
+)
 
 
 LIFECYCLE_NAMESPACE_ROOT = "workflow-lifecycle"
 LIFECYCLE_INPUT_KEY = "request"
 LIFECYCLE_FILESYSTEM_RECORD_VERSION = 1
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def lifecycle_input_namespace(lifecycle_id: str) -> tuple[str, str, str]:
@@ -56,8 +67,12 @@ def lifecycle_filesystem_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "filesystem")
 
 
+class RuntimeCleanupHook(Protocol):
+    async def lifecycle_changed(self, lifecycle_id: str) -> None: ...
+
+
 class WorkflowLifecycleService:
-    """Own cross-run Lifecycle data and authoritative parent Run status."""
+    """Own official Lifecycle Store data and application runtime persistence."""
 
     def __init__(
         self,
@@ -65,6 +80,7 @@ class WorkflowLifecycleService:
         *,
         store_database: SQLiteFile,
         data_root: Path | None = None,
+        runtime_diagnostics: RuntimeDiagnostics | None = None,
     ) -> None:
         if database.path.resolve() == store_database.path.resolve():
             raise ValueError(
@@ -72,8 +88,10 @@ class WorkflowLifecycleService:
             )
         self._database_path = database.path
         self._store_database_path = store_database.path
-        self._index = WorkflowLifecycleStore(database)
-        self._history = WorkflowRunHistoryStore(database)
+        self._registry = RuntimeRegistryStore(database)
+        self._monitoring = RuntimeMonitoringStore(database)
+        self._managed_directories = RuntimeManagedDirectoryStore(database)
+        self._runtime_diagnostics = runtime_diagnostics
         self._data_root = (
             data_root.resolve()
             if data_root is not None
@@ -81,6 +99,7 @@ class WorkflowLifecycleService:
         )
         self._context: AbstractAsyncContextManager[AsyncSqliteStore] | None = None
         self._store: AsyncSqliteStore | None = None
+        self._cleanup_hook: RuntimeCleanupHook | None = None
         self._filesystem_lock = asyncio.Lock()
         self._mutation_locks: WeakValueDictionary[str, asyncio.Lock] = (
             WeakValueDictionary()
@@ -92,6 +111,24 @@ class WorkflowLifecycleService:
             raise RuntimeError("the Workflow lifecycle Store is not started")
         return self._store
 
+    @property
+    def registry(self) -> RuntimeRegistryStore:
+        return self._registry
+
+    @property
+    def monitoring(self) -> RuntimeMonitoringStore:
+        return self._monitoring
+
+    @property
+    def managed_directories(self) -> RuntimeManagedDirectoryStore:
+        return self._managed_directories
+
+    def set_cleanup_hook(self, hook: RuntimeCleanupHook) -> None:
+        self._cleanup_hook = hook
+
+    def set_runtime_diagnostics(self, diagnostics: RuntimeDiagnostics) -> None:
+        self._runtime_diagnostics = diagnostics
+
     async def start(self) -> None:
         context = AsyncSqliteStore.from_conn_string(str(self._store_database_path))
         store: AsyncSqliteStore | None = None
@@ -99,7 +136,6 @@ class WorkflowLifecycleService:
             store = await context.__aenter__()
             await store.setup()
             self._store = store
-            await self._cancel_interrupted_parent_runs()
         except BaseException as exc:
             self._store = None
             if store is not None:
@@ -107,16 +143,190 @@ class WorkflowLifecycleService:
             raise
         self._context = context
 
-    async def _cancel_interrupted_parent_runs(self) -> int:
-        finished_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        self._history.interrupt_active(finished_at=finished_at)
-        return self._index.cancel_running(finished_at=finished_at)
-
     async def close(self) -> None:
         if self._context is not None:
             await self._context.__aexit__(None, None, None)
         self._context = None
         self._store = None
+
+    def _diagnostic_context(
+        self,
+        *,
+        lifecycle_id: str,
+        run_id: str,
+        workflow_id: str = "",
+        workflow_name: str = "",
+    ) -> RuntimeDiagnosticContext:
+        return RuntimeDiagnosticContext(
+            lifecycle_id=lifecycle_id,
+            workflow_run_id=run_id,
+            subject_kind="workflow",
+            subject_id=workflow_id,
+            subject_name=workflow_name,
+        )
+
+    def _observation_error(
+        self,
+        exc: BaseException,
+        *,
+        code: str,
+        lifecycle_id: str,
+        run_id: str,
+        workflow_id: str = "",
+        workflow_name: str = "",
+    ) -> None:
+        if self._runtime_diagnostics is None:
+            return
+        self._runtime_diagnostics.observation_error(
+            exc,
+            code=code,
+            component="observability",
+            context=self._diagnostic_context(
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+            ),
+        )
+
+    @staticmethod
+    def _graph_artifact(
+        document: WorkflowGraphDocumentV1,
+        *,
+        lifecycle_id: str,
+        run_id: str,
+        workflow_id: str,
+        workflow_name: str,
+        created_at: str,
+    ) -> dict[str, object]:
+        nodes = {node.id: node for node in document.definition.nodes}
+        node_sources: list[dict[str, object]] = []
+        for node in document.definition.nodes:
+            source_id = ""
+            if node.type == "agent":
+                source_id = str(node.config.get("main_agent_id") or "")
+            elif node.type == "command":
+                source_id = str(node.config.get("command_id") or "")
+            node_sources.append(
+                {
+                    "workflow_node_id": node.id,
+                    "node_type": node.type,
+                    "source_id": source_id,
+                }
+            )
+        edge_classes: list[dict[str, object]] = []
+        for edge in document.definition.edges:
+            source = nodes[edge.source]
+            spec = node_type_spec(source.type, source.type_version)
+            edge_class = "unknown"
+            if spec is not None:
+                handle = next(
+                    (
+                        item
+                        for item in spec.output_handles
+                        if item.id == edge.source_handle
+                    ),
+                    None,
+                )
+                if handle is not None:
+                    edge_class = handle.edge_type
+            edge_classes.append(
+                {
+                    "edge_id": edge.id,
+                    "source": edge.source,
+                    "target": edge.target,
+                    "edge_class": edge_class,
+                    "branch_key": edge.branch_key,
+                    "dispatch_key": edge.dispatch_key,
+                }
+            )
+        return {
+            "lifecycle_id": lifecycle_id,
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "workflow_name": workflow_name,
+            "document_sha": workflow_document_sha256(document),
+            "document": document.model_dump(mode="json"),
+            "node_sources": node_sources,
+            "edge_classes": edge_classes,
+            "created_at": created_at,
+        }
+
+    def _initialize_monitoring(
+        self,
+        *,
+        record: dict[str, object],
+        document: WorkflowGraphDocumentV1,
+    ) -> None:
+        lifecycle_id = str(record["lifecycle_id"])
+        run_id = str(record["run_id"])
+        workflow_id = str(record.get("workflow_id") or record.get("target_id") or "")
+        workflow_name = str(
+            record.get("workflow_name") or record.get("target_name") or ""
+        )
+        created_at = str(record["created_at"])
+        node_types = {node.type for node in document.definition.nodes}
+        try:
+            self._monitoring.initialize_run(
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                has_model_nodes="agent" in node_types,
+                has_command_nodes="command" in node_types,
+                created_at=created_at,
+            )
+        except Exception as exc:
+            self._observation_error(
+                exc,
+                code="runtime_monitoring_registration_failed",
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+            )
+            return
+        try:
+            self._monitoring.save_graph(
+                self._graph_artifact(
+                    document,
+                    lifecycle_id=lifecycle_id,
+                    run_id=run_id,
+                    workflow_id=workflow_id,
+                    workflow_name=workflow_name,
+                    created_at=created_at,
+                )
+            )
+        except Exception as exc:
+            try:
+                self._monitoring.mark_partition(run_id, "graph", "partial")
+            except Exception:
+                pass
+            self._observation_error(
+                exc,
+                code="runtime_graph_record_failed",
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+            )
+        try:
+            self._monitoring.append_transition(
+                {
+                    "lifecycle_id": lifecycle_id,
+                    "run_id": run_id,
+                    "occurred_at": created_at,
+                    "phase": "created",
+                    "status": "pending",
+                }
+            )
+        except Exception as exc:
+            self._observation_error(
+                exc,
+                code="runtime_run_transition_record_failed",
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+            )
 
     async def create(
         self,
@@ -127,9 +337,12 @@ class WorkflowLifecycleService:
         checkpoint_thread_id: str | None,
         workflow_id: str,
         workflow_name: str,
+        workflow_document: WorkflowGraphDocumentV1,
+        monitoring_capture_enabled: bool,
     ) -> str:
         lifecycle_id = str(uuid4())
-        created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        created_at = _now()
+        messages_sha = client_messages_sha(messages)
         metadata = {
             "request_id": request_id,
             "parent_run_id": run_id,
@@ -137,110 +350,93 @@ class WorkflowLifecycleService:
             "workflow_name": workflow_name,
             "created_at": created_at,
         }
-        record = {
-            "lifecycle_id": lifecycle_id,
-            **metadata,
-            "lifecycle_status": "active",
-            "parent_status": "running",
-            "messages_sha": client_messages_sha(messages),
-            "message_count": len(messages),
-        }
         await self.store.aput(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
             {
                 "messages": deepcopy(messages),
-                "messages_sha": client_messages_sha(messages),
+                "messages_sha": messages_sha,
                 "metadata": metadata,
             },
             index=False,
         )
+        root_run = {
+            "run_id": run_id,
+            "lifecycle_id": lifecycle_id,
+            "request_id": request_id,
+            "checkpoint_thread_id": checkpoint_thread_id,
+            "workflow_id": workflow_id,
+            "workflow_name": workflow_name,
+            "run_depth": 0,
+            "created_at": created_at,
+        }
         try:
-            self._index.create(record)
+            self._registry.create_lifecycle(
+                {
+                    "lifecycle_id": lifecycle_id,
+                    "request_id": request_id,
+                    "root_run_id": run_id,
+                    "workflow_id": workflow_id,
+                    "workflow_name": workflow_name,
+                    "created_at": created_at,
+                    "monitoring_capture_enabled": monitoring_capture_enabled,
+                    "messages_sha": messages_sha,
+                    "message_count": len(messages),
+                },
+                root_run,
+            )
         except BaseException:
             await self.store.adelete(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
             )
             raise
-        try:
-            self._history.create_run(
-                {
-                    "run_id": run_id,
-                    "lifecycle_id": lifecycle_id,
-                    "request_id": request_id,
-                    "checkpoint_thread_id": checkpoint_thread_id,
-                    "run_kind": "workflow",
-                    "target_id": workflow_id,
-                    "target_name": workflow_name,
-                    "run_depth": 0,
-                    "created_at": created_at,
-                },
-                {
-                    "lifecycle_id": lifecycle_id,
-                    "run_id": run_id,
-                    "occurred_at": created_at,
-                    "event_type": "run",
-                    "phase": "created",
-                    "span_id": run_id,
-                    "subject_kind": "run",
-                    "subject_id": run_id,
-                    "subject_name": workflow_name,
-                    "status": "pending",
-                },
-            )
-        except Exception:
-            # Run history is an observation surface. The lifecycle itself remains
-            # usable when its diagnostic index is temporarily unavailable.
-            pass
+        if monitoring_capture_enabled:
+            self._initialize_monitoring(record=root_run, document=workflow_document)
         return lifecycle_id
 
-    @property
-    def history(self) -> WorkflowRunHistoryStore:
-        return self._history
+    def register_run(
+        self,
+        record: dict[str, object],
+        *,
+        workflow_document: WorkflowGraphDocumentV1,
+    ) -> None:
+        created_at = str(record.get("created_at") or _now())
+        stored = {**record, "created_at": created_at}
+        lifecycle = self._registry.get_lifecycle(str(record["lifecycle_id"]))
+        if lifecycle is None:
+            raise RuntimeError("the Workflow Lifecycle registry record does not exist")
+        self._registry.create_run(stored)
+        if lifecycle["monitoring_capture_enabled"]:
+            self._initialize_monitoring(record=stored, document=workflow_document)
 
-    def register_run(self, record: dict[str, object]) -> None:
-        existing = self._history.get_run(str(record["run_id"]))
-        if existing is not None:
-            return
-        created_at = str(record.get("created_at") or datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
-        self._history.create_run(
-            {**record, "created_at": created_at},
-            {
-                "lifecycle_id": record["lifecycle_id"],
-                "run_id": record["run_id"],
-                "occurred_at": created_at,
-                "event_type": "run",
-                "phase": "created",
-                "span_id": record["run_id"],
-                "parent_span_id": record.get("parent_run_id"),
-                "subject_kind": "run",
-                "subject_id": record["run_id"],
-                "subject_name": record["target_name"],
-                "status": "pending",
-            },
-        )
-
-    def start_run(self, run_id: str, *, status: str = "running") -> bool:
-        record = self._history.get_run(run_id)
+    def start_run(self, run_id: str) -> bool:
+        record = self._registry.get_run(run_id)
         if record is None:
+            raise RuntimeError("the Workflow Run registry record does not exist")
+        occurred_at = _now()
+        updated = self._registry.start_run(run_id, started_at=occurred_at)
+        if not updated:
             return False
-        occurred_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        return self._history.start_run(
-            run_id,
-            {
-                "lifecycle_id": str(record["lifecycle_id"]),
-                "run_id": run_id,
-                "occurred_at": occurred_at,
-                "event_type": "run",
-                "phase": "started",
-                "span_id": run_id,
-                "parent_span_id": record.get("parent_run_id"),
-                "subject_kind": "run",
-                "subject_id": run_id,
-                "status": status,
-            },
-        )
+        if self._monitoring.status(run_id) is not None:
+            try:
+                self._monitoring.append_transition(
+                    {
+                        "lifecycle_id": record["lifecycle_id"],
+                        "run_id": run_id,
+                        "occurred_at": occurred_at,
+                        "phase": "started",
+                        "status": "running",
+                    }
+                )
+            except Exception as exc:
+                self._observation_error(
+                    exc,
+                    code="runtime_run_transition_record_failed",
+                    lifecycle_id=str(record["lifecycle_id"]),
+                    run_id=run_id,
+                )
+        return True
 
     def finish_run(
         self,
@@ -251,70 +447,198 @@ class WorkflowLifecycleService:
         finish_reason: str = "",
         usage: dict[str, int] | None = None,
     ) -> bool:
-        record = self._history.get_run(run_id)
+        record = self._registry.get_run(run_id)
         if record is None:
-            return False
-        finished_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        phase = "cancelled" if status == "cancelled" else "failed" if status in {"failed", "interrupted"} else "completed"
-        return self._history.finish_run(
+            raise RuntimeError("the Workflow Run registry record does not exist")
+        finished_at = _now()
+        effective_usage = usage or {}
+        updated = self._registry.finish_run(
             run_id,
             status=status,
             finished_at=finished_at,
             finish_reason=finish_reason,
             error_code=error_code,
-            usage=usage or {},
-            event={
-                "lifecycle_id": record["lifecycle_id"],
-                "run_id": run_id,
-                "occurred_at": finished_at,
-                "event_type": "run",
-                "phase": phase,
-                "span_id": run_id,
-                "parent_span_id": record.get("parent_run_id"),
-                "subject_kind": "run",
-                "subject_id": run_id,
-                "subject_name": record["target_name"],
-                "status": status,
-                "error_code": error_code,
-                "usage": usage or {},
-            },
+            usage=effective_usage,
         )
+        if not updated:
+            return False
+        if self._monitoring.status(run_id) is not None:
+            phase = (
+                "cancelled"
+                if status == "cancelled"
+                else "interrupted"
+                if status == "interrupted"
+                else "failed"
+                if status == "failed"
+                else "completed"
+            )
+            try:
+                self._monitoring.append_transition(
+                    {
+                        "lifecycle_id": record["lifecycle_id"],
+                        "run_id": run_id,
+                        "occurred_at": finished_at,
+                        "phase": phase,
+                        "status": status,
+                        "error_code": error_code,
+                        "finish_reason": finish_reason,
+                        "usage": effective_usage,
+                    }
+                )
+            except Exception as exc:
+                self._observation_error(
+                    exc,
+                    code="runtime_run_transition_record_failed",
+                    lifecycle_id=str(record["lifecycle_id"]),
+                    run_id=run_id,
+                )
+            try:
+                self._monitoring.finish_run(
+                    run_id,
+                    interrupted=status == "interrupted",
+                )
+            except Exception as exc:
+                self._observation_error(
+                    exc,
+                    code="runtime_monitoring_finalize_failed",
+                    lifecycle_id=str(record["lifecycle_id"]),
+                    run_id=run_id,
+                )
+        return True
 
-    def append_run_event(self, event: dict[str, object]) -> int:
-        return self._history.append_event(event)
+    async def lifecycle_changed(self, lifecycle_id: str) -> None:
+        if self._cleanup_hook is not None:
+            await self._cleanup_hook.lifecycle_changed(lifecycle_id)
+
+    def interrupt_active_runs(self) -> list[dict[str, object]]:
+        finished_at = _now()
+        interrupted = self._registry.interrupt_active(finished_at=finished_at)
+        for record in interrupted:
+            run_id = str(record["run_id"])
+            if self._monitoring.status(run_id) is None:
+                continue
+            try:
+                self._monitoring.append_transition(
+                    {
+                        "lifecycle_id": record["lifecycle_id"],
+                        "run_id": run_id,
+                        "occurred_at": finished_at,
+                        "phase": "interrupted",
+                        "status": "interrupted",
+                        "error_code": "service_restarted",
+                    }
+                )
+                self._monitoring.finish_run(run_id, interrupted=True)
+            except Exception as exc:
+                self._observation_error(
+                    exc,
+                    code="runtime_monitoring_recovery_failed",
+                    lifecycle_id=str(record["lifecycle_id"]),
+                    run_id=run_id,
+                )
+        return interrupted
+
+    def reconcile_terminal_monitoring(self) -> None:
+        """Mark crash-window monitoring writers partial for terminal Runs."""
+
+        for lifecycle in self._registry.list_all_lifecycles():
+            lifecycle_id = str(lifecycle["lifecycle_id"])
+            for record in self._registry.list_runs(lifecycle_id):
+                if record["status"] in {"pending", "running"}:
+                    continue
+                run_id = str(record["run_id"])
+                status = self._monitoring.status(run_id)
+                if status is None or "capturing" not in {
+                    status["graph"],
+                    status["protocol"],
+                    status["model"],
+                    status["command"],
+                }:
+                    continue
+                try:
+                    self._monitoring.finish_run(run_id, interrupted=True)
+                except Exception as exc:
+                    self._observation_error(
+                        exc,
+                        code="runtime_monitoring_recovery_failed",
+                        lifecycle_id=lifecycle_id,
+                        run_id=run_id,
+                    )
 
     def append_protocol_event(
         self,
         lifecycle_id: str,
         run_id: str,
-        event: dict[str, object],
+        event: Mapping[str, object],
+        origin: Mapping[str, object],
     ) -> None:
-        self._history.append_protocol_event(lifecycle_id, run_id, event)
+        self._monitoring.append_protocol_event(
+            lifecycle_id=lifecycle_id,
+            run_id=run_id,
+            event=event,
+            origin=origin,
+        )
 
-    def append_model_request(self, record: dict[str, object]) -> None:
-        self._history.append_model_request(record)
+    def start_model_request(self, record: dict[str, object]) -> None:
+        self._monitoring.start_model_request(record)
 
-    def mark_run_observation_partial(self, run_id: str) -> None:
-        self._history.mark_partial(run_id)
+    def finish_model_request(
+        self,
+        model_run_id: str,
+        *,
+        status: str,
+        error_code: str = "",
+        usage: Mapping[str, int] | None = None,
+    ) -> bool:
+        return self._monitoring.finish_model_request(
+            model_run_id,
+            status=status,
+            finished_at=_now(),
+            error_code=error_code,
+            usage=usage,
+        )
+
+    def append_command_observation(self, record: dict[str, object]) -> None:
+        lifecycle_id = str(record["lifecycle_id"])
+        run_id = str(record["run_id"])
+        try:
+            status = self._monitoring.status(run_id)
+            if status is None or status["command"] != "capturing":
+                return
+            self._monitoring.append_command_observation(record)
+        except Exception as exc:
+            try:
+                self._monitoring.mark_partition(run_id, "command", "partial")
+            except Exception:
+                pass
+            self._observation_error(
+                exc,
+                code="runtime_command_observation_record_failed",
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+            )
+            raise
+
+    def mark_monitoring_partial(self, run_id: str, partition: str) -> None:
+        self._monitoring.mark_partition(run_id, partition, "partial")
 
     def runs(self, lifecycle_id: str) -> list[dict[str, object]]:
-        return self._history.list_runs(lifecycle_id)
+        return self._registry.list_runs(lifecycle_id)
 
-    def events(
+    def run(self, run_id: str) -> dict[str, object] | None:
+        return self._registry.get_run(run_id)
+
+    def transitions(
         self,
         lifecycle_id: str,
         *,
         run_id: str | None = None,
-        node_invocation_id: str | None = None,
-        event_type: str | None = None,
         after_sequence: int = 0,
         limit: int = 1000,
     ) -> list[dict[str, object]]:
-        return self._history.list_events(
+        return self._monitoring.transitions(
             lifecycle_id,
             run_id=run_id,
-            node_invocation_id=node_invocation_id,
-            event_type=event_type,
             after_sequence=after_sequence,
             limit=limit,
         )
@@ -325,7 +649,7 @@ class WorkflowLifecycleService:
         *,
         run_id: str | None = None,
     ) -> list[dict[str, object]]:
-        return self._history.list_model_requests(lifecycle_id, run_id=run_id)
+        return self._monitoring.model_requests(lifecycle_id, run_id=run_id)
 
     def protocol_events(
         self,
@@ -333,18 +657,59 @@ class WorkflowLifecycleService:
         *,
         run_id: str,
     ) -> list[dict[str, object]]:
-        return self._history.list_protocol_events(lifecycle_id, run_id=run_id)
+        return self._monitoring.protocol_events(lifecycle_id, run_id=run_id)
+
+    def command_observations(
+        self,
+        lifecycle_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self._monitoring.command_observations(lifecycle_id, run_id=run_id)
 
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
-        return self._history.summary(lifecycle_id)
-
-    def event_count(self, lifecycle_id: str, *, run_id: str | None = None) -> int:
-        return self._history.count_events(lifecycle_id, run_id=run_id)
+        summary = self._registry.summary(lifecycle_id)
+        lifecycle = self._registry.get_lifecycle(lifecycle_id)
+        capture_enabled = bool(
+            lifecycle is not None
+            and lifecycle["monitoring_capture_enabled"]
+        )
+        statuses = [
+            self._monitoring.status(str(run["run_id"]))
+            for run in self._registry.list_runs(lifecycle_id)
+        ]
+        captured = [status for status in statuses if status is not None]
+        has_partial = any(
+            "partial" in {
+                status["graph"],
+                status["protocol"],
+                status["model"],
+                status["command"],
+            }
+            for status in captured
+        )
+        has_capturing = any(
+            "capturing" in {
+                status["graph"],
+                status["protocol"],
+                status["model"],
+                status["command"],
+            }
+            for status in captured
+        )
+        if not capture_enabled:
+            observation_status = "not_captured"
+        elif len(captured) != len(statuses) or has_partial:
+            observation_status = "partial"
+        elif has_capturing:
+            observation_status = "capturing"
+        else:
+            observation_status = "available"
+        summary["observation_status"] = observation_status
+        return summary
 
     @asynccontextmanager
     async def exclusive_mutation(self, lifecycle_id: str) -> AsyncIterator[None]:
-        """Serialize mutations for one Lifecycle without blocking unrelated Runs."""
-
         if not lifecycle_id:
             raise ValueError("lifecycle_id must not be empty")
         lock = self._mutation_locks.get(lifecycle_id)
@@ -353,44 +718,6 @@ class WorkflowLifecycleService:
             self._mutation_locks[lifecycle_id] = lock
         async with lock:
             yield
-
-    async def finish_parent(self, lifecycle_id: str, status: str) -> None:
-        if status not in {"completed", "failed", "cancelled"}:
-            raise ValueError("invalid Workflow lifecycle parent status")
-        async with self.exclusive_mutation(lifecycle_id):
-            record = await self.record(lifecycle_id)
-            if record is None:
-                raise RuntimeError("the Workflow lifecycle does not exist")
-            if record.get("lifecycle_status", "active") == "deleting":
-                raise RuntimeError("the Workflow lifecycle is being deleted")
-            updated = self._index.finish_parent(
-                lifecycle_id,
-                status=status,
-                finished_at=datetime.now(timezone.utc).isoformat(
-                    timespec="milliseconds"
-                ),
-            )
-            if not updated:
-                raise RuntimeError("the Workflow lifecycle does not exist")
-
-    async def mark_deleting(self, lifecycle_id: str) -> dict[str, Any]:
-        record = await self.record(lifecycle_id)
-        if record is None:
-            raise RuntimeError("the Workflow lifecycle does not exist")
-        if record.get("lifecycle_status", "active") == "deleting":
-            return record
-        deleting = {
-            **record,
-            "lifecycle_status": "deleting",
-            "deletion_started_at": datetime.now(timezone.utc).isoformat(
-                timespec="milliseconds"
-            ),
-        }
-        self._index.mark_deleting(
-            lifecycle_id,
-            started_at=str(deleting["deletion_started_at"]),
-        )
-        return deleting
 
     async def input_record(self, lifecycle_id: str) -> dict[str, Any] | None:
         item = await self.store.aget(
@@ -406,76 +733,6 @@ class WorkflowLifecycleService:
             raise RuntimeError("the Workflow lifecycle input does not exist")
         return deepcopy(messages)
 
-    async def invocation_artifacts(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        namespace = (
-            lifecycle_invocations_namespace(lifecycle_id, run_id)
-            if run_id is not None
-            else (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "invocations")
-        )
-        items = await self._search_all(namespace)
-        artifacts: list[dict[str, Any]] = []
-        for item in items:
-            value = item.value
-            if not isinstance(value, dict):
-                continue
-            artifacts.append(
-                {
-                    "run_id": str(item.namespace[3])
-                    if len(item.namespace) > 3
-                    else "",
-                    "key": str(item.key),
-                    "artifact": deepcopy(value),
-                }
-            )
-        return artifacts
-
-    async def task_records(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        items = await self._search_all(lifecycle_tasks_namespace(lifecycle_id))
-        records: list[dict[str, Any]] = []
-        for item in items:
-            value = item.value
-            if not isinstance(value, dict):
-                continue
-            if run_id is not None and run_id not in {
-                str(value.get("launcher_run_id", "")),
-                str(value.get("child_run_id", "")),
-            }:
-                continue
-            records.append(deepcopy(value))
-        return records
-
-    async def store_records(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        items = await self._search_all((LIFECYCLE_NAMESPACE_ROOT, lifecycle_id))
-        records: list[dict[str, Any]] = []
-        for item in items:
-            namespace = tuple(str(part) for part in item.namespace)
-            if run_id is not None and len(namespace) >= 4:
-                if namespace[2] == "invocations" and namespace[3] != run_id:
-                    continue
-            records.append(
-                {
-                    "namespace": list(item.namespace),
-                    "key": str(item.key),
-                    "value": deepcopy(item.value),
-                }
-            )
-        return records
-
     async def _search_all(self, namespace: tuple[str, ...]) -> list[Any]:
         items: list[Any] = []
         offset = 0
@@ -486,6 +743,14 @@ class WorkflowLifecycleService:
                 return items
             offset += len(page)
 
+    async def delete_store_records(self, lifecycle_id: str) -> int:
+        items = await self._search_all((LIFECYCLE_NAMESPACE_ROOT, lifecycle_id))
+        if items:
+            await self.store.abatch(
+                [PutOp(tuple(item.namespace), item.key, None) for item in items]
+            )
+        return len(items)
+
     async def list_records_page(
         self,
         *,
@@ -493,9 +758,7 @@ class WorkflowLifecycleService:
         offset: int,
         query: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
-        """Return one SQL-ordered page and its matching row count."""
-
-        records, total = self._index.list_page(
+        records, total = self._registry.list_lifecycles(
             limit=limit,
             offset=offset,
             query=query,
@@ -503,103 +766,47 @@ class WorkflowLifecycleService:
         return [deepcopy(record) for record in records], total
 
     async def matching_record_ids(self, *, query: str = "") -> list[str]:
-        return self._index.list_matching_ids(query=query)
+        return self._registry.list_matching_ids(query=query)
 
     async def record(self, lifecycle_id: str) -> dict[str, Any] | None:
-        record = self._index.get(lifecycle_id)
+        record = self._registry.get_lifecycle(lifecycle_id)
         return deepcopy(record) if record is not None else None
-
-    async def store_item_count(self, lifecycle_id: str) -> int:
-        return len(
-            await self._search_all((LIFECYCLE_NAMESPACE_ROOT, lifecycle_id))
-        )
-
-    async def artifact_summary(self, lifecycle_id: str) -> dict[str, object]:
-        items = await self._search_all((LIFECYCLE_NAMESPACE_ROOT, lifecycle_id))
-        namespaces: dict[str, int] = {}
-        for item in items:
-            parts = tuple(str(part) for part in item.namespace)
-            kind = parts[2] if len(parts) > 2 else "unknown"
-            namespaces[kind] = namespaces.get(kind, 0) + 1
-        return {
-            "item_count": len(items),
-            "namespace_counts": dict(sorted(namespaces.items())),
-            "payloads_included": False,
-        }
 
     async def filesystem_summary(self, lifecycle_id: str) -> dict[str, int]:
         items = await self._search_all(lifecycle_filesystem_namespace(lifecycle_id))
         route_count = 0
-        dynamic_directory_count = 0
         for item in items:
             mappings = item.value.get("mappings")
-            if not isinstance(mappings, list):
-                continue
-            route_count += len(mappings)
-            dynamic_directory_count += sum(
-                1
-                for mapping in mappings
-                if isinstance(mapping, dict)
-                and mapping.get("lifecycle_mode") == "dynamic"
-            )
+            if isinstance(mappings, list):
+                route_count += len(mappings)
+        managed = self._managed_directories.list_for_lifecycle(lifecycle_id)
         return {
             "filesystem_count": len(items),
             "route_count": route_count,
-            "dynamic_directory_count": dynamic_directory_count,
+            "dynamic_directory_count": sum(
+                1 for item in managed if item["released_at"] is None
+            ),
         }
 
-    async def delete(
-        self,
-        lifecycle_id: str,
-        *,
-        delete_dynamic_directories: bool,
-    ) -> bool:
-        record = await self.record(lifecycle_id)
-        if record is None:
-            return False
-        if record.get("lifecycle_status", "active") != "deleting":
-            raise RuntimeError("the Workflow lifecycle is not marked for deletion")
-        lifecycle_items = await self._search_all(
-            (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id)
-        )
-        if delete_dynamic_directories:
-            for item in lifecycle_items:
-                if tuple(item.namespace) != lifecycle_filesystem_namespace(
-                    lifecycle_id
-                ):
-                    continue
-                mappings = item.value.get("mappings")
-                for mapping in mappings if isinstance(mappings, list) else ():
-                    if (
-                        not isinstance(mapping, dict)
-                        or mapping.get("lifecycle_mode") != "dynamic"
-                    ):
-                        continue
-                    target_value = mapping.get("resolved_local_path")
-                    root_value = mapping.get("configured_root")
-                    if not isinstance(target_value, str) or not isinstance(
-                        root_value, str
-                    ):
-                        raise RuntimeError(
-                            "the managed dynamic directory record is invalid"
-                        )
-                    target = Path(target_value).resolve()
-                    root = Path(root_value).resolve()
-                    if (
-                        target.parent != root
-                        or target.name != f"lifecycle-{lifecycle_id}"
-                    ):
-                        raise RuntimeError(
-                            "the managed dynamic directory target is invalid"
-                        )
-                    if target.exists():
-                        await asyncio.to_thread(shutil.rmtree, target)
-        await self.store.abatch(
-            [PutOp(tuple(item.namespace), item.key, None) for item in lifecycle_items]
-        )
-        # Run records/events are owned by this Lifecycle and are deleted with it.
-        self._index.delete(lifecycle_id)
-        return True
+    async def delete_managed_directories(self, lifecycle_id: str) -> int:
+        deleted = 0
+        for record in self._managed_directories.list_for_lifecycle(lifecycle_id):
+            if record["released_at"] is not None:
+                continue
+            target = Path(str(record["resolved_target"])).resolve()
+            root = Path(str(record["configured_root"])).resolve()
+            if target.parent != root or target.name != f"lifecycle-{lifecycle_id}":
+                raise RuntimeError("the managed dynamic directory target is invalid")
+            if target.exists():
+                await asyncio.to_thread(shutil.rmtree, target)
+                deleted += 1
+            self._managed_directories.mark_released(
+                lifecycle_id,
+                str(record["filesystem_id"]),
+                str(record["virtual_path"]),
+                released_at=_now(),
+            )
+        return deleted
 
     def _configured_mapping_root(self, local_path: str, path_origin: str) -> Path:
         configured = Path(local_path)
@@ -619,7 +826,6 @@ class WorkflowLifecycleService:
         filesystem_id: str,
         filesystem: FilesystemBlock,
     ) -> dict[str, Path]:
-        """Resolve disk routes once per Lifecycle and Filesystem definition."""
         if not filesystem_id:
             raise ValueError("filesystem_id must not be empty")
         namespace = lifecycle_filesystem_namespace(lifecycle_id)
@@ -628,7 +834,9 @@ class WorkflowLifecycleService:
             if stored is not None:
                 mappings = stored.value.get("mappings")
                 if not isinstance(mappings, list):
-                    raise RuntimeError("the Workflow lifecycle filesystem record is invalid")
+                    raise RuntimeError(
+                        "the Workflow lifecycle filesystem record is invalid"
+                    )
                 resolved: dict[str, Path] = {}
                 for item in mappings:
                     if not isinstance(item, dict):
@@ -676,11 +884,9 @@ class WorkflowLifecycleService:
                     )
                 ]
             )
+            created_at = _now()
             for virtual_path, local_path, path_origin, lifecycle_mode in configured_mappings:
-                root = self._configured_mapping_root(
-                    local_path,
-                    path_origin,
-                )
+                root = self._configured_mapping_root(local_path, path_origin)
                 if not root.is_dir():
                     raise ValueError(
                         "configured filesystem root must be an existing directory: "
@@ -691,24 +897,33 @@ class WorkflowLifecycleService:
                     if lifecycle_mode == "dynamic"
                     else root
                 )
-                if lifecycle_mode == "dynamic":
-                    target.mkdir(exist_ok=True)
-                canonical = str(target.resolve()).casefold()
+                canonical_target = target.resolve()
+                canonical = str(canonical_target).casefold()
                 if canonical in resolved_targets:
-                    raise ValueError(
-                        "resolved mapped local directories must be unique"
-                    )
+                    raise ValueError("resolved mapped local directories must be unique")
                 resolved_targets.add(canonical)
-                resolved[virtual_path] = target.resolve()
+                resolved[virtual_path] = canonical_target
                 records.append(
                     {
                         "virtual_path": virtual_path,
-                        "resolved_local_path": str(target.resolve()),
+                        "resolved_local_path": str(canonical_target),
                         "configured_root": str(root),
                         "path_origin": path_origin,
                         "lifecycle_mode": lifecycle_mode,
                     }
                 )
+                if lifecycle_mode == "dynamic":
+                    self._managed_directories.register(
+                        {
+                            "lifecycle_id": lifecycle_id,
+                            "filesystem_id": filesystem_id,
+                            "virtual_path": virtual_path,
+                            "configured_root": str(root),
+                            "resolved_target": str(canonical_target),
+                            "created_at": created_at,
+                        }
+                    )
+                    canonical_target.mkdir(exist_ok=True)
             await self.store.aput(
                 namespace,
                 filesystem_id,
@@ -716,9 +931,7 @@ class WorkflowLifecycleService:
                     "version": LIFECYCLE_FILESYSTEM_RECORD_VERSION,
                     "filesystem_id": filesystem_id,
                     "mappings": records,
-                    "created_at": datetime.now(timezone.utc).isoformat(
-                        timespec="milliseconds"
-                    ),
+                    "created_at": created_at,
                 },
                 index=False,
             )

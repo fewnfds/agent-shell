@@ -38,10 +38,7 @@ import type {
   Workflow,
   WorkflowSummary,
   WorkflowLifecyclePage,
-  WorkflowLifecycleDetail,
   WorkflowLifecycleBulkDeleteResult,
-  WorkflowRunDetail,
-  WorkflowRunEventPage,
   WorkflowGraphDocument,
   WorkflowNodeCatalogItem,
   WorkflowPayload,
@@ -398,7 +395,7 @@ export const managementApi = {
 
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(id)}?delete_dynamic_directories=true`,
+      `/api/workflow-lifecycles/${encodeURIComponent(id)}`,
       { method: 'DELETE' },
     )
   },
@@ -406,42 +403,8 @@ export const managementApi = {
   deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult> {
     return managementRequest('/api/workflow-lifecycles/delete', jsonBody({
       query,
-      delete_dynamic_directories: true,
+      delete_dynamic_directories: false,
     }))
-  },
-
-  getWorkflowLifecycle(id: string): Promise<WorkflowLifecycleDetail> {
-    return managementRequest(`/api/workflow-lifecycles/${encodeURIComponent(id)}`)
-  },
-
-  getWorkflowRun(lifecycleId: string, runId: string): Promise<WorkflowRunDetail> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-      + `/runs/${encodeURIComponent(runId)}`,
-    )
-  },
-
-  listWorkflowLifecycleEvents(
-    id: string,
-    afterSequence: number,
-  ): Promise<WorkflowRunEventPage> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(id)}/events`
-      + `?after_sequence=${afterSequence}&limit=1000`,
-    )
-  },
-
-  downloadWorkflowLifecycle(id: string): Promise<Blob> {
-    return managementDownload(
-      `/api/workflow-lifecycles/${encodeURIComponent(id)}/download`,
-    )
-  },
-
-  downloadWorkflowRun(lifecycleId: string, runId: string): Promise<Blob> {
-    return managementDownload(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-      + `/runs/${encodeURIComponent(runId)}/download`,
-    )
   },
 
   getWorkflowGraph(id: string): Promise<WorkflowGraphDocument> {

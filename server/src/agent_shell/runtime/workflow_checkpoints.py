@@ -10,7 +10,7 @@ from agent_shell.storage.database import SQLiteFile
 
 
 class WorkflowCheckpointService:
-    """Own official Workflow checkpoints; Run history has a separate owner."""
+    """Own official Workflow checkpoints; runtime facts have separate owners."""
 
     def __init__(self, database: SQLiteFile) -> None:
         self._database = database

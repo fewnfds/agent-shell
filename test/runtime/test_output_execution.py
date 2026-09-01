@@ -8,6 +8,7 @@ from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.runtime.response_presentation import PresentationFrame
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from support import runtime_workflow_document
 
 from .support import *
 
@@ -134,7 +135,7 @@ def test_execution_does_not_repeat_whole_ai_message_after_streamed_deltas() -> N
     assert text == "once"
 
 
-def test_debug_event_stream_record_failure_does_not_replace_run_result(
+def test_monitoring_event_record_failure_does_not_replace_run_result(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -161,6 +162,8 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                 checkpoint_thread_id=None,
                 workflow_id="debug-event-workflow",
                 workflow_name="Debug Event Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
             )
 
             def fail_record(*_args, **_kwargs) -> None:
@@ -201,24 +204,25 @@ def test_debug_event_stream_record_failure_does_not_replace_run_result(
                 context=WorkflowRuntimeContext.for_run(identity=identity),
                 lifecycle_service=lifecycle,
                 runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
-                workflow_debug_capture_enabled=True,
+                monitoring_capture_enabled=True,
             )
             parts = [part async for part in execution.stream_text()]
             return (
                 parts,
-                lifecycle.history.get_run("debug-event-run"),
+                lifecycle.run("debug-event-run"),
+                lifecycle.monitoring.status("debug-event-run"),
                 diagnostics.errors,
             )
         finally:
             await lifecycle.close()
 
-    parts, run, errors = asyncio.run(scenario())
+    parts, run, monitoring, errors = asyncio.run(scenario())
 
     assert parts == ["still-visible"]
     assert run is not None
     assert run["status"] == "completed"
-    assert run["observation_status"] == "partial"
-    assert errors[0]["code"] == "workflow_protocol_event_record_failed"
+    assert monitoring["protocol"] == "partial"
+    assert errors[0]["code"] == "runtime_protocol_event_record_failed"
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:

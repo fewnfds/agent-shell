@@ -25,7 +25,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
 - Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
-- Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Workflow Debug 值在 Run 建立时冻结；开启时 Main Agent 和直接 Subagent 为本次编译创建同名 replacement，并设置实例级 `TracePolicy(process_inputs=...)`，使 LangChain callback/tracing 保留经过统一 JSON/secret 转换的 hook inputs。关闭时保留上游默认策略。该覆盖不修改类属性或进程级默认，不影响并发的其他 Run；
+- Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Agent Shell 使用这些官方默认或同名 replacement 自带的官方策略；运行监控只在 Workflow root 的 LangChain ChatModel 和 post-transformer v3 边界采集，不修改 Middleware 实例、类属性或进程级 trace policy；
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
@@ -46,7 +46,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 下列项目不走这套 replacement：
 
-- `SubAgentMiddleware`：通过官方 `GeneralPurposeSubagentProfile(enabled=False)` 且不传 synchronous Subagent，真正不装配；有直接 Subagent 时使用同名 replacement 固定 private State keys，并按当前 Run 的 Workflow Debug 值设置 trace policy；
+- `SubAgentMiddleware`：通过官方 `GeneralPurposeSubagentProfile(enabled=False)` 且不传 synchronous Subagent，真正不装配；有直接 Subagent 时使用同名 replacement 固定 private State keys，并保留 replacement 的官方 trace policy；
 - `FilesystemMiddleware`：官方要求的 protected scaffolding，不能移除，只能限制其工具或权限；
 - `PatchToolCallsMiddleware`：当前是 Deep Agents 核心修复 middleware，没有 Agent Shell 的可选禁用开关；Shell 使用同名行为实例承接 Run-local trace policy。
 

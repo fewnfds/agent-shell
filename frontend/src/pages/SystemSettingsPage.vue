@@ -76,7 +76,7 @@ const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
 const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
-  workflow_debug_capture_enabled: false,
+  runtime_monitoring_retention_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -87,14 +87,22 @@ const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
   provider_connect_timeout_seconds: 5,
   provider_catalog_timeout_seconds: 15,
 })
-type RuntimePolicyNumberKey = Exclude<keyof RuntimePolicyUpdate, 'workflow_debug_capture_enabled'>
+type RuntimePolicyNumberKey = keyof RuntimePolicyUpdate
 const runtimePolicyFields: Array<{
   key: RuntimePolicyNumberKey
   labelKey: string
   unit: string
   step: number
   mib?: boolean
+  helpKey?: string
 }> = [
+  {
+    key: 'runtime_monitoring_retention_lifecycles',
+    labelKey: 'systemSettings.runtimePolicy.runtimeMonitoringRetention',
+    helpKey: 'systemSettings.runtimePolicy.runtimeMonitoringRetentionHelp',
+    unit: 'Lifecycle',
+    step: 1,
+  },
   { key: 'chat_completion_body_bytes', labelKey: 'systemSettings.runtimePolicy.chatBody', unit: 'MiB', step: 1, mib: true },
   { key: 'content_blocks', labelKey: 'systemSettings.runtimePolicy.contentBlocks', unit: '', step: 1 },
   { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'MiB', step: 1, mib: true },
@@ -197,7 +205,6 @@ function applyValidationSettings(value: ConfigurationValidationSettings): void {
 
 function applyRuntimePolicy(value: RuntimePolicySettings): void {
   runtimePolicy.value = value
-  runtimePolicyDraft.workflow_debug_capture_enabled = value.workflow_debug_capture_enabled
   for (const { key } of runtimePolicyFields) {
     runtimePolicyDraft[key] = value[key]
   }
@@ -653,23 +660,6 @@ onMounted(() => { void load() })
               {{ runtimePolicyError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-12">
-                <div class="form-check form-switch">
-                  <input
-                    id="workflow-debug-capture-enabled"
-                    v-model="runtimePolicyDraft.workflow_debug_capture_enabled"
-                    class="form-check-input"
-                    role="switch"
-                    type="checkbox"
-                  >
-                  <label class="form-check-label" for="workflow-debug-capture-enabled">
-                    {{ fieldLabel('systemSettings.runtimePolicy.workflowDebugCapture', 'workflow_debug_capture_enabled') }}
-                  </label>
-                </div>
-                <div class="form-text">
-                  {{ t('systemSettings.runtimePolicy.workflowDebugCaptureHelp') }}
-                </div>
-              </div>
               <div v-for="field in runtimePolicyFields" :key="field.key" class="col-lg-3 col-md-6">
                 <label class="form-label" :for="`runtime-policy-${field.key}`">
                   {{ fieldLabel(field.labelKey, field.key) }}
@@ -686,6 +676,9 @@ onMounted(() => { void load() })
                     @input="updateRuntimePolicyValue(field, $event)"
                   >
                   <span v-if="field.unit" class="input-group-text">{{ field.unit }}</span>
+                </div>
+                <div v-if="field.helpKey" class="form-text">
+                  {{ t(field.helpKey) }}
                 </div>
               </div>
             </div>

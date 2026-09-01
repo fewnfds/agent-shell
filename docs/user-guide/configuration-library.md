@@ -8,7 +8,7 @@
 
 Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。Model/MCP Connection 与 secret 不随 Repository 复制或下载，repository-scoped Model/MCP Mapping 会按新 Requirement UUID 复制。
 
-系统设置、secret、SQLite/运行历史、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
+系统设置、secret、SQLite/运行监控数据、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
 
 - 编辑会跳转到对应页面，并以记录 UUID 确定更新目标；
 - 复制会创建新 UUID，副本名称经过当前校验；Python private package 与 Skill package 按配置名称目录一起复制，manifest owner 改为新 UUID；

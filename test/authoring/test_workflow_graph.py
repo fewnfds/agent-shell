@@ -23,12 +23,11 @@ from agent_shell.validation import ValidationIssue, ValidationReport
 from agent_shell.workflow import (
     NODE_CATALOG,
     admit_workflow_document,
-    compile_workflow,
     validate_workflow_executable,
     workflow_document_sha256,
     workflow_executable_sha256,
 )
-from agent_shell.workflow.compiler import _make_agent_node
+from agent_shell.workflow.compiler import _make_agent_node, compile_workflow
 
 
 AGENT_A = "11111111-1111-4111-8111-111111111111"

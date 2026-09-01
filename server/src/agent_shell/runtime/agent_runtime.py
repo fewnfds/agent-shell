@@ -36,6 +36,7 @@ from agent_shell.runtime.diagnostics import (
     RuntimeDiagnostics,
 )
 from agent_shell.runtime.event_origin import (
+    ResolvedEventOrigin,
     RunEventOriginResolver,
     WorkflowNodeSource,
 )
@@ -69,7 +70,7 @@ from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimeP
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
-from agent_shell.runtime.workflow_run_journal import WorkflowRunJournal
+from agent_shell.runtime.model_request_recorder import ModelRequestRecorder
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.validation import validate_workflow_executable
 from agent_shell.validation import ValidationReport
@@ -142,11 +143,10 @@ class RunExecution:
     request_id: str = ""
     public_model: str = ""
     public_output: bool = True
-    journal_node_kinds: dict[str, str] | None = None
-    journal_agent_names: dict[str, str] | None = None
-    journal_agent_profile_ids: dict[str, str] | None = None
-    journal_subagent_profile_ids: dict[str, dict[str, str]] | None = None
-    workflow_debug_capture_enabled: bool = False
+    model_agent_names: dict[str, str] | None = None
+    model_agent_profile_ids: dict[str, str] | None = None
+    model_subagent_profile_ids: dict[str, dict[str, str]] | None = None
+    monitoring_capture_enabled: bool = False
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
     cancel_background_children: Callable[[], Awaitable[None]] | None = None
     final_state: dict[str, Any] | None = None
@@ -199,65 +199,30 @@ class RunExecution:
     async def cancel(self) -> None:
         """Converge Shell-owned cancellation before graph cleanup completes."""
 
-        cancellation_recorded = True
         if self.lifecycle_service is not None and self.identity is not None:
             try:
-                cancellation_recorded = self.lifecycle_service.finish_run(
+                updated = self.lifecycle_service.finish_run(
                     self.identity.workflow_run_id,
                     status="cancelled",
                     error_code="request_cancelled",
                     usage=self.usage,
                 )
-                if not cancellation_recorded:
-                    record = self.lifecycle_service.history.get_run(
+                if not updated:
+                    record = self.lifecycle_service.run(
                         self.identity.workflow_run_id
                     )
-                    if record is None:
-                        raise RuntimeError("the Run registry record is unavailable")
-                    cancellation_recorded = record["status"] == "cancelled"
+                    if record is None or record["status"] not in {
+                        "cancelled",
+                        "failed",
+                        "completed",
+                        "interrupted",
+                    }:
+                        raise RuntimeError("the Run registry status is unavailable")
             except Exception as exc:
-                cancellation_recorded = True
-                try:
-                    self.lifecycle_service.mark_run_observation_partial(
-                        self.identity.workflow_run_id
-                    )
-                except Exception:
-                    pass
                 if self.runtime_diagnostics is not None:
                     self.runtime_diagnostics.observation_error(
                         exc,
-                        code="workflow_run_record_failed",
-                        component="observability",
-                        context=self.diagnostic_context(),
-                    )
-
-        if not cancellation_recorded:
-            return
-
-        if (
-            self.owns_lifecycle
-            and self.lifecycle_service is not None
-            and self.identity is not None
-            and not self._lifecycle_finished
-        ):
-            self._lifecycle_finished = True
-            try:
-                await self.lifecycle_service.finish_parent(
-                    self.identity.lifecycle_id,
-                    "cancelled",
-                )
-            except Exception as exc:
-                if self.identity is not None:
-                    try:
-                        self.lifecycle_service.mark_run_observation_partial(
-                            self.identity.workflow_run_id
-                        )
-                    except Exception:
-                        pass
-                if self.runtime_diagnostics is not None:
-                    self.runtime_diagnostics.observation_error(
-                        exc,
-                        code="workflow_lifecycle_record_failed",
+                        code="runtime_run_registry_failed",
                         component="persistence",
                         context=self.diagnostic_context(),
                     )
@@ -273,6 +238,10 @@ class RunExecution:
                         component="observability",
                         context=self.diagnostic_context(),
                     )
+        if self.lifecycle_service is not None and self.identity is not None:
+            await self.lifecycle_service.lifecycle_changed(
+                self.identity.lifecycle_id
+            )
 
     async def stream_text(self) -> AsyncIterator[str]:
         if self._started:
@@ -295,11 +264,21 @@ class RunExecution:
         loop = asyncio.get_running_loop()
         protocol_event_capture_failed = False
 
-        def observation_error(exc: BaseException, code: str) -> None:
-            if self.lifecycle_service is not None and self.identity is not None:
+        def observation_error(
+            exc: BaseException,
+            code: str,
+            *,
+            partition: str | None = None,
+        ) -> None:
+            if (
+                partition is not None
+                and self.lifecycle_service is not None
+                and self.identity is not None
+            ):
                 try:
-                    self.lifecycle_service.mark_run_observation_partial(
-                        self.identity.workflow_run_id
+                    self.lifecycle_service.mark_monitoring_partial(
+                        self.identity.workflow_run_id,
+                        partition,
                     )
                 except Exception:
                     pass
@@ -311,11 +290,14 @@ class RunExecution:
                     context=self.diagnostic_context(),
                 )
 
-        def capture_protocol_event(envelope: object) -> None:
+        def capture_protocol_event(
+            envelope: object,
+            origin: ResolvedEventOrigin,
+        ) -> None:
             nonlocal protocol_event_capture_failed
             if (
                 protocol_event_capture_failed
-                or not self.workflow_debug_capture_enabled
+                or not self.monitoring_capture_enabled
                 or self.lifecycle_service is None
                 or self.identity is None
             ):
@@ -325,10 +307,23 @@ class RunExecution:
                     self.identity.lifecycle_id,
                     self.identity.workflow_run_id,
                     serialize_protocol_event(envelope),
+                    {
+                        "namespace": origin.namespace,
+                        "cycle_key": origin.cycle_key,
+                        "source_type": origin.source_type,
+                        "workflow_node_id": origin.workflow_node_id,
+                        "node_invocation_id": origin.node_invocation_id,
+                        "agent_profile_id": origin.agent_profile_id,
+                        "subagent_profile_id": origin.subagent_profile_id,
+                    },
                 )
             except Exception as exc:
                 protocol_event_capture_failed = True
-                observation_error(exc, "workflow_protocol_event_record_failed")
+                observation_error(
+                    exc,
+                    "runtime_protocol_event_record_failed",
+                    partition="protocol",
+                )
 
         async def cancel_background_children() -> None:
             if self.cancel_background_children is None:
@@ -341,65 +336,46 @@ class RunExecution:
         def start_run() -> None:
             if self.lifecycle_service is None or self.identity is None:
                 return
-            try:
-                if not self.lifecycle_service.start_run(
-                    self.identity.workflow_run_id
-                ):
-                    record = self.lifecycle_service.history.get_run(
-                        self.identity.workflow_run_id
+            if not self.lifecycle_service.start_run(
+                self.identity.workflow_run_id
+            ):
+                record = self.lifecycle_service.run(self.identity.workflow_run_id)
+                if record is None or record["status"] != "running":
+                    raise AgentRuntimeError(
+                        "runtime_registry_unavailable",
+                        "The Workflow Run control record could not be started.",
+                        status_code=500,
                     )
-                    if record is None:
-                        raise RuntimeError("the Run registry record is unavailable")
-            except Exception as exc:
-                observation_error(exc, "workflow_run_record_failed")
 
         def finish_run(status: str, *, error_code: str = "") -> None:
             if self.lifecycle_service is None or self.identity is None:
                 return
-            try:
-                if not self.lifecycle_service.finish_run(
-                    self.identity.workflow_run_id,
-                    status=status,
-                    error_code=error_code,
-                    finish_reason=self.finish_reason if status == "completed" else "",
-                    usage=self.usage,
-                ):
-                    record = self.lifecycle_service.history.get_run(
-                        self.identity.workflow_run_id
+            if not self.lifecycle_service.finish_run(
+                self.identity.workflow_run_id,
+                status=status,
+                error_code=error_code,
+                finish_reason=self.finish_reason if status == "completed" else "",
+                usage=self.usage,
+            ):
+                record = self.lifecycle_service.run(self.identity.workflow_run_id)
+                if record is None or record["status"] != status:
+                    raise AgentRuntimeError(
+                        "runtime_registry_unavailable",
+                        "The Workflow Run control record could not be finalized.",
+                        status_code=500,
                     )
-                    if record is None:
-                        raise RuntimeError("the Run registry record is unavailable")
-            except Exception as exc:
-                observation_error(exc, "workflow_run_record_failed")
 
-        async def finish_lifecycle(status: str) -> None:
+        async def finish_lifecycle() -> None:
             if (
-                not self.owns_lifecycle
-                or self.lifecycle_service is None
+                self.lifecycle_service is None
                 or self.identity is None
                 or self._lifecycle_finished
             ):
                 return
             self._lifecycle_finished = True
-            try:
-                await self.lifecycle_service.finish_parent(
-                    self.identity.lifecycle_id,
-                    status,
-                )
-            except Exception as exc:
-                try:
-                    self.lifecycle_service.mark_run_observation_partial(
-                        self.identity.workflow_run_id
-                    )
-                except Exception:
-                    pass
-                if self.runtime_diagnostics is not None:
-                    self.runtime_diagnostics.observation_error(
-                        exc,
-                        code="workflow_lifecycle_record_failed",
-                        component="persistence",
-                        context=self.diagnostic_context(),
-                    )
+            await self.lifecycle_service.lifecycle_changed(
+                self.identity.lifecycle_id
+            )
 
         def record_runtime_error(
             exc: BaseException,
@@ -591,7 +567,7 @@ class RunExecution:
                     )
             return parts
 
-        journal: WorkflowRunJournal | None = None
+        model_recorder: ModelRequestRecorder | None = None
         start_run()
         try:
             for rendered in project_run_event("start", status="running"):
@@ -626,24 +602,24 @@ class RunExecution:
                         **(self.run_config or {}),
                     }
                     if (
+                        self.monitoring_capture_enabled
+                        and
                         self.identity is not None
                         and self.context is not None
                         and self.lifecycle_service is not None
                     ):
                         callbacks = list(config.get("callbacks", ()))
-                        journal = WorkflowRunJournal(
+                        model_recorder = ModelRequestRecorder(
                             self.lifecycle_service,
                             self.runtime_diagnostics,
                             self.identity,
-                            workflow_node_kinds=self.journal_node_kinds or {},
-                            agent_names=self.journal_agent_names or {},
-                            agent_profile_ids=self.journal_agent_profile_ids or {},
+                            agent_names=self.model_agent_names or {},
+                            agent_profile_ids=self.model_agent_profile_ids or {},
                             subagent_profile_ids=(
-                                self.journal_subagent_profile_ids or {}
+                                self.model_subagent_profile_ids or {}
                             ),
-                            debug_capture=self.workflow_debug_capture_enabled,
                         )
-                        callbacks.append(journal)
+                        callbacks.append(model_recorder)
                         config["callbacks"] = callbacks
                     stream_kwargs: dict[str, Any] = {
                         "config": config,
@@ -730,8 +706,8 @@ class RunExecution:
                                     next_event_task = None
                                 else:
                                     next_event_task = asyncio.create_task(anext(envelopes))
-                                    capture_protocol_event(envelope)
                                     origin = event_origin(envelope)
+                                    capture_protocol_event(envelope, origin)
                                     (
                                         stream_events,
                                         publish_raw_output,
@@ -826,8 +802,6 @@ class RunExecution:
                         if rendered:
                             with pause_execution_timeout():
                                 yield rendered
-            if journal is not None:
-                journal.finish_open_spans("completed")
             for rendered in project_run_event(
                 "end",
                 status="completed",
@@ -867,10 +841,6 @@ class RunExecution:
                     if rendered:
                         yield rendered
         except asyncio.CancelledError:
-            if journal is not None:
-                journal.finish_open_spans(
-                    "cancelled", error_code="request_cancelled"
-                )
             self.event_stream.close()
             if self.origin_resolver is not None:
                 self.origin_resolver.close()
@@ -892,18 +862,14 @@ class RunExecution:
                 "The Agent execution exceeded the runtime time limit.",
                 status_code=504,
             )
-            if journal is not None:
-                journal.finish_open_spans("failed", error_code=error.code)
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
             await cancel_background_children()
             finish_run("failed", error_code=error.code)
-            await finish_lifecycle("failed")
+            await finish_lifecycle()
             raise error from exc
         except AgentRuntimeError as exc:
-            if journal is not None:
-                journal.finish_open_spans("failed", error_code=exc.code)
             for rendered in failure_output(exc.code):
                 yield rendered
             record_runtime_error(
@@ -915,7 +881,7 @@ class RunExecution:
             )
             await cancel_background_children()
             finish_run("failed", error_code=exc.code)
-            await finish_lifecycle("failed")
+            await finish_lifecycle()
             raise
         except Exception as exc:
             if isinstance(exc, GraphRecursionError):
@@ -930,17 +896,15 @@ class RunExecution:
                     "The Agent failed during graph execution.",
                     status_code=502,
                 )
-            if journal is not None:
-                journal.finish_open_spans("failed", error_code=error.code)
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
             await cancel_background_children()
             finish_run("failed", error_code=error.code)
-            await finish_lifecycle("failed")
+            await finish_lifecycle()
             raise error from exc
         finish_run("completed")
-        await finish_lifecycle("completed")
+        await finish_lifecycle()
 
     async def run(self) -> tuple[str, dict[str, int]]:
         parts = [part async for part in self.stream_text()]
@@ -984,48 +948,7 @@ class AgentRuntime:
             else RUNTIME_POLICY_DEFAULTS
         )
 
-    async def _finish_parent_lifecycle(
-        self,
-        lifecycle_id: str,
-        status: str,
-        *,
-        context: RuntimeDiagnosticContext,
-    ) -> None:
-        try:
-            await self._workflow_lifecycle.finish_parent(lifecycle_id, status)
-        except Exception as exc:
-            try:
-                self._workflow_lifecycle.mark_run_observation_partial(
-                    context.workflow_run_id
-                )
-            except Exception:
-                pass
-            if self._runtime_diagnostics is not None:
-                self._runtime_diagnostics.observation_error(
-                    exc,
-                    code="workflow_lifecycle_record_failed",
-                    component="persistence",
-                    context=context,
-                )
-
-    def _register_run_observation(
-        self,
-        record: dict[str, object],
-        *,
-        context: RuntimeDiagnosticContext,
-    ) -> None:
-        try:
-            self._workflow_lifecycle.register_run(record)
-        except Exception as exc:
-            if self._runtime_diagnostics is not None:
-                self._runtime_diagnostics.observation_error(
-                    exc,
-                    code="workflow_run_record_failed",
-                    component="observability",
-                    context=context,
-                )
-
-    def _finish_run_observation(
+    def _finish_registered_run(
         self,
         run_id: str,
         *,
@@ -1038,18 +961,14 @@ class AgentRuntime:
                 run_id,
                 status=status,
                 error_code=error_code,
-            ) and self._workflow_lifecycle.history.get_run(run_id) is None:
+            ) and self._workflow_lifecycle.run(run_id) is None:
                 raise RuntimeError("the Run registry record is unavailable")
         except Exception as exc:
-            try:
-                self._workflow_lifecycle.mark_run_observation_partial(run_id)
-            except Exception:
-                pass
             if self._runtime_diagnostics is not None:
                 self._runtime_diagnostics.observation_error(
                     exc,
-                    code="workflow_run_record_failed",
-                    component="observability",
+                    code="runtime_run_registry_failed",
+                    component="persistence",
                     context=context,
                 )
 
@@ -1172,7 +1091,7 @@ class AgentRuntime:
         response_stream_policy: ResponseStreamPolicy | None = None,
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
-        workflow_debug_capture_enabled: bool | None = None,
+        monitoring_capture_enabled: bool = False,
     ) -> RunExecution:
         workflow_agents = workflow_built
         workflow_sources = {
@@ -1193,18 +1112,13 @@ class AgentRuntime:
             )
         else:
             projector = OutputProjector(None)
-        journal_node_kinds = dict(workflow_node_kinds)
-        for node_id, node_type in journal_node_kinds.items():
+        node_kinds = dict(workflow_node_kinds)
+        for node_id, node_type in node_kinds.items():
             if node_type == "command":
                 workflow_sources[node_id] = WorkflowNodeSource(
                     source_type="script",
                     workflow_node_id=node_id,
                 )
-        debug_capture = (
-            self._input_policy().workflow_debug_capture_enabled
-            if workflow_debug_capture_enabled is None
-            else workflow_debug_capture_enabled
-        )
         scheduler_policy = (
             response_stream_policy.model_copy(deep=True)
             if response_stream_policy is not None
@@ -1267,18 +1181,17 @@ class AgentRuntime:
             request_id=request_id,
             public_model=public_model,
             public_output=public_output,
-            journal_node_kinds=journal_node_kinds,
-            journal_agent_names={
+            model_agent_names={
                 node_id: agent.agent_name for node_id, agent in workflow_agents
             },
-            journal_agent_profile_ids={
+            model_agent_profile_ids={
                 node_id: agent.agent_id for node_id, agent in workflow_agents
             },
-            journal_subagent_profile_ids={
+            model_subagent_profile_ids={
                 node_id: dict(agent.subagent_profile_ids)
                 for node_id, agent in workflow_agents
             },
-            workflow_debug_capture_enabled=debug_capture,
+            monitoring_capture_enabled=monitoring_capture_enabled,
             execution_timeout_seconds=execution_timeout_seconds,
             cancel_background_children=cancel_background_children,
         )
@@ -1461,6 +1374,9 @@ class AgentRuntime:
             )
         owns_lifecycle = lifecycle_id is None
         if owns_lifecycle:
+            monitoring_capture_enabled = (
+                runtime_policy.runtime_monitoring_retention_lifecycles > 0
+            )
             resolved_lifecycle_id = await self._workflow_lifecycle.create(
                 messages,
                 request_id=request_id,
@@ -1468,6 +1384,8 @@ class AgentRuntime:
                 checkpoint_thread_id=checkpoint_thread_id,
                 workflow_id=workflow_id,
                 workflow_name=workflow_name,
+                workflow_document=document,
+                monitoring_capture_enabled=monitoring_capture_enabled,
             )
         else:
             if await self._workflow_lifecycle.input_record(lifecycle_id) is None:
@@ -1477,6 +1395,16 @@ class AgentRuntime:
                     status_code=409,
                 )
             resolved_lifecycle_id = lifecycle_id
+            lifecycle_record = await self._workflow_lifecycle.record(lifecycle_id)
+            if lifecycle_record is None:
+                raise AgentRuntimeError(
+                    "workflow_lifecycle_not_found",
+                    "The Workflow lifecycle does not exist.",
+                    status_code=409,
+                )
+            monitoring_capture_enabled = bool(
+                lifecycle_record["monitoring_capture_enabled"]
+            )
         identity = WorkflowRunIdentity(
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
@@ -1504,22 +1432,6 @@ class AgentRuntime:
             subject_kind="workflow",
             subject_id=workflow_id,
             subject_name=workflow_name,
-        )
-        self._register_run_observation(
-            {
-                "run_id": resolved_workflow_run_id,
-                "lifecycle_id": resolved_lifecycle_id,
-                "request_id": request_id,
-                "checkpoint_thread_id": checkpoint_thread_id,
-                "run_kind": "workflow",
-                "target_id": workflow_id,
-                "target_name": workflow_name,
-                "parent_run_id": parent_workflow_run_id,
-                "launcher_id": launcher_id,
-                "background_task_id": background_task_id,
-                "run_depth": run_depth,
-            },
-            context=assembly_diagnostic_context,
         )
         built_agents: list[tuple[str, BuiltAgent]] = []
         workflow_initial_files: dict[str, Any] = {}
@@ -1713,9 +1625,6 @@ class AgentRuntime:
                     mapped_directory_paths_by_filesystem=(
                         mapped_directory_paths_by_filesystem
                     ),
-                    workflow_debug_capture_enabled=(
-                        runtime_policy.workflow_debug_capture_enabled
-                    ),
                 )
                 built_agents.append((agent_node.id, built))
                 if agent_event_output_runtime is not None:
@@ -1755,24 +1664,26 @@ class AgentRuntime:
                     else None
                 ),
                 store=self._workflow_lifecycle.store,
+                lifecycle_service=(
+                    self._workflow_lifecycle
+                    if monitoring_capture_enabled
+                    else None
+                ),
             )
         except asyncio.CancelledError:
             for _, agent in built_agents:
                 await agent.tool_runtime.close()
                 await agent.middleware_runtime.close()
             await close_workflow_package_runtimes()
-            self._finish_run_observation(
+            self._finish_registered_run(
                 resolved_workflow_run_id,
                 status="cancelled",
                 error_code="request_cancelled",
                 context=assembly_diagnostic_context,
             )
-            if owns_lifecycle:
-                await self._finish_parent_lifecycle(
-                    resolved_lifecycle_id,
-                    "cancelled",
-                    context=assembly_diagnostic_context,
-                )
+            await self._workflow_lifecycle.lifecycle_changed(
+                resolved_lifecycle_id
+            )
             raise
         except Exception as exc:
             for _, agent in built_agents:
@@ -1791,18 +1702,15 @@ class AgentRuntime:
                     component="workflow_runtime",
                     context=assembly_diagnostic_context,
                 )
-            self._finish_run_observation(
+            self._finish_registered_run(
                 resolved_workflow_run_id,
                 status="failed",
                 error_code=error_code,
                 context=assembly_diagnostic_context,
             )
-            if owns_lifecycle:
-                await self._finish_parent_lifecycle(
-                    resolved_lifecycle_id,
-                    "failed",
-                    context=assembly_diagnostic_context,
-                )
+            await self._workflow_lifecycle.lifecycle_changed(
+                resolved_lifecycle_id
+            )
             raise
         input_state: dict[str, Any] = {
             "shared_vars": deepcopy(dict(initial_shared_vars or {})),
@@ -1884,7 +1792,5 @@ class AgentRuntime:
             response_stream_policy=response_stream_policy,
             response_scheduler=response_scheduler,
             response_consumer=response_consumer,
-            workflow_debug_capture_enabled=(
-                runtime_policy.workflow_debug_capture_enabled
-            ),
+            monitoring_capture_enabled=monitoring_capture_enabled,
         )

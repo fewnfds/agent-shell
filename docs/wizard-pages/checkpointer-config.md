@@ -13,4 +13,4 @@
 
 选择后，每个 Workflow Run 都生成自己的 `checkpoint_thread_id`。Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承所在 Workflow root 的 saver。parent Workflow 与 background child Workflow 分别读取自己的配置。
 
-未选择时，Graph 不传 checkpoint thread 或 durability，也不会因该 Run 启动 saver。最终 State、Store、Lifecycle、Run/Event/Model Request History、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 保持可用；Checkpoint State、Checkpoint Thread 和检查点计数自然不存在。当前软件只使用检查点做 Debug，不提供 Resume、time travel 或灾难恢复入口。
+未选择时，Graph 不传 checkpoint thread 或 durability，也不会因该 Run 启动 saver。最终 State、Store、Runtime Registry、启用采集时的 Graph/ProtocolEvent/Model Request/Command facts、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 保持可用；Checkpoint State、Checkpoint Thread 和检查点计数自然不存在。当前软件只使用检查点做 Debug，不提供 Resume、time travel 或灾难恢复入口。

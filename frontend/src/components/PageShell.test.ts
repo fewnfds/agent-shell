@@ -14,7 +14,7 @@ const messages = {
       systemSettings: 'System settings',
       messageInterception: 'Message interception',
       eventFeed: 'Log center',
-      workflowLifecycles: 'Run history',
+      workflowLifecycles: 'Runtime monitoring',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
     },
@@ -50,7 +50,7 @@ describe('PageShell', () => {
       'System settings',
       'Message interception',
       'Log center',
-      'Run history',
+      'Runtime monitoring',
     ])
     expect(buttons[2]?.attributes('aria-current')).toBe('page')
     expect(buttons[2]?.classes()).toContain('btn-primary')

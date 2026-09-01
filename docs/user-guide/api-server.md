@@ -36,9 +36,9 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 
 每个 Workflow 显式配置 `cancel_on_upstream_termination`、`recursion_limit`、`execution_timeout_seconds` 和 `max_concurrency`。终止传播开关默认开启：parent 的 OpenAI 流连接提前断开时取消 Run；background child 的 parent Run 取消或失败时取消 child。关闭后对应 Run 独立继续；正常 End 不触发 child 取消。三个运行值默认分别是 `1,000,000`、`1,200` 秒和 `100`，只有正数约束，没有额外的产品上限。`recursion_limit` 与 `max_concurrency` 传给 LangGraph Runnable config；`execution_timeout_seconds` 限制单个 parent 或 child Run 的实际执行时间，不包含生成器停在 `yield` 等待慢速调用方消费已生成 SSE 文本的时间。
 
-Workflow 通过可空 `checkpointer_id` 选择一个【检查点保存器】（Checkpointer）组件，默认选择【无】。未选择时 Graph 使用 `checkpointer=None` 编译，不生成 `checkpoint_thread_id`、不传 durability，也不会因本次 Run 建立或访问 checkpoint SQLite；最终 State、Lifecycle、Run/Event/Model Request History、Store、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 仍按各自 owner 工作。选择后，每个 Workflow Run 生成独立的检查点线程，并把组件的 `durability=exit|async|sync` 传给 LangGraph；Canvas Agent/Deep Agent subgraph 使用官方默认继承该 saver。parent Workflow 与 background child Workflow 分别读取自己的 `checkpointer_id`。
+Workflow 通过可空 `checkpointer_id` 选择一个【检查点保存器】（Checkpointer）组件，默认选择【无】。未选择时 Graph 使用 `checkpointer=None` 编译，不生成 `checkpoint_thread_id`、不传 durability，也不会因本次 Run 建立或访问 checkpoint SQLite；最终 State、Runtime Registry、启用采集时的 Graph/ProtocolEvent/Model Request/Command facts、Store、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 仍按各自 owner 工作。选择后，每个 Workflow Run 生成独立的检查点线程，并把组件的 `durability=exit|async|sync` 传给 LangGraph；Canvas Agent/Deep Agent subgraph 使用官方默认继承该 saver。parent Workflow 与 background child Workflow 分别读取自己的 `checkpointer_id`。
 
-Checkpointer 当前只为运行历史提供 Debug 检查点，不提供 Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
+Checkpointer 当前只为运行 Debug 提供检查点，不提供 Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
 
 Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作流组件】中的 Response Stream Scheduling 配置。未装配时使用内置默认；装配后从当前请求冻结的 Configuration Repository 快照读取 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Child Run Workflow 不接受该引用。组件只调度 Agent/Workflow Event Output 已批准的文本，不拥有事件可见性或修饰规则。
 
@@ -58,12 +58,12 @@ Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
 - parent/child 是同一 Workflow 实体的使用角色，`/v1` 入口启动 parent Workflow；
-- 每次请求执行一次完整运行；运行历史/API 中的 `run_id` 是 Shell Workflow Run 身份，不是 LangGraph `Runtime.execution_info.run_id`。只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
+- 每次请求执行一次完整运行；Runtime Registry/API 中的 `run_id` 是 Shell Workflow Run 身份，不是 LangGraph `Runtime.execution_info.run_id`。只有引用 Checkpointer 的 Workflow Run 额外建立独立 `checkpoint_thread_id` 并使用官方持久 saver；
 - background Workflow Run 通过 Agent Shell 注入 `Runtime.context` 的 `background_runs` 命令启动和查询；需要单 Agent 后台任务时使用 `Start -> Agent -> End` child Workflow。Command Dispatch 在请求内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
 - independent child/background Run 使用自己的 `RunExecution` 和 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 明确识别 Parent 与各 child Run identity，当前对所有 role 使用相同调度权重，尚未配置角色优先级；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- management-only `/api/workflow-lifecycles` 提供运行历史列表、Lifecycle/Run 详情、结构事件分页、完整运行详情 ZIP 下载和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 一次清理完整匹配集中的已终止 Lifecycle，并返回删除数和保留的 active 记录数。详情页面提供结构记录、Checkpoint/Store 摘要与关联诊断。Lifecycle/Run ZIP 固定导出当前持久化的运行输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain `on_chat_model_start` 消息、Tool schema 与调用参数、background task、Run/Event、Lifecycle Store 记录和诊断附件；只为 `checkpoint_thread_id` 非空的 Run 导出 complete Checkpoint State。删除在 parent 和 background task 进入终态后执行，并可清理受管动态目录。
+- management-only `/api/workflow-lifecycles` 提供运行监控 catalog 和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 清理完整匹配集中的终态 Lifecycle，并返回删除数和跳过的 active 记录数。单项/批量删除默认保留受管动态目录，显式 `delete_dynamic_directories=true` 才验证并删除；active Run/task 稳定拒绝。Lifecycle detail、events、single Run detail 和 Lifecycle/Run download 当前返回 `runtime_monitoring_read_model_unavailable` 503。
 
 ## API Key 与状态
 

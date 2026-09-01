@@ -31,7 +31,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
-- Run History 为每次 ChatModel 调用保存 LangChain `on_chat_model_start` 看到的消息、Tool schema 和调用参数；
+- 运行监控为启用采集的 Lifecycle 保存冻结 Graph、实际 v3 ProtocolEvent、LangChain `on_chat_model_start` 看到的消息、Tool schema/调用参数，以及 Command 外部观察；
 - 用户创建的组件、文件和 Python 资源。
 
 运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
@@ -39,7 +39,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 ## 配置 Bundle
 
 配置 Bundle 是 management-only 的 ZIP 导入/导出入口，用于迁移单个配置根及其声明式依赖闭包。它不承担实例备份；
-不会包含 `system.yaml`、`agent-shell.env`、credential value/environment reference、SQLite、运行历史、日志、媒体、普通文件、
+不会包含 `system.yaml`、`agent-shell.env`、credential value/environment reference、SQLite、运行监控数据、日志、媒体、普通文件、
 Python template、`skills-template` 公共素材或 runtime cache。模型要求和 MCP 要求会随配置导入；模型/MCP 连接与 credential 需要在目标实例单独维护并完成各自映射。
 Skill Component 导出的是该 Component 已拥有的 Skill 独立包。
 
@@ -76,9 +76,11 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 ## 容量与保留
 
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
-运行诊断使用可配置保存条数，系统日志使用文件大小上限。
-降低上限会永久裁剪旧数据；裁剪 runtime 诊断时同步删除对应异常详情附件。运行历史、官方 checkpoint 和 Lifecycle Store 与日志中心分离；Lifecycle 的显式清场负责删除对应 Run/Event 和 thread，删除日志或运行诊断不会删除 checkpoint。
-运行历史的 Lifecycle ZIP 和 single Run ZIP 固定导出下载时可读取的完整持久化运行数据，包括 Lifecycle 输入、Agent invocation artifact、按 Main Agent/Subagent profile 分文件的 LangChain ChatModel-start 消息、Tool schema 和调用参数、background task、Run/Event、complete Checkpoint State、Lifecycle Store 原始记录、诊断摘要和现存异常详情附件。Workflow Debug 开启的 Run 还导出按 v3 channel 分文件的 post-transformer ProtocolEvent stream；prompt、消息、Tool payload/schema、State、Store、路径和其他运行材料都允许随对应记录进入 ZIP。下载不提供内容分类或按字段关闭采集的选项。配置 secret 的权威存储仍是 `agent-shell.env`，它不是运行记录，也不会作为配置文件被运行历史下载读取；Model Request 与 v3 event 的统一 JSON 转换排除 Secret 类型并脱敏明确的 credential、API Key、token、password 等字段。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，维护者在分享 ZIP 或异常详情前必须检查这类自由文本。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不持久化。
+运行诊断使用可配置保存条数，系统日志使用文件大小上限。运行监控按完整终态 Lifecycle 数量保留，默认 `20`、最小 `0`、没有产品最大值。降低上限会永久裁剪超出的终态 Lifecycle；`0` 关闭新 Lifecycle 的监控采集，并在运行完整终止后清理其控制数据。活动 Lifecycle 不计入数量。
+
+运行监控、官方 checkpoint 和 Lifecycle Store 与日志中心分离。自动保留清理和显式 Lifecycle 删除会删除 Runtime Registry、监控事实、Lifecycle Store input/task/invocation/filesystem route 及关联的非空 checkpoint thread；删除日志或运行诊断不会删除这些数据。自动清理以及管理台默认删除都会保留普通文件、生成媒体、fixed/mapped directory 正文和 Shell-created dynamic directory；只有显式 API 选项会删除经过 root/target 验证的受管动态目录。
+
+启用采集的 ProtocolEvent 和 Model Request 可以包含 prompt、消息、Tool payload/schema、State、路径和其他运行材料。统一 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 与完整 `data/` 作为敏感数据保护。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不由 Model Request recorder 持久化。当前 Lifecycle/single Run 详情与归档 read model 未开放，相关 API 返回结构化 503。
 
 ## 系统配置与变量
 
@@ -116,6 +118,6 @@ AGENT_SHELL_MCP_<CONNECTION_UUID_WITHOUT_HYPHENS>_<SLOT_UUID_WITHOUT_HYPHENS>=<m
 模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；模型要求与模型连接的绑定关系位于 `data/config/model-bindings.yaml`。
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。
 LangSmith 连接在系统配置中管理；启用或修改 Endpoint、API Key、
-Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 可能上传 prompt、模型输出和工具输入/输出；Workflow Debug 开启的 Run 还会恢复 Deep Agents Middleware trace inputs。明确的 credential/API Key/secret 字段继续由项目序列化边界排除或脱敏，但平台不能识别普通文本中自行嵌入的任意密钥，分享或启用外部 tracing 前需要由维护者检查。
+Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 可能上传 prompt、模型输出和工具输入/输出；运行监控不修改 Deep Agents 官方 Middleware trace policy，也不为外部 tracing 恢复上游已省略的 hook input。明确的 credential/API Key/secret 字段继续由项目序列化边界排除或脱敏，但平台不能识别普通文本中自行嵌入的任意密钥，分享或启用外部 tracing 前需要由维护者检查。
 
 实例敏感值只从 `data/config/agent-shell.env` 读取；服务启动和配置 Repository 都不把宿主进程中的同名 Secret 当作回退来源。非敏感 `AGENT_SHELL_*` 启动变量也不作为配置来源；未知键和误放入环境文件的键会使启动失败。Windows 源码启动器读取当前 Clone 的 data 配置；启动和维护方式见[开发与版本](development-and-release.md)。

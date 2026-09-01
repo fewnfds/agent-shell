@@ -26,7 +26,6 @@ REGISTERED_WRITE_MODULES = {
     "mcp/installation_pypi.py",
     "python_packages/authoring.py",
     "python_packages/dependencies.py",
-    "runtime/workflow_diagnostic_exports.py",
     "runtime/workflow_lifecycle.py",
     "runtime/windows_toolchains.py",
     "security_events.py",

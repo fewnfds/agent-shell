@@ -15,7 +15,7 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component c
 7. [使用文件化 Python 扩展（Custom Middleware / Command）](middleware-packages.md)
 8. [管理配置库](configuration-library.md)
 9. [调用 API Server](api-server.md)
-10. [查看日志中心与运行历史](runtime-observability.md)
+10. [查看日志中心与运行监控](runtime-observability.md)
 11. [管理数据、文件与系统设置](system-management.md)
 
 三个基础边界是：

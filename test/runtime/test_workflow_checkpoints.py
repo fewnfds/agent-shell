@@ -21,7 +21,9 @@ from agent_shell.runtime.workflow_lifecycle import (
     lifecycle_input_namespace,
 )
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
-from agent_shell.workflow import admit_workflow_document, compile_workflow
+from agent_shell.workflow import admit_workflow_document
+from agent_shell.workflow.compiler import compile_workflow
+from support import runtime_workflow_document
 
 
 AGENT_ID = "11111111-1111-4111-8111-111111111111"
@@ -128,6 +130,8 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
                 checkpoint_thread_id=checkpoint_thread_id,
                 workflow_id="workflow-1",
                 workflow_name="Checkpoint Workflow",
+                workflow_document=document,
+                monitoring_capture_enabled=True,
             )
             context = WorkflowRuntimeContext.for_run(
                 identity=WorkflowRunIdentity(
@@ -216,6 +220,8 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
                 checkpoint_thread_id="ownership-thread",
                 workflow_id="ownership-workflow",
                 workflow_name="Ownership Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
             )
         finally:
             await checkpoints.close()
@@ -233,13 +239,13 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
         application_tables = tables(application_path)
         checkpoint_tables = tables(checkpoint_path)
         store_tables = tables(store_path)
-        assert "workflow_lifecycles" in application_tables
+        assert "runtime_lifecycles" in application_tables
         assert "checkpoints" not in application_tables
         assert "store" not in application_tables
         assert "checkpoints" in checkpoint_tables
-        assert "workflow_lifecycles" not in checkpoint_tables
+        assert "runtime_lifecycles" not in checkpoint_tables
         assert "store" in store_tables
-        assert "workflow_lifecycles" not in store_tables
+        assert "runtime_lifecycles" not in store_tables
 
     asyncio.run(scenario())
 

@@ -9,10 +9,57 @@ from fastapi.testclient import TestClient
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.file_config import FileConfigRepository
+from agent_shell.workflow import admit_workflow_document
+from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 
 
 MANAGEMENT_TOKEN = "test-management-token"
 API_KEY = "test-api-key"
+
+
+def runtime_workflow_document() -> WorkflowGraphDocumentV1:
+    """Return the smallest admitted frozen Workflow document for runtime tests."""
+
+    report, document = admit_workflow_document(
+        {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "nodes": [
+                    {
+                        "id": "start",
+                        "type": "start",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                    {
+                        "id": "end",
+                        "type": "end",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "edge",
+                        "source": "start",
+                        "source_handle": "next",
+                        "target": "end",
+                        "target_handle": "in",
+                    }
+                ],
+            },
+            "layout": {
+                "nodes": {
+                    "start": {"x": 0, "y": 0},
+                    "end": {"x": 240, "y": 0},
+                },
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            },
+        }
+    )
+    assert report.valid and document is not None
+    return document
 
 
 def configure_scope_tokens(monkeypatch, root: Path) -> None:

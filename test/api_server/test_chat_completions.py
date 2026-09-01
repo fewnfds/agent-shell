@@ -236,8 +236,8 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
             "execution_timeout_seconds"
         )
         execution = original_execution(self, *args, **kwargs)
-        captured["workflow_debug_capture_enabled"] = (
-            execution.workflow_debug_capture_enabled
+        captured["monitoring_capture_enabled"] = (
+            execution.monitoring_capture_enabled
         )
         return execution
 
@@ -249,7 +249,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
             for key, value in current_policy.items()
             if key not in {"defaults", "minimums", "configurable"}
         }
-        updated_policy["workflow_debug_capture_enabled"] = True
+        updated_policy["runtime_monitoring_retention_lifecycles"] = 1
         policy_reply = client.put(
             "/api/system/runtime-policy",
             json=updated_policy,
@@ -287,7 +287,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
         ).exists() is False
 
     assert captured["execution_timeout_seconds"] == 42
-    assert captured["workflow_debug_capture_enabled"] is True
+    assert captured["monitoring_capture_enabled"] is True
     assert captured["run_config"]["recursion_limit"] == 321
     assert captured["run_config"]["max_concurrency"] == 7
     assert "run_id" not in captured["run_config"]
@@ -432,7 +432,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
             assert observed["run_config"]["configurable"] == {
                 "thread_id": identity.checkpoint_thread_id,
             }
-            run = client.app.state.workflow_lifecycle.history.get_run(
+            run = client.app.state.workflow_lifecycle.run(
                 context.workflow_run_id
             )
             assert run is not None

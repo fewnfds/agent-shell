@@ -12,7 +12,6 @@ from agent_shell.workflow.validation import (
     admit_workflow_document,
     validate_workflow_executable,
 )
-from agent_shell.workflow.compiler import compile_workflow
 
 __all__ = [
     "NODE_CATALOG",
@@ -24,7 +23,6 @@ __all__ = [
     "canonical_workflow_definition_json",
     "canonical_workflow_document_json",
     "node_type_spec",
-    "compile_workflow",
     "validate_workflow_executable",
     "workflow_document_sha256",
     "workflow_executable_sha256",

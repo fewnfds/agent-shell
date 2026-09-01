@@ -265,9 +265,11 @@ Content-Type: application/json
 4. 检查 Python dependency status；
 5. 检查 Provider endpoint、model capability 和 credential missing state；
 6. 通过 `GET /api/workflow-lifecycles` 找到当前 Lifecycle；
-7. 读取 Lifecycle detail、events 和失败 Run；
-8. 根据 `run_id`、Node invocation、event type 和 checkpoint 修正一个 owner；
+7. 在【系统 / 日志中心】按 `request_id`、`lifecycle_id` 或 `run_id` 定位运行诊断，并按需下载对应异常详情附件；
+8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
+
+Lifecycle detail、events、single Run detail 和 download endpoint 当前返回 `503 runtime_monitoring_read_model_unavailable`。监控 read model 开放前，故障定位使用可信的 Lifecycle catalog、调用方 structured error 和日志中心诊断，不把底层表当作公开 Timeline 查询。
 
 常见 HTTP 范围：
 

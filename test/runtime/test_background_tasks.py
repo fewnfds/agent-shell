@@ -13,6 +13,7 @@ from agent_shell.runtime.workflow_lifecycle import (
     lifecycle_tasks_namespace,
 )
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from support import runtime_workflow_document
 
 
 def _lifecycle_service(root: Path) -> WorkflowLifecycleService:
@@ -49,6 +50,67 @@ class _Execution:
             pass
 
 
+def test_background_registration_failure_removes_task_and_never_executes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def scenario() -> None:
+        lifecycle = _lifecycle_service(tmp_path)
+        await lifecycle.start()
+        lifecycle_id = await lifecycle.create(
+            [{"role": "user", "content": "input"}],
+            request_id="request-registration",
+            run_id="parent-registration",
+            checkpoint_thread_id=None,
+            workflow_id="parent-workflow",
+            workflow_name="Parent",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
+        )
+        manager = BackgroundTaskManager(lifecycle)
+        await manager.start()
+        executed = False
+
+        async def factory(_identity):
+            nonlocal executed
+            executed = True
+            raise AssertionError("an unregistered Run must not execute")
+
+        def fail_registration(*_args, **_kwargs) -> None:
+            raise OSError("registry unavailable")
+
+        monkeypatch.setattr(lifecycle, "register_run", fail_registration)
+        try:
+            try:
+                await manager.start_workflow(
+                    lifecycle_id=lifecycle_id,
+                    request_id="request-registration",
+                    launcher_run_id="parent-registration",
+                    launcher_id="launcher",
+                    operation_id="registration-failure",
+                    caller_run_depth=0,
+                    target_id="child",
+                    target_name="Child",
+                    target_document=runtime_workflow_document(),
+                    checkpoint_thread_id=None,
+                    cancel_on_upstream_termination=True,
+                    execution_factory=factory,
+                )
+                raise AssertionError("registration failure must cross the boundary")
+            except OSError as exc:
+                assert str(exc) == "registry unavailable"
+            assert executed is False
+            assert await manager.list(lifecycle_id) == []
+            assert [run["run_id"] for run in lifecycle.runs(lifecycle_id)] == [
+                "parent-registration"
+            ]
+        finally:
+            await manager.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
 async def _wait_for_status(
     manager: BackgroundTaskManager,
     lifecycle_id: str,
@@ -76,6 +138,8 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
             checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
         )
         manager = BackgroundTaskManager(lifecycle)
         await manager.start()
@@ -110,7 +174,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                         caller_run_depth=0,
                         target_id="child-1",
                         target_name="Child One",
-                        target_graph_sha="graph-sha-1",
+                        target_document=runtime_workflow_document(),
                         checkpoint_thread_id=None,
                         cancel_on_upstream_termination=True,
                         execution_factory=first_factory,
@@ -129,7 +193,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
                 caller_run_depth=0,
                 target_id="child-2",
                 target_name="Child Two",
-                target_graph_sha="graph-sha-2",
+                target_document=runtime_workflow_document(),
                 checkpoint_thread_id=None,
                 cancel_on_upstream_termination=True,
                 execution_factory=second_factory,
@@ -164,7 +228,7 @@ def test_background_manager_checks_independent_terminal_failure_and_unknown_stat
             )
             failed = (await manager.check(lifecycle_id, [second.task_id]))[0]
             assert failed.error_code == "child_expected_failure"
-            failed_run = lifecycle.history.get_run(second.child_run_id)
+            failed_run = lifecycle.run(second.child_run_id)
             assert failed_run is not None
             assert failed_run["status"] == "failed"
             assert failed_run["error_code"] == "child_expected_failure"
@@ -216,6 +280,8 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
             checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
         )
         manager = BackgroundTaskManager(lifecycle)
         await manager.start()
@@ -233,7 +299,7 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
             caller_run_depth=0,
             target_id="child",
             target_name="Child",
-            target_graph_sha="graph-sha",
+            target_document=runtime_workflow_document(),
             checkpoint_thread_id=None,
             cancel_on_upstream_termination=True,
             execution_factory=factory,
@@ -242,7 +308,7 @@ def test_background_manager_shutdown_cancels_active_task(tmp_path: Path) -> None
         snapshot = (await manager.check(lifecycle_id, [handle.task_id]))[0]
         assert snapshot.runtime_status == "cancelled"
         assert snapshot.error_code == "background_task_cancelled"
-        run = lifecycle.history.get_run(handle.child_run_id)
+        run = lifecycle.run(handle.child_run_id)
         assert run is not None
         assert run["status"] == "cancelled"
         assert run["error_code"] == "background_task_cancelled"
@@ -264,6 +330,8 @@ def test_parent_termination_cancels_only_children_with_propagation_enabled(
             checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
         )
         manager = BackgroundTaskManager(lifecycle)
         await manager.start()
@@ -286,7 +354,7 @@ def test_parent_termination_cancels_only_children_with_propagation_enabled(
                 caller_run_depth=0,
                 target_id="child-cascading",
                 target_name="Cascading Child",
-                target_graph_sha="graph-sha-cascading",
+                target_document=runtime_workflow_document(),
                 checkpoint_thread_id=None,
                 cancel_on_upstream_termination=True,
                 execution_factory=cascading_factory,
@@ -300,7 +368,7 @@ def test_parent_termination_cancels_only_children_with_propagation_enabled(
                 caller_run_depth=0,
                 target_id="child-independent",
                 target_name="Independent Child",
-                target_graph_sha="graph-sha-independent",
+                target_document=runtime_workflow_document(),
                 checkpoint_thread_id=None,
                 cancel_on_upstream_termination=False,
                 execution_factory=independent_factory,
@@ -343,6 +411,8 @@ def test_background_manager_lists_filters_and_cancels_workflow_task_idempotently
             checkpoint_thread_id=None,
             workflow_id="parent-workflow",
             workflow_name="Parent",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
         )
         manager = BackgroundTaskManager(lifecycle)
         await manager.start()
@@ -361,7 +431,7 @@ def test_background_manager_lists_filters_and_cancels_workflow_task_idempotently
                 caller_run_depth=0,
                 target_id="workflow-1",
                 target_name="Workflow One",
-                target_graph_sha="graph-sha",
+                target_document=runtime_workflow_document(),
                 checkpoint_thread_id=None,
                 cancel_on_upstream_termination=True,
                 execution_factory=factory,
@@ -394,7 +464,7 @@ def test_background_manager_lists_filters_and_cancels_workflow_task_idempotently
                 statuses=frozenset({"cancelled"}),
             )
             assert [item.task_id for item in cancelled] == [handle.task_id]
-            run = lifecycle.history.get_run(handle.child_run_id)
+            run = lifecycle.run(handle.child_run_id)
             assert run is not None
             assert run["status"] == "cancelled"
         finally:

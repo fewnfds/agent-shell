@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Protocol
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_shell.runtime.diagnostics import (
     RuntimeDiagnosticContext,
@@ -17,6 +17,10 @@ from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.workflow_lifecycle import (
     WorkflowLifecycleService,
     lifecycle_tasks_namespace,
+)
+from agent_shell.workflow.contracts import (
+    WorkflowGraphDocumentV1,
+    workflow_document_sha256,
 )
 
 
@@ -185,7 +189,7 @@ class BackgroundTaskManager:
         caller_run_depth: int,
         target_id: str,
         target_name: str,
-        target_graph_sha: str,
+        target_document: WorkflowGraphDocumentV1,
         checkpoint_thread_id: str | None,
         cancel_on_upstream_termination: bool,
         execution_factory: BackgroundExecutionFactory,
@@ -199,7 +203,7 @@ class BackgroundTaskManager:
             caller_run_depth=caller_run_depth,
             target_id=target_id,
             target_name=target_name,
-            target_graph_sha=target_graph_sha,
+            target_document=target_document,
             checkpoint_thread_id=checkpoint_thread_id,
             cancel_on_upstream_termination=cancel_on_upstream_termination,
             execution_factory=execution_factory,
@@ -216,7 +220,7 @@ class BackgroundTaskManager:
         caller_run_depth: int,
         target_id: str,
         target_name: str,
-        target_graph_sha: str,
+        target_document: WorkflowGraphDocumentV1,
         checkpoint_thread_id: str | None,
         cancel_on_upstream_termination: bool,
         execution_factory: BackgroundExecutionFactory,
@@ -244,7 +248,7 @@ class BackgroundTaskManager:
                     "The Workflow lifecycle does not exist.",
                     status_code=409,
                 )
-            if lifecycle.get("lifecycle_status", "active") == "deleting":
+            if lifecycle.get("lifecycle_status") != "active":
                 raise AgentRuntimeError(
                     "workflow_lifecycle_deleting",
                     "The Workflow lifecycle is being deleted.",
@@ -284,7 +288,7 @@ class BackgroundTaskManager:
                 target_kind="workflow",
                 target_id=target_id,
                 target_name=target_name,
-                target_graph_sha=target_graph_sha,
+                target_graph_sha=workflow_document_sha256(target_document),
                 cancel_on_upstream_termination=cancel_on_upstream_termination,
                 child_run_id=identity.child_run_id,
                 checkpoint_thread_id=identity.checkpoint_thread_id,
@@ -308,10 +312,12 @@ class BackgroundTaskManager:
                         "background_task_id": record.task_id,
                         "run_depth": record.run_depth,
                         "created_at": record.created_at,
-                    }
+                    },
+                    workflow_document=target_document,
                 )
-            except Exception as exc:
-                self._report_run_history_error(exc, record)
+            except BaseException:
+                await self._delete(record.lifecycle_id, record.task_id)
+                raise
             task = asyncio.create_task(
                 self._run(record, identity, execution_factory),
                 name=f"background-workflow:{task_id}",
@@ -360,27 +366,6 @@ class BackgroundTaskManager:
     ) -> list[BackgroundTaskSnapshot]:
         async with self._lifecycle.exclusive_mutation(lifecycle_id):
             return await self._list_locked(lifecycle_id, statuses=statuses)
-
-    async def list_for_history(
-        self,
-        lifecycle_id: str,
-    ) -> tuple[list[BackgroundTaskSnapshot], int]:
-        """Project valid task records without hiding the rest of Run History."""
-
-        async with self._lifecycle.exclusive_mutation(lifecycle_id):
-            checked_at = _now()
-            records: list[BackgroundTaskRecord] = []
-            invalid_record_count = 0
-            for value in await self._record_values_locked(lifecycle_id):
-                try:
-                    records.append(BackgroundTaskRecord.model_validate(value))
-                except ValidationError:
-                    invalid_record_count += 1
-            snapshots = await self._snapshots_locked(
-                records,
-                checked_at=checked_at,
-            )
-            return snapshots, invalid_record_count
 
     async def list_for_cleanup(
         self,
@@ -542,7 +527,7 @@ class BackgroundTaskManager:
                 error_code="background_runtime_lost",
             )
         except Exception as exc:
-            self._report_run_history_error(exc, record)
+            self._report_registry_error(exc, record)
         return record
 
     async def _run(
@@ -619,7 +604,8 @@ class BackgroundTaskManager:
                 usage=usage if isinstance(usage, dict) else {},
             )
         except Exception as exc:
-            self._report_run_history_error(exc, record)
+            self._report_registry_error(exc, record)
+        await self._lifecycle.lifecycle_changed(record.lifecycle_id)
 
     async def _put(self, record: BackgroundTaskRecord) -> None:
         await self._lifecycle.store.aput(
@@ -627,6 +613,12 @@ class BackgroundTaskManager:
             record.task_id,
             record.model_dump(mode="json"),
             index=False,
+        )
+
+    async def _delete(self, lifecycle_id: str, task_id: str) -> None:
+        await self._lifecycle.store.adelete(
+            lifecycle_tasks_namespace(lifecycle_id),
+            task_id,
         )
 
     async def _get(
@@ -711,20 +703,16 @@ class BackgroundTaskManager:
                 context=self._diagnostic_context(record),
             )
 
-    def _report_run_history_error(
+    def _report_registry_error(
         self,
         exc: BaseException,
         record: BackgroundTaskRecord,
     ) -> None:
-        try:
-            self._lifecycle.mark_run_observation_partial(record.child_run_id)
-        except Exception:
-            pass
         if self._runtime_diagnostics is not None:
             self._runtime_diagnostics.observation_error(
                 exc,
-                code="workflow_run_record_failed",
-                component="observability",
+                code="runtime_run_registry_failed",
+                component="persistence",
                 context=self._diagnostic_context(record),
             )
 

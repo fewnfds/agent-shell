@@ -7,7 +7,6 @@ from typing import Any
 from agent_shell.capability_manifest import FILESYSTEM_TOOL_NAMES
 from agent_shell.runtime.agent_compilation import (
     ProfileMaterializer,
-    enable_deepagents_trace_inputs,
     materialize_patch_tool_calls_middleware,
     reported_error,
     validate_middleware_names,
@@ -41,7 +40,6 @@ def build_subagent_specs(
         str, Mapping[str, Path]
     ] | None = None,
     initial_files: dict[str, Any] | None = None,
-    workflow_debug_capture_enabled: bool = False,
 ) -> list[dict[str, Any]]:
     """Project direct children to Deep Agents' official SubAgent dictionaries."""
 
@@ -55,7 +53,6 @@ def build_subagent_specs(
                 mapped_directory_paths_by_filesystem
             ),
             initial_files=initial_files,
-            workflow_debug_capture_enabled=workflow_debug_capture_enabled,
         )
         for edge in roots
     ]
@@ -71,7 +68,6 @@ def _build_subagent_spec(
         str, Mapping[str, Path]
     ] | None,
     initial_files: dict[str, Any] | None,
-    workflow_debug_capture_enabled: bool,
 ) -> dict[str, Any]:
     child = materialize_profile(
         node.references,
@@ -88,10 +84,6 @@ def _build_subagent_spec(
         disabled_capabilities=node.disabled_capabilities,
         mcp_references=node.mcp_references,
     )
-    enable_deepagents_trace_inputs(
-        [*child.middleware, *child.extra_middleware],
-        debug_capture=workflow_debug_capture_enabled,
-    )
     if initial_files is not None:
         for path, value in child.workspace.initial_files.items():
             previous = initial_files.get(path)
@@ -106,9 +98,7 @@ def _build_subagent_spec(
         AgentShellStateMiddleware(),
         ToolErrorBoundaryMiddleware(),
         *child.middleware,
-        materialize_patch_tool_calls_middleware(
-            debug_capture=workflow_debug_capture_enabled,
-        ),
+        materialize_patch_tool_calls_middleware(),
     ]
     if child.tool_choice is not None or child.model_settings:
         middleware.append(

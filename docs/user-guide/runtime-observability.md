@@ -16,7 +16,7 @@
 
 ## 异常详情
 
-运行异常产生诊断时，系统同时尝试把完整 Python exception chain 和 traceback 保存到 `data/logs/diagnostics/diagnostic-{diagnostic_id}.log`，并从对应诊断行下载；正常完成不会产生附件。诊断包内归档名为 `diagnostics/{diagnostic_id}.log`。附件写入失败不会阻塞原运行失败边界，
+运行异常产生诊断时，系统同时尝试把完整 Python exception chain 和 traceback 保存到 `data/logs/diagnostics/diagnostic-{diagnostic_id}.log`，并从对应诊断行下载；正常完成不会产生附件。附件写入失败不会阻塞原运行失败边界，
 对应诊断以 `detail_available=false` 表示没有可下载详情。
 
 exception detail 可能包含请求内容、Provider response、credential、host path 和自定义代码信息；普通 API response、DOM、system log 和 diagnostic summary 仍按脱敏边界不回显这些内容，只有 management-only exception-detail attachment 可由维护者下载查看。删除 diagnostic 或降低 diagnostic retention count 时，
@@ -24,27 +24,40 @@ exception detail 可能包含请求内容、Provider response、credential、hos
 
 Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和固定的 `provider_request_failed` 安全说明；SSE 已建立为 200 时则在最终 `chat.completion.chunk` 中返回 `finish_reason="error"` 和 `error.code="provider_request_failed"`，随后发送 `[DONE]`。原始 Provider 异常仍作为 cause 进入上述完整异常链；实例维护者从日志中心对应的运行诊断行下载附件，才能查看网关返回的真实内容。
 
-## 运行历史
+## 运行监控
 
-【系统 / 运行历史】以一次顶层请求的 Lifecycle 聚合 root Workflow 和 background Workflow Run（management-only，需要管理鉴权；导出接口见[使用 background Run](ai-guide/07-background-runs.md)）。
-Run Registry 是 Run 身份与终态的权威记录；append-only Event Journal 保存 Run、Workflow Node、Agent、Model 和 Tool 的结构边界。Workflow Node 每次执行使用独立 `span_id`，其 `node_invocation_id` 与该 `span_id` 相同；Agent、Model 和 Tool 拥有自己的 `span_id/parent_span_id`，并保留所属 `node_invocation_id`。同一 Node 的循环、重试和 fan-out 不会合并。
-Run 完成、失败、超时或取消时，Journal 会以相同终态关闭仍开放的 Node、Agent、Model 和 Tool span，Timeline 不保留伪 `running` 子项。
+【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。当前页面提供可信的 Lifecycle 目录、搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。
 
-所有 root/background Run 都使用独立 `run_id`。Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才额外拥有 `checkpoint_thread_id`，并由共享的 LangGraph `AsyncSqliteSaver` 写入 Checkpoint；parent Workflow 与 background child Workflow 独立读取配置，互不继承。Checkpoint 当前只服务 Debug，不提供 Resume。页面可查看 parent/child Run relationship、结构 Timeline、可空 Checkpoint Thread，以及 Checkpoint 摘要、结构事件和关联诊断计数；未启用时 thread 为空、计数为 0，页面不直接展开 Checkpoint State 和运行消息。
+当前版本只开放持久化目录与删除管理。Lifecycle 详情、事件、single Run 详情和下载接口返回 `503 runtime_monitoring_read_model_unavailable`；页面也不提供 Graph、Node 历史、实时进度或运行归档。监控 read model 完成前，系统不输出缺少事实完整性保证的 Timeline。
 
-每次 LangChain ChatModel 调用开始时，Run Journal 通过 `on_chat_model_start` 持久化该调用看到的完整 message batches、已绑定 Tool schemas、`tool_choice`、model invocation parameters、options、tags 和 metadata。记录使用 model callback run ID 幂等写入，并关联 Lifecycle/Run、Workflow Node、Main Agent profile；Subagent 记录同时关联自己的 profile 和 parent Main Agent profile。Provider 响应流发生 curl transport failure 时，对应 `model/failed` 结构事件保存安全的 `transport`、`curl_code` 和 `curl_error`，不保存原始异常 message、请求头或 Provider response；这些事件随运行详情 ZIP 的 `events.jsonl` 导出。记录失败只把 Run observation 标为 `partial` 并生成运行诊断，不中断模型调用。
+### 持久化事实
 
-【系统 / 系统配置】的 Workflow Debug 采集默认关闭。开启后，新 Run 的结构事件保存经过 JSON 转换且 credential 字段脱敏的完整 LangChain callback metadata；每次 Chain、Model 和 Tool callback failure 都生成运行诊断及完整 exception chain/traceback 附件，因此自动重试成功前的中间异常也可从日志中心和运行 ZIP 检查。Deep Agents Middleware hook inputs 在本次 Run 编译时恢复给 LangChain callback/tracing；同时，Run 在 LangGraph v3 post-transformer、direct-consumer 边界保存应用实际消费的完整 `ProtocolEvent` envelope，包括 `seq`、`method`、`namespace`、timestamp 和 channel data，State 等运行材料按 v3 method 进入运行历史。该记录不补开 transformer 未请求的 Pregel stream mode，也不恢复已被 transformer 抑制的内部事件。该模式会增加本地运行历史、诊断索引、附件和 ZIP 体积；同时开启 LangSmith 时，Middleware trace inputs 也会增加外部 trace payload。关闭后使用上游轻量采集；已启动 Run 不受中途切换影响。
+Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的权威 owner。每个 root/background Run 使用独立 `run_id`，并保存 parent/background relationship、Workflow identity、状态、起止时间、终止原因、错误码和 usage。Registry 注册、开始或终态提交失败属于运行控制故障，不能作为可选观测写入吞掉。
 
-运行历史直接提供 Lifecycle ZIP 和 single Run ZIP。ZIP 标注 `captured_at`、当前终态/活动状态、最后结构事件 sequence 和观测完整性，并固定包含下载时可读取的 Run Registry、结构事件、Lifecycle 输入、持久化 Agent invocation artifact、上述 ChatModel 请求、background task 记录、Lifecycle Store 摘要与原始记录、诊断摘要和现存异常详情附件。只有 `checkpoint_thread_id` 非空的 Run 写入 complete Checkpoint State；Lifecycle ZIP 不为未启用的 Run 建立 checkpoint 文件，single Run ZIP 保留空的 `checkpoints.jsonl` 并在 manifest 中写入 `checkpoint_thread_id=null`。模型请求索引位于 `model-requests/index.json`；Main Agent 分别写入 `model-requests/main-agents/*.jsonl`，Subagent 按 parent Main Agent scope 写入 `model-requests/subagents/<parent-scope>/*.jsonl`，没有混合所有 Agent 的聚合请求文件。
+启用采集的每个 Run 同时保存以下监控事实：
 
-Workflow Debug 采集到的 v3 事件流与结构 `events.jsonl` 分开导出。Lifecycle ZIP 使用 `event-streams/<run-id>/<method>.jsonl`，single Run ZIP 使用 `event-streams/<method>.jsonl`；每个文件只包含对应 channel，文件内仍保留全局 `seq`，可以跨文件合并还原该 Run 的到达顺序。`manifest.json.event_streams` 保存 API version、采集条件、采集边界、Run 到 channel 文件的映射、事件数和首末 `seq`。未采集到 v3 协议事件时不创建 `event-streams/`，并把 `includes.v3_event_streams` 和 `event_streams.available` 标记为 `false`。
+- Run 注册时保存本次实际执行的不可变 `WorkflowGraphDocumentV1`、document SHA、Node source identity 和 Edge class；之后修改或删除 current Workflow 不改变这份 Graph；
+- `RunExecution` 在 v3 transformer 之后、应用 direct consumer 已解析 Shell origin 的位置，保存本次实际产生的全部 `ProtocolEvent` envelope 和 origin sidecar。监控不会额外声明 `values`、`updates`、`tasks`、`debug` 等 stream mode，也不会恢复 transformer 已抑制的事件；
+- 每次 ChatModel 调用在 LangChain `on_chat_model_start` 边界保存 message batches、绑定 Tool schema、invocation parameters、options、tags 和 metadata，并在 `on_llm_end` 或 `on_llm_error` 保存终态、usage 或安全错误类型。该边界位于 middleware 处理和模型绑定之后、Provider adapter 最终 HTTP 序列化之前；
+- Command Node 保存 `started` 与 `completed|failed` 外部观察。成功记录经过校验的 `{activate, dispatch, update}`，失败只记录稳定的 `workflow.command_failed`，不保存脚本源码、locals、MCP session 或完整输入 State。
 
-单条持久化 background task 记录无法按当前 contract 解析时，Lifecycle 的观测状态标记为 `partial`，页面局部提示无效记录数量，并继续显示可读取的 Run、结构事件、Store 和其他内容。Lifecycle ZIP 同样保持可下载，并原样包含无法解析的 background task 记录；运行控制、取消和清理仍要求 task 记录完整有效。
+Graph、ProtocolEvent、Model Request 和 Command 四个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。进程中断时仍处于采集中的分区标记为 `partial`；Graph 已成功冻结以及本来不适用的分区保持原状态。
 
-运行详情 ZIP 是持久化运行快照，不承诺字节级重放。`on_chat_model_start` 位于 LangChain ChatModel 边界，可以稳定观察 middleware 处理后的消息和绑定到模型调用的 Tool/参数，但它不是 Provider adapter 最终序列化出的 HTTP payload；Provider 网络请求原文和成功 Provider HTTP 原始响应不持久化。下载没有内容分类或按字段关闭采集的选项；Workflow Debug 开启后，prompt、用户消息、Tool schema/payload、State、路径和其他运行材料都允许进入运行历史与 ZIP。配置 secret 的实际值由 `agent-shell.env` 单独持有，运行历史下载不读取该配置文件；统一 JSON 转换排除 Secret 类型并脱敏明确的 credential、API Key、token、password 等字段。平台不能识别用户主动写入普通文本的任意密钥，维护者在分享 ZIP 前仍需检查这类自由文本。运行历史没有自动 retention。单项删除会清理对应 Lifecycle 的 Run/Event、Model Request、Store、Checkpoint 和受管动态目录；批量删除作用于当前搜索的完整匹配结果，清理其中已终止的 Lifecycle，并保留仍有 active parent/background Run 的记录。搜索为空时，批量删除会处理全部运行历史中的已终止记录。
+Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。Checkpoint 当前只服务 Debug，不提供 Resume、time travel 或灾难恢复入口。
 
-下载时事件按页、已启用 Run 的 checkpoint 按迭代结果写入实例 `runtime/tmp` 下的一次性目录，再生成磁盘 ZIP 并由文件响应发送；响应结束后删除该临时目录。导出过程使用磁盘流式组装。
+### 保留与删除
+
+【系统 / 系统配置】的 `runtime_monitoring_retention_lifecycles` 默认值为 `20`、最小值为 `0`，没有产品最大值。创建 Lifecycle 时以当时的值是否大于 `0` 冻结 `monitoring_capture_enabled`；运行中修改设置不会改变该 Lifecycle 的采集 profile。全局保留数量始终使用最新设置，因此降低数值会立即收敛已经完整终止的数据。
+
+Lifecycle 只有在 root Run、全部 child Run 和全部 background task 都进入终态后才取得 `fully_terminal_at`。活动 Lifecycle 不计入保留数量；完整终态的数据按 `(fully_terminal_at, lifecycle_id)` 保留最近 N 个，因此创建较早但结束较晚的长任务按实际结束顺序参与保留。服务启动时先把遗留 active Run 和失去进程 owner 的 background task 归一为 `interrupted`，再判断完整终态并执行保留策略。
+
+值为 `0` 时，新 Lifecycle 不写监控事实，但 Registry、Lifecycle input 和 background task 等运行必需控制数据仍服务到完整终态，随后自动清理。自动保留清理删除该 Lifecycle 的 Registry、监控事实、官方 Store input/task/invocation/filesystem route，以及所有非空 `checkpoint_thread_id` 对应的官方 checkpoint；它不删除日志中心诊断、普通用户文件、生成媒体、fixed/mapped directory 正文或 Shell 创建的 Lifecycle 动态目录。
+
+单项删除和批量删除同样拒绝 active Lifecycle。管理台默认保留受管动态目录；management API 只有在显式提交 `delete_dynamic_directories=true` 时才验证并删除目标名为 `lifecycle-{lifecycle_id}` 且直接位于登记 root 下的 Shell-created dynamic directory。批量删除作用于服务端完整匹配集，跳过 active Lifecycle；空搜索条件匹配全部目录记录。
+
+### 敏感内容
+
+启用采集后，ProtocolEvent 和 Model Request 可以包含 prompt、用户消息、Tool schema/payload、State、路径以及其他运行材料。统一 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；平台不能识别用户主动写入普通文本或自定义对象表示中的任意密钥。`agent-shell.env` 仍是配置 secret 的唯一权威存储，监控 writer 不读取该配置文件。当前没有运行归档下载入口；后续分享任何由这些事实生成的归档前仍需人工检查自由文本。
 
 ## LangSmith
 

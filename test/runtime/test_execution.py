@@ -13,6 +13,7 @@ from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from support import runtime_workflow_document
 
 def test_workflow_run_has_stable_openai_completion_reason() -> None:
     execution = RunExecution(
@@ -109,6 +110,8 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             checkpoint_thread_id=None,
             workflow_id="cancel-workflow",
             workflow_name="Cancel Workflow",
+            workflow_document=runtime_workflow_document(),
+            monitoring_capture_enabled=True,
         )
         lifecycle.start_run("cancel-run")
         children_cancelled = False
@@ -144,7 +147,7 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
         try:
             cancellation = asyncio.create_task(execution.cancel())
             await asyncio.wait_for(child_cancel_started.wait(), timeout=1)
-            run = lifecycle.history.get_run("cancel-run")
+            run = lifecycle.run("cancel-run")
             parent = await lifecycle.record(lifecycle_id)
             assert run is not None
             assert parent is not None
@@ -409,12 +412,6 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 context=None,
             ):
                 assert config["recursion_limit"] == 1_000_000
-                assert len(config["callbacks"]) == 1
-                config["callbacks"][0].on_tool_start(
-                    {"name": "waiting-tool"},
-                    "",
-                    run_id="waiting-tool-run",
-                )
                 assert context is not None
                 assert version == "v3"
                 assert transformers
@@ -436,6 +433,8 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
                 checkpoint_thread_id="timeout-thread",
                 workflow_id="timeout-workflow",
                 workflow_name="Timeout Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
             )
             identity = WorkflowRunIdentity(
                 request_id="timeout-request",
@@ -465,9 +464,9 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
             with pytest.raises(AgentRuntimeError) as captured:
                 await anext(stream)
             assert captured.value.code == "execution_timeout"
-            record = lifecycle.history.get_run("timeout-run")
+            record = lifecycle.run("timeout-run")
             assert record is not None
-            return run.exited, record, lifecycle.events(lifecycle_id)
+            return run.exited, record, lifecycle.transitions(lifecycle_id)
         finally:
             await lifecycle.close()
 
@@ -475,9 +474,8 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
     assert closed is True
     assert record["status"] == "failed"
     assert record["error_code"] == "execution_timeout"
-    tool_events = [event for event in events if event["subject_kind"] == "tool"]
-    assert [event["phase"] for event in tool_events] == ["started", "failed"]
-    assert tool_events[-1]["error_code"] == "execution_timeout"
+    assert events[-1]["phase"] == "failed"
+    assert events[-1]["error_code"] == "execution_timeout"
 
 
 def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:

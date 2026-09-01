@@ -2,34 +2,66 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 from agent_shell.contracts import FilesystemBlock
 from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
+from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import (
     WorkflowLifecycleService,
     lifecycle_filesystem_namespace,
 )
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from support import runtime_workflow_document
 
 
-def _lifecycle_service(
+class _Policy:
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+
+    def snapshot(self):
+        return SimpleNamespace(
+            runtime_monitoring_retention_lifecycles=self.limit,
+        )
+
+
+def _runtime(
     database_path: Path,
     *,
     data_root: Path | None = None,
-) -> WorkflowLifecycleService:
-    return WorkflowLifecycleService(
+    retention: int = 20,
+):
+    lifecycle = WorkflowLifecycleService(
         SQLiteDatabase(database_path),
         store_database=SQLiteFile(
             database_path.with_name("workflow-store.sqlite3")
         ),
         data_root=data_root,
     )
+    tasks = BackgroundTaskManager(lifecycle)
+    checkpoints = WorkflowCheckpointService(
+        SQLiteFile(
+            database_path.with_name("workflow-checkpoints.sqlite3"),
+            create=False,
+        )
+    )
+    policy = _Policy(retention)
+    cleanup = RuntimeCleanupCoordinator(
+        lifecycle,
+        tasks,
+        checkpoints,
+        policy,  # type: ignore[arg-type]
+    )
+    return lifecycle, tasks, checkpoints, policy, cleanup
 
 
 async def _create_lifecycle(
     service: WorkflowLifecycleService,
     suffix: str,
+    *,
+    capture: bool = True,
 ) -> str:
     return await service.create(
         [{"role": "user", "content": f"input-{suffix}"}],
@@ -38,6 +70,8 @@ async def _create_lifecycle(
         checkpoint_thread_id=None,
         workflow_id="workflow",
         workflow_name="Workflow",
+        workflow_document=runtime_workflow_document(),
+        monitoring_capture_enabled=capture,
     )
 
 
@@ -51,8 +85,11 @@ def test_lifecycle_resolves_fixed_and_dynamic_mappings_once(
         dynamic_parent.mkdir(parents=True)
         (data_root / "state").mkdir()
         fixed.mkdir()
-        service = _lifecycle_service(
-            data_root / "state" / "agent-shell.sqlite3",
+        service = WorkflowLifecycleService(
+            SQLiteDatabase(data_root / "state" / "agent-shell.sqlite3"),
+            store_database=SQLiteFile(
+                data_root / "state" / "workflow-store.sqlite3"
+            ),
             data_root=data_root,
         )
         await service.start()
@@ -105,9 +142,8 @@ def test_lifecycle_resolves_fixed_and_dynamic_mappings_once(
             )
             assert record is not None
             assert record.value["mappings"][1]["lifecycle_mode"] == "dynamic"
-            assert record.value["mappings"][1]["resolved_local_path"] == str(
-                first["/dynamic/"]
-            )
+            managed = service.managed_directories.list_for_lifecycle(first_id)
+            assert managed[0]["resolved_target"] == str(first["/dynamic/"])
         finally:
             await service.close()
 
@@ -118,14 +154,17 @@ def test_lifecycle_relative_mapping_cannot_escape_data_root(tmp_path: Path) -> N
     async def scenario() -> None:
         data_root = tmp_path / "data"
         (data_root / "state").mkdir(parents=True)
-        service = _lifecycle_service(
-            data_root / "state" / "agent-shell.sqlite3",
+        service = WorkflowLifecycleService(
+            SQLiteDatabase(data_root / "state" / "agent-shell.sqlite3"),
+            store_database=SQLiteFile(
+                data_root / "state" / "workflow-store.sqlite3"
+            ),
             data_root=data_root,
         )
         await service.start()
         try:
-            lifecycle_id = await _create_lifecycle(service, "escape")
-            filesystem = FilesystemBlock.model_validate(
+            await _create_lifecycle(service, "escape")
+            FilesystemBlock.model_validate(
                 {
                     "name": "Invalid workspace",
                     "mapped_directories": [
@@ -148,137 +187,414 @@ def test_lifecycle_relative_mapping_cannot_escape_data_root(tmp_path: Path) -> N
     asyncio.run(scenario())
 
 
-def test_lifecycle_mutation_locks_are_isolated_by_lifecycle(tmp_path: Path) -> None:
+def test_full_terminal_waits_for_child_run_then_retention_converges(
+    tmp_path: Path,
+) -> None:
     async def scenario() -> None:
-        service = _lifecycle_service(tmp_path / "agent-shell.sqlite3")
-        await service.start()
-        first_id = await _create_lifecycle(service, "first")
-        second_id = await _create_lifecycle(service, "second")
-        first_entered = asyncio.Event()
-        release_first = asyncio.Event()
-
-        async def hold_first() -> None:
-            async with service.exclusive_mutation(first_id):
-                first_entered.set()
-                await release_first.wait()
-
-        holder = asyncio.create_task(hold_first())
+        lifecycle, tasks, _checkpoints, policy, cleanup = _runtime(
+            tmp_path / "agent-shell.sqlite3",
+            retention=1,
+        )
+        await lifecycle.start()
+        await tasks.start()
         try:
-            await first_entered.wait()
-            await asyncio.wait_for(
-                service.finish_parent(second_id, "completed"),
-                timeout=0.5,
+            lifecycle_id = await _create_lifecycle(lifecycle, "parent")
+            lifecycle.register_run(
+                {
+                    "run_id": "run-child",
+                    "lifecycle_id": lifecycle_id,
+                    "request_id": "request-parent",
+                    "workflow_id": "child-workflow",
+                    "workflow_name": "Child Workflow",
+                    "parent_run_id": "run-parent",
+                    "run_depth": 1,
+                },
+                workflow_document=runtime_workflow_document(),
             )
-            second = await service.record(second_id)
-            assert second is not None
-            assert second["parent_status"] == "completed"
+            assert lifecycle.finish_run("run-parent", status="completed")
+            await cleanup.enforce_retention()
+            parent_terminal = await lifecycle.record(lifecycle_id)
+            assert parent_terminal is not None
+            assert "fully_terminal_at" not in parent_terminal
+
+            assert lifecycle.finish_run("run-child", status="completed")
+            await cleanup.enforce_retention()
+            complete = await lifecycle.record(lifecycle_id)
+            assert complete is not None
+            assert complete["fully_terminal_at"]
+
+            policy.limit = 0
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(lifecycle_id) is None
         finally:
-            release_first.set()
-            await holder
-            await service.close()
+            await tasks.close()
+            await lifecycle.close()
 
     asyncio.run(scenario())
 
 
-def test_lifecycle_deletion_tombstone_blocks_new_tasks_and_allows_retry(
+def test_retention_uses_full_terminal_order_and_excludes_active_lifecycles(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        lifecycle, tasks, _checkpoints, policy, cleanup = _runtime(
+            tmp_path / "agent-shell.sqlite3",
+            retention=2,
+        )
+        await lifecycle.start()
+        await tasks.start()
+        try:
+            old_id = await _create_lifecycle(lifecycle, "old")
+            assert lifecycle.finish_run("run-old", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                old_id,
+                terminal_at="2026-01-01T00:00:01.000+00:00",
+            )
+
+            long_running_id = await _create_lifecycle(lifecycle, "long")
+
+            middle_id = await _create_lifecycle(lifecycle, "middle")
+            assert lifecycle.finish_run("run-middle", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                middle_id,
+                terminal_at="2026-01-01T00:00:03.000+00:00",
+            )
+
+            newest_id = await _create_lifecycle(lifecycle, "newest")
+            assert lifecycle.finish_run("run-newest", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                newest_id,
+                terminal_at="2026-01-01T00:00:04.000+00:00",
+            )
+
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(old_id) is None
+            assert await lifecycle.record(middle_id) is not None
+            assert await lifecycle.record(newest_id) is not None
+            assert await lifecycle.record(long_running_id) is not None
+
+            policy.limit = 1
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(middle_id) is None
+            assert await lifecycle.record(newest_id) is not None
+            assert await lifecycle.record(long_running_id) is not None
+
+            assert lifecycle.finish_run("run-long", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                long_running_id,
+                terminal_at="2026-01-01T00:00:05.000+00:00",
+            )
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(newest_id) is None
+            assert await lifecycle.record(long_running_id) is not None
+
+            policy.limit = 0
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(long_running_id) is None
+
+            disabled_id = await _create_lifecycle(
+                lifecycle,
+                "disabled",
+                capture=False,
+            )
+            assert lifecycle.finish_run("run-disabled", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                disabled_id,
+                terminal_at="2026-01-01T00:00:06.000+00:00",
+            )
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(disabled_id) is None
+
+            policy.limit = 3
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(old_id) is None
+        finally:
+            await tasks.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_startup_recovery_interrupts_active_run_before_retention(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        database_path = tmp_path / "agent-shell.sqlite3"
+        first_lifecycle, first_tasks, _checkpoints, _policy, _cleanup = _runtime(
+            database_path,
+            retention=1,
+        )
+        await first_lifecycle.start()
+        await first_tasks.start()
+        lifecycle_id = await _create_lifecycle(first_lifecycle, "restart")
+        assert first_lifecycle.start_run("run-restart")
+        await first_tasks.close()
+        await first_lifecycle.close()
+
+        lifecycle, tasks, checkpoints, policy, cleanup = _runtime(
+            database_path,
+            retention=1,
+        )
+        await lifecycle.start()
+        await tasks.start()
+        try:
+            await cleanup.startup_recover()
+            run = lifecycle.run("run-restart")
+            assert run is not None
+            assert run["status"] == "interrupted"
+            record = await lifecycle.record(lifecycle_id)
+            assert record is not None
+            assert record["fully_terminal_at"]
+            monitoring = lifecycle.monitoring.status("run-restart")
+            assert monitoring is not None
+            assert monitoring["graph"] == "available"
+            assert monitoring["protocol"] == "partial"
+            assert monitoring["model"] == "not_applicable"
+            assert monitoring["command"] == "not_applicable"
+            assert checkpoints.started is False
+
+            policy.limit = 0
+            await cleanup.enforce_retention()
+            assert await lifecycle.record(lifecycle_id) is None
+        finally:
+            await tasks.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_retention_preserves_managed_and_ordinary_files_until_explicit_delete(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        data_root = tmp_path / "data"
+        state_root = data_root / "state"
+        dynamic_root = data_root / "dynamic"
+        fixed_root = data_root / "fixed"
+        ordinary_file = data_root / "files" / "ordinary.txt"
+        state_root.mkdir(parents=True)
+        dynamic_root.mkdir()
+        fixed_root.mkdir()
+        ordinary_file.parent.mkdir()
+        ordinary_file.write_text("keep", encoding="utf-8")
+        filesystem = FilesystemBlock.model_validate(
+            {
+                "name": "Retention workspace",
+                "mapped_directories": [
+                    {
+                        "virtual_path": "/fixed/",
+                        "local_path": str(fixed_root),
+                        "path_origin": "absolute",
+                        "lifecycle_mode": "fixed",
+                    },
+                    {
+                        "virtual_path": "/dynamic/",
+                        "local_path": str(dynamic_root),
+                        "path_origin": "absolute",
+                        "lifecycle_mode": "dynamic",
+                    },
+                ],
+            }
+        )
+        lifecycle, tasks, checkpoints, policy, cleanup = _runtime(
+            state_root / "agent-shell.sqlite3",
+            data_root=data_root,
+            retention=1,
+        )
+        await lifecycle.start()
+        await tasks.start()
+        try:
+            automatic_id = await _create_lifecycle(lifecycle, "automatic")
+            automatic_routes = await lifecycle.resolve_mapped_directories(
+                automatic_id,
+                "filesystem",
+                filesystem,
+            )
+            automatic_dynamic = automatic_routes["/dynamic/"]
+            (automatic_dynamic / "result.txt").write_text(
+                "preserve",
+                encoding="utf-8",
+            )
+            assert lifecycle.finish_run("run-automatic", status="completed")
+            policy.limit = 0
+            await cleanup.enforce_retention()
+
+            assert await lifecycle.record(automatic_id) is None
+            assert automatic_dynamic.is_dir()
+            assert (automatic_dynamic / "result.txt").read_text(
+                encoding="utf-8"
+            ) == "preserve"
+            assert fixed_root.is_dir()
+            assert ordinary_file.read_text(encoding="utf-8") == "keep"
+            assert checkpoints.started is False
+            assert lifecycle.managed_directories.list_for_lifecycle(
+                automatic_id
+            )
+
+            policy.limit = 1
+            explicit_id = await _create_lifecycle(lifecycle, "explicit")
+            explicit_routes = await lifecycle.resolve_mapped_directories(
+                explicit_id,
+                "filesystem",
+                filesystem,
+            )
+            explicit_dynamic = explicit_routes["/dynamic/"]
+            assert lifecycle.finish_run("run-explicit", status="completed")
+            result = await cleanup.delete(
+                explicit_id,
+                delete_managed_directories=True,
+            )
+            assert result["managed_directory_count"] == 1
+            assert not explicit_dynamic.exists()
+            assert automatic_dynamic.is_dir()
+        finally:
+            await tasks.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_restart_marks_terminal_run_crash_window_monitoring_partial(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        database_path = tmp_path / "agent-shell.sqlite3"
+        first_lifecycle, first_tasks, _checkpoints, _policy, _cleanup = _runtime(
+            database_path,
+            retention=1,
+        )
+        await first_lifecycle.start()
+        await first_tasks.start()
+        lifecycle_id = await _create_lifecycle(first_lifecycle, "terminal-window")
+        assert first_lifecycle.start_run("run-terminal-window")
+        assert first_lifecycle.registry.finish_run(
+            "run-terminal-window",
+            status="completed",
+            finished_at="2026-01-01T00:00:00.000+00:00",
+            finish_reason="stop",
+            error_code="",
+            usage={},
+        )
+        before = first_lifecycle.monitoring.status("run-terminal-window")
+        assert before is not None
+        assert before["protocol"] == "capturing"
+        await first_tasks.close()
+        await first_lifecycle.close()
+
+        lifecycle, tasks, _checkpoints, _policy, cleanup = _runtime(
+            database_path,
+            retention=1,
+        )
+        await lifecycle.start()
+        await tasks.start()
+        try:
+            await cleanup.startup_recover()
+            record = await lifecycle.record(lifecycle_id)
+            assert record is not None
+            assert record["fully_terminal_at"]
+            monitoring = lifecycle.monitoring.status("run-terminal-window")
+            assert monitoring is not None
+            assert monitoring["graph"] == "available"
+            assert monitoring["protocol"] == "partial"
+            assert monitoring["model"] == "not_applicable"
+            assert monitoring["command"] == "not_applicable"
+        finally:
+            await tasks.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_purge_pending_lifecycle_does_not_consume_retention_quota(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     async def scenario() -> None:
-        data_root = tmp_path / "data"
-        dynamic_parent = data_root / "dynamic"
-        dynamic_parent.mkdir(parents=True)
-        service = _lifecycle_service(
-            data_root / "agent-shell.sqlite3",
-            data_root=data_root,
+        lifecycle, tasks, _checkpoints, _policy, cleanup = _runtime(
+            tmp_path / "agent-shell.sqlite3",
+            retention=1,
         )
-        await service.start()
-        manager = BackgroundTaskManager(service)
-        await manager.start()
-        lifecycle_id = await _create_lifecycle(service, "deleting")
-        filesystem = FilesystemBlock.model_validate(
-            {
-                "name": "Deleting workspace",
-                "mapped_directories": [
-                    {
-                        "virtual_path": "/workspace/",
-                        "local_path": str(dynamic_parent),
-                        "path_origin": "absolute",
-                        "lifecycle_mode": "dynamic",
-                    }
-                ],
-            }
+        await lifecycle.start()
+        await tasks.start()
+        try:
+            retained_id = await _create_lifecycle(lifecycle, "retained")
+            assert lifecycle.finish_run("run-retained", status="completed")
+            await cleanup.enforce_retention()
+
+            pending_id = await _create_lifecycle(lifecycle, "pending-newer")
+            assert lifecycle.finish_run("run-pending-newer", status="completed")
+            lifecycle.registry.mark_fully_terminal(
+                pending_id,
+                terminal_at="9999-01-01T00:00:00.000+00:00",
+            )
+            lifecycle.registry.mark_purge_pending(
+                pending_id,
+                started_at="9999-01-01T00:00:00.000+00:00",
+            )
+            original_delete = lifecycle.delete_store_records
+
+            async def fail_pending(lifecycle_id: str) -> int:
+                if lifecycle_id == pending_id:
+                    raise OSError("pending cleanup remains unavailable")
+                return await original_delete(lifecycle_id)
+
+            monkeypatch.setattr(lifecycle, "delete_store_records", fail_pending)
+            await cleanup.enforce_retention()
+
+            assert await lifecycle.record(retained_id) is not None
+            pending = await lifecycle.record(pending_id)
+            assert pending is not None
+            assert pending["lifecycle_status"] == "purge_pending"
+        finally:
+            await tasks.close()
+            await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+def test_purge_pending_lifecycle_rejects_new_background_run(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        lifecycle, tasks, _checkpoints, _policy, _cleanup = _runtime(
+            tmp_path / "agent-shell.sqlite3"
         )
-        resolved = await service.resolve_mapped_directories(
+        await lifecycle.start()
+        await tasks.start()
+        lifecycle_id = await _create_lifecycle(lifecycle, "pending")
+        lifecycle.registry.mark_purge_pending(
             lifecycle_id,
-            "filesystem",
-            filesystem,
+            started_at="2026-01-01T00:00:00.000+00:00",
         )
-        dynamic_directory = resolved["/workspace/"]
-        await service.finish_parent(lifecycle_id, "completed")
+        invoked = False
 
-        async with service.exclusive_mutation(lifecycle_id):
-            await service.mark_deleting(lifecycle_id)
-
-        async def execution_factory(_identity):
-            raise AssertionError("a deleting Lifecycle must not start work")
+        async def factory(_identity):
+            nonlocal invoked
+            invoked = True
+            raise AssertionError("purge-pending work must not execute")
 
         try:
             try:
-                await manager.start_workflow(
+                await tasks.start_workflow(
                     lifecycle_id=lifecycle_id,
-                    request_id="request-deleting",
-                    launcher_run_id="run-deleting",
+                    request_id="request-pending",
+                    launcher_run_id="run-pending",
                     launcher_id="launcher",
-                    operation_id="blocked-start",
+                    operation_id="blocked",
                     caller_run_depth=0,
                     target_id="workflow",
                     target_name="Workflow",
-                    target_graph_sha="graph-sha",
+                    target_document=runtime_workflow_document(),
                     checkpoint_thread_id=None,
                     cancel_on_upstream_termination=True,
-                    execution_factory=execution_factory,
+                    execution_factory=factory,
                 )
                 raise AssertionError("background start should be rejected")
             except AgentRuntimeError as exc:
                 assert exc.code == "workflow_lifecycle_deleting"
-
-            import agent_shell.runtime.workflow_lifecycle as lifecycle_module
-
-            original_rmtree = lifecycle_module.shutil.rmtree
-
-            def fail_rmtree(_path: Path) -> None:
-                raise OSError("expected deletion failure")
-
-            monkeypatch.setattr(lifecycle_module.shutil, "rmtree", fail_rmtree)
-            async with service.exclusive_mutation(lifecycle_id):
-                try:
-                    await service.delete(
-                        lifecycle_id,
-                        delete_dynamic_directories=True,
-                    )
-                    raise AssertionError("the first deletion should fail")
-                except OSError:
-                    pass
-            retained = await service.record(lifecycle_id)
-            assert retained is not None
-            assert retained["lifecycle_status"] == "deleting"
-            assert dynamic_directory.is_dir()
-
-            monkeypatch.setattr(
-                lifecycle_module.shutil,
-                "rmtree",
-                original_rmtree,
-            )
-            async with service.exclusive_mutation(lifecycle_id):
-                assert await service.delete(
-                    lifecycle_id,
-                    delete_dynamic_directories=True,
-                )
-            assert await service.record(lifecycle_id) is None
-            assert not dynamic_directory.exists()
+            assert invoked is False
         finally:
-            await manager.close()
-            await service.close()
+            await tasks.close()
+            await lifecycle.close()
 
     asyncio.run(scenario())

@@ -33,7 +33,7 @@ from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
-from agent_shell.workflow import WorkflowGraphDocumentV1, workflow_document_sha256
+from agent_shell.workflow import WorkflowGraphDocumentV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +162,7 @@ class LifecycleRunCoordinator:
             caller_run_depth=caller.run_depth,
             target_id=target_workflow_id,
             target_name=str(target["name"]),
-            target_graph_sha=workflow_document_sha256(document),
+            target_document=document,
             checkpoint_thread_id=(
                 str(uuid4()) if target.get("checkpointer_id") is not None else None
             ),

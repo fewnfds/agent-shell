@@ -324,7 +324,7 @@ export interface ConfigurationValidationSettings {
 }
 
 export interface RuntimePolicyValues {
-  workflow_debug_capture_enabled: boolean
+  runtime_monitoring_retention_lifecycles: number
   chat_completion_body_bytes: number
   content_blocks: number
   decoded_block_bytes: number
@@ -566,21 +566,18 @@ export interface Workflow extends WorkflowPayload {
 
 export interface WorkflowLifecycleSummary {
   lifecycle_id: string
-  lifecycle_status: 'active' | 'deleting'
+  lifecycle_status: 'active' | 'purge_pending' | 'deleting'
   request_id: string
   parent_run_id: string
-  parent_status: 'running' | 'completed' | 'failed' | 'cancelled'
+  root_run_id: string
+  parent_status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
   workflow_id: string
   workflow_name: string
   created_at: string
+  monitoring_capture_enabled: boolean
+  fully_terminal_at?: string
   messages_sha: string
   message_count: number
-  task_count: number
-  invalid_task_count: number
-  active_task_count: number
-  task_status_counts: Record<string, number>
-  checkpoint_count: number
-  store_item_count: number
   filesystem_count: number
   route_count: number
   dynamic_directory_count: number
@@ -589,7 +586,9 @@ export interface WorkflowLifecycleSummary {
   failed_run_count: number
   run_status_counts: Record<string, number>
   usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  observation_status: 'available' | 'partial' | 'unavailable'
+  observation_status: 'capturing' | 'available' | 'partial' | 'not_captured'
+  details_available: false
+  monitoring_read_model_status: 'pending'
 }
 
 export type WorkflowLifecyclePage = PaginationResponse<WorkflowLifecycleSummary>
@@ -599,71 +598,7 @@ export interface WorkflowLifecycleBulkDeleteResult {
   deleted: number
   skipped_active: number
   deleted_checkpoint_thread_count: number
-  deleted_dynamic_directories: boolean
-}
-
-export interface WorkflowRunRecord {
-  run_id: string
-  lifecycle_id: string
-  request_id: string
-  checkpoint_thread_id: string | null
-  run_kind: 'workflow'
-  target_id: string
-  target_name: string
-  parent_run_id: string | null
-  launcher_id: string | null
-  background_task_id: string | null
-  run_depth: number
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
-  created_at: string
-  started_at: string | null
-  finished_at: string | null
-  finish_reason: string
-  error_code: string
-  usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  observation_status: 'available' | 'partial'
-}
-
-export interface WorkflowRunEvent {
-  sequence: number
-  lifecycle_id: string
-  run_id: string
-  occurred_at: string
-  event_type: string
-  phase: 'created' | 'started' | 'completed' | 'failed' | 'cancelled'
-  span_id: string | null
-  parent_span_id: string | null
-  subject_kind: 'run' | 'workflow_node' | 'agent' | 'model' | 'tool'
-  subject_id: string | null
-  subject_name: string | null
-  workflow_node_id: string | null
-  node_invocation_id: string | null
-  status: string
-  error_code: string
-  usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  metadata: Record<string, unknown>
-}
-
-export interface WorkflowLifecycleDetail extends WorkflowLifecycleSummary {
-  runs: WorkflowRunRecord[]
-  events: WorkflowRunEvent[]
-  checkpoints: Record<string, Array<Record<string, unknown>>>
-  artifacts: Record<string, unknown>
-  diagnostics: RuntimeDiagnosticEntry[]
-  next_event_sequence: number
-  event_has_more: boolean
-}
-
-export interface WorkflowRunDetail extends WorkflowRunRecord {
-  event_count: number
-  checkpoint_count: number
-  diagnostic_count: number
-}
-
-export interface WorkflowRunEventPage {
-  items: WorkflowRunEvent[]
-  next_after_sequence: number
-  has_more: boolean
+  deleted_dynamic_directory_count: number
 }
 
 export type WorkflowNodeType =

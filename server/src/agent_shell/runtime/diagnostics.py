@@ -53,7 +53,7 @@ class RuntimeDiagnosticContext:
 
 
 class RuntimeDiagnostics:
-    """Persist bounded operational failures without owning Run history."""
+    """Persist bounded operational failures without owning runtime facts."""
 
     def __init__(
         self,
