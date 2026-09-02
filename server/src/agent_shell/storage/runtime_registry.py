@@ -6,7 +6,6 @@ import sqlite3
 from agent_shell.storage.database import SQLiteDatabase
 
 
-ACTIVE_RUN_STATUSES = frozenset({"pending", "running"})
 TERMINAL_RUN_STATUSES = frozenset(
     {"completed", "failed", "cancelled", "interrupted"}
 )
@@ -25,9 +24,6 @@ class RuntimeRegistryStore:
             "lifecycle_id": str(row["lifecycle_id"]),
             "request_id": str(row["request_id"]),
             "checkpoint_thread_id": row["checkpoint_thread_id"],
-            "run_kind": "workflow",
-            "target_id": str(row["workflow_id"]),
-            "target_name": str(row["workflow_name"]),
             "workflow_id": str(row["workflow_id"]),
             "workflow_name": str(row["workflow_name"]),
             "parent_run_id": row["parent_run_id"],
@@ -51,7 +47,6 @@ class RuntimeRegistryStore:
         record: dict[str, object] = {
             "lifecycle_id": str(row["lifecycle_id"]),
             "request_id": str(row["request_id"]),
-            "parent_run_id": str(row["root_run_id"]),
             "root_run_id": str(row["root_run_id"]),
             "workflow_id": str(row["workflow_id"]),
             "workflow_name": str(row["workflow_name"]),
@@ -64,7 +59,7 @@ class RuntimeRegistryStore:
             "message_count": int(row["message_count"]),
         }
         if "root_status" in row.keys():
-            record["parent_status"] = str(row["root_status"])
+            record["root_status"] = str(row["root_status"])
         if row["fully_terminal_at"] is not None:
             record["fully_terminal_at"] = str(row["fully_terminal_at"])
         if row["deletion_started_at"] is not None:
@@ -78,8 +73,8 @@ class RuntimeRegistryStore:
             record["lifecycle_id"],
             record["request_id"],
             record.get("checkpoint_thread_id") or None,
-            record.get("workflow_id") or record.get("target_id"),
-            record.get("workflow_name") or record.get("target_name"),
+            record["workflow_id"],
+            record["workflow_name"],
             record.get("parent_run_id") or None,
             record.get("background_task_id") or None,
             int(record.get("run_depth", 0)),
@@ -388,13 +383,11 @@ class RuntimeRegistryStore:
             "run_count": len(runs),
             "active_run_count": counts["pending"] + counts["running"],
             "failed_run_count": counts["failed"] + counts["interrupted"],
-            "run_status_counts": dict(sorted(counts.items())),
             "usage": usage,
         }
 
 
 __all__ = [
-    "ACTIVE_RUN_STATUSES",
     "TERMINAL_RUN_STATUSES",
     "RuntimeRegistryStore",
 ]

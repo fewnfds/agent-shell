@@ -17,24 +17,18 @@ const lifecycle: WorkflowLifecycleSummary = {
   lifecycle_id: 'lifecycle-1',
   lifecycle_status: 'active',
   request_id: 'request-1',
-  parent_run_id: 'run-1',
   root_run_id: 'run-1',
-  parent_status: 'running',
+  root_status: 'running',
   workflow_id: 'workflow-1',
   workflow_name: 'Research Workflow',
   created_at: '2026-08-17T00:00:00.000+00:00',
   monitoring_capture_enabled: true,
   messages_sha: 'sha',
   message_count: 2,
-  filesystem_count: 1,
-  route_count: 2,
-  dynamic_directory_count: 1,
   run_count: 4,
   active_run_count: 1,
   failed_run_count: 1,
-  run_status_counts: { running: 1, completed: 2, failed: 1 },
   usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
-  observation_status: 'capturing',
 }
 
 afterEach(() => {
@@ -75,7 +69,7 @@ describe('WorkflowLifecyclesPage', () => {
     await flushPromises()
 
     expect(list).toHaveBeenCalledWith({ page: 1, page_size: 10, query: '' })
-    expect(wrapper.text()).toContain('Monitoring read interface in progress')
+    expect(wrapper.text()).toContain('Monitoring visualization in progress')
     expect(wrapper.text()).toContain(lifecycle.workflow_name)
     expect(wrapper.text()).toContain('Running')
     expect(wrapper.text()).toContain('Pending automatic purge')
@@ -108,7 +102,6 @@ describe('WorkflowLifecyclesPage', () => {
         deleted: 11,
         skipped_active: 1,
         deleted_checkpoint_thread_count: 3,
-        deleted_dynamic_directory_count: 0,
       })
     const wrapper = mountPage()
     await flushPromises()

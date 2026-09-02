@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
@@ -27,34 +27,256 @@ NodeStatus = Literal[
     "interrupted",
     "incomplete",
 ]
+RunStatus = Literal[
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+    "interrupted",
+]
 ModelStatus = Literal["running", "completed", "failed"]
 CommandPhase = Literal["started", "completed", "failed", "cancelled"]
+PartitionStatus = Literal["capturing", "available", "partial", "not_applicable"]
+Availability = Literal[
+    "not_enabled",
+    "unavailable",
+    "capturing",
+    "available",
+    "partial",
+    "pending",
+    "not_applicable",
+]
+ScopeKind = Literal["lifecycle", "workflow", "run"]
 
 
-class MonitoringSnapshotResponse(BaseModel):
+class MonitoringResponseModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    selector: dict[str, object]
+
+class TokenUsage(MonitoringResponseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class MonitoringPartitionStates(MonitoringResponseModel):
+    graph: PartitionStatus
+    node: PartitionStatus
+    protocol: PartitionStatus
+    model: PartitionStatus
+    command: PartitionStatus
+    created_at: str
+    updated_at: str
+
+
+class MonitoringLifecycle(MonitoringResponseModel):
+    lifecycle_id: str
+    request_id: str
+    root_run_id: str
+    workflow_id: str
+    workflow_name: str
+    created_at: str
+    lifecycle_status: Literal["active", "purge_pending", "deleting"]
+    root_status: RunStatus
+    monitoring_capture_enabled: bool
+    fully_terminal_at: str | None
+    message_count: int
+
+
+class MonitoringRun(MonitoringResponseModel):
+    run_id: str
+    lifecycle_id: str
+    request_id: str
+    checkpoint_thread_id: str | None
+    workflow_id: str
+    workflow_name: str
+    parent_run_id: str | None
+    background_task_id: str | None
+    run_depth: int
+    status: RunStatus
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+    finish_reason: str
+    error_code: str
+    usage: TokenUsage
+    monitoring: MonitoringPartitionStates | None
+
+
+class MonitoringSelector(MonitoringResponseModel):
+    scope: ScopeKind
+    id: str | None
+
+
+class MonitoringPartitionAvailability(MonitoringResponseModel):
+    graph: Availability
+    node: Availability
+    protocol: Availability
+    model: Availability
+    command: Availability
+
+
+class MonitoringSummary(MonitoringResponseModel):
+    run_count: int
+    active_run_count: int
+    failed_run_count: int
+    run_status_counts: dict[str, int]
+    node_attempt_status_counts: dict[str, int]
+    usage: TokenUsage
+    partition_availability: MonitoringPartitionAvailability
+
+
+class RunRelationship(MonitoringResponseModel):
+    parent_run_id: str
+    child_run_id: str
+
+
+class RunForest(MonitoringResponseModel):
+    root_run_ids: list[str]
+    relationships: list[RunRelationship]
+    orphan_run_ids: list[str]
+    relationship_availability: Literal["available", "partial"]
+
+
+class MonitoringSnapshotResponse(MonitoringResponseModel):
+    selector: MonitoringSelector
     read_at: str
-    lifecycle: dict[str, object]
-    summary: dict[str, object]
-    runs: list[dict[str, object]]
-    forest: dict[str, object]
+    lifecycle: MonitoringLifecycle
+    summary: MonitoringSummary
+    runs: list[MonitoringRun]
+    forest: RunForest
 
 
-class MonitoringResourceResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    availability: Literal[
-        "not_enabled",
-        "unavailable",
-        "capturing",
-        "available",
-        "partial",
-        "pending",
-        "not_applicable",
-    ]
+class MonitoringResourceResponse(MonitoringResponseModel):
+    availability: Availability
     read_at: str
+
+
+class MonitoringGraph(MonitoringResponseModel):
+    run_id: str
+    lifecycle_id: str
+    workflow_id: str
+    workflow_name: str
+    document_sha: str
+    document: dict[str, Any]
+    created_at: str
+
+
+class MonitoringGraphResponse(MonitoringResourceResponse):
+    graph: MonitoringGraph | None
+
+
+class NodeSummary(MonitoringResponseModel):
+    workflow_node_id: str
+    first_sequence: int
+    latest_sequence: int
+    first_started_at: str
+    latest_started_at: str
+    attempt_count: int
+    status_counts: dict[str, int]
+
+
+class NodeSummaryPageResponse(MonitoringResourceResponse):
+    items: list[NodeSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class NodeAttempt(MonitoringResponseModel):
+    sequence: int
+    lifecycle_id: str
+    run_id: str
+    workflow_node_id: str
+    invocation_id: str
+    attempt: int
+    node_first_attempt_time: float | None
+    started_at: str
+    finished_at: str | None
+    status: NodeStatus
+    error_code: str
+
+
+class NodeAttemptPageResponse(MonitoringResourceResponse):
+    items: list[NodeAttempt]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class ProtocolEvent(MonitoringResponseModel):
+    sequence: int
+    method: str
+    captured_at: str
+    envelope: dict[str, Any]
+
+
+class ProtocolEventSequenceResponse(MonitoringResourceResponse):
+    items: list[ProtocolEvent]
+    after_sequence: int
+    next_after_sequence: int
+    limit: int
+    remaining: int
+
+
+class ModelRequest(MonitoringResponseModel):
+    sequence: int
+    model_run_id: str
+    started_at: str
+    finished_at: str | None
+    status: ModelStatus
+    error_code: str
+    request: dict[str, Any]
+    usage: dict[str, int]
+
+
+class ModelRequestPageResponse(MonitoringResourceResponse):
+    items: list[ModelRequest]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class CommandObservation(MonitoringResponseModel):
+    sequence: int
+    invocation_id: str
+    workflow_node_id: str
+    attempt: int
+    occurred_at: str
+    phase: CommandPhase
+    error_code: str
+    payload: dict[str, Any]
+
+
+class CommandObservationSequenceResponse(MonitoringResourceResponse):
+    items: list[CommandObservation]
+    after_sequence: int
+    next_after_sequence: int
+    limit: int
+    remaining: int
+
+
+class PersistedWorkflowState(MonitoringResponseModel):
+    checkpoint_id: str
+    checkpoint_ns: str
+    created_at: str
+    source: str
+    step: int | None
+    pending_write_count: int
+    state: dict[str, Any]
+
+
+class WorkflowStateResponse(MonitoringResourceResponse):
+    state: PersistedWorkflowState | None
+
+
+class AgentInvocationResponse(MonitoringResourceResponse):
+    workflow_node_id: str | None = None
+    artifact: dict[str, Any] | None
 
 
 def _http_error(exc: MonitoringReadError):
@@ -154,11 +376,17 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
             )
         )
 
-    @router.get(prefix + "/runs/{run_id}/graph", response_model=MonitoringResourceResponse)
+    @router.get(
+        prefix + "/runs/{run_id}/graph",
+        response_model=MonitoringGraphResponse,
+    )
     async def graph(lifecycle_id: str, run_id: str):
         return read(lambda: service.graph(lifecycle_id, run_id))
 
-    @router.get(prefix + "/runs/{run_id}/nodes", response_model=MonitoringResourceResponse)
+    @router.get(
+        prefix + "/runs/{run_id}/nodes",
+        response_model=NodeSummaryPageResponse,
+    )
     async def nodes(
         lifecycle_id: str,
         run_id: str,
@@ -178,7 +406,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
     @router.get(
         prefix + "/runs/{run_id}/nodes/{node_id}/attempts",
-        response_model=MonitoringResourceResponse,
+        response_model=NodeAttemptPageResponse,
     )
     async def node_attempts(
         lifecycle_id: str,
@@ -201,7 +429,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
     @router.get(
         prefix + "/runs/{run_id}/protocol-events",
-        response_model=MonitoringResourceResponse,
+        response_model=ProtocolEventSequenceResponse,
     )
     async def protocol_events(
         lifecycle_id: str,
@@ -222,7 +450,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
     @router.get(
         prefix + "/runs/{run_id}/model-requests",
-        response_model=MonitoringResourceResponse,
+        response_model=ModelRequestPageResponse,
     )
     async def model_requests(
         lifecycle_id: str,
@@ -243,7 +471,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
     @router.get(
         prefix + "/runs/{run_id}/command-observations",
-        response_model=MonitoringResourceResponse,
+        response_model=CommandObservationSequenceResponse,
     )
     async def command_observations(
         lifecycle_id: str,
@@ -266,14 +494,14 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
     @router.get(
         prefix + "/runs/{run_id}/state",
-        response_model=MonitoringResourceResponse,
+        response_model=WorkflowStateResponse,
     )
     async def state(lifecycle_id: str, run_id: str):
         return await aread(lambda: service.latest_state(lifecycle_id, run_id))
 
     @router.get(
         prefix + "/runs/{run_id}/agent-invocations/{invocation_id}",
-        response_model=MonitoringResourceResponse,
+        response_model=AgentInvocationResponse,
     )
     async def agent_invocation(
         lifecycle_id: str,
@@ -292,7 +520,15 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
 
 
 __all__ = [
+    "AgentInvocationResponse",
+    "CommandObservationSequenceResponse",
+    "ModelRequestPageResponse",
+    "MonitoringGraphResponse",
     "MonitoringResourceResponse",
     "MonitoringSnapshotResponse",
+    "NodeAttemptPageResponse",
+    "NodeSummaryPageResponse",
+    "ProtocolEventSequenceResponse",
+    "WorkflowStateResponse",
     "build_runtime_monitoring_router",
 ]

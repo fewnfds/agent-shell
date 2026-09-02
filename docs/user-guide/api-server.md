@@ -63,7 +63,7 @@ Parent Run Workflow 通过可空 `response_stream_scheduling_id` 引用【工作
 - independent child/background Run 使用自己的 `RunExecution` 和 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 明确识别 Parent 与各 child Run identity，当前对所有 role 使用相同调度权重，尚未配置角色优先级；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- management-only `/api/workflow-lifecycles` 提供运行监控 catalog 和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 清理完整匹配集中的终态 Lifecycle，并返回删除数和跳过的 active 记录数。单项/批量删除默认保留受管动态目录，显式 `delete_dynamic_directories=true` 才验证并删除；active Run/task 稳定拒绝。`/{lifecycle_id}/monitoring/snapshot` 提供 Lifecycle/Workflow/Run scope，`/{lifecycle_id}/monitoring/runs/{run_id}/*` 提供 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 返回 `runtime_monitoring_read_model_unavailable` 503。
+- management-only `/api/workflow-lifecycles` 提供运行监控 catalog 和显式删除。列表使用 `page/page_size/query` 后端分页；`POST /api/workflow-lifecycles/delete` 使用相同 `query` 清理完整匹配集中的终态 Lifecycle，并返回删除数和跳过的 active 记录数。active Run/task 稳定拒绝；运行期间写入硬盘的文件和目录属于用户产出，不由运行监控删除。`/{lifecycle_id}/monitoring/snapshot` 提供 Lifecycle/Workflow/Run scope，`/{lifecycle_id}/monitoring/runs/{run_id}/*` 提供 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 返回 `runtime_monitoring_read_model_unavailable` 503。
 
 ## API Key 与状态
 

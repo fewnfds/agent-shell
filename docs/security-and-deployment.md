@@ -78,7 +78,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。运行监控按完整终态 Lifecycle 数量保留，默认 `20`、最小 `0`、没有产品最大值。降低上限会永久裁剪超出的终态 Lifecycle；`0` 关闭新 Lifecycle 的监控采集，并在运行完整终止后清理其控制数据。活动 Lifecycle 不计入数量。
 
-运行监控、官方 checkpoint 和 Lifecycle Store 与日志中心分离。自动保留清理和显式 Lifecycle 删除会删除 Runtime Registry、监控事实、Lifecycle Store input/task/invocation/filesystem route 及关联的非空 checkpoint thread；删除日志或运行诊断不会删除这些数据。自动清理以及管理台默认删除都会保留普通文件、生成媒体、fixed/mapped directory 正文和 Shell-created dynamic directory；只有显式 API 选项会删除经过 root/target 验证的受管动态目录。
+运行监控、官方 checkpoint 和 Lifecycle Store 与日志中心分离。自动保留清理和显式 Lifecycle 删除会删除 Runtime Registry、监控事实、Lifecycle Store input/task/invocation/filesystem route 及关联的非空 checkpoint thread；删除日志或运行诊断不会删除这些数据。运行中写入硬盘的普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由自动清理或显式 Lifecycle 删除处理。
 
 启用采集的 frozen Graph、ProtocolEvent、Model Request、Command observation、Checkpoint State 和 Agent invocation artifact 可以包含 prompt、消息、Tool payload/schema、State、路径和其他运行材料。ProtocolEvent、Model Request 与 State 读取投影的 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；Command 的已校验外部结果与 Agent 的 OpenAI message artifact 保留普通业务内容。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 与完整 `data/` 作为敏感数据保护。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不由 Model Request recorder 持久化。`/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 全部需要 management Bearer；它不建立新的多租户可见性边界。通用 Lifecycle detail/events、single Run detail 与 Lifecycle/Run download 接口返回结构化 503。
 

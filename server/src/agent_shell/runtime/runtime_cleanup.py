@@ -65,7 +65,10 @@ class RuntimeCleanupCoordinator:
     async def _mark_terminal_if_complete(self, lifecycle_id: str) -> None:
         async with self._lifecycle.exclusive_mutation(lifecycle_id):
             record = await self._lifecycle.record(lifecycle_id)
-            if record is None or record.get("fully_terminal_at") is not None:
+            if record is None:
+                return
+            self._lifecycle.reconcile_terminal_monitoring(lifecycle_id)
+            if record.get("fully_terminal_at") is not None:
                 return
             if record.get("lifecycle_status") in {"deleting", "purge_pending"}:
                 return
@@ -101,33 +104,25 @@ class RuntimeCleanupCoordinator:
             elif record.get("lifecycle_status") == "purge_pending":
                 purge_ids.add(str(record["lifecycle_id"]))
         for lifecycle_id in sorted(purge_ids):
-            await self._purge(
-                lifecycle_id,
-                delete_managed_directories=False,
-                automatic=True,
-            )
+            await self._purge(lifecycle_id, automatic=True)
 
     async def delete(
         self,
         lifecycle_id: str,
-        *,
-        delete_managed_directories: bool = False,
     ) -> dict[str, int]:
         async with self._lock:
             result = await self._purge(
                 lifecycle_id,
-                delete_managed_directories=delete_managed_directories,
                 automatic=False,
             )
         if result is None:
-            return {"checkpoint_thread_count": 0, "managed_directory_count": 0}
+            return {"checkpoint_thread_count": 0}
         return result
 
     async def _purge(
         self,
         lifecycle_id: str,
         *,
-        delete_managed_directories: bool,
         automatic: bool,
     ) -> dict[str, int] | None:
         async with self._lifecycle.exclusive_mutation(lifecycle_id):
@@ -159,11 +154,6 @@ class RuntimeCleanupCoordinator:
             try:
                 for thread_id in checkpoint_ids:
                     await self._checkpoints.purge_thread(thread_id)
-                managed_count = (
-                    await self._lifecycle.delete_managed_directories(lifecycle_id)
-                    if delete_managed_directories
-                    else 0
-                )
                 await self._lifecycle.delete_store_records(lifecycle_id)
                 self._lifecycle.monitoring.purge_lifecycle(lifecycle_id)
                 self._lifecycle.registry.delete_lifecycle(lifecycle_id)
@@ -174,7 +164,6 @@ class RuntimeCleanupCoordinator:
                 raise
             return {
                 "checkpoint_thread_count": len(checkpoint_ids),
-                "managed_directory_count": managed_count,
             }
 
     def _report_failure(self, exc: BaseException, lifecycle_id: str) -> None:

@@ -36,7 +36,6 @@ from agent_shell.runtime.diagnostics import (
     RuntimeDiagnostics,
 )
 from agent_shell.runtime.event_origin import (
-    ResolvedEventOrigin,
     RunEventOriginResolver,
     WorkflowNodeSource,
 )
@@ -289,7 +288,6 @@ class RunExecution:
 
         def capture_protocol_event(
             envelope: object,
-            origin: ResolvedEventOrigin,
         ) -> None:
             nonlocal protocol_event_capture_failed
             if (
@@ -555,7 +553,6 @@ class RunExecution:
                     )
             return parts
 
-        model_recorder: ModelRequestRecorder | None = None
         start_run()
         try:
             for rendered in project_run_event("start", status="running"):
@@ -597,12 +594,13 @@ class RunExecution:
                         and self.lifecycle_service is not None
                     ):
                         callbacks = list(config.get("callbacks", ()))
-                        model_recorder = ModelRequestRecorder(
-                            self.lifecycle_service,
-                            self.runtime_diagnostics,
-                            self.identity,
+                        callbacks.append(
+                            ModelRequestRecorder(
+                                self.lifecycle_service,
+                                self.runtime_diagnostics,
+                                self.identity,
+                            )
                         )
-                        callbacks.append(model_recorder)
                         config["callbacks"] = callbacks
                     stream_kwargs: dict[str, Any] = {
                         "config": config,
@@ -690,7 +688,7 @@ class RunExecution:
                                 else:
                                     next_event_task = asyncio.create_task(anext(envelopes))
                                     origin = event_origin(envelope)
-                                    capture_protocol_event(envelope, origin)
+                                    capture_protocol_event(envelope)
                                     (
                                         stream_events,
                                         publish_raw_output,

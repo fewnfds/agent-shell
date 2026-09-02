@@ -403,7 +403,6 @@ export const managementApi = {
   deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult> {
     return managementRequest('/api/workflow-lifecycles/delete', jsonBody({
       query,
-      delete_dynamic_directories: false,
     }))
   },
 

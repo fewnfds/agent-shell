@@ -85,4 +85,4 @@ Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_r
 
 同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。独立 background Run 不复制或合并请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
 
-动态目录不会在 Workflow End 时隐式删除，只能由 Lifecycle 管理显式清理。LocalShell workspace 与 fixed mapped directory 都不属于受管动态目录，Lifecycle 清理不会删除它们。磁盘目录不进入 checkpoint，平台也不处理多个 Agent 同时写同一文件的冲突。
+动态模式在配置的父目录下创建 `lifecycle-{lifecycle_id}` 子目录。它与 LocalShell workspace、fixed mapped directory 及其中的文件都属于用户产出，Lifecycle retention 和显式删除均不处理；用户通过文件管理入口或宿主文件系统自行管理。磁盘目录不进入 checkpoint，平台也不处理多个 Agent 同时写同一文件的冲突。

@@ -167,7 +167,7 @@ def test_parent_and_frozen_child_use_independent_checkpointer_configuration(
     assert (handle.checkpoint_thread_id is not None) is child_checkpointer_enabled
     assert run["checkpoint_thread_id"] == handle.checkpoint_thread_id
     assert run["run_id"] == handle.child_run_id
-    assert run["run_kind"] == "workflow"
+    assert run["workflow_id"] == child["id"]
     assert run["status"] == "completed"
     assert (checkpoint_count > 0) is child_checkpointer_enabled
 

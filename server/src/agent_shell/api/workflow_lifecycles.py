@@ -17,7 +17,6 @@ class WorkflowLifecycleBulkDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = ""
-    delete_dynamic_directories: bool = False
 
 
 def build_workflow_lifecycle_router(
@@ -44,7 +43,6 @@ def build_workflow_lifecycle_router(
         return {
             **record,
             **lifecycle_service.run_summary(lifecycle_id),
-            **await lifecycle_service.filesystem_summary(lifecycle_id),
         }
 
     def generic_detail_unavailable():
@@ -124,17 +122,10 @@ def build_workflow_lifecycle_router(
             )
         raise generic_detail_unavailable()
 
-    async def delete_one(
-        lifecycle_id: str,
-        *,
-        delete_dynamic_directories: bool,
-    ) -> dict[str, int]:
+    async def delete_one(lifecycle_id: str) -> dict[str, int]:
         await require_lifecycle(lifecycle_id)
         try:
-            return await runtime_cleanup.delete(
-                lifecycle_id,
-                delete_managed_directories=delete_dynamic_directories,
-            )
+            return await runtime_cleanup.delete(lifecycle_id)
         except RuntimeLifecycleActiveError as exc:
             raise management_error(
                 409,
@@ -146,16 +137,11 @@ def build_workflow_lifecycle_router(
     @router.delete("/api/workflow-lifecycles/{lifecycle_id}")
     async def delete_workflow_lifecycle(
         lifecycle_id: str,
-        delete_dynamic_directories: bool = Query(default=False),
     ) -> dict[str, object]:
-        result = await delete_one(
-            lifecycle_id,
-            delete_dynamic_directories=delete_dynamic_directories,
-        )
+        result = await delete_one(lifecycle_id)
         return {
             "ok": True,
             "deleted_checkpoint_thread_count": result["checkpoint_thread_count"],
-            "deleted_dynamic_directory_count": result["managed_directory_count"],
         }
 
     @router.post("/api/workflow-lifecycles/delete")
@@ -168,13 +154,9 @@ def build_workflow_lifecycle_router(
         deleted = 0
         skipped_active = 0
         checkpoint_count = 0
-        directory_count = 0
         for lifecycle_id in lifecycle_ids:
             try:
-                result = await delete_one(
-                    lifecycle_id,
-                    delete_dynamic_directories=payload.delete_dynamic_directories,
-                )
+                result = await delete_one(lifecycle_id)
             except HTTPException as exc:
                 detail = getattr(exc, "detail", {})
                 if (
@@ -186,13 +168,11 @@ def build_workflow_lifecycle_router(
                 raise
             deleted += 1
             checkpoint_count += result["checkpoint_thread_count"]
-            directory_count += result["managed_directory_count"]
         return {
             "matched": len(lifecycle_ids),
             "deleted": deleted,
             "skipped_active": skipped_active,
             "deleted_checkpoint_thread_count": checkpoint_count,
-            "deleted_dynamic_directory_count": directory_count,
         }
 
     return router

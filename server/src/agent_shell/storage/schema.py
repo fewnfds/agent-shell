@@ -268,18 +268,4 @@ CREATE TABLE IF NOT EXISTS runtime_command_observations (
 CREATE INDEX IF NOT EXISTS idx_runtime_command_observations_lifecycle
 ON runtime_command_observations(lifecycle_id, run_id, sequence);
 
--- This narrow owner intentionally has no Lifecycle foreign key. Automatic
--- retention may release the runtime route while preserving the only verified
--- reference to a Shell-created directory for a later explicit user action.
-CREATE TABLE IF NOT EXISTS runtime_managed_directories (
-    lifecycle_id TEXT NOT NULL,
-    filesystem_id TEXT NOT NULL,
-    virtual_path TEXT NOT NULL,
-    configured_root TEXT NOT NULL,
-    resolved_target TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    released_at TEXT,
-    PRIMARY KEY (lifecycle_id, filesystem_id, virtual_path)
-);
-
 """

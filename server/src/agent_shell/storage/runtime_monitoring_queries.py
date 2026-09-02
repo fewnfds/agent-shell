@@ -6,6 +6,7 @@ import sqlite3
 from typing import Literal
 
 from agent_shell.storage.database import SQLiteDatabase
+from agent_shell.storage.runtime_registry import TERMINAL_RUN_STATUSES
 
 
 ScopeKind = Literal["lifecycle", "workflow", "run"]
@@ -19,14 +20,22 @@ def _object(value: str) -> dict[str, object]:
 
 
 def _run(row: sqlite3.Row) -> dict[str, object]:
+    run_status = str(row["status"])
     monitoring = None
     if "graph_status" in row.keys() and row["graph_status"] is not None:
+
+        def partition_status(column: str) -> str:
+            status = str(row[column])
+            if run_status in TERMINAL_RUN_STATUSES and status == "capturing":
+                return "partial"
+            return status
+
         monitoring = {
-            "graph": str(row["graph_status"]),
-            "node": str(row["node_status"]),
-            "protocol": str(row["protocol_status"]),
-            "model": str(row["model_status"]),
-            "command": str(row["command_status"]),
+            "graph": partition_status("graph_status"),
+            "node": partition_status("node_status"),
+            "protocol": partition_status("protocol_status"),
+            "model": partition_status("model_status"),
+            "command": partition_status("command_status"),
             "created_at": str(row["monitoring_created_at"]),
             "updated_at": str(row["monitoring_updated_at"]),
         }
@@ -40,7 +49,7 @@ def _run(row: sqlite3.Row) -> dict[str, object]:
         "parent_run_id": row["parent_run_id"],
         "background_task_id": row["background_task_id"],
         "run_depth": int(row["run_depth"]),
-        "status": str(row["status"]),
+        "status": run_status,
         "created_at": str(row["created_at"]),
         "started_at": row["started_at"],
         "finished_at": row["finished_at"],

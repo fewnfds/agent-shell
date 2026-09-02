@@ -23,7 +23,7 @@ async def _create_lifecycle(client, suffix: str, *, capture: bool = True) -> str
     )
 
 
-def test_lifecycle_catalog_exposes_capture_state_and_generic_detail_is_unavailable(
+def test_lifecycle_catalog_exposes_registry_summary_and_generic_detail_is_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -32,16 +32,24 @@ def test_lifecycle_catalog_exposes_capture_state_and_generic_detail_is_unavailab
         assert portal is not None
         lifecycle_id = portal.call(_create_lifecycle, client, "catalog")
 
+        def monitoring_unavailable(_run_id: str):
+            raise OSError("monitoring store unavailable")
+
+        monkeypatch.setattr(
+            client.app.state.workflow_lifecycle.monitoring,
+            "status",
+            monitoring_unavailable,
+        )
+
         catalog = client.get("/api/workflow-lifecycles")
         assert catalog.status_code == 200, catalog.text
         assert catalog.json()["total"] == 1
         item = catalog.json()["items"][0]
         assert item["lifecycle_id"] == lifecycle_id
         assert item["root_run_id"] == "run-catalog"
-        assert item["parent_status"] == "pending"
+        assert item["root_status"] == "pending"
         assert item["run_count"] == 1
         assert item["active_run_count"] == 1
-        assert item["observation_status"] == "capturing"
         assert item["monitoring_capture_enabled"] is True
 
         filtered = client.get(
@@ -96,7 +104,7 @@ def test_run_detail_and_download_validate_lifecycle_ownership_before_tbd_respons
         assert own.status_code == 503
 
 
-def test_explicit_delete_rejects_active_run_and_preserves_dynamic_directory_by_default(
+def test_explicit_delete_rejects_active_run_and_preserves_user_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -145,60 +153,11 @@ def test_explicit_delete_rejects_active_run_and_preserves_dynamic_directory_by_d
         assert deleted.json() == {
             "ok": True,
             "deleted_checkpoint_thread_count": 0,
-            "deleted_dynamic_directory_count": 0,
         }
         assert dynamic_directory.is_dir()
         assert (dynamic_directory / "result.txt").read_text(
             encoding="utf-8"
         ) == "keep"
-
-
-def test_explicit_delete_removes_only_verified_managed_directory_when_selected(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        portal = client.portal
-        assert portal is not None
-        dynamic_root = tmp_path / "data" / "dynamic-selected"
-        dynamic_root.mkdir(parents=True)
-        filesystem = FilesystemBlock.model_validate(
-            {
-                "name": "Lifecycle workspace",
-                "mapped_directories": [
-                    {
-                        "virtual_path": "/workspace/",
-                        "local_path": str(dynamic_root),
-                        "path_origin": "absolute",
-                        "lifecycle_mode": "dynamic",
-                    }
-                ],
-            }
-        )
-
-        async def prepare() -> tuple[str, Path]:
-            lifecycle_id = await _create_lifecycle(client, "selected")
-            routes = await client.app.state.workflow_lifecycle.resolve_mapped_directories(
-                lifecycle_id,
-                "filesystem",
-                filesystem,
-            )
-            assert client.app.state.workflow_lifecycle.finish_run(
-                "run-selected",
-                status="completed",
-            )
-            return lifecycle_id, routes["/workspace/"]
-
-        lifecycle_id, dynamic_directory = portal.call(prepare)
-        response = client.delete(
-            f"/api/workflow-lifecycles/{lifecycle_id}",
-            params={"delete_dynamic_directories": "true"},
-        )
-        assert response.status_code == 200, response.text
-        assert response.json()["deleted_dynamic_directory_count"] == 1
-        assert not dynamic_directory.exists()
-        assert dynamic_root.is_dir()
-
 
 def test_bulk_delete_uses_full_query_and_skips_active_lifecycle(
     tmp_path: Path,
@@ -231,7 +190,6 @@ def test_bulk_delete_uses_full_query_and_skips_active_lifecycle(
             "deleted": 1,
             "skipped_active": 1,
             "deleted_checkpoint_thread_count": 0,
-            "deleted_dynamic_directory_count": 0,
         }
         assert client.get(
             f"/api/workflow-lifecycles/{terminal_id}"

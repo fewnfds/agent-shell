@@ -14,6 +14,9 @@ from agent_shell.runtime.workflow_lifecycle import (
     lifecycle_filesystem_namespace,
 )
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.runtime_monitoring_queries import (
+    RuntimeMonitoringQueryStore,
+)
 from support import runtime_workflow_document
 
 
@@ -142,8 +145,6 @@ def test_lifecycle_resolves_fixed_and_dynamic_mappings_once(
             )
             assert record is not None
             assert record.value["mappings"][1]["lifecycle_mode"] == "dynamic"
-            managed = service.managed_directories.list_for_lifecycle(first_id)
-            assert managed[0]["resolved_target"] == str(first["/dynamic/"])
         finally:
             await service.close()
 
@@ -364,7 +365,7 @@ def test_startup_recovery_interrupts_active_run_before_retention(
     asyncio.run(scenario())
 
 
-def test_retention_preserves_managed_and_ordinary_files_until_explicit_delete(
+def test_retention_and_explicit_delete_preserve_user_files(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -428,9 +429,6 @@ def test_retention_preserves_managed_and_ordinary_files_until_explicit_delete(
             assert fixed_root.is_dir()
             assert ordinary_file.read_text(encoding="utf-8") == "keep"
             assert checkpoints.started is False
-            assert lifecycle.managed_directories.list_for_lifecycle(
-                automatic_id
-            )
 
             policy.limit = 1
             explicit_id = await _create_lifecycle(lifecycle, "explicit")
@@ -440,13 +438,17 @@ def test_retention_preserves_managed_and_ordinary_files_until_explicit_delete(
                 filesystem,
             )
             explicit_dynamic = explicit_routes["/dynamic/"]
-            assert lifecycle.finish_run("run-explicit", status="completed")
-            result = await cleanup.delete(
-                explicit_id,
-                delete_managed_directories=True,
+            (explicit_dynamic / "result.txt").write_text(
+                "also-preserve",
+                encoding="utf-8",
             )
-            assert result["managed_directory_count"] == 1
-            assert not explicit_dynamic.exists()
+            assert lifecycle.finish_run("run-explicit", status="completed")
+            result = await cleanup.delete(explicit_id)
+            assert result == {"checkpoint_thread_count": 0}
+            assert explicit_dynamic.is_dir()
+            assert (explicit_dynamic / "result.txt").read_text(
+                encoding="utf-8"
+            ) == "also-preserve"
             assert automatic_dynamic.is_dir()
         finally:
             await tasks.close()
@@ -460,10 +462,13 @@ def test_restart_marks_terminal_run_crash_window_monitoring_partial(
 ) -> None:
     async def scenario() -> None:
         database_path = tmp_path / "agent-shell.sqlite3"
-        first_lifecycle, first_tasks, _checkpoints, _policy, _cleanup = _runtime(
-            database_path,
-            retention=1,
-        )
+        (
+            first_lifecycle,
+            first_tasks,
+            _checkpoints,
+            _policy,
+            first_cleanup,
+        ) = _runtime(database_path, retention=1)
         await first_lifecycle.start()
         await first_tasks.start()
         lifecycle_id = await _create_lifecycle(first_lifecycle, "terminal-window")
@@ -479,6 +484,15 @@ def test_restart_marks_terminal_run_crash_window_monitoring_partial(
         before = first_lifecycle.monitoring.status("run-terminal-window")
         assert before is not None
         assert before["protocol"] == "capturing"
+        projected = RuntimeMonitoringQueryStore(
+            SQLiteDatabase(database_path)
+        ).run(lifecycle_id, "run-terminal-window")
+        assert projected is not None
+        assert projected["monitoring"]["protocol"] == "partial"
+        await first_cleanup.enforce_retention()
+        converged = first_lifecycle.monitoring.status("run-terminal-window")
+        assert converged is not None
+        assert converged["protocol"] == "partial"
         await first_tasks.close()
         await first_lifecycle.close()
 

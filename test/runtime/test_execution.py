@@ -153,7 +153,7 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             assert parent is not None
             converged = (
                 str(run["status"]),
-                str(parent["parent_status"]),
+                str(parent["root_status"]),
                 children_cancelled,
             )
             child_cancel_release.set()

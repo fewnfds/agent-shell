@@ -251,7 +251,7 @@ Management API 只负责 observability 和 explicit cleanup，不提供从外部
 
 `runtime_monitoring_retention_lifecycles` 默认保留最近 `20` 个完整终态 Lifecycle；active Lifecycle 不占保留数量。值为 `0` 时关闭新 Lifecycle 的监控采集，并在其完整终态后清理运行控制数据。降低设置会立即收敛完整终态目录，提高设置不会恢复已经删除的数据。
 
-存在 active Run 或 task 时，单项删除返回 409。自动 retention 和管理台删除保留普通文件、generated/mapped directory 正文、受管动态目录和日志中心诊断。Management API 只有在调用方显式提交 `delete_dynamic_directories=true` 时才验证并删除对应的 Shell-created Lifecycle 动态目录。
+存在 active Run 或 task 时，单项删除返回 409。自动 retention 和管理台删除保留日志中心诊断以及运行中写入硬盘的全部用户文件和目录；运行监控没有删除文件产出的 API 参数。
 
 Lifecycle catalog 不返回 messages、Provider secret 或 resolved host path。后续运行归档仍属于 management-only 敏感数据，开放后按安全与部署边界处理。
 

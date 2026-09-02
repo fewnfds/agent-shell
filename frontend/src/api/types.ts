@@ -568,9 +568,8 @@ export interface WorkflowLifecycleSummary {
   lifecycle_id: string
   lifecycle_status: 'active' | 'purge_pending' | 'deleting'
   request_id: string
-  parent_run_id: string
   root_run_id: string
-  parent_status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  root_status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
   workflow_id: string
   workflow_name: string
   created_at: string
@@ -578,15 +577,10 @@ export interface WorkflowLifecycleSummary {
   fully_terminal_at?: string
   messages_sha: string
   message_count: number
-  filesystem_count: number
-  route_count: number
-  dynamic_directory_count: number
   run_count: number
   active_run_count: number
   failed_run_count: number
-  run_status_counts: Record<string, number>
   usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  observation_status: 'capturing' | 'available' | 'partial' | 'not_captured'
 }
 
 export type WorkflowLifecyclePage = PaginationResponse<WorkflowLifecycleSummary>
@@ -596,7 +590,6 @@ export interface WorkflowLifecycleBulkDeleteResult {
   deleted: number
   skipped_active: number
   deleted_checkpoint_thread_count: number
-  deleted_dynamic_directory_count: number
 }
 
 export type WorkflowNodeType =

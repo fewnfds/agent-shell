@@ -28,9 +28,9 @@ Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内�
 
 【系统 / 运行监控】按一次 top-level request 列出 Lifecycle catalog，并显示 parent Workflow、状态、Run 数量、失败数、usage 和采集 profile。页面提供目录、搜索、分页与删除管理；management monitoring GET 可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。通用 detail/events 与归档下载入口返回结构化 503。
 
-系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。root Run、全部 child Run 和全部 background task terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留普通/generated files、mapped directory、managed dynamic directory 与 diagnostics。
+系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。root Run、全部 child Run 和全部 background task terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留 diagnostics 以及运行中写入硬盘的全部用户文件和目录。
 
-parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，显式删除返回冲突。默认删除保留受管动态目录；只有 management API 的明确选项会验证并删除该目录。parent Workflow Graph 正常到达 End 后，background task 按自身 lifecycle 继续运行；parent 取消或失败时，默认取消仍启用【父运行取消或失败时终止】的直接 child。清理开始后 Lifecycle 进入 `deleting|purge_pending` 并冻结 background Run 创建；清理失败时保留状态供后续重试。
+parent Run 尚未终止，或仍有 `pending`、`running`、`cancel_requested` background task 时，显式删除返回冲突。Lifecycle 删除只清理运行控制、监控、Store 与 Checkpoint 数据，文件和目录由用户自行管理。parent Workflow Graph 正常到达 End 后，background task 按自身 lifecycle 继续运行；parent 取消或失败时，默认取消仍启用【父运行取消或失败时终止】的直接 child。清理开始后 Lifecycle 进入 `deleting|purge_pending` 并冻结 background Run 创建；清理失败时保留状态供后续重试。
 
 【编辑 Flow】进入独立全屏 Vue Flow 页面。左右各有一条始终保留的工具图标轨；点击 active 图标只收起功能 panel，图标轨不会消失。左侧提供组件库、元素追踪和问题：组件库提供当前角色允许的 Agent 和 Command，可以点击或拖到画布；元素追踪列出当前全部 Node，
 点击条目会保持当前缩放、把 Node 平滑移到视口中心并打开右侧属性；存在问题时问题图标显示红色数量角标，点击后在左侧列出当前问题。右侧属性使用紧凑的 `key : value/control` 行，编辑所选 Node 或 Edge；空白点击会清除选择并收起属性，平移、缩放和拖动不会触发收起，重新打开空选择属性时显示 Workflow 名称和 State contract。

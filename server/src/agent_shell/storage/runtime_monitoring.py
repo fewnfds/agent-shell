@@ -149,9 +149,19 @@ class RuntimeMonitoringStore:
                 )
         return cursor.rowcount > 0
 
-    def reconcile_node_attempts(self, *, finished_at: str) -> int:
+    def reconcile_node_attempts(
+        self,
+        *,
+        finished_at: str,
+        lifecycle_id: str | None = None,
+    ) -> int:
         """Settle stale attempts using only the owning Run's persisted status."""
 
+        lifecycle_clause = ""
+        parameters: tuple[object, ...] = ()
+        if lifecycle_id is not None:
+            lifecycle_clause = " AND attempts.lifecycle_id = ?"
+            parameters = (lifecycle_id,)
         with self._database.transaction() as connection:
             rows = connection.execute(
                 "SELECT DISTINCT attempts.run_id, runs.status "
@@ -159,6 +169,8 @@ class RuntimeMonitoringStore:
                 "JOIN runtime_workflow_runs AS runs ON runs.run_id = attempts.run_id "
                 "WHERE attempts.status = 'running' "
                 "AND runs.status NOT IN ('pending', 'running')"
+                + lifecycle_clause,
+                parameters,
             ).fetchall()
             updated = 0
             for row in rows:

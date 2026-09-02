@@ -44,7 +44,7 @@ Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的权威 owner。�
 - 每次 ChatModel 调用在 LangChain `on_chat_model_start` 边界保存 message batches、绑定 Tool schema、invocation parameters、options、tags 和 metadata，并在 `on_llm_end` 或 `on_llm_error` 保存终态、usage 或安全错误类型。该边界位于 middleware 处理和模型绑定之后、Provider adapter 最终 HTTP 序列化之前；记录属于 Workflow Run，不把 callback metadata 解析成 Canvas Node、Main Agent 或 Subagent owner；
 - Command Node 按 invocation/attempt 保存 `started` 与 `completed|failed|cancelled` 外部观察。成功记录经过校验的 `{activate, dispatch, update}`，失败只记录稳定错误码，不保存脚本源码、locals、MCP session 或完整输入 State。
 
-Graph、Node、ProtocolEvent、Model Request 和 Command 五个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。进程中断时仍处于采集中的分区标记为 `partial`；Graph 已成功冻结以及本来不适用的分区保持原状态。
+Graph、Node、ProtocolEvent、Model Request 和 Command 五个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。Run 已进入终态而分区仍处于 `capturing` 时，读取接口立即按 `partial` 投影；Lifecycle 状态变化或服务启动恢复会幂等地持久化该收敛结果。Graph 已成功冻结以及本来不适用的分区保持原状态。
 
 Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。监控通过官方 Checkpointer `aget_tuple()` 读取 latest persisted root State；没有 Checkpointer 时明确显示 `not_enabled`。当前不提供 State history、修改、Resume、time travel 或灾难恢复入口。
 
@@ -69,9 +69,9 @@ Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥
 
 Lifecycle 只有在 root Run、全部 child Run 和全部 background task 都进入终态后才取得 `fully_terminal_at`。活动 Lifecycle 不计入保留数量；完整终态的数据按 `(fully_terminal_at, lifecycle_id)` 保留最近 N 个，因此创建较早但结束较晚的长任务按实际结束顺序参与保留。服务启动时先把遗留 active Run 和失去进程 owner 的 background task 归一为 `interrupted`，再判断完整终态并执行保留策略。
 
-值为 `0` 时，新 Lifecycle 不写监控事实，但 Registry、Lifecycle input 和 background task 等运行必需控制数据仍服务到完整终态，随后自动清理。自动保留清理删除该 Lifecycle 的 Registry、监控事实、官方 Store input/task/invocation/filesystem route，以及所有非空 `checkpoint_thread_id` 对应的官方 checkpoint；它不删除日志中心诊断、普通用户文件、生成媒体、fixed/mapped directory 正文或 Shell 创建的 Lifecycle 动态目录。
+值为 `0` 时，新 Lifecycle 不写监控事实，但 Registry、Lifecycle input 和 background task 等运行必需控制数据仍服务到完整终态，随后自动清理。自动保留清理删除该 Lifecycle 的 Registry、监控事实、官方 Store input/task/invocation/filesystem route，以及所有非空 `checkpoint_thread_id` 对应的官方 checkpoint；它不删除日志中心诊断以及任何运行中写入硬盘的用户文件或目录。
 
-单项删除和批量删除同样拒绝 active Lifecycle。管理台默认保留受管动态目录；management API 只有在显式提交 `delete_dynamic_directories=true` 时才验证并删除目标名为 `lifecycle-{lifecycle_id}` 且直接位于登记 root 下的 Shell-created dynamic directory。批量删除作用于服务端完整匹配集，跳过 active Lifecycle；空搜索条件匹配全部目录记录。
+单项删除和批量删除同样拒绝 active Lifecycle。Lifecycle 动态模式创建的 `lifecycle-{lifecycle_id}` 目录及其内容属于用户文件，运行监控不登记、保留计数或删除它们；用户通过文件管理入口或宿主文件系统自行管理。批量删除作用于服务端完整匹配集，跳过 active Lifecycle；空搜索条件匹配全部目录记录。
 
 ### 敏感内容
 

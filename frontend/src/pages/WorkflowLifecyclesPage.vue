@@ -19,7 +19,7 @@ function lifecycleStatus(row: WorkflowLifecycleSummary): string {
   if (row.lifecycle_status !== 'active') {
     return t(`workflowLifecycles.lifecycleStatuses.${row.lifecycle_status}`)
   }
-  return t(`workflowLifecycles.runStatuses.${row.parent_status}`)
+  return t(`workflowLifecycles.runStatuses.${row.root_status}`)
 }
 
 const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
@@ -135,10 +135,10 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
   <PageShell>
     <LteAlert
       class="mb-3"
-      :title="t('workflowLifecycles.persistenceUpgradeTitle')"
+      :title="t('workflowLifecycles.visualizationPendingTitle')"
       theme="info"
     >
-      {{ t('workflowLifecycles.persistenceUpgrade') }}
+      {{ t('workflowLifecycles.visualizationPending') }}
     </LteAlert>
     <DataTableWorkbench :config="tableConfig" />
   </PageShell>

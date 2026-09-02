@@ -6,7 +6,6 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-import shutil
 from typing import Any, Protocol
 from uuid import uuid4
 from weakref import WeakValueDictionary
@@ -19,7 +18,6 @@ from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDia
 from agent_shell.runtime.input_messages import client_messages_sha
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
 from agent_shell.storage.owned_paths import resolve_data_root_relative_path
-from agent_shell.storage.runtime_managed_directories import RuntimeManagedDirectoryStore
 from agent_shell.storage.runtime_monitoring import RuntimeMonitoringStore
 from agent_shell.storage.runtime_registry import RuntimeRegistryStore
 from agent_shell.workflow.catalog import node_type_spec
@@ -90,7 +88,6 @@ class WorkflowLifecycleService:
         self._store_database_path = store_database.path
         self._registry = RuntimeRegistryStore(database)
         self._monitoring = RuntimeMonitoringStore(database)
-        self._managed_directories = RuntimeManagedDirectoryStore(database)
         self._runtime_diagnostics = runtime_diagnostics
         self._data_root = (
             data_root.resolve()
@@ -118,10 +115,6 @@ class WorkflowLifecycleService:
     @property
     def monitoring(self) -> RuntimeMonitoringStore:
         return self._monitoring
-
-    @property
-    def managed_directories(self) -> RuntimeManagedDirectoryStore:
-        return self._managed_directories
 
     def set_cleanup_hook(self, hook: RuntimeCleanupHook) -> None:
         self._cleanup_hook = hook
@@ -217,10 +210,8 @@ class WorkflowLifecycleService:
     ) -> None:
         lifecycle_id = str(record["lifecycle_id"])
         run_id = str(record["run_id"])
-        workflow_id = str(record.get("workflow_id") or record.get("target_id") or "")
-        workflow_name = str(
-            record.get("workflow_name") or record.get("target_name") or ""
-        )
+        workflow_id = str(record["workflow_id"])
+        workflow_name = str(record["workflow_name"])
         created_at = str(record["created_at"])
         runtime_kinds = {
             spec.runtime_kind
@@ -290,7 +281,7 @@ class WorkflowLifecycleService:
         messages_sha = client_messages_sha(messages)
         metadata = {
             "request_id": request_id,
-            "parent_run_id": run_id,
+            "root_run_id": run_id,
             "workflow_id": workflow_id,
             "workflow_name": workflow_name,
             "created_at": created_at,
@@ -421,22 +412,35 @@ class WorkflowLifecycleService:
                 )
         return interrupted
 
-    def reconcile_terminal_monitoring(self) -> None:
+    def reconcile_terminal_monitoring(
+        self,
+        lifecycle_id: str | None = None,
+    ) -> None:
         """Mark crash-window monitoring writers partial for terminal Runs."""
 
         try:
-            self._monitoring.reconcile_node_attempts(finished_at=_now())
+            self._monitoring.reconcile_node_attempts(
+                finished_at=_now(),
+                lifecycle_id=lifecycle_id,
+            )
         except Exception as exc:
             self._observation_error(
                 exc,
                 code="runtime_monitoring_recovery_failed",
-                lifecycle_id="",
+                lifecycle_id=lifecycle_id or "",
                 run_id="",
             )
 
-        for lifecycle in self._registry.list_all_lifecycles():
-            lifecycle_id = str(lifecycle["lifecycle_id"])
-            for record in self._registry.list_runs(lifecycle_id):
+        lifecycle_ids = (
+            [lifecycle_id]
+            if lifecycle_id is not None
+            else [
+                str(record["lifecycle_id"])
+                for record in self._registry.list_all_lifecycles()
+            ]
+        )
+        for current_lifecycle_id in lifecycle_ids:
+            for record in self._registry.list_runs(current_lifecycle_id):
                 if record["status"] in {"pending", "running"}:
                     continue
                 run_id = str(record["run_id"])
@@ -455,7 +459,7 @@ class WorkflowLifecycleService:
                     self._observation_error(
                         exc,
                         code="runtime_monitoring_recovery_failed",
-                        lifecycle_id=lifecycle_id,
+                        lifecycle_id=current_lifecycle_id,
                         run_id=run_id,
                     )
 
@@ -584,47 +588,7 @@ class WorkflowLifecycleService:
         return self._registry.get_run(run_id)
 
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
-        summary = self._registry.summary(lifecycle_id)
-        lifecycle = self._registry.get_lifecycle(lifecycle_id)
-        capture_enabled = bool(
-            lifecycle is not None
-            and lifecycle["monitoring_capture_enabled"]
-        )
-        statuses = [
-            self._monitoring.status(str(run["run_id"]))
-            for run in self._registry.list_runs(lifecycle_id)
-        ]
-        captured = [status for status in statuses if status is not None]
-        has_partial = any(
-            "partial" in {
-                status["graph"],
-                status["node"],
-                status["protocol"],
-                status["model"],
-                status["command"],
-            }
-            for status in captured
-        )
-        has_capturing = any(
-            "capturing" in {
-                status["graph"],
-                status["node"],
-                status["protocol"],
-                status["model"],
-                status["command"],
-            }
-            for status in captured
-        )
-        if not capture_enabled:
-            observation_status = "not_captured"
-        elif len(captured) != len(statuses) or has_partial:
-            observation_status = "partial"
-        elif has_capturing:
-            observation_status = "capturing"
-        else:
-            observation_status = "available"
-        summary["observation_status"] = observation_status
-        return summary
+        return self._registry.summary(lifecycle_id)
 
     @asynccontextmanager
     async def exclusive_mutation(self, lifecycle_id: str) -> AsyncIterator[None]:
@@ -703,42 +667,6 @@ class WorkflowLifecycleService:
     async def record(self, lifecycle_id: str) -> dict[str, Any] | None:
         record = self._registry.get_lifecycle(lifecycle_id)
         return deepcopy(record) if record is not None else None
-
-    async def filesystem_summary(self, lifecycle_id: str) -> dict[str, int]:
-        items = await self._search_all(lifecycle_filesystem_namespace(lifecycle_id))
-        route_count = 0
-        for item in items:
-            mappings = item.value.get("mappings")
-            if isinstance(mappings, list):
-                route_count += len(mappings)
-        managed = self._managed_directories.list_for_lifecycle(lifecycle_id)
-        return {
-            "filesystem_count": len(items),
-            "route_count": route_count,
-            "dynamic_directory_count": sum(
-                1 for item in managed if item["released_at"] is None
-            ),
-        }
-
-    async def delete_managed_directories(self, lifecycle_id: str) -> int:
-        deleted = 0
-        for record in self._managed_directories.list_for_lifecycle(lifecycle_id):
-            if record["released_at"] is not None:
-                continue
-            target = Path(str(record["resolved_target"])).resolve()
-            root = Path(str(record["configured_root"])).resolve()
-            if target.parent != root or target.name != f"lifecycle-{lifecycle_id}":
-                raise RuntimeError("the managed dynamic directory target is invalid")
-            if target.exists():
-                await asyncio.to_thread(shutil.rmtree, target)
-                deleted += 1
-            self._managed_directories.mark_released(
-                lifecycle_id,
-                str(record["filesystem_id"]),
-                str(record["virtual_path"]),
-                released_at=_now(),
-            )
-        return deleted
 
     def _configured_mapping_root(self, local_path: str, path_origin: str) -> Path:
         configured = Path(local_path)
@@ -845,16 +773,6 @@ class WorkflowLifecycleService:
                     }
                 )
                 if lifecycle_mode == "dynamic":
-                    self._managed_directories.register(
-                        {
-                            "lifecycle_id": lifecycle_id,
-                            "filesystem_id": filesystem_id,
-                            "virtual_path": virtual_path,
-                            "configured_root": str(root),
-                            "resolved_target": str(canonical_target),
-                            "created_at": created_at,
-                        }
-                    )
                     canonical_target.mkdir(exist_ok=True)
             await self.store.aput(
                 namespace,

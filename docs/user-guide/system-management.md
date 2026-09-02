@@ -80,7 +80,7 @@ API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；
 
 `runtime_monitoring_retention_lifecycles` 默认 `20`、最小 `0`；其他 9 项只有正数约束。全部策略都没有额外产品最大值。其他默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
 
-运行监控保留数量按完整终态时间保留最近 N 个 Lifecycle，活动 Lifecycle 不计入数量。`0` 会关闭新 Lifecycle 的监控采集；运行必需控制记录仍保留到 root Run、全部 child Run 和 background task 完整终止，随后自动清理。每个 Lifecycle 在创建时冻结是否采集，修改设置不会改变正在运行的采集 profile；最新 N 值立即用于已终止数据，因此降低数值会永久清理超出的 Lifecycle。自动清理保留普通/生成文件、mapped directory 和受管动态目录。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
+运行监控保留数量按完整终态时间保留最近 N 个 Lifecycle，活动 Lifecycle 不计入数量。`0` 会关闭新 Lifecycle 的监控采集；运行必需控制记录仍保留到 root Run、全部 child Run 和 background task 完整终止，随后自动清理。每个 Lifecycle 在创建时冻结是否采集，修改设置不会改变正在运行的采集 profile；最新 N 值立即用于已终止数据，因此降低数值会永久清理超出的 Lifecycle。自动清理保留运行中写入硬盘的全部用户文件和目录。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
 系统与部署区域包含网络、管理密码、LangSmith、CORS 和可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于系统设置，API Key 与消息上限属于 API Server，运行监控保留数量与其他 9 项数值策略属于限制策略。
 

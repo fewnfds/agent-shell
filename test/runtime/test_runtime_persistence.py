@@ -170,6 +170,15 @@ def test_runtime_schema_and_registration_keep_one_control_record_and_frozen_grap
                 "root-run",
                 "child-run",
             ]
+            root_run = service.run("root-run")
+            lifecycle = await service.record(lifecycle_id)
+            assert root_run is not None
+            assert lifecycle is not None
+            assert root_run["workflow_id"] == "workflow-root-run"
+            assert "run_kind" not in root_run
+            assert "target_id" not in root_run
+            assert lifecycle["root_status"] == "pending"
+            assert "parent_status" not in lifecycle
             graph = RuntimeMonitoringQueryStore(
                 SQLiteDatabase(database_path)
             ).graph(lifecycle_id, "root-run")
@@ -216,6 +225,7 @@ def test_runtime_schema_and_registration_keep_one_control_record_and_frozen_grap
             "runtime_command_observations",
         } <= tables
         assert "workflow_run_events" not in tables
+        assert "runtime_managed_directories" not in tables
 
     asyncio.run(scenario())
 
@@ -712,11 +722,15 @@ def test_monitoring_finalize_read_failure_keeps_registry_terminal_result(
     assert errors[0]["code"] == "runtime_monitoring_finalize_failed"
 
 
-def test_monitoring_registration_failure_is_reported_as_partial(
+def test_monitoring_registration_failure_preserves_registry_and_is_reported(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    async def scenario() -> tuple[dict[str, object], list[dict[str, object]]]:
+    async def scenario() -> tuple[
+        dict[str, object],
+        dict[str, object],
+        list[dict[str, object]],
+    ]:
         diagnostics = _Diagnostics()
         service = _service(
             tmp_path / "agent-shell.sqlite3",
@@ -739,12 +753,17 @@ def test_monitoring_registration_failure_is_reported_as_partial(
                 document=_observed_document(),
                 capture=True,
             )
-            return service.run_summary(lifecycle_id), diagnostics.errors
+            return (
+                service.run("registration-failure") or {},
+                service.run_summary(lifecycle_id),
+                diagnostics.errors,
+            )
         finally:
             await service.close()
 
-    summary, errors = asyncio.run(scenario())
-    assert summary["observation_status"] == "partial"
+    run, summary, errors = asyncio.run(scenario())
+    assert run["status"] == "pending"
+    assert summary["run_count"] == 1
     assert errors[0]["code"] == "runtime_monitoring_registration_failed"
 
 
