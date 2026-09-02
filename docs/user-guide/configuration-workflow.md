@@ -26,7 +26,7 @@ Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内�
 启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 `operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。Workflow target 只允许 enabled child Workflow。child 的公开事件在 response 开放期间进入 Lifecycle scheduler；需要跨 Run 持久交付的业务结果仍由调用方通过 Store 或 mapped Filesystem reference 显式读取和编排。
 
-【系统 / 运行监控】按一次 top-level request 列出 Lifecycle catalog，并显示 parent Workflow、状态、Run 数量、失败数、usage 和采集 profile。页面提供目录、搜索、分页与删除管理；management monitoring GET 可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。通用 detail/events 与归档下载入口返回结构化 503。
+【系统 / 运行监控】按一次 top-level request 列出 Lifecycle catalog，并显示 parent Workflow、状态、Run 数量、失败数、usage 和采集 profile。页面提供目录、搜索、分页与删除管理；management monitoring GET 可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选；读取端不重新解析 namespace。通用 detail/events 与归档下载入口返回结构化 503。
 
 系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。root Run、全部 child Run 和全部 background task terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留 diagnostics 以及运行中写入硬盘的全部用户文件和目录。
 

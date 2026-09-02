@@ -48,6 +48,7 @@ Availability = Literal[
     "not_applicable",
 ]
 ScopeKind = Literal["lifecycle", "workflow", "run"]
+ProtocolSourceType = Literal["agent", "subagent", "script", "non_agent"]
 
 
 class MonitoringResponseModel(BaseModel):
@@ -207,11 +208,20 @@ class NodeAttemptPageResponse(MonitoringResourceResponse):
     total_pages: int
 
 
+class ProtocolEventOrigin(MonitoringResponseModel):
+    source_type: ProtocolSourceType
+    workflow_node_id: str
+    node_invocation_id: str
+    agent_profile_id: str
+    subagent_profile_id: str
+
+
 class ProtocolEvent(MonitoringResponseModel):
     sequence: int
     method: str
     captured_at: str
     envelope: dict[str, Any]
+    origin: ProtocolEventOrigin
 
 
 class ProtocolEventSequenceResponse(MonitoringResourceResponse):
@@ -437,7 +447,16 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         after_sequence: int = Query(default=0, ge=0),
         limit: int = Query(default=100, ge=1),
         method: str | None = Query(default=None, min_length=1),
+        node_id: str | None = Query(default=None, min_length=1),
+        invocation_id: str | None = Query(default=None, min_length=1),
     ):
+        if invocation_id is not None and node_id is None:
+            raise management_error(
+                422,
+                code="runtime_monitoring_protocol_selector_invalid",
+                message_key="errors.runtimeMonitoringProtocolSelectorInvalid",
+                message="Select a Node before selecting an invocation.",
+            )
         return read(
             lambda: service.protocol_events(
                 lifecycle_id,
@@ -445,6 +464,8 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
                 after_sequence=after_sequence,
                 limit=limit,
                 method=method,
+                node_id=node_id,
+                invocation_id=invocation_id,
             )
         )
 

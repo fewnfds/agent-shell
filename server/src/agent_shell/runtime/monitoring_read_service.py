@@ -343,7 +343,11 @@ class MonitoringReadService:
         after_sequence: int,
         limit: int,
         method: str | None,
+        node_id: str | None = None,
+        invocation_id: str | None = None,
     ) -> dict[str, object]:
+        if invocation_id is not None and node_id is None:
+            raise ValueError("node_id is required when invocation_id is selected")
         return self._sequence_resource(
             lifecycle_id,
             run_id,
@@ -361,6 +365,8 @@ class MonitoringReadService:
                 after_sequence=after_sequence,
                 limit=limit,
                 method=method,
+                node_id=node_id,
+                invocation_id=invocation_id,
             ),
         )
 

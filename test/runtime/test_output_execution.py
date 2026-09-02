@@ -8,6 +8,7 @@ from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.runtime.response_presentation import PresentationFrame
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.runtime_monitoring_queries import RuntimeMonitoringQueryStore
 from support import runtime_workflow_document
 
 from .support import *
@@ -223,6 +224,87 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
     assert run["status"] == "completed"
     assert monitoring["protocol"] == "partial"
     assert errors[0]["code"] == "runtime_protocol_event_record_failed"
+
+
+def test_execution_persists_the_resolved_protocol_event_origin(tmp_path) -> None:
+    async def scenario() -> tuple[list[str], list[dict[str, object]]]:
+        database_path = tmp_path / "protocol-event-origin.sqlite3"
+        lifecycle = WorkflowLifecycleService(
+            SQLiteDatabase(database_path),
+            store_database=SQLiteFile(
+                tmp_path / "protocol-event-origin-workflow-store.sqlite3"
+            ),
+        )
+        await lifecycle.start()
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "observe"}],
+                request_id="protocol-origin-request",
+                run_id="protocol-origin-run",
+                checkpoint_thread_id=None,
+                workflow_id="protocol-origin-workflow",
+                workflow_name="Protocol Origin Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
+            )
+            projector = OutputProjector(
+                output_renderer({"custom": "{{message}}"})
+            )
+            identity = WorkflowRunIdentity(
+                request_id="protocol-origin-request",
+                lifecycle_id=lifecycle_id,
+                workflow_run_id="protocol-origin-run",
+                workflow_id="protocol-origin-workflow",
+                workflow_name="Protocol Origin Workflow",
+            )
+            execution = RunExecution(
+                graph=EventGraph(
+                    [
+                        {
+                            "type": "event",
+                            "seq": 1,
+                            "method": "custom",
+                            "params": {
+                                "namespace": ["agent-a:invoke-1"],
+                                "timestamp": 1,
+                                "data": "visible",
+                            },
+                        }
+                    ]
+                ),
+                input_state={"messages": []},
+                response_scheduler=response_scheduler(projector),
+                event_output_projector=projector,
+                origin_resolver=event_origin_resolver(),
+                middleware_runtimes=(noop_middleware_runtime(),),
+                media_response=noop_media_response(),
+                identity=identity,
+                context=WorkflowRuntimeContext.for_run(identity=identity),
+                lifecycle_service=lifecycle,
+                monitoring_capture_enabled=True,
+            )
+            parts = [part async for part in execution.stream_text()]
+            events = RuntimeMonitoringQueryStore(
+                SQLiteDatabase(database_path)
+            ).protocol_events(
+                lifecycle_id,
+                "protocol-origin-run",
+                after_sequence=0,
+                limit=10,
+            )["items"]
+            return parts, events
+        finally:
+            await lifecycle.close()
+
+    parts, events = asyncio.run(scenario())
+    assert parts == ["visible"]
+    assert events[0]["origin"] == {
+        "source_type": "agent",
+        "workflow_node_id": "agent-a",
+        "node_invocation_id": "invoke-1",
+        "agent_profile_id": "test-agent-profile",
+        "subagent_profile_id": "",
+    }
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:

@@ -154,6 +154,11 @@ async def _prepare(client) -> tuple[str, str]:
             "seq": 1,
             "params": {"data": [{"text": "first"}]},
         },
+        source_type="agent",
+        workflow_node_id="agent",
+        node_invocation_id="agent-invocation",
+        agent_profile_id=AGENT_ID,
+        subagent_profile_id="",
     )
     lifecycle.append_protocol_event(
         enabled_id,
@@ -164,6 +169,11 @@ async def _prepare(client) -> tuple[str, str]:
             "seq": 2,
             "params": {"data": [{"text": "second"}]},
         },
+        source_type="non_agent",
+        workflow_node_id="",
+        node_invocation_id="",
+        agent_profile_id="",
+        subagent_profile_id="",
     )
     disabled_id = await lifecycle.create(
         [{"role": "user", "content": "disabled"}],
@@ -235,6 +245,34 @@ def test_monitoring_http_reads_snapshots_resources_and_stable_errors(
         assert events.status_code == 200, events.text
         assert [item["sequence"] for item in events.json()["items"]] == [2]
         assert events.json()["next_after_sequence"] == 2
+
+        agent_events = client.get(
+            prefix + "/runs/run-enabled/protocol-events",
+            params={
+                "node_id": "agent",
+                "invocation_id": "agent-invocation",
+            },
+        )
+        assert agent_events.status_code == 200, agent_events.text
+        assert [
+            item["sequence"] for item in agent_events.json()["items"]
+        ] == [1]
+        assert agent_events.json()["items"][0]["origin"] == {
+            "source_type": "agent",
+            "workflow_node_id": "agent",
+            "node_invocation_id": "agent-invocation",
+            "agent_profile_id": AGENT_ID,
+            "subagent_profile_id": "",
+        }
+
+        invalid_protocol_selector = client.get(
+            prefix + "/runs/run-enabled/protocol-events",
+            params={"invocation_id": "agent-invocation"},
+        )
+        assert invalid_protocol_selector.status_code == 422
+        assert invalid_protocol_selector.json()["detail"]["code"] == (
+            "runtime_monitoring_protocol_selector_invalid"
+        )
 
         models = client.get(prefix + "/runs/run-enabled/model-requests")
         assert models.status_code == 200, models.text

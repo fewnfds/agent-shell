@@ -215,6 +215,13 @@ CREATE TABLE IF NOT EXISTS runtime_protocol_events (
     method TEXT NOT NULL CHECK (length(method) > 0),
     captured_at TEXT NOT NULL,
     envelope_json TEXT NOT NULL,
+    source_type TEXT NOT NULL CHECK (
+        source_type IN ('agent', 'subagent', 'script', 'non_agent')
+    ),
+    workflow_node_id TEXT NOT NULL,
+    node_invocation_id TEXT NOT NULL,
+    agent_profile_id TEXT NOT NULL,
+    subagent_profile_id TEXT NOT NULL,
     PRIMARY KEY (run_id, event_sequence),
     FOREIGN KEY (lifecycle_id, run_id)
         REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
@@ -223,6 +230,11 @@ CREATE TABLE IF NOT EXISTS runtime_protocol_events (
 
 CREATE INDEX IF NOT EXISTS idx_runtime_protocol_events_lifecycle
 ON runtime_protocol_events(lifecycle_id, run_id, event_sequence);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_protocol_events_node
+ON runtime_protocol_events(
+    run_id, workflow_node_id, node_invocation_id, event_sequence
+);
 
 CREATE TABLE IF NOT EXISTS runtime_model_requests (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,

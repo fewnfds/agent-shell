@@ -468,6 +468,12 @@ class WorkflowLifecycleService:
         lifecycle_id: str,
         run_id: str,
         event: Mapping[str, object],
+        *,
+        source_type: str,
+        workflow_node_id: str,
+        node_invocation_id: str,
+        agent_profile_id: str,
+        subagent_profile_id: str,
     ) -> None:
         status = self._monitoring.status(run_id)
         if status is None or status["protocol"] != "capturing":
@@ -476,6 +482,11 @@ class WorkflowLifecycleService:
             lifecycle_id=lifecycle_id,
             run_id=run_id,
             event=event,
+            source_type=source_type,
+            workflow_node_id=workflow_node_id,
+            node_invocation_id=node_invocation_id,
+            agent_profile_id=agent_profile_id,
+            subagent_profile_id=subagent_profile_id,
         )
 
     def start_node_attempt(self, record: dict[str, object]) -> bool:

@@ -199,6 +199,11 @@ class RuntimeMonitoringStore:
         lifecycle_id: str,
         run_id: str,
         event: Mapping[str, object],
+        source_type: str,
+        workflow_node_id: str,
+        node_invocation_id: str,
+        agent_profile_id: str,
+        subagent_profile_id: str,
         captured_at: str | None = None,
     ) -> None:
         sequence = event.get("seq")
@@ -212,7 +217,9 @@ class RuntimeMonitoringStore:
             connection.execute(
                 "INSERT INTO runtime_protocol_events ("
                 "lifecycle_id, run_id, event_sequence, method, captured_at, "
-                "envelope_json) VALUES (?, ?, ?, ?, ?, ?)",
+                "envelope_json, source_type, workflow_node_id, "
+                "node_invocation_id, agent_profile_id, subagent_profile_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     lifecycle_id,
                     run_id,
@@ -220,6 +227,11 @@ class RuntimeMonitoringStore:
                     method,
                     occurred_at,
                     _json(dict(event)),
+                    source_type,
+                    workflow_node_id,
+                    node_invocation_id,
+                    agent_profile_id,
+                    subagent_profile_id,
                 ),
             )
             connection.execute(

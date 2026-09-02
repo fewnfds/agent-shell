@@ -269,6 +269,7 @@ def test_resources_page_and_resume_from_their_native_sequences(
                     status="completed",
                 )
             for sequence in (1, 2):
+                is_agent_event = sequence == 1
                 lifecycle.append_protocol_event(
                     lifecycle_id,
                     "root",
@@ -278,6 +279,13 @@ def test_resources_page_and_resume_from_their_native_sequences(
                         "seq": sequence,
                         "params": {"data": [{"sequence": sequence}]},
                     },
+                    source_type="agent" if is_agent_event else "non_agent",
+                    workflow_node_id="agent" if is_agent_event else "",
+                    node_invocation_id=(
+                        "agent-invocation" if is_agent_event else ""
+                    ),
+                    agent_profile_id=AGENT_ID if is_agent_event else "",
+                    subagent_profile_id="",
                 )
             for model_id in ("model-1", "model-2"):
                 lifecycle.start_model_request(
@@ -357,6 +365,15 @@ def test_resources_page_and_resume_from_their_native_sequences(
                     status="completed",
                 ),
                 "protocol": protocol,
+                "agent_protocol": reads.protocol_events(
+                    lifecycle_id,
+                    "root",
+                    after_sequence=0,
+                    limit=10,
+                    method=None,
+                    node_id="agent",
+                    invocation_id="agent-invocation",
+                ),
                 "protocol_repeated": reads.protocol_events(
                     lifecycle_id,
                     "root",
@@ -385,6 +402,16 @@ def test_resources_page_and_resume_from_their_native_sequences(
     assert result["nodes_1"]["items"] != result["nodes_2"]["items"]
     assert result["attempts"]["items"][0]["invocation_id"] == "agent-invocation"
     assert [item["sequence"] for item in result["protocol"]["items"]] == [2]
+    assert [
+        item["sequence"] for item in result["agent_protocol"]["items"]
+    ] == [1]
+    assert result["agent_protocol"]["items"][0]["origin"] == {
+        "source_type": "agent",
+        "workflow_node_id": "agent",
+        "node_invocation_id": "agent-invocation",
+        "agent_profile_id": AGENT_ID,
+        "subagent_profile_id": "",
+    }
     protocol_copy = deepcopy(result["protocol"])
     repeated_copy = deepcopy(result["protocol_repeated"])
     protocol_copy.pop("read_at")

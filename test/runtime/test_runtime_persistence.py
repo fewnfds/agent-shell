@@ -230,7 +230,7 @@ def test_runtime_schema_and_registration_keep_one_control_record_and_frozen_grap
     asyncio.run(scenario())
 
 
-def test_protocol_events_keep_raw_official_envelope(
+def test_protocol_events_keep_raw_official_envelope_and_compact_origin(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -243,35 +243,89 @@ def test_protocol_events_keep_raw_official_envelope(
                 document=runtime_workflow_document(),
                 capture=True,
             )
-            envelope = {
-                "jsonrpc": "2.0",
-                "method": "messages",
-                "seq": 1,
-                "params": {
-                    "namespace": ["agent:one"],
-                    "data": [{"event": "message-start"}],
+            expected: list[tuple[dict[str, object], dict[str, str]]] = []
+            origins = (
+                {
+                    "source_type": "agent",
+                    "workflow_node_id": "agent",
+                    "node_invocation_id": "agent-invocation",
+                    "agent_profile_id": AGENT_ID,
+                    "subagent_profile_id": "",
                 },
-            }
-            service.append_protocol_event(
-                lifecycle_id,
-                "event-run",
-                envelope,
+                {
+                    "source_type": "subagent",
+                    "workflow_node_id": "agent",
+                    "node_invocation_id": "agent-invocation-2",
+                    "agent_profile_id": AGENT_ID,
+                    "subagent_profile_id": "subagent-profile",
+                },
+                {
+                    "source_type": "script",
+                    "workflow_node_id": "command",
+                    "node_invocation_id": "command-invocation",
+                    "agent_profile_id": "",
+                    "subagent_profile_id": "",
+                },
+                {
+                    "source_type": "non_agent",
+                    "workflow_node_id": "",
+                    "node_invocation_id": "",
+                    "agent_profile_id": "",
+                    "subagent_profile_id": "",
+                },
             )
-            persisted = RuntimeMonitoringQueryStore(
+            for sequence, origin in enumerate(origins, start=1):
+                envelope: dict[str, object] = {
+                    "jsonrpc": "2.0",
+                    "method": "messages",
+                    "seq": sequence,
+                    "params": {
+                        "namespace": [f"scope:{sequence}"],
+                        "data": [{"event": "message-start"}],
+                    },
+                }
+                service.append_protocol_event(
+                    lifecycle_id,
+                    "event-run",
+                    envelope,
+                    **origin,
+                )
+                expected.append((envelope, origin))
+            queries = RuntimeMonitoringQueryStore(
                 SQLiteDatabase(tmp_path / "agent-shell.sqlite3")
-            ).protocol_events(
+            )
+            persisted = queries.protocol_events(
                 lifecycle_id,
                 "event-run",
                 after_sequence=0,
                 limit=10,
             )["items"]
-            assert persisted[0]["envelope"] == envelope
-            assert "origin" not in persisted[0]
+            assert [
+                (item["envelope"], item["origin"]) for item in persisted
+            ] == expected
+            node_events = queries.protocol_events(
+                lifecycle_id,
+                "event-run",
+                after_sequence=0,
+                limit=10,
+                node_id="agent",
+            )["items"]
+            invocation_events = queries.protocol_events(
+                lifecycle_id,
+                "event-run",
+                after_sequence=0,
+                limit=10,
+                node_id="agent",
+                invocation_id="agent-invocation",
+            )["items"]
+            assert [item["sequence"] for item in node_events] == [1, 2]
+            assert [item["sequence"] for item in invocation_events] == [1]
             try:
                 service.append_protocol_event(
                     lifecycle_id,
                     "event-run",
-                    envelope,
+                    expected[0][0],
+                    **expected[0][1],
                 )
                 raise AssertionError("duplicate (run_id, seq) must fail")
             except sqlite3.IntegrityError:
@@ -789,6 +843,11 @@ def test_capture_disabled_keeps_only_required_control_facts_until_cleanup(
                 lifecycle_id,
                 "disabled-run",
                 {"jsonrpc": "2.0", "method": "messages", "seq": 1},
+                source_type="non_agent",
+                workflow_node_id="",
+                node_invocation_id="",
+                agent_profile_id="",
+                subagent_profile_id="",
             )
             assert service.start_model_request(
                 {

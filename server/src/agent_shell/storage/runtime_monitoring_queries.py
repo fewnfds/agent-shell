@@ -380,6 +380,8 @@ class RuntimeMonitoringQueryStore:
         after_sequence: int,
         limit: int,
         method: str | None = None,
+        node_id: str | None = None,
+        invocation_id: str | None = None,
     ) -> dict[str, object]:
         clauses = [
             "lifecycle_id = ?",
@@ -390,6 +392,12 @@ class RuntimeMonitoringQueryStore:
         if method:
             clauses.append("method = ?")
             parameters.append(method)
+        if node_id is not None:
+            clauses.append("workflow_node_id = ?")
+            parameters.append(node_id)
+        if invocation_id is not None:
+            clauses.append("node_invocation_id = ?")
+            parameters.append(invocation_id)
         where = " AND ".join(clauses)
         with self._database.transaction() as connection:
             total = int(
@@ -410,6 +418,13 @@ class RuntimeMonitoringQueryStore:
                 "method": str(row["method"]),
                 "captured_at": str(row["captured_at"]),
                 "envelope": _object(str(row["envelope_json"])),
+                "origin": {
+                    "source_type": str(row["source_type"]),
+                    "workflow_node_id": str(row["workflow_node_id"]),
+                    "node_invocation_id": str(row["node_invocation_id"]),
+                    "agent_profile_id": str(row["agent_profile_id"]),
+                    "subagent_profile_id": str(row["subagent_profile_id"]),
+                },
             }
             for row in rows
         ]

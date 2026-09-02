@@ -36,6 +36,7 @@ from agent_shell.runtime.diagnostics import (
     RuntimeDiagnostics,
 )
 from agent_shell.runtime.event_origin import (
+    ResolvedEventOrigin,
     RunEventOriginResolver,
     WorkflowNodeSource,
 )
@@ -288,6 +289,7 @@ class RunExecution:
 
         def capture_protocol_event(
             envelope: object,
+            origin: ResolvedEventOrigin,
         ) -> None:
             nonlocal protocol_event_capture_failed
             if (
@@ -302,6 +304,11 @@ class RunExecution:
                     self.identity.lifecycle_id,
                     self.identity.workflow_run_id,
                     serialize_protocol_event(envelope),
+                    source_type=origin.source_type,
+                    workflow_node_id=origin.workflow_node_id,
+                    node_invocation_id=origin.node_invocation_id,
+                    agent_profile_id=origin.agent_profile_id,
+                    subagent_profile_id=origin.subagent_profile_id,
                 )
             except Exception as exc:
                 protocol_event_capture_failed = True
@@ -688,7 +695,7 @@ class RunExecution:
                                 else:
                                     next_event_task = asyncio.create_task(anext(envelopes))
                                     origin = event_origin(envelope)
-                                    capture_protocol_event(envelope)
+                                    capture_protocol_event(envelope, origin)
                                     (
                                         stream_events,
                                         publish_raw_output,

@@ -247,7 +247,7 @@ Management API 只负责 observability 和 explicit cleanup，不提供从外部
 - `DELETE /api/workflow-lifecycles/{lifecycle_id}` 显式清理一个 terminal Lifecycle；
 - `POST /api/workflow-lifecycles/delete` 按 query 清理匹配的 terminal Lifecycle。
 
-`/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot` 可以按 Lifecycle、Workflow 或 Run scope 查看 Registry Run forest；`.../monitoring/runs/{run_id}/*` 可以读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。它们是普通 HTTP snapshot/page，不推演 child launcher Node、Edge activation 或跨 Run Timeline。Lifecycle download 和 single Run download endpoint 返回 `503 runtime_monitoring_read_model_unavailable`。
+`/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot` 可以按 Lifecycle、Workflow 或 Run scope 查看 Registry Run forest；`.../monitoring/runs/{run_id}/*` 可以读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选。它们是普通 HTTP snapshot/page，不在读取端解析 namespace，也不推演 child launcher Node、Edge activation 或跨 Run Timeline。Lifecycle download 和 single Run download endpoint 返回 `503 runtime_monitoring_read_model_unavailable`。
 
 `runtime_monitoring_retention_lifecycles` 默认保留最近 `20` 个完整终态 Lifecycle；active Lifecycle 不占保留数量。值为 `0` 时关闭新 Lifecycle 的监控采集，并在其完整终态后清理运行控制数据。降低设置会立即收敛完整终态目录，提高设置不会恢复已经删除的数据。
 
