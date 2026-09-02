@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   managementApi,
   type RuntimeMonitoringGraphResponse,
+  type RuntimeMonitoringNodeAttemptPage,
   type RuntimeMonitoringNodeSummaryPage,
   type RuntimeMonitoringSnapshot,
   type WorkflowGraphDocument,
@@ -93,24 +94,33 @@ const snapshot: RuntimeMonitoringSnapshot = {
   },
 }
 
-function document(nodeId: string): WorkflowGraphDocument {
+function document(nodeIds: string | string[]): WorkflowGraphDocument {
+  const ids = Array.isArray(nodeIds) ? nodeIds : [nodeIds]
   return {
     definition: {
       schema_version: 1,
       state_contract: 'agent-shell.workflow.agent-invocations.v1',
-      nodes: [{
+      nodes: ids.map((nodeId) => ({
         id: nodeId,
         type: 'agent',
         type_version: 1,
         config: { main_agent_id: `config-${nodeId}` },
-      }],
+      })),
       edges: [],
     },
-    layout: { nodes: { [nodeId]: { x: 0, y: 0 } }, viewport: { x: 0, y: 0, zoom: 1 } },
+    layout: {
+      nodes: Object.fromEntries(ids.map((nodeId, index) => (
+        [nodeId, { x: index * 200, y: 0 }]
+      ))),
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
   }
 }
 
-function graphResponse(runId: string, nodeId: string): RuntimeMonitoringGraphResponse {
+function graphResponse(
+  runId: string,
+  nodeIds: string | string[],
+): RuntimeMonitoringGraphResponse {
   return {
     availability: 'available',
     read_at: '2026-09-03T00:00:10Z',
@@ -120,7 +130,7 @@ function graphResponse(runId: string, nodeId: string): RuntimeMonitoringGraphRes
       workflow_id: `workflow-${runId}`,
       workflow_name: runId === 'run-root' ? 'Parent Workflow' : 'Child Workflow',
       document_sha: `sha-${runId}`,
-      document: document(nodeId),
+      document: document(nodeIds),
       created_at: '2026-09-03T00:00:00Z',
     },
   }
@@ -136,15 +146,49 @@ const nodePage: RuntimeMonitoringNodeSummaryPage = {
   total_pages: 1,
 }
 
+function nodeAttemptPage(
+  runId: string,
+  nodeId: string,
+  invocationId = `invocation-${nodeId}`,
+): RuntimeMonitoringNodeAttemptPage {
+  return {
+    availability: 'available',
+    read_at: '2026-09-03T00:00:10Z',
+    items: [{
+      sequence: 1,
+      lifecycle_id: 'lifecycle-1',
+      run_id: runId,
+      workflow_node_id: nodeId,
+      invocation_id: invocationId,
+      attempt: 1,
+      node_first_attempt_time: null,
+      started_at: '2026-09-03T00:00:00Z',
+      finished_at: '2026-09-03T00:00:01Z',
+      status: 'completed',
+      error_code: '',
+    }],
+    page: 1,
+    page_size: 20,
+    total: 1,
+    total_pages: 1,
+  }
+}
+
 const RuntimeWorkflowCanvasStub = defineComponent({
   name: 'RuntimeWorkflowCanvas',
   props: {
     document: { type: Object as PropType<WorkflowGraphDocument>, required: true },
+    selectedNodeId: { type: String, required: true },
   },
-  setup(props) {
-    return () => h('div', { 'data-testid': 'runtime-workflow-canvas' }, (
-      props.document.definition.nodes.map((node) => node.id).join(',')
-    ))
+  emits: ['selectNode'],
+  setup(props, { emit }) {
+    return () => h('div', { 'data-testid': 'runtime-workflow-canvas' }, [
+      props.document.definition.nodes.map((node) => h('button', {
+        'data-testid': `select-node-${node.id}`,
+        'data-selected': node.id === props.selectedNodeId,
+        onClick: () => emit('selectNode', node.id),
+      }, node.id)),
+    ])
   },
 })
 
@@ -187,6 +231,9 @@ beforeEach(() => {
     Promise.resolve(graphResponse(runId, runId === 'run-root' ? 'root-agent' : 'child-agent'))
   ))
   vi.spyOn(managementApi, 'listRuntimeMonitoringNodes').mockResolvedValue(nodePage)
+  vi.spyOn(managementApi, 'listRuntimeMonitoringNodeAttempts').mockImplementation((
+    _, runId, nodeId,
+  ) => Promise.resolve(nodeAttemptPage(runId, nodeId)))
 })
 
 afterEach(() => {
@@ -261,5 +308,131 @@ describe('RuntimeMonitoringPage', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="runtime-workflow-canvas"]').text()).toBe('child-agent')
+  })
+
+  it('loads the selected Node attempts for the exact Lifecycle and Run and stores it in the URL', async () => {
+    const { router, wrapper } = await mountPage()
+
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+
+    expect(managementApi.listRuntimeMonitoringNodeAttempts).toHaveBeenCalledWith(
+      'lifecycle-1',
+      'run-root',
+      'root-agent',
+      { page: 1, page_size: 20 },
+      expect.any(AbortSignal),
+    )
+    expect(router.currentRoute.value.query.node_id).toBe('root-agent')
+    expect(wrapper.get('.runtime-monitoring-node-panel').text())
+      .toContain('invocation-root-agent')
+  })
+
+  it('does not let an earlier Node response replace the newly selected Node', async () => {
+    vi.mocked(managementApi.getRuntimeMonitoringGraph).mockImplementation((_, runId) => (
+      Promise.resolve(graphResponse(
+        runId,
+        runId === 'run-root'
+          ? ['root-agent', 'second-agent']
+          : ['child-agent'],
+      ))
+    ))
+    const firstNode = deferred<RuntimeMonitoringNodeAttemptPage>()
+    vi.mocked(managementApi.listRuntimeMonitoringNodeAttempts).mockImplementation((
+      _, runId, nodeId,
+    ) => (
+      nodeId === 'root-agent'
+        ? firstNode.promise
+        : Promise.resolve(nodeAttemptPage(runId, nodeId, 'current-invocation'))
+    ))
+    const { wrapper } = await mountPage()
+
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="select-node-second-agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.runtime-monitoring-node-panel').text()).toContain('current-invocation')
+
+    firstNode.resolve(nodeAttemptPage('run-root', 'root-agent', 'stale-invocation'))
+    await flushPromises()
+
+    expect(wrapper.get('.runtime-monitoring-node-panel').text()).toContain('current-invocation')
+    expect(wrapper.text()).not.toContain('stale-invocation')
+  })
+
+  it('closes Node details and removes node_id when selecting another Run', async () => {
+    const { router, wrapper } = await mountPage()
+
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.runtime-monitoring-node-panel').exists()).toBe(true)
+
+    const childButton = wrapper.findAll('.runtime-run-index-button').find((button) => (
+      button.text().includes('Child Workflow')
+    ))
+    await childButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.runtime-monitoring-node-panel').exists()).toBe(false)
+    expect(router.currentRoute.value.query.run_id).toBe('run-child')
+    expect(router.currentRoute.value.query.node_id).toBeUndefined()
+  })
+
+  it('restores a valid Node deep link after its frozen Graph loads', async () => {
+    const { router, wrapper } = await mountPage(
+      '/system/workflow-lifecycles/lifecycle-1/monitoring?run_id=run-root&node_id=root-agent',
+    )
+
+    expect(router.currentRoute.value.query.node_id).toBe('root-agent')
+    expect(managementApi.listRuntimeMonitoringNodeAttempts).toHaveBeenCalledWith(
+      'lifecycle-1',
+      'run-root',
+      'root-agent',
+      { page: 1, page_size: 20 },
+      expect.any(AbortSignal),
+    )
+    expect(wrapper.get('[data-testid="select-node-root-agent"]')
+      .attributes('data-selected')).toBe('true')
+  })
+
+  it('removes an invalid Node deep link without requesting attempt data', async () => {
+    const { router, wrapper } = await mountPage(
+      '/system/workflow-lifecycles/lifecycle-1/monitoring?run_id=run-root&node_id=missing-node',
+    )
+
+    expect(router.currentRoute.value.query.node_id).toBeUndefined()
+    expect(managementApi.listRuntimeMonitoringNodeAttempts).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="runtime-workflow-canvas"]').text()).toBe('root-agent')
+  })
+
+  it('keeps the Run index and Graph usable when Node attempt data is unavailable', async () => {
+    vi.mocked(managementApi.listRuntimeMonitoringNodeAttempts).mockResolvedValue({
+      ...nodeAttemptPage('run-root', 'root-agent'),
+      availability: 'unavailable',
+      items: [],
+      total: 0,
+    })
+    const { wrapper } = await mountPage()
+
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Node attempt data is unavailable.')
+    expect(wrapper.get('[data-testid="runtime-workflow-canvas"]').text()).toBe('root-agent')
+    expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(2)
+  })
+
+  it('keeps the Run index and Graph usable when a Node attempt request fails', async () => {
+    vi.mocked(managementApi.listRuntimeMonitoringNodeAttempts)
+      .mockRejectedValue(new Error('attempt endpoint failed'))
+    const { wrapper } = await mountPage()
+
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.runtime-monitoring-node-panel .alert-danger').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="runtime-workflow-canvas"]').text()).toBe('root-agent')
+    expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(2)
   })
 })

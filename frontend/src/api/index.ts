@@ -26,6 +26,7 @@ import type {
   ConfigurationSummary,
   MainAgentSummary,
   RuntimeMonitoringGraphResponse,
+  RuntimeMonitoringNodeAttemptPage,
   RuntimeMonitoringNodeSummaryPage,
   RuntimeMonitoringSnapshot,
   RuntimePolicySettings,
@@ -440,6 +441,24 @@ export const managementApi = {
     return managementRequest(
       `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/nodes${buildQuery({
+          page: request?.page,
+          page_size: request?.page_size,
+        })}`,
+      { signal },
+    )
+  },
+
+  listRuntimeMonitoringNodeAttempts(
+    lifecycleId: string,
+    runId: string,
+    nodeId: string,
+    request?: { page?: number; page_size?: number },
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringNodeAttemptPage> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}`
+        + `/nodes/${encodeURIComponent(nodeId)}/attempts${buildQuery({
           page: request?.page,
           page_size: request?.page_size,
         })}`,

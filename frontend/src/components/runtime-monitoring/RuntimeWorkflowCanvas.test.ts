@@ -77,7 +77,7 @@ const nodeCatalog = [
 ] satisfies WorkflowNodeCatalogItem[]
 
 describe('RuntimeWorkflowCanvas', () => {
-  it('marks running Nodes with both visual state and readable attempt counts', () => {
+  it('marks running and selected Nodes with readable attempt counts', () => {
     const summaries: RuntimeMonitoringNodeSummary[] = [{
       workflow_node_id: 'agent-1',
       first_sequence: 1,
@@ -88,7 +88,12 @@ describe('RuntimeWorkflowCanvas', () => {
       status_counts: { running: 1, completed: 1 },
     }]
     const wrapper = mount(RuntimeWorkflowCanvas, {
-      props: { document, nodeCatalog, nodeSummaries: summaries },
+      props: {
+        document,
+        nodeCatalog,
+        nodeSummaries: summaries,
+        selectedNodeId: 'agent-1',
+      },
       global: {
         plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
         stubs: { VueFlow: VueFlowStub, WorkflowNodeEndpoints: true },
@@ -99,7 +104,25 @@ describe('RuntimeWorkflowCanvas', () => {
     expect(runningNode.text()).toContain('Attempts: 2')
     expect(runningNode.text()).toContain('running: 1')
     expect(runningNode.text()).toContain('completed: 1')
+    expect(runningNode.attributes('aria-pressed')).toBe('true')
+    expect(runningNode.attributes('data-selected')).toBe('true')
     expect(wrapper.get('[data-running="false"]').text()).toContain('No recorded attempts')
     expect(wrapper.getComponent(VueFlowStub).props('edges')[0]).toMatchObject({ animated: false })
+  })
+
+  it('emits Node selection for pointer and keyboard activation', async () => {
+    const wrapper = mount(RuntimeWorkflowCanvas, {
+      props: { document, nodeCatalog, nodeSummaries: [], selectedNodeId: '' },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
+        stubs: { VueFlow: VueFlowStub, WorkflowNodeEndpoints: true },
+      },
+    })
+
+    const nodes = wrapper.findAll('[role="button"]')
+    await nodes[0]!.trigger('click')
+    await nodes[1]!.trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted('selectNode')).toEqual([['agent-1'], ['end']])
   })
 })

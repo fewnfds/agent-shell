@@ -25,6 +25,11 @@ const props = defineProps<{
   document: WorkflowGraphDocument
   nodeCatalog: WorkflowNodeCatalogItem[]
   nodeSummaries: RuntimeMonitoringNodeSummary[]
+  selectedNodeId: string
+}>()
+
+const emit = defineEmits<{
+  selectNode: [nodeId: string]
 }>()
 
 const { t } = useI18n()
@@ -53,6 +58,10 @@ function nodeConfigSummary(nodeType: WorkflowNodeType, data: { mainAgentId: stri
 
 function runningCount(nodeId: string): number {
   return summaries.value.get(nodeId)?.status_counts.running ?? 0
+}
+
+function selectNode(nodeId: string): void {
+  emit('selectNode', nodeId)
 }
 
 function attemptSummary(nodeId: string): string {
@@ -101,7 +110,15 @@ async function initializeFlow(instance: VueFlowStore): Promise<void> {
     <template #node-start="{ id, data }">
       <div
         class="workflow-node workflow-node--terminal runtime-monitoring-node"
+        :aria-label="t('runtimeMonitoring.graph.openNodeAttempts', { node: id })"
+        :aria-pressed="id === selectedNodeId"
+        :data-selected="id === selectedNodeId"
         :data-running="runningCount(id) > 0"
+        role="button"
+        tabindex="0"
+        @click="selectNode(id)"
+        @keydown.enter.stop.prevent="selectNode(id)"
+        @keydown.space.stop.prevent="selectNode(id)"
       >
         <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-play-fill" /></span>
         <span class="runtime-monitoring-node-copy">
@@ -116,7 +133,15 @@ async function initializeFlow(instance: VueFlowStore): Promise<void> {
     <template #node-agent="{ id, data }">
       <div
         class="workflow-node workflow-node--agent runtime-monitoring-node"
+        :aria-label="t('runtimeMonitoring.graph.openNodeAttempts', { node: id })"
+        :aria-pressed="id === selectedNodeId"
+        :data-selected="id === selectedNodeId"
         :data-running="runningCount(id) > 0"
+        role="button"
+        tabindex="0"
+        @click="selectNode(id)"
+        @keydown.enter.stop.prevent="selectNode(id)"
+        @keydown.space.stop.prevent="selectNode(id)"
       >
         <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('agent', 'input')" />
         <div class="workflow-node-header">
@@ -132,7 +157,15 @@ async function initializeFlow(instance: VueFlowStore): Promise<void> {
     <template #node-command="{ id, data }">
       <div
         class="workflow-node workflow-node--command runtime-monitoring-node"
+        :aria-label="t('runtimeMonitoring.graph.openNodeAttempts', { node: id })"
+        :aria-pressed="id === selectedNodeId"
+        :data-selected="id === selectedNodeId"
         :data-running="runningCount(id) > 0"
+        role="button"
+        tabindex="0"
+        @click="selectNode(id)"
+        @keydown.enter.stop.prevent="selectNode(id)"
+        @keydown.space.stop.prevent="selectNode(id)"
       >
         <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('command', 'input')" />
         <div class="workflow-node-header">
@@ -148,7 +181,15 @@ async function initializeFlow(instance: VueFlowStore): Promise<void> {
     <template #node-end="{ id, data }">
       <div
         class="workflow-node workflow-node--terminal runtime-monitoring-node"
+        :aria-label="t('runtimeMonitoring.graph.openNodeAttempts', { node: id })"
+        :aria-pressed="id === selectedNodeId"
+        :data-selected="id === selectedNodeId"
         :data-running="runningCount(id) > 0"
+        role="button"
+        tabindex="0"
+        @click="selectNode(id)"
+        @keydown.enter.stop.prevent="selectNode(id)"
+        @keydown.space.stop.prevent="selectNode(id)"
       >
         <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('end', 'input')" />
         <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-stop-fill" /></span>

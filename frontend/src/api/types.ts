@@ -718,6 +718,38 @@ export interface RuntimeMonitoringNodeSummaryPage {
   total_pages: number
 }
 
+export type RuntimeMonitoringNodeStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'incomplete'
+
+export interface RuntimeMonitoringNodeAttempt {
+  sequence: number
+  lifecycle_id: string
+  run_id: string
+  workflow_node_id: string
+  invocation_id: string
+  attempt: number
+  node_first_attempt_time: number | null
+  started_at: string
+  finished_at: string | null
+  status: RuntimeMonitoringNodeStatus
+  error_code: string
+}
+
+export interface RuntimeMonitoringNodeAttemptPage {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  items: RuntimeMonitoringNodeAttempt[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
 export type WorkflowNodeType =
   | 'start'
   | 'agent'
