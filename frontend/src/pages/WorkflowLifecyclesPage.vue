@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { LteAlert } from '@adminlte/vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import { managementApi, type WorkflowLifecycleSummary } from '@/api'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
@@ -8,6 +8,7 @@ import type { DataTableConfig } from '@/components/data-table/types'
 import PageShell from '@/components/PageShell.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 
 function localTime(value: string | null): string {
   if (!value) return t('common.none')
@@ -86,6 +87,19 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
   ],
   rowActions: [
     {
+      key: 'monitor',
+      label: (row) => row.monitoring_capture_enabled
+        ? t('workflowLifecycles.monitor')
+        : t('workflowLifecycles.monitorDisabled'),
+      icon: 'view',
+      tone: 'primary',
+      disabled: (row) => !row.monitoring_capture_enabled,
+      run: (row) => router.push(
+        `/system/workflow-lifecycles/${encodeURIComponent(row.lifecycle_id)}/monitoring`,
+      ),
+      reloadAfter: false,
+    },
+    {
       key: 'delete',
       label: () => t('common.delete'),
       icon: 'delete',
@@ -133,13 +147,6 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
 
 <template>
   <PageShell>
-    <LteAlert
-      class="mb-3"
-      :title="t('workflowLifecycles.visualizationPendingTitle')"
-      theme="info"
-    >
-      {{ t('workflowLifecycles.visualizationPending') }}
-    </LteAlert>
     <DataTableWorkbench :config="tableConfig" />
   </PageShell>
 </template>

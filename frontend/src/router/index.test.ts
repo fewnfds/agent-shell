@@ -17,4 +17,14 @@ describe('configuration library routes', () => {
     expect(mcpConnectionRoute?.props.default).toEqual({ scope: 'mcp' })
     expect(mcpMappingRoute?.components?.default).not.toBe(mcpConnectionRoute?.components?.default)
   })
+
+  it('resolves a Lifecycle monitoring detail route and preserves its Run query', () => {
+    const route = router.resolve(
+      '/system/workflow-lifecycles/lifecycle-1/monitoring?run_id=run-2',
+    )
+
+    expect(route.params.lifecycleId).toBe('lifecycle-1')
+    expect(route.query.run_id).toBe('run-2')
+    expect(route.meta.titleKey).toBe('runtimeMonitoring.title')
+  })
 })

@@ -14,6 +14,7 @@ const TerminologyPage = () => import('@/pages/TerminologyPage.vue')
 const WorkflowsPage = () => import('@/pages/WorkflowsPage.vue')
 const WorkflowEditorPage = () => import('@/pages/WorkflowEditorPage.vue')
 const WorkflowLifecyclesPage = () => import('@/pages/WorkflowLifecyclesPage.vue')
+const RuntimeMonitoringPage = () => import('@/pages/RuntimeMonitoringPage.vue')
 const ModelMappingPage = () => import('@/pages/ModelMappingPage.vue')
 const McpMappingPage = () => import('@/pages/McpMappingPage.vue')
 
@@ -54,6 +55,11 @@ export const router = createRouter({
       path: '/system/workflow-lifecycles',
       component: WorkflowLifecyclesPage,
       meta: { titleKey: 'workflowLifecycles.title' },
+    },
+    {
+      path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+      component: RuntimeMonitoringPage,
+      meta: { titleKey: 'runtimeMonitoring.title' },
     },
     {
       path: '/workflows/:id/editor',

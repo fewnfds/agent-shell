@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -38,12 +39,25 @@ afterEach(() => {
   for (const toast of toasts.items.value) toasts.dismiss(toast.id)
 })
 
-function mountPage() {
-  return mount(WorkflowLifecyclesPage, {
+async function mountPage() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/system/workflow-lifecycles', component: WorkflowLifecyclesPage },
+      {
+        path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+        component: { template: '<div />' },
+      },
+    ],
+  })
+  await router.push('/system/workflow-lifecycles')
+  await router.isReady()
+  const wrapper = mount(WorkflowLifecyclesPage, {
     global: {
-      plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
+      plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
     },
   })
+  return { router, wrapper }
 }
 
 describe('WorkflowLifecyclesPage', () => {
@@ -65,11 +79,10 @@ describe('WorkflowLifecyclesPage', () => {
     }
     const list = vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue(page)
     const remove = vi.spyOn(managementApi, 'deleteWorkflowLifecycle').mockResolvedValue({ ok: true })
-    const wrapper = mountPage()
+    const { router, wrapper } = await mountPage()
     await flushPromises()
 
     expect(list).toHaveBeenCalledWith({ page: 1, page_size: 10, query: '' })
-    expect(wrapper.text()).toContain('Monitoring visualization in progress')
     expect(wrapper.text()).toContain(lifecycle.workflow_name)
     expect(wrapper.text()).toContain('Running')
     expect(wrapper.text()).toContain('Pending automatic purge')
@@ -77,8 +90,20 @@ describe('WorkflowLifecyclesPage', () => {
     expect(wrapper.text()).toContain('150')
     expect(wrapper.text()).toContain('Enabled')
     expect(wrapper.text()).toContain('Disabled')
-    expect(wrapper.find('[title="View Run details"]').exists()).toBe(false)
+    const monitorButtons = wrapper.findAll('button[data-action="monitor"]')
+    expect(monitorButtons).toHaveLength(2)
+    expect(monitorButtons[0]?.attributes('title')).toBe('Monitor Lifecycle')
+    expect(monitorButtons[1]?.attributes('disabled')).toBeDefined()
+    expect(monitorButtons[1]?.attributes('title')).toBe(
+      'Monitoring was disabled when this Lifecycle started',
+    )
     expect(wrapper.find('button[data-action="download"]').exists()).toBe(false)
+
+    await monitorButtons[0]!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/system/workflow-lifecycles/lifecycle-1/monitoring',
+    )
 
     await wrapper.findAll('button').find((button) => button.text() === 'Delete')!.trigger('click')
     useConfirmation().accept()
@@ -103,7 +128,7 @@ describe('WorkflowLifecyclesPage', () => {
         skipped_active: 1,
         deleted_checkpoint_thread_count: 3,
       })
-    const wrapper = mountPage()
+    const { wrapper } = await mountPage()
     await flushPromises()
 
     const search = wrapper.get<HTMLInputElement>('input[type="search"]')

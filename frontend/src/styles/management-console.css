@@ -776,13 +776,13 @@ pre code {
   background: var(--bs-tertiary-bg);
 }
 
-.workflow-editor-flow {
+.workflow-canvas-flow {
   width: 100%;
   height: 100%;
   min-height: 0;
 }
 
-.workflow-editor-flow .vue-flow__pane {
+.workflow-canvas-flow .vue-flow__pane {
   background-color: var(--bs-tertiary-bg);
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--bs-border-color) 55%, transparent) 1px, transparent 1px),
@@ -790,7 +790,7 @@ pre code {
   background-size: 24px 24px;
 }
 
-.workflow-editor-flow .vue-flow__node {
+.workflow-canvas-flow .vue-flow__node {
   border: 0;
   padding: 0;
   background: transparent;
@@ -908,31 +908,31 @@ pre code {
   box-shadow: 0 0 0 1px var(--bs-info);
 }
 
-.workflow-editor-flow .vue-flow__connection-path,
-.workflow-editor-flow .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__connection-path,
+.workflow-canvas-flow .vue-flow__edge-path {
   stroke: var(--bs-primary);
   stroke-width: 2;
 }
 
-.workflow-editor-flow .vue-flow__edge.workflow-edge--branch .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__edge.workflow-edge--branch .vue-flow__edge-path {
   stroke: var(--bs-warning);
   stroke-dasharray: 7 5;
 }
 
-.workflow-editor-flow .vue-flow__edge.workflow-edge--dispatch .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__edge.workflow-edge--dispatch .vue-flow__edge-path {
   stroke: var(--bs-info);
   stroke-dasharray: 3 4;
 }
 
-.workflow-editor-flow .vue-flow__edge.workflow-edge--start .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__edge.workflow-edge--start .vue-flow__edge-path {
   stroke: var(--bs-success);
 }
 
-.workflow-editor-flow .vue-flow__edge.workflow-edge--end .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__edge.workflow-edge--end .vue-flow__edge-path {
   stroke: var(--bs-danger);
 }
 
-.workflow-editor-flow .vue-flow__edge.selected .vue-flow__edge-path {
+.workflow-canvas-flow .vue-flow__edge.selected .vue-flow__edge-path {
   stroke-width: 3;
 }
 
@@ -1143,6 +1143,180 @@ pre code {
   color: var(--bs-secondary-color);
   font-family: var(--bs-font-monospace);
   font-size: 11px;
+}
+
+.runtime-monitoring-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.runtime-monitoring-heading {
+  min-width: 0;
+}
+
+.runtime-monitoring-error {
+  white-space: pre-wrap;
+}
+
+.runtime-monitoring-run-panel,
+.runtime-monitoring-graph-panel {
+  min-width: 0;
+  min-height: 36rem;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.runtime-monitoring-run-panel {
+  max-height: calc(100vh - 12rem);
+}
+
+.runtime-monitoring-run-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.runtime-run-tree,
+.runtime-run-tree-children {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.runtime-run-tree {
+  padding: 0.5rem;
+}
+
+.runtime-run-tree-children {
+  margin-left: 1rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--bs-border-color);
+}
+
+.runtime-run-index-button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--bs-border-radius);
+  color: var(--bs-body-color);
+  text-align: left;
+  background: transparent;
+}
+
+.runtime-run-index-button:hover,
+.runtime-run-index-button[data-selected='true'] {
+  border-color: var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.runtime-run-index-button[data-selected='true'] {
+  color: var(--bs-primary-text-emphasis);
+  box-shadow: inset 3px 0 var(--bs-primary);
+}
+
+.runtime-run-index-icon {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: var(--bs-border-radius);
+  color: var(--bs-primary-text-emphasis);
+  background: var(--bs-primary-bg-subtle);
+}
+
+.runtime-run-index-copy,
+.runtime-monitoring-node-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.runtime-run-index-title,
+.runtime-run-index-id,
+.runtime-run-index-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-run-index-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.runtime-run-index-id {
+  color: var(--bs-secondary-color);
+  font-family: var(--bs-font-monospace);
+  font-size: 0.6875rem;
+}
+
+.runtime-run-index-status {
+  color: var(--bs-secondary-color);
+  font-size: 0.75rem;
+}
+
+.runtime-monitoring-graph-panel {
+  height: calc(100vh - 12rem);
+}
+
+.runtime-monitoring-graph-body {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.runtime-monitoring-flow {
+  flex: 1 1 auto;
+  min-height: 24rem;
+}
+
+.runtime-monitoring-node[data-running='true'] {
+  border-color: var(--bs-success);
+  background: var(--bs-success-bg-subtle);
+  box-shadow: 0 0 0 3px var(--bs-success-border-subtle), var(--bs-box-shadow-sm);
+}
+
+.runtime-monitoring-node-status {
+  color: var(--bs-secondary-color);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.runtime-monitoring-node[data-running='true'] .runtime-monitoring-node-status {
+  color: var(--bs-success-text-emphasis);
+  font-weight: 600;
+}
+
+.runtime-monitoring-node.workflow-node--terminal {
+  width: 180px;
+}
+
+@media (max-width: 991.98px) {
+  .runtime-monitoring-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .runtime-monitoring-run-panel,
+  .runtime-monitoring-graph-panel {
+    min-height: 0;
+  }
+
+  .runtime-monitoring-run-panel {
+    max-height: 24rem;
+  }
+
+  .runtime-monitoring-graph-panel {
+    height: 34rem;
+  }
 }
 
 @media (max-width: 720px) {

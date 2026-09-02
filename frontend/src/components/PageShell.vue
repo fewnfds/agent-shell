@@ -11,12 +11,20 @@ const { t } = useI18n()
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 
-const activeSectionPath = computed(() => route?.path ?? '')
+const currentPath = computed(() => route?.path ?? '')
 const sectionItems = computed<SectionNavItem[]>(() => (
-  sectionNavigationForPath(activeSectionPath.value).map((item) => ({
+  sectionNavigationForPath(currentPath.value).map((item) => ({
     id: item.path,
     label: t(item.labelKey),
   }))
+))
+const activeSectionPath = computed(() => (
+  [...sectionItems.value]
+    .sort((left, right) => right.id.length - left.id.length)
+    .find((item) => (
+      currentPath.value === item.id || currentPath.value.startsWith(`${item.id}/`)
+    ))
+    ?.id ?? currentPath.value
 ))
 
 function selectSection(path: string): void {

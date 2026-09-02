@@ -70,4 +70,21 @@ describe('PageShell', () => {
     expect(wrapper.get('.app-content').text()).toContain('Content')
     expect(wrapper.find('[data-testid="section-nav"]').exists()).toBe(false)
   })
+
+  it('keeps the parent section active on a nested detail route', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+
+    const wrapper = mount(PageShell, {
+      slots: { default: '<p>Content</p>' },
+      global: { plugins: [router, i18n()] },
+    })
+
+    const active = wrapper.get('[data-testid="section-nav"] [aria-current="page"]')
+    expect(active.text()).toBe('Runtime monitoring')
+  })
 })

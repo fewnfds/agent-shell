@@ -592,6 +592,132 @@ export interface WorkflowLifecycleBulkDeleteResult {
   deleted_checkpoint_thread_count: number
 }
 
+export type RuntimeMonitoringRunStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+
+export type RuntimeMonitoringAvailability =
+  | 'not_enabled'
+  | 'unavailable'
+  | 'capturing'
+  | 'available'
+  | 'partial'
+  | 'pending'
+  | 'not_applicable'
+
+export interface RuntimeMonitoringPartitionStates {
+  graph: 'capturing' | 'available' | 'partial' | 'not_applicable'
+  node: 'capturing' | 'available' | 'partial' | 'not_applicable'
+  protocol: 'capturing' | 'available' | 'partial' | 'not_applicable'
+  model: 'capturing' | 'available' | 'partial' | 'not_applicable'
+  command: 'capturing' | 'available' | 'partial' | 'not_applicable'
+  created_at: string
+  updated_at: string
+}
+
+export interface RuntimeMonitoringLifecycle {
+  lifecycle_id: string
+  request_id: string
+  root_run_id: string
+  workflow_id: string
+  workflow_name: string
+  created_at: string
+  lifecycle_status: 'active' | 'purge_pending' | 'deleting'
+  root_status: RuntimeMonitoringRunStatus
+  monitoring_capture_enabled: boolean
+  fully_terminal_at: string | null
+  message_count: number
+}
+
+export interface RuntimeMonitoringRun {
+  run_id: string
+  lifecycle_id: string
+  request_id: string
+  checkpoint_thread_id: string | null
+  workflow_id: string
+  workflow_name: string
+  parent_run_id: string | null
+  background_task_id: string | null
+  run_depth: number
+  status: RuntimeMonitoringRunStatus
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  finish_reason: string
+  error_code: string
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number }
+  monitoring: RuntimeMonitoringPartitionStates | null
+}
+
+export interface RuntimeMonitoringSnapshot {
+  selector: {
+    scope: 'lifecycle' | 'workflow' | 'run'
+    id: string | null
+  }
+  read_at: string
+  lifecycle: RuntimeMonitoringLifecycle
+  summary: {
+    run_count: number
+    active_run_count: number
+    failed_run_count: number
+    run_status_counts: Record<string, number>
+    node_attempt_status_counts: Record<string, number>
+    usage: { input_tokens: number; output_tokens: number; total_tokens: number }
+    partition_availability: {
+      graph: RuntimeMonitoringAvailability
+      node: RuntimeMonitoringAvailability
+      protocol: RuntimeMonitoringAvailability
+      model: RuntimeMonitoringAvailability
+      command: RuntimeMonitoringAvailability
+    }
+  }
+  runs: RuntimeMonitoringRun[]
+  forest: {
+    root_run_ids: string[]
+    relationships: Array<{ parent_run_id: string; child_run_id: string }>
+    orphan_run_ids: string[]
+    relationship_availability: 'available' | 'partial'
+  }
+}
+
+export interface RuntimeMonitoringGraphResponse {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  graph: {
+    run_id: string
+    lifecycle_id: string
+    workflow_id: string
+    workflow_name: string
+    document_sha: string
+    document: WorkflowGraphDocument
+    created_at: string
+  } | null
+}
+
+export interface RuntimeMonitoringNodeSummary {
+  workflow_node_id: string
+  first_sequence: number
+  latest_sequence: number
+  first_started_at: string
+  latest_started_at: string
+  attempt_count: number
+  status_counts: Record<string, number>
+}
+
+export interface RuntimeMonitoringNodeSummaryPage {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  items: RuntimeMonitoringNodeSummary[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
 export type WorkflowNodeType =
   | 'start'
   | 'agent'

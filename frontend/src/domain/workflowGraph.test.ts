@@ -63,6 +63,26 @@ describe('workflow edge visual projection', () => {
     expect(edge.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
   })
 
+  it('keeps editor terminal defaults unless a read-only consumer disables them', () => {
+    const emptyDocument = {
+      definition: {
+        schema_version: 1,
+        state_contract: 'agent-shell.workflow.agent-invocations.v1',
+        nodes: [],
+        edges: [],
+      },
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+    } as WorkflowGraphDocument
+
+    expect(workflowDocumentToCanvas(emptyDocument, []).nodes.map((node) => node.id))
+      .toEqual(['start', 'end'])
+    expect(workflowDocumentToCanvas(
+      emptyDocument,
+      [],
+      { addDefaultTerminals: false },
+    ).nodes).toEqual([])
+  })
+
   it('does not serialize renderer classes, animation, or markers', () => {
     const nodes = [
       { id: 'start', data: { nodeType: 'start', mainAgentId: '' }, position: { x: 0, y: 0 } },

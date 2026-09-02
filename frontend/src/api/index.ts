@@ -25,6 +25,9 @@ import type {
   ConfigurationOptions,
   ConfigurationSummary,
   MainAgentSummary,
+  RuntimeMonitoringGraphResponse,
+  RuntimeMonitoringNodeSummaryPage,
+  RuntimeMonitoringSnapshot,
   RuntimePolicySettings,
   RuntimePolicyUpdate,
   PythonPackageTemplate,
@@ -404,6 +407,44 @@ export const managementApi = {
     return managementRequest('/api/workflow-lifecycles/delete', jsonBody({
       query,
     }))
+  },
+
+  getRuntimeMonitoringSnapshot(
+    lifecycleId: string,
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringSnapshot> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
+      { signal },
+    )
+  },
+
+  getRuntimeMonitoringGraph(
+    lifecycleId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringGraphResponse> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/graph`,
+      { signal },
+    )
+  },
+
+  listRuntimeMonitoringNodes(
+    lifecycleId: string,
+    runId: string,
+    request?: { page?: number; page_size?: number },
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringNodeSummaryPage> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/nodes${buildQuery({
+          page: request?.page,
+          page_size: request?.page_size,
+        })}`,
+      { signal },
+    )
   },
 
   getWorkflowGraph(id: string): Promise<WorkflowGraphDocument> {

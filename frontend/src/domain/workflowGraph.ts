@@ -113,8 +113,9 @@ function documentEdgeType(
 export function workflowDocumentToCanvas(
   document: WorkflowGraphDocument,
   catalog: WorkflowNodeCatalogItem[],
+  options: { addDefaultTerminals?: boolean } = {},
 ): WorkflowCanvasState {
-  const sourceNodes = document.definition.nodes.length > 0
+  const sourceNodes = document.definition.nodes.length > 0 || options.addDefaultTerminals === false
     ? document.definition.nodes
     : [
         { id: 'start', type: 'start', type_version: 1, config: {} },

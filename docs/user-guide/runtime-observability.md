@@ -26,9 +26,11 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 ## 运行监控
 
-【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。当前页面提供可信的 Lifecycle 目录、搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。
+【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。Lifecycle 目录提供搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。启用采集的记录提供【监控】入口；关闭采集的记录保留禁用入口和明确说明，避免发送必然失败的详情请求。
 
-管理页面提供 Lifecycle 目录与删除管理。Management-only 运行监控接口可按 Lifecycle、Workflow 或单个 Run 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent 及其 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。活动页可使用普通 HTTP GET 进行秒级轮询；请求之间没有服务端会话、SSE、WebSocket 或统一 change feed。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 接口返回 `503 runtime_monitoring_read_model_unavailable`；运行归档没有读取入口。
+Lifecycle 监控详情使用 `/system/workflow-lifecycles/{lifecycle_id}/monitoring?run_id={run_id}`。左侧 Run 索引只按 snapshot 返回的 roots 与 parent/child relationship 显示层级；未指定有效 `run_id` 时选择 Lifecycle 的 root Run。选择 Run 后，右侧用只读 Vue Flow 显示该 Run 保存的 frozen Graph，并按 Node summary 展示 attempt 数量和状态；只有 `status_counts.running > 0` 的 Node 使用运行中强调，文字与数字同时表达状态。画布保留 frozen Node 位置与 viewport，关闭编辑、连线和 Edge 动画；空文档不会自动补画 Start/End。Graph 或 Node 资源的 `partial|unavailable` 只在 Graph 区域呈现，Run 索引仍可继续选择。
+
+详情页在进入页面和选择 Run 时通过普通 HTTP GET 读取持久化 snapshot/resource；重新载入页面可取得之后写入的事实。Management-only 运行监控接口还可按 Lifecycle、Workflow 或单个 Run 读取 snapshot，并按 Run 读取 Node attempt、raw ProtocolEvent 及其 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。请求之间没有服务端会话、自动轮询、SSE、WebSocket 或统一 change feed。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 接口返回 `503 runtime_monitoring_read_model_unavailable`；运行归档没有读取入口。
 
 Workflow scope 只先选择本 Lifecycle 中 `workflow_id` 精确匹配的 Run，再沿 Registry `parent_run_id` 包含 descendants；Run forest 也只表达这条 parent/child 关系。Node、Agent、Tool、Edge 或跨 Run 因果不会从 event namespace、时间关系或 Graph 路径推演。每个资源都返回自己的 `availability`，局部 `partial|unavailable` 不会遮蔽其他可读事实。
 
