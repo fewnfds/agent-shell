@@ -23,7 +23,7 @@ async def _create_lifecycle(client, suffix: str, *, capture: bool = True) -> str
     )
 
 
-def test_lifecycle_catalog_is_available_while_detail_read_model_is_explicitly_unavailable(
+def test_lifecycle_catalog_exposes_capture_state_and_generic_detail_is_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -42,8 +42,7 @@ def test_lifecycle_catalog_is_available_while_detail_read_model_is_explicitly_un
         assert item["run_count"] == 1
         assert item["active_run_count"] == 1
         assert item["observation_status"] == "capturing"
-        assert item["details_available"] is False
-        assert item["monitoring_read_model_status"] == "pending"
+        assert item["monitoring_capture_enabled"] is True
 
         filtered = client.get(
             "/api/workflow-lifecycles",

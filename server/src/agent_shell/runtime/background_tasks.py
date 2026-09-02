@@ -54,7 +54,6 @@ class BackgroundTaskRecord(BaseModel):
     runtime_instance_id: str
     request_id: str = ""
     launcher_run_id: str
-    launcher_id: str
     operation_id: str
     target_kind: BackgroundTargetKind
     target_id: str
@@ -184,7 +183,6 @@ class BackgroundTaskManager:
         lifecycle_id: str,
         request_id: str,
         launcher_run_id: str,
-        launcher_id: str,
         operation_id: str,
         caller_run_depth: int,
         target_id: str,
@@ -198,7 +196,6 @@ class BackgroundTaskManager:
             lifecycle_id=lifecycle_id,
             request_id=request_id,
             launcher_run_id=launcher_run_id,
-            launcher_id=launcher_id,
             operation_id=operation_id,
             caller_run_depth=caller_run_depth,
             target_id=target_id,
@@ -215,7 +212,6 @@ class BackgroundTaskManager:
         lifecycle_id: str,
         request_id: str,
         launcher_run_id: str,
-        launcher_id: str,
         operation_id: str,
         caller_run_depth: int,
         target_id: str,
@@ -283,7 +279,6 @@ class BackgroundTaskManager:
                 runtime_instance_id=self.runtime_instance_id,
                 request_id=request_id,
                 launcher_run_id=launcher_run_id,
-                launcher_id=launcher_id,
                 operation_id=normalized_operation_id,
                 target_kind="workflow",
                 target_id=target_id,
@@ -308,7 +303,6 @@ class BackgroundTaskManager:
                         "target_id": record.target_id,
                         "target_name": record.target_name,
                         "parent_run_id": record.launcher_run_id,
-                        "launcher_id": record.launcher_id,
                         "background_task_id": record.task_id,
                         "run_depth": record.run_depth,
                         "created_at": record.created_at,

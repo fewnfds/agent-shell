@@ -35,8 +35,6 @@ const lifecycle: WorkflowLifecycleSummary = {
   run_status_counts: { running: 1, completed: 2, failed: 1 },
   usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
   observation_status: 'capturing',
-  details_available: false,
-  monitoring_read_model_status: 'pending',
 }
 
 afterEach(() => {

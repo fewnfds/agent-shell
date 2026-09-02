@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from agent_shell.runtime.json_values import json_safe
 from agent_shell.storage.database import SQLiteFile
 
 
@@ -60,6 +61,35 @@ class WorkflowCheckpointService:
                 limit=limit,
             )
         ]
+
+    async def latest_state(self, thread_id: str) -> dict[str, object] | None:
+        """Read the latest persisted root checkpoint through the public API."""
+
+        if self._checkpointer is None and not self._database.path.exists():
+            return None
+        checkpointer = await self.require_checkpointer()
+        item = await checkpointer.aget_tuple(
+            {
+                "configurable": {
+                    "thread_id": thread_id,
+                    "checkpoint_ns": "",
+                }
+            }
+        )
+        if item is None:
+            return None
+        configurable = item.config.get("configurable", {})
+        checkpoint = item.checkpoint
+        metadata = item.metadata or {}
+        return {
+            "checkpoint_id": str(configurable.get("checkpoint_id", "")),
+            "checkpoint_ns": str(configurable.get("checkpoint_ns", "")),
+            "created_at": str(checkpoint.get("ts", "")),
+            "source": str(metadata.get("source", "")),
+            "step": metadata.get("step"),
+            "pending_write_count": len(item.pending_writes or ()),
+            "state": json_safe(checkpoint.get("channel_values", {})),
+        }
 
     async def iter_checkpoint_history(
         self,

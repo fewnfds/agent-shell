@@ -250,6 +250,23 @@ def test_langgraph_store_and_checkpointer_own_distinct_sqlite_files(
     asyncio.run(scenario())
 
 
+def test_latest_state_does_not_create_a_missing_checkpoint_database(tmp_path) -> None:
+    async def scenario() -> None:
+        checkpoint_path = tmp_path / "state" / "workflow-checkpoints.sqlite3"
+        service = WorkflowCheckpointService(
+            SQLiteFile(checkpoint_path, create=False)
+        )
+        try:
+            assert checkpoint_path.exists() is False
+            assert await service.latest_state("missing-thread") is None
+            assert checkpoint_path.exists() is False
+            assert service.started is False
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
+
+
 def test_checkpointer_lazy_start_is_concurrent_and_retries_after_failure(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

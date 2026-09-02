@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -83,16 +82,6 @@ def _usage(response: object) -> dict[str, int]:
     return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
 
-@dataclass(frozen=True, slots=True)
-class _AgentOwner:
-    agent_type: str
-    agent_id: str
-    agent_name: str
-    workflow_node_id: str
-    parent_agent_id: str = ""
-    parent_agent_name: str = ""
-
-
 class ModelRequestRecorder(BaseCallbackHandler):
     """Persist only the real LangChain ChatModel request boundary."""
 
@@ -101,71 +90,11 @@ class ModelRequestRecorder(BaseCallbackHandler):
         lifecycle: WorkflowLifecycleService,
         diagnostics: RuntimeDiagnostics | None,
         identity: WorkflowRunIdentity,
-        *,
-        agent_names: Mapping[str, str] | None = None,
-        agent_profile_ids: Mapping[str, str] | None = None,
-        subagent_profile_ids: Mapping[str, Mapping[str, str]] | None = None,
     ) -> None:
         self._lifecycle = lifecycle
         self._diagnostics = diagnostics
         self._identity = identity
-        self._agent_names = {
-            str(key): str(value) for key, value in (agent_names or {}).items()
-        }
-        self._agent_profile_ids = {
-            str(key): str(value)
-            for key, value in (agent_profile_ids or {}).items()
-        }
-        self._subagent_profile_ids = {
-            str(node_id): {
-                str(name): str(profile_id)
-                for name, profile_id in profiles.items()
-            }
-            for node_id, profiles in (subagent_profile_ids or {}).items()
-        }
         self._failed = False
-
-    def _owner(self, metadata: Mapping[str, Any] | None) -> _AgentOwner:
-        values = metadata or {}
-        node_id = str(values.get("langgraph_node") or "")
-        agent_name = str(values.get("lc_agent_name") or "")
-        candidates = [
-            (candidate_node, profiles[agent_name])
-            for candidate_node, profiles in self._subagent_profile_ids.items()
-            if agent_name and agent_name in profiles
-        ]
-        if candidates:
-            selected = next(
-                (item for item in candidates if item[0] == node_id),
-                candidates[0] if len(candidates) == 1 else None,
-            )
-            if selected is not None:
-                owner_node, profile_id = selected
-                return _AgentOwner(
-                    agent_type="subagent",
-                    agent_id=profile_id,
-                    agent_name=agent_name,
-                    workflow_node_id=owner_node,
-                    parent_agent_id=self._agent_profile_ids.get(owner_node, ""),
-                    parent_agent_name=self._agent_names.get(owner_node, ""),
-                )
-        if node_id not in self._agent_profile_ids and agent_name:
-            matching = [
-                candidate
-                for candidate, name in self._agent_names.items()
-                if name == agent_name
-            ]
-            if len(matching) == 1:
-                node_id = matching[0]
-        return _AgentOwner(
-            agent_type="main_agent",
-            agent_id=(
-                self._agent_profile_ids.get(node_id, "")
-                or f"unresolved:{node_id or agent_name or 'agent'}"
-            ),
-            agent_name=agent_name or self._agent_names.get(node_id, "unknown-agent"),
-            workflow_node_id=node_id,
-        )
 
     def _error(self, exc: BaseException, model_run_id: str) -> None:
         if self._failed:
@@ -206,7 +135,6 @@ class ModelRequestRecorder(BaseCallbackHandler):
     ):
         if self._failed:
             return
-        owner = self._owner(metadata)
         try:
             self._lifecycle.start_model_request(
                 {
@@ -216,12 +144,6 @@ class ModelRequestRecorder(BaseCallbackHandler):
                     "started_at": datetime.now(timezone.utc).isoformat(
                         timespec="milliseconds"
                     ),
-                    "agent_type": owner.agent_type,
-                    "agent_id": owner.agent_id,
-                    "agent_name": owner.agent_name,
-                    "parent_agent_id": owner.parent_agent_id,
-                    "parent_agent_name": owner.parent_agent_name,
-                    "workflow_node_id": owner.workflow_node_id,
                     "request": _serialize_chat_model_request(
                         serialized,
                         messages,

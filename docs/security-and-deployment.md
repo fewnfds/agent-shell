@@ -31,7 +31,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
-- 运行监控为启用采集的 Lifecycle 保存冻结 Graph、实际 v3 ProtocolEvent、LangChain `on_chat_model_start` 看到的消息、Tool schema/调用参数，以及 Command 外部观察；
+- 运行监控为启用采集的 Lifecycle 保存冻结 Graph、Canvas Node attempt、实际 raw v3 ProtocolEvent、LangChain `on_chat_model_start` 看到的消息、Tool schema/调用参数，以及 Command 外部观察；管理 API 还可从各 canonical owner 读取 latest persisted Checkpoint State 与 exact completed Agent invocation artifact；
 - 用户创建的组件、文件和 Python 资源。
 
 运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
@@ -80,7 +80,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 运行监控、官方 checkpoint 和 Lifecycle Store 与日志中心分离。自动保留清理和显式 Lifecycle 删除会删除 Runtime Registry、监控事实、Lifecycle Store input/task/invocation/filesystem route 及关联的非空 checkpoint thread；删除日志或运行诊断不会删除这些数据。自动清理以及管理台默认删除都会保留普通文件、生成媒体、fixed/mapped directory 正文和 Shell-created dynamic directory；只有显式 API 选项会删除经过 root/target 验证的受管动态目录。
 
-启用采集的 ProtocolEvent 和 Model Request 可以包含 prompt、消息、Tool payload/schema、State、路径和其他运行材料。统一 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 与完整 `data/` 作为敏感数据保护。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不由 Model Request recorder 持久化。当前 Lifecycle/single Run 详情与归档 read model 未开放，相关 API 返回结构化 503。
+启用采集的 frozen Graph、ProtocolEvent、Model Request、Command observation、Checkpoint State 和 Agent invocation artifact 可以包含 prompt、消息、Tool payload/schema、State、路径和其他运行材料。ProtocolEvent、Model Request 与 State 读取投影的 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；Command 的已校验外部结果与 Agent 的 OpenAI message artifact 保留普通业务内容。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 与完整 `data/` 作为敏感数据保护。`on_chat_model_start` 记录是 LangChain ChatModel 边界输入，不是 Provider adapter 最终序列化出的网络请求；Provider HTTP 请求原文和成功响应原文不由 Model Request recorder 持久化。`/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 全部需要 management Bearer；它不建立新的多租户可见性边界。通用 Lifecycle detail/events、single Run detail 与 Lifecycle/Run download 接口返回结构化 503。
 
 ## 系统配置与变量
 

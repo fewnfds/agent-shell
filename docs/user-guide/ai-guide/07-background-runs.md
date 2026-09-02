@@ -204,7 +204,6 @@ child 拥有独立：
 - Workflow State；
 - 可空 `checkpoint_thread_id`；
 - `parent_run_id`；
-- `launcher_id`；
 - `background_task_id`；
 - `run_depth`。
 
@@ -248,7 +247,7 @@ Management API 只负责 observability 和 explicit cleanup，不提供从外部
 - `DELETE /api/workflow-lifecycles/{lifecycle_id}` 显式清理一个 terminal Lifecycle；
 - `POST /api/workflow-lifecycles/delete` 按 query 清理匹配的 terminal Lifecycle。
 
-Lifecycle detail、events、single Run detail、Lifecycle download 和 single Run download endpoint 当前返回 `503 runtime_monitoring_read_model_unavailable`。监控 read model 完成前，不把底层持久化事实直接拼成 Timeline 或运行归档。
+`/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot` 可以按 Lifecycle、Workflow 或 Run scope 查看 Registry Run forest；`.../monitoring/runs/{run_id}/*` 可以读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。它们是普通 HTTP snapshot/page，不推演 child launcher Node、Edge activation 或跨 Run Timeline。Lifecycle download 和 single Run download endpoint 返回 `503 runtime_monitoring_read_model_unavailable`。
 
 `runtime_monitoring_retention_lifecycles` 默认保留最近 `20` 个完整终态 Lifecycle；active Lifecycle 不占保留数量。值为 `0` 时关闭新 Lifecycle 的监控采集，并在其完整终态后清理运行控制数据。降低设置会立即收敛完整终态目录，提高设置不会恢复已经删除的数据。
 

@@ -68,16 +68,10 @@ class WorkflowRuntimeContext:
     ) -> "WorkflowRuntimeContext":
         """Bind one canvas Node invocation to run-scoped dependencies."""
 
-        background_runs = (
-            self.background_runs.for_caller(workflow_node_id)
-            if self.background_runs is not None
-            else None
-        )
         return replace(
             self,
             workflow_node_id=workflow_node_id,
             node_invocation_id=node_invocation_id,
-            background_runs=background_runs,
             mcp=(
                 self._mcp_commands_by_node.get(workflow_node_id)
                 if self._mcp_commands_by_node is not None

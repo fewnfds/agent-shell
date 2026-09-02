@@ -22,6 +22,9 @@ from agent_shell.runtime.workflow_lifecycle import (
     lifecycle_invocations_namespace,
 )
 from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.runtime_monitoring_queries import (
+    RuntimeMonitoringQueryStore,
+)
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.compiler import compile_workflow
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
@@ -496,10 +499,14 @@ def test_command_observation_persists_external_result(tmp_path: Path) -> None:
                     workflow_id="workflow-command-success",
                 ),
             )
-            return result, service.command_observations(
+            return result, RuntimeMonitoringQueryStore(
+                SQLiteDatabase(tmp_path / "agent-shell.sqlite3")
+            ).command_observations(
                 lifecycle_id,
-                run_id="command-success",
-            )
+                "command-success",
+                after_sequence=0,
+                limit=10,
+            )["items"]
         finally:
             await service.close()
 
@@ -557,10 +564,14 @@ def test_command_observation_persists_only_safe_error_code(tmp_path: Path) -> No
                         workflow_id="workflow-command-failure",
                     ),
                 )
-            observations = service.command_observations(
+            observations = RuntimeMonitoringQueryStore(
+                SQLiteDatabase(tmp_path / "agent-shell.sqlite3")
+            ).command_observations(
                 lifecycle_id,
-                run_id="command-failure",
-            )
+                "command-failure",
+                after_sequence=0,
+                limit=10,
+            )["items"]
             return raised.value, observations
         finally:
             await service.close()
@@ -779,6 +790,18 @@ def test_compiler_combines_branch_dispatch_and_update_with_deferred_collection()
     admission, document = admit_workflow_document(_dispatch_graph_payload())
     assert admission.valid is True
     assert document is not None
+    node_starts: list[dict[str, object]] = []
+
+    class MonitoringRecorder:
+        def start_node_attempt(self, record):
+            node_starts.append(record)
+            return True
+
+        def finish_node_attempt(self, *_args, **_kwargs):
+            return True
+
+        def append_command_observation(self, _record):
+            return None
 
     async def command(state, runtime):
         assert runtime.context.workflow_node_id == "command"
@@ -829,6 +852,7 @@ def test_compiler_combines_branch_dispatch_and_update_with_deferred_collection()
         },
         commands={"command": command},
         store=store,
+        lifecycle_service=MonitoringRecorder(),  # type: ignore[arg-type]
     )
 
     result = asyncio.run(
@@ -856,6 +880,12 @@ def test_compiler_combines_branch_dispatch_and_update_with_deferred_collection()
     assert {record["workflow_task"]["command_node_id"] for record in worker_records} == {"command"}
     assert {record["workflow_node_id"] for record in worker_records} == {"worker-a", "worker-b"}
     assert result["shared_vars"] == {"planned": 3}
+    worker_a_starts = [
+        item for item in node_starts if item["workflow_node_id"] == "worker-a"
+    ]
+    assert len(worker_a_starts) == 2
+    assert {item["attempt"] for item in worker_a_starts} == {1}
+    assert len({item["invocation_id"] for item in worker_a_starts}) == 2
 
     collector_record = next(
         record for record in records if record["workflow_node_id"] == "collector"

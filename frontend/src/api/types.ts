@@ -587,8 +587,6 @@ export interface WorkflowLifecycleSummary {
   run_status_counts: Record<string, number>
   usage: { input_tokens: number; output_tokens: number; total_tokens: number }
   observation_status: 'capturing' | 'available' | 'partial' | 'not_captured'
-  details_available: false
-  monitoring_read_model_status: 'pending'
 }
 
 export type WorkflowLifecyclePage = PaginationResponse<WorkflowLifecycleSummary>

@@ -35,7 +35,7 @@ data/
   logs/diagnostics/*.log
 ```
 
-它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行监控事实，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存 Runtime Registry、冻结 Graph、实际 v3 ProtocolEvent、Model Request、Command observation 和结构化 runtime 失败诊断；`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph Debug checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle input、background task、Agent invocation artifact、Filesystem route 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行监控事实，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存 Runtime Registry、冻结 Graph、Canvas Node attempt、实际 raw v3 ProtocolEvent、Run 级 Model Request、Command observation 和结构化 runtime 失败诊断；`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle input、background task、Agent invocation artifact、Filesystem route 和 Workflow Store 数据。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/config_repos/<repository-name>/python_packages/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 

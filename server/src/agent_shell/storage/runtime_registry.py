@@ -31,7 +31,6 @@ class RuntimeRegistryStore:
             "workflow_id": str(row["workflow_id"]),
             "workflow_name": str(row["workflow_name"]),
             "parent_run_id": row["parent_run_id"],
-            "launcher_id": row["launcher_id"],
             "background_task_id": row["background_task_id"],
             "run_depth": int(row["run_depth"]),
             "status": str(row["status"]),
@@ -82,7 +81,6 @@ class RuntimeRegistryStore:
             record.get("workflow_id") or record.get("target_id"),
             record.get("workflow_name") or record.get("target_name"),
             record.get("parent_run_id") or None,
-            record.get("launcher_id") or None,
             record.get("background_task_id") or None,
             int(record.get("run_depth", 0)),
             record["created_at"],
@@ -93,9 +91,9 @@ class RuntimeRegistryStore:
         connection.execute(
             "INSERT INTO runtime_workflow_runs ("
             "run_id, lifecycle_id, request_id, checkpoint_thread_id, "
-            "workflow_id, workflow_name, parent_run_id, launcher_id, "
-            "background_task_id, run_depth, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+            "workflow_id, workflow_name, parent_run_id, background_task_id, "
+            "run_depth, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
             RuntimeRegistryStore._run_values(record),
         )
 
@@ -129,6 +127,32 @@ class RuntimeRegistryStore:
 
     def create_run(self, record: dict[str, object]) -> None:
         with self._database.transaction() as connection:
+            parent_run_id = str(record.get("parent_run_id") or "")
+            if not parent_run_id:
+                raise ValueError("a child Workflow Run must have a parent_run_id")
+            parent = connection.execute(
+                "SELECT lifecycle_id, request_id, run_depth "
+                "FROM runtime_workflow_runs WHERE run_id = ?",
+                (parent_run_id,),
+            ).fetchone()
+            if parent is None:
+                raise ValueError("the parent Workflow Run does not exist")
+            if str(parent["lifecycle_id"]) != str(record["lifecycle_id"]):
+                raise ValueError(
+                    "a child Workflow Run must share its parent's Lifecycle"
+                )
+            if str(parent["request_id"]) != str(record["request_id"]):
+                raise ValueError(
+                    "a child Workflow Run must share its parent's request"
+                )
+            if int(record.get("run_depth", 0)) != int(parent["run_depth"]) + 1:
+                raise ValueError(
+                    "a child Workflow Run depth must follow its parent"
+                )
+            if not str(record.get("background_task_id") or ""):
+                raise ValueError(
+                    "a child Workflow Run must have a background_task_id"
+                )
             self._insert_run(connection, record)
 
     def get_run(self, run_id: str) -> dict[str, object] | None:

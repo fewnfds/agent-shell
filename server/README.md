@@ -15,11 +15,11 @@
 - `/api/model-connections`、`/api/model-requirements/{id}/binding`：模型连接与当前 Repository 的模型绑定；
 - `/api/file-manager`、`/api/system/settings`、`/api/system/runtime-policy`：数据与实例设置；文件管理只接受规范 `data/...` 路径；
 - `/api/message-interception`：管理入站拦截的内存 sequence/latest；启用时 `/v1/chat/completions` 返回固定拦截占位；
-- `/api/event-feed`、`/api/runtime-diagnostics`、`/api/workflow-lifecycles`：系统日志、请求级诊断和 Lifecycle/Run 历史；
+- `/api/event-feed`、`/api/runtime-diagnostics`、`/api/workflow-lifecycles`：系统日志、请求级诊断、Lifecycle catalog 与运行监控读取；
 - `/v1/models`、`/v1/chat/completions`：OpenAI-compatible 推理接口。
 
 公开推理入口只接受已启用的父图 Workflow name；后台 Workflow 由 Workflow Runtime Context 触发。每个推理请求从一次不可变配置快照解析 Workflow，再通过 `deepagents.create_deep_agent()` 构造 Main Agent 和同步 Subagent；配置期已做静态校验，请求期按当前 Workflow 可达集从快照物化用户资源。客户端每次提交完整 `messages[]`，系统不跨请求累积产品聊天历史。
-Workflow Lifecycle 保存 Run/Event 结构历史并使用官方 checkpoint，但这些数据只服务管理端 Debug；当前没有 Resume 执行入口。
+Workflow Lifecycle 保存 Run、Graph、Node、event/request 与 Command 监控事实；management monitoring GET 可按 scope 轮询，并通过官方 Checkpointer/Store 读取 latest persisted State 与 exact completed Agent artifact。当前没有 Resume、time travel、推送监控或归档下载入口。
 
 ## 运行与开发
 

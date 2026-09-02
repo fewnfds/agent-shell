@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -51,131 +52,248 @@ def _mapping_delta(
     return delta
 
 
-def _invocation_metadata(runtime: Runtime[Any]) -> tuple[str, float]:
+def _invocation_metadata(
+    runtime: Runtime[Any],
+) -> tuple[str, int | None, float | None]:
     execution_info = runtime.execution_info
-    if (
-        execution_info is None
-        or not execution_info.task_id
-        or execution_info.node_first_attempt_time is None
-    ):
+    if execution_info is None or not execution_info.task_id:
         raise AgentRuntimeError(
             "workflow.invocation_identity_unavailable",
             "The Workflow runtime did not provide the Agent invocation identity.",
             status_code=500,
         )
-    return execution_info.task_id, execution_info.node_first_attempt_time
+    raw_attempt = execution_info.node_attempt
+    attempt = (
+        raw_attempt
+        if isinstance(raw_attempt, int)
+        and not isinstance(raw_attempt, bool)
+        and raw_attempt > 0
+        else None
+    )
+    return (
+        execution_info.task_id,
+        attempt,
+        execution_info.node_first_attempt_time,
+    )
 
 
-def _make_agent_node(*, node_id: str, built_agent: Any):
+def _start_node_observation(
+    lifecycle_service: WorkflowLifecycleService | None,
+    runtime: Runtime[WorkflowRuntimeContext],
+    *,
+    node_id: str,
+    invocation_id: str,
+    attempt: int | None,
+    node_first_attempt_time: float | None,
+) -> bool:
+    if lifecycle_service is None or attempt is None:
+        if lifecycle_service is not None:
+            try:
+                lifecycle_service.mark_monitoring_partial(
+                    runtime.context.workflow_run_id,
+                    "node",
+                )
+            except Exception:
+                pass
+        return False
+    try:
+        return lifecycle_service.start_node_attempt(
+            {
+                "lifecycle_id": runtime.context.lifecycle_id,
+                "run_id": runtime.context.workflow_run_id,
+                "workflow_node_id": node_id,
+                "invocation_id": invocation_id,
+                "attempt": attempt,
+                "node_first_attempt_time": node_first_attempt_time,
+                "started_at": datetime.now(timezone.utc).isoformat(
+                    timespec="milliseconds"
+                ),
+            }
+        )
+    except Exception:
+        return False
+
+
+def _finish_node_observation(
+    lifecycle_service: WorkflowLifecycleService | None,
+    runtime: Runtime[WorkflowRuntimeContext],
+    *,
+    invocation_id: str,
+    attempt: int | None,
+    started: bool,
+    status: str,
+    error_code: str = "",
+) -> None:
+    if lifecycle_service is None or attempt is None or not started:
+        return
+    try:
+        lifecycle_service.finish_node_attempt(
+            runtime.context.workflow_run_id,
+            invocation_id,
+            attempt,
+            status=status,
+            error_code=error_code,
+        )
+    except Exception:
+        pass
+
+
+def _make_agent_node(
+    *,
+    node_id: str,
+    built_agent: Any,
+    lifecycle_service: WorkflowLifecycleService | None = None,
+):
     async def call_agent(
         state: WorkflowNodeInputState,
         config: RunnableConfig,
         runtime: Runtime[WorkflowRuntimeContext],
     ) -> dict[str, Any]:
-        invocation_id, invoked_at = _invocation_metadata(runtime)
-        workflow_id = runtime.context.workflow_id
-        if not workflow_id:
-            raise AgentRuntimeError(
-                "workflow.identity_unavailable",
-                "The Workflow runtime did not provide the Workflow identity.",
-                status_code=500,
+        invocation_id, attempt, invoked_at = _invocation_metadata(runtime)
+        node_observation_started = _start_node_observation(
+            lifecycle_service,
+            runtime,
+            node_id=node_id,
+            invocation_id=invocation_id,
+            attempt=attempt,
+            node_first_attempt_time=invoked_at,
+        )
+        try:
+            workflow_id = runtime.context.workflow_id
+            if not workflow_id:
+                raise AgentRuntimeError(
+                    "workflow.identity_unavailable",
+                    "The Workflow runtime did not provide the Workflow identity.",
+                    status_code=500,
+                )
+            if runtime.store is None:
+                raise AgentRuntimeError(
+                    "workflow.store_unavailable",
+                    "The Workflow invocation artifact Store is unavailable.",
+                    status_code=500,
+                )
+            parent_shared_vars = dict(state.get("shared_vars", {}))
+            parent_files = dict(state.get("files", {}))
+            workflow_task = dict(state.get("workflow_task", {}))
+            child_input = {
+                **dict(built_agent.input_state),
+                "messages": [],
+                "shared_vars": parent_shared_vars,
+                "files": parent_files,
+            }
+            if workflow_task:
+                child_input["workflow_task"] = workflow_task
+            child_input["workflow_state_snapshot"] = deepcopy(
+                {key: value for key, value in state.items() if key != "files"}
             )
-        if runtime.store is None:
-            raise AgentRuntimeError(
-                "workflow.store_unavailable",
-                "The Workflow invocation artifact Store is unavailable.",
-                status_code=500,
+            child_context = runtime.context.for_workflow_agent(
+                workflow_node_id=node_id,
+                agent_profile_id=built_agent.agent_id,
+                node_invocation_id=invocation_id,
             )
-        parent_shared_vars = dict(state.get("shared_vars", {}))
-        parent_files = dict(state.get("files", {}))
-        workflow_task = dict(state.get("workflow_task", {}))
-        child_input = {
-            **dict(built_agent.input_state),
-            "messages": [],
-            "shared_vars": parent_shared_vars,
-            "files": parent_files,
-        }
-        if workflow_task:
-            child_input["workflow_task"] = workflow_task
-        child_input["workflow_state_snapshot"] = deepcopy(
-            {key: value for key, value in state.items() if key != "files"}
-        )
-        child_context = runtime.context.for_workflow_agent(
-            workflow_node_id=node_id,
-            agent_profile_id=built_agent.agent_id,
-            node_invocation_id=invocation_id,
-        )
-        result = await built_agent.graph.ainvoke(
-            child_input,
-            config,
-            context=child_context,
-        )
-        invocation_artifact = {
-            "invocation_id": invocation_id,
-            "workflow_id": workflow_id,
-            "workflow_node_id": node_id,
-            "agent_id": built_agent.agent_id,
-            "invoked_at": invoked_at,
-            "messages": convert_to_openai_messages(result["messages"]),
-        }
-        if workflow_task:
-            invocation_artifact["workflow_task"] = {
-                key: workflow_task[key]
+            result = await built_agent.graph.ainvoke(
+                child_input,
+                config,
+                context=child_context,
+            )
+            invocation_artifact = {
+                "invocation_id": invocation_id,
+                "workflow_id": workflow_id,
+                "workflow_node_id": node_id,
+                "agent_id": built_agent.agent_id,
+                "invoked_at": invoked_at,
+                "messages": convert_to_openai_messages(result["messages"]),
+            }
+            if workflow_task:
+                invocation_artifact["workflow_task"] = {
+                    key: workflow_task[key]
+                    for key in (
+                        "command_node_id",
+                        "command_invocation_id",
+                        "task_id",
+                        "dispatch_key",
+                    )
+                }
+            await runtime.store.aput(
+                lifecycle_invocations_namespace(
+                    runtime.context.lifecycle_id,
+                    runtime.context.workflow_run_id,
+                ),
+                invocation_id,
+                invocation_artifact,
+                index=False,
+            )
+            invocation_record = {
+                key: invocation_artifact[key]
                 for key in (
-                    "command_node_id",
-                    "command_invocation_id",
-                    "task_id",
-                    "dispatch_key",
+                    "invocation_id",
+                    "workflow_id",
+                    "workflow_node_id",
+                    "agent_id",
+                    "invoked_at",
                 )
             }
-        await runtime.store.aput(
-            lifecycle_invocations_namespace(
-                runtime.context.lifecycle_id,
-                runtime.context.workflow_run_id,
-            ),
-            invocation_id,
-            invocation_artifact,
-            index=False,
-        )
-        invocation_record = {
-            key: invocation_artifact[key]
-            for key in (
-                "invocation_id",
-                "workflow_id",
-                "workflow_node_id",
-                "agent_id",
-                "invoked_at",
-            )
-        }
-        invocation_record["result_ref"] = invocation_id
-        if workflow_task:
-            invocation_record["workflow_task"] = {
-                key: workflow_task[key]
-                for key in (
-                    "command_node_id",
-                    "command_invocation_id",
-                    "task_id",
-                    "dispatch_key",
-                )
+            invocation_record["result_ref"] = invocation_id
+            if workflow_task:
+                invocation_record["workflow_task"] = {
+                    key: workflow_task[key]
+                    for key in (
+                        "command_node_id",
+                        "command_invocation_id",
+                        "task_id",
+                        "dispatch_key",
+                    )
+                }
+            update: dict[str, Any] = {
+                "agent_invocations": {invocation_id: invocation_record}
             }
-        update: dict[str, Any] = {
-            "agent_invocations": {invocation_id: invocation_record}
-        }
-        shared_vars = _mapping_delta(
-            parent_shared_vars,
-            result.get("shared_vars", {}),
-            include_deletions=False,
+            shared_vars = _mapping_delta(
+                parent_shared_vars,
+                result.get("shared_vars", {}),
+                include_deletions=False,
+            )
+            if shared_vars:
+                update["shared_vars"] = shared_vars
+            child_files = result.get("files", parent_files)
+            files = _mapping_delta(
+                parent_files,
+                child_files,
+                include_deletions=True,
+            )
+            if files:
+                update["files"] = files
+        except asyncio.CancelledError:
+            _finish_node_observation(
+                lifecycle_service,
+                runtime,
+                invocation_id=invocation_id,
+                attempt=attempt,
+                started=node_observation_started,
+                status="cancelled",
+                error_code="request_cancelled",
+            )
+            raise
+        except Exception as exc:
+            _finish_node_observation(
+                lifecycle_service,
+                runtime,
+                invocation_id=invocation_id,
+                attempt=attempt,
+                started=node_observation_started,
+                status="failed",
+                error_code=(
+                    exc.code if isinstance(exc, AgentRuntimeError) else type(exc).__name__
+                ),
+            )
+            raise
+        _finish_node_observation(
+            lifecycle_service,
+            runtime,
+            invocation_id=invocation_id,
+            attempt=attempt,
+            started=node_observation_started,
+            status="completed",
         )
-        if shared_vars:
-            update["shared_vars"] = shared_vars
-        child_files = result.get("files", parent_files)
-        files = _mapping_delta(
-            parent_files,
-            child_files,
-            include_deletions=True,
-        )
-        if files:
-            update["files"] = files
         return update
 
     return call_agent
@@ -193,7 +311,15 @@ def _make_command_node(
         state: WorkflowState,
         runtime: Runtime[WorkflowRuntimeContext],
     ) -> Command:
-        invocation_id, _invoked_at = _invocation_metadata(runtime)
+        invocation_id, attempt, invoked_at = _invocation_metadata(runtime)
+        node_observation_started = _start_node_observation(
+            lifecycle_service,
+            runtime,
+            node_id=node_id,
+            invocation_id=invocation_id,
+            attempt=attempt,
+            node_first_attempt_time=invoked_at,
+        )
         node_runtime = runtime.override(
             context=runtime.context.for_workflow_node(
                 workflow_node_id=node_id,
@@ -207,12 +333,15 @@ def _make_command_node(
             if lifecycle_service is None or monitoring_failed:
                 return
             try:
+                if attempt is None:
+                    return
                 lifecycle_service.append_command_observation(
                     {
                         "lifecycle_id": runtime.context.lifecycle_id,
                         "run_id": runtime.context.workflow_run_id,
                         "invocation_id": invocation_id,
                         "workflow_node_id": node_id,
+                        "attempt": attempt,
                         "occurred_at": datetime.now(timezone.utc).isoformat(
                             timespec="milliseconds"
                         ),
@@ -233,8 +362,29 @@ def _make_command_node(
                 allowed_branches=command_targets,
                 allowed_dispatch_keys=dispatch_targets,
             )
+        except asyncio.CancelledError:
+            observe("cancelled", error_code="request_cancelled")
+            _finish_node_observation(
+                lifecycle_service,
+                runtime,
+                invocation_id=invocation_id,
+                attempt=attempt,
+                started=node_observation_started,
+                status="cancelled",
+                error_code="request_cancelled",
+            )
+            raise
         except CommandError as exc:
             observe("failed", error_code="workflow.command_failed")
+            _finish_node_observation(
+                lifecycle_service,
+                runtime,
+                invocation_id=invocation_id,
+                attempt=attempt,
+                started=node_observation_started,
+                status="failed",
+                error_code="workflow.command_failed",
+            )
             raise AgentRuntimeError(
                 "workflow.command_failed",
                 "The Command Node script failed.",
@@ -268,6 +418,14 @@ def _make_command_node(
                 "dispatch": [item.model_dump(mode="json") for item in result.dispatch],
                 "update": deepcopy(result.update),
             },
+        )
+        _finish_node_observation(
+            lifecycle_service,
+            runtime,
+            invocation_id=invocation_id,
+            attempt=attempt,
+            started=node_observation_started,
+            status="completed",
         )
         return Command(update=result.update, goto=[*branch_targets, *sends])
 
@@ -377,7 +535,11 @@ def compile_workflow(
             )
         builder.add_node(
             node.id,
-            _make_agent_node(node_id=node.id, built_agent=built_agent),
+            _make_agent_node(
+                node_id=node.id,
+                built_agent=built_agent,
+                lifecycle_service=lifecycle_service,
+            ),
             defer=bool(node.config.get("defer", False)),
         )
 

@@ -61,7 +61,7 @@ Workflow metadata 还可以保存：
 
 修改现有 Workflow 时先 GET，保留未修改的 metadata。metadata PUT 不改变当前 `enabled`。
 
-Checkpointer 为当前 Debug checkpoint 提供 State 持久化。未选择时不创建 Checkpoint Thread。当前没有外围 Resume 产品流程。
+Checkpointer 为当前 Debug 与运行监控的留档提供 State 持久化。未选择时不创建 Checkpoint Thread，监控也没有 persisted State 可读。当前没有 State 修改、history/time travel 或外围 Resume 产品流程。
 
 配置 Debug checkpoint 时，先创建 Checkpointer Component：
 

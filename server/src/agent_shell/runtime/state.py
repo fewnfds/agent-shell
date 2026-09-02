@@ -40,7 +40,7 @@ class AgentInvocationRecord(TypedDict):
     workflow_id: str
     workflow_node_id: str
     agent_id: str
-    invoked_at: float
+    invoked_at: float | None
     result_ref: str
     workflow_task: NotRequired[WorkflowTaskReference]
 
@@ -50,7 +50,7 @@ class AgentInvocationArtifact(TypedDict):
     workflow_id: str
     workflow_node_id: str
     agent_id: str
-    invoked_at: float
+    invoked_at: float | None
     messages: list[Any]
     workflow_task: NotRequired[WorkflowTaskContext]
 

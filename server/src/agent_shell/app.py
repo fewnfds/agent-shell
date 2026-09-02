@@ -31,6 +31,7 @@ from agent_shell.api.mcp_connections import build_mcp_connection_router
 from agent_shell.api.validation import build_validation_router
 from agent_shell.api.workflows import build_workflow_router
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
+from agent_shell.api.runtime_monitoring import build_runtime_monitoring_router
 from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
@@ -38,6 +39,7 @@ from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.runtime.monitoring_read_service import MonitoringReadService
 from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
 from agent_shell.settings import (
     Settings,
@@ -68,6 +70,9 @@ from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
+from agent_shell.storage.runtime_monitoring_queries import (
+    RuntimeMonitoringQueryStore,
+)
 from agent_shell.storage.system_log_settings import MIB_BYTES, SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from agent_shell.storage.workflows import WorkflowStore
@@ -183,6 +188,12 @@ def create_app(
         application_database,
         store_database=workflow_store_database,
         data_root=settings.data_root,
+    )
+    runtime_monitoring_queries = RuntimeMonitoringQueryStore(application_database)
+    runtime_monitoring_reads = MonitoringReadService(
+        runtime_monitoring_queries,
+        workflow_lifecycle,
+        workflow_checkpoints,
     )
     python_package_authoring = PythonPackageAuthoringService(
         templates_root=python_templates_dir,
@@ -559,6 +570,7 @@ def create_app(
     app.state.event_feed = event_feed
     app.state.workflow_checkpoints = workflow_checkpoints
     app.state.workflow_lifecycle = workflow_lifecycle
+    app.state.runtime_monitoring_reads = runtime_monitoring_reads
     app.state.background_tasks = background_tasks
     app.state.system_log_settings = system_log_settings
     app.state.model_resources = model_resources
@@ -642,6 +654,7 @@ def create_app(
             runtime_cleanup,
         )
     )
+    app.include_router(build_runtime_monitoring_router(runtime_monitoring_reads))
     app.include_router(
         build_validation_router(
             configuration_validation,

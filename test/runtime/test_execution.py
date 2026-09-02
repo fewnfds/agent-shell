@@ -466,16 +466,14 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
             assert captured.value.code == "execution_timeout"
             record = lifecycle.run("timeout-run")
             assert record is not None
-            return run.exited, record, lifecycle.transitions(lifecycle_id)
+            return run.exited, record
         finally:
             await lifecycle.close()
 
-    closed, record, events = asyncio.run(scenario())
+    closed, record = asyncio.run(scenario())
     assert closed is True
     assert record["status"] == "failed"
     assert record["error_code"] == "execution_timeout"
-    assert events[-1]["phase"] == "failed"
-    assert events[-1]["error_code"] == "execution_timeout"
 
 
 def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:

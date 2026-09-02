@@ -143,9 +143,6 @@ class RunExecution:
     request_id: str = ""
     public_model: str = ""
     public_output: bool = True
-    model_agent_names: dict[str, str] | None = None
-    model_agent_profile_ids: dict[str, str] | None = None
-    model_subagent_profile_ids: dict[str, dict[str, str]] | None = None
     monitoring_capture_enabled: bool = False
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
     cancel_background_children: Callable[[], Awaitable[None]] | None = None
@@ -307,15 +304,6 @@ class RunExecution:
                     self.identity.lifecycle_id,
                     self.identity.workflow_run_id,
                     serialize_protocol_event(envelope),
-                    {
-                        "namespace": origin.namespace,
-                        "cycle_key": origin.cycle_key,
-                        "source_type": origin.source_type,
-                        "workflow_node_id": origin.workflow_node_id,
-                        "node_invocation_id": origin.node_invocation_id,
-                        "agent_profile_id": origin.agent_profile_id,
-                        "subagent_profile_id": origin.subagent_profile_id,
-                    },
                 )
             except Exception as exc:
                 protocol_event_capture_failed = True
@@ -613,11 +601,6 @@ class RunExecution:
                             self.lifecycle_service,
                             self.runtime_diagnostics,
                             self.identity,
-                            agent_names=self.model_agent_names or {},
-                            agent_profile_ids=self.model_agent_profile_ids or {},
-                            subagent_profile_ids=(
-                                self.model_subagent_profile_ids or {}
-                            ),
                         )
                         callbacks.append(model_recorder)
                         config["callbacks"] = callbacks
@@ -1181,16 +1164,6 @@ class AgentRuntime:
             request_id=request_id,
             public_model=public_model,
             public_output=public_output,
-            model_agent_names={
-                node_id: agent.agent_name for node_id, agent in workflow_agents
-            },
-            model_agent_profile_ids={
-                node_id: agent.agent_id for node_id, agent in workflow_agents
-            },
-            model_subagent_profile_ids={
-                node_id: dict(agent.subagent_profile_ids)
-                for node_id, agent in workflow_agents
-            },
             monitoring_capture_enabled=monitoring_capture_enabled,
             execution_timeout_seconds=execution_timeout_seconds,
             cancel_background_children=cancel_background_children,
@@ -1209,7 +1182,6 @@ class AgentRuntime:
         checkpoint_thread_id: str | None = None,
         parent_workflow_run_id: str = "",
         background_task_id: str = "",
-        launcher_id: str = "",
         run_depth: int = 0,
         initial_shared_vars: Mapping[str, Any] | None = None,
         initial_workflow_task: Mapping[str, Any] | None = None,
@@ -1415,7 +1387,6 @@ class AgentRuntime:
             checkpoint_thread_id=checkpoint_thread_id,
             parent_workflow_run_id=parent_workflow_run_id,
             background_task_id=background_task_id,
-            launcher_id=launcher_id,
             run_depth=run_depth,
         )
         assembly_diagnostic_context = RuntimeDiagnosticContext(

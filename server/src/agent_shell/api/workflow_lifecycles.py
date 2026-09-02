@@ -45,18 +45,16 @@ def build_workflow_lifecycle_router(
             **record,
             **lifecycle_service.run_summary(lifecycle_id),
             **await lifecycle_service.filesystem_summary(lifecycle_id),
-            "details_available": False,
-            "monitoring_read_model_status": "pending",
         }
 
-    def read_model_unavailable():
+    def generic_detail_unavailable():
         return management_error(
             503,
             code="runtime_monitoring_read_model_unavailable",
             message_key="errors.runtimeMonitoringReadModelUnavailable",
             message=(
-                "Runtime monitoring persistence is available, but its detail "
-                "and archive read model is not implemented yet."
+                "This generic lifecycle detail or archive endpoint is not "
+                "available."
             ),
         )
 
@@ -82,12 +80,12 @@ def build_workflow_lifecycle_router(
     @router.get("/api/workflow-lifecycles/{lifecycle_id}")
     async def get_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
         await require_lifecycle(lifecycle_id)
-        raise read_model_unavailable()
+        raise generic_detail_unavailable()
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/events")
     async def list_workflow_lifecycle_events(lifecycle_id: str) -> dict[str, object]:
         await require_lifecycle(lifecycle_id)
-        raise read_model_unavailable()
+        raise generic_detail_unavailable()
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}")
     async def get_workflow_run(
@@ -103,12 +101,12 @@ def build_workflow_lifecycle_router(
                 message_key="errors.workflowRunNotFound",
                 message="The Workflow Run does not exist in this lifecycle.",
             )
-        raise read_model_unavailable()
+        raise generic_detail_unavailable()
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/download")
     async def download_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
         await require_lifecycle(lifecycle_id)
-        raise read_model_unavailable()
+        raise generic_detail_unavailable()
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download")
     async def download_workflow_run(
@@ -124,7 +122,7 @@ def build_workflow_lifecycle_router(
                 message_key="errors.workflowRunNotFound",
                 message="The Workflow Run does not exist in this lifecycle.",
             )
-        raise read_model_unavailable()
+        raise generic_detail_unavailable()
 
     async def delete_one(
         lifecycle_id: str,

@@ -103,7 +103,6 @@ CREATE TABLE IF NOT EXISTS runtime_workflow_runs (
     workflow_id TEXT NOT NULL,
     workflow_name TEXT NOT NULL,
     parent_run_id TEXT,
-    launcher_id TEXT,
     background_task_id TEXT,
     run_depth INTEGER NOT NULL CHECK (run_depth >= 0),
     status TEXT NOT NULL CHECK (
@@ -120,6 +119,7 @@ CREATE TABLE IF NOT EXISTS runtime_workflow_runs (
     input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
     output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
     total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
+    UNIQUE (lifecycle_id, run_id),
     FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
         ON DELETE CASCADE,
     FOREIGN KEY (parent_run_id) REFERENCES runtime_workflow_runs(run_id)
@@ -135,35 +135,14 @@ ON runtime_workflow_runs(parent_run_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_workflow_runs_status
 ON runtime_workflow_runs(status);
 
-CREATE TABLE IF NOT EXISTS runtime_run_transitions (
-    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-    lifecycle_id TEXT NOT NULL,
-    run_id TEXT NOT NULL,
-    occurred_at TEXT NOT NULL,
-    phase TEXT NOT NULL CHECK (
-        phase IN ('created', 'started', 'completed', 'failed', 'cancelled', 'interrupted')
-    ),
-    status TEXT NOT NULL,
-    error_code TEXT NOT NULL DEFAULT '',
-    finish_reason TEXT NOT NULL DEFAULT '',
-    usage_json TEXT NOT NULL DEFAULT '{}',
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
-        ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_runtime_run_transitions_lifecycle
-ON runtime_run_transitions(lifecycle_id, sequence);
-
-CREATE INDEX IF NOT EXISTS idx_runtime_run_transitions_run
-ON runtime_run_transitions(run_id, sequence);
-
 CREATE TABLE IF NOT EXISTS runtime_run_monitoring (
     run_id TEXT PRIMARY KEY,
     lifecycle_id TEXT NOT NULL,
     graph_status TEXT NOT NULL CHECK (
         graph_status IN ('capturing', 'available', 'partial', 'not_applicable')
+    ),
+    node_status TEXT NOT NULL CHECK (
+        node_status IN ('capturing', 'available', 'partial', 'not_applicable')
     ),
     protocol_status TEXT NOT NULL CHECK (
         protocol_status IN ('capturing', 'available', 'partial', 'not_applicable')
@@ -176,14 +155,45 @@ CREATE TABLE IF NOT EXISTS runtime_run_monitoring (
     ),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
         ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_runtime_run_monitoring_lifecycle
 ON runtime_run_monitoring(lifecycle_id, run_id);
+
+CREATE TABLE IF NOT EXISTS runtime_node_attempts (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    lifecycle_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    workflow_node_id TEXT NOT NULL CHECK (length(workflow_node_id) > 0),
+    invocation_id TEXT NOT NULL CHECK (length(invocation_id) > 0),
+    attempt INTEGER NOT NULL CHECK (attempt > 0),
+    node_first_attempt_time REAL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL CHECK (
+        status IN (
+            'running', 'completed', 'failed', 'cancelled',
+            'interrupted', 'incomplete'
+        )
+    ),
+    error_code TEXT NOT NULL DEFAULT '',
+    UNIQUE (run_id, invocation_id, attempt),
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_node_attempts_lifecycle
+ON runtime_node_attempts(lifecycle_id, run_id, sequence);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_node_attempts_node
+ON runtime_node_attempts(run_id, workflow_node_id, sequence);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_node_attempts_invocation
+ON runtime_node_attempts(run_id, invocation_id, attempt);
 
 CREATE TABLE IF NOT EXISTS runtime_run_graphs (
     run_id TEXT PRIMARY KEY,
@@ -192,12 +202,9 @@ CREATE TABLE IF NOT EXISTS runtime_run_graphs (
     workflow_name TEXT NOT NULL,
     document_sha TEXT NOT NULL,
     document_json TEXT NOT NULL,
-    node_sources_json TEXT NOT NULL,
-    edge_classes_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
         ON DELETE CASCADE
 );
 
@@ -208,11 +215,9 @@ CREATE TABLE IF NOT EXISTS runtime_protocol_events (
     method TEXT NOT NULL CHECK (length(method) > 0),
     captured_at TEXT NOT NULL,
     envelope_json TEXT NOT NULL,
-    origin_json TEXT NOT NULL,
     PRIMARY KEY (run_id, event_sequence),
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
         ON DELETE CASCADE
 );
 
@@ -228,19 +233,10 @@ CREATE TABLE IF NOT EXISTS runtime_model_requests (
     finished_at TEXT,
     status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
     error_code TEXT NOT NULL DEFAULT '',
-    agent_type TEXT NOT NULL CHECK (
-        agent_type IN ('main_agent', 'subagent')
-    ),
-    agent_id TEXT NOT NULL,
-    agent_name TEXT NOT NULL,
-    parent_agent_id TEXT NOT NULL DEFAULT '',
-    parent_agent_name TEXT NOT NULL DEFAULT '',
-    workflow_node_id TEXT NOT NULL DEFAULT '',
     request_json TEXT NOT NULL,
     usage_json TEXT NOT NULL DEFAULT '{}',
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
         ON DELETE CASCADE
 );
 
@@ -256,14 +252,16 @@ CREATE TABLE IF NOT EXISTS runtime_command_observations (
     run_id TEXT NOT NULL,
     invocation_id TEXT NOT NULL,
     workflow_node_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL CHECK (attempt > 0),
     occurred_at TEXT NOT NULL,
-    phase TEXT NOT NULL CHECK (phase IN ('started', 'completed', 'failed')),
+    phase TEXT NOT NULL CHECK (
+        phase IN ('started', 'completed', 'failed', 'cancelled')
+    ),
     error_code TEXT NOT NULL DEFAULT '',
     payload_json TEXT NOT NULL DEFAULT '{}',
-    UNIQUE (run_id, invocation_id, phase),
-    FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES runtime_workflow_runs(run_id)
+    UNIQUE (run_id, invocation_id, attempt, phase),
+    FOREIGN KEY (lifecycle_id, run_id)
+        REFERENCES runtime_workflow_runs(lifecycle_id, run_id)
         ON DELETE CASCADE
 );
 

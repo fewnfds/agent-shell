@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -20,7 +20,6 @@ class BackgroundRunCaller:
     lifecycle_id: str
     workflow_run_id: str
     run_depth: int
-    caller_workflow_node_id: str = ""
 
 
 class BackgroundRunRuntime(Protocol):
@@ -68,15 +67,6 @@ class BackgroundRunCommands:
     ) -> None:
         self._runtime = runtime
         self._caller = caller
-
-    def for_caller(self, workflow_node_id: str) -> BackgroundRunCommands:
-        return BackgroundRunCommands(
-            self._runtime,
-            replace(
-                self._caller,
-                caller_workflow_node_id=workflow_node_id,
-            ),
-        )
 
     async def start_workflow(
         self,

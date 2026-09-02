@@ -1206,6 +1206,16 @@ def test_agent_defer_config_is_forwarded_to_langgraph_node(monkeypatch) -> None:
 
 
 def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> None:
+    starts: list[dict[str, object]] = []
+
+    class MonitoringRecorder:
+        def start_node_attempt(self, record):
+            starts.append(record)
+            return True
+
+        def finish_node_attempt(self, *_args, **_kwargs):
+            return True
+
     def answer(state: AgentShellState):
         count = int(state.get("shared_vars", {}).get("count", 0)) + 1
         return {
@@ -1227,6 +1237,7 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
             agent_id=AGENT_A,
             agent_name="Loop Agent",
         ),
+        lifecycle_service=MonitoringRecorder(),  # type: ignore[arg-type]
     )
     parent = StateGraph(WorkflowState, context_schema=WorkflowRuntimeContext)
     parent.add_node("agent-loop", node)
@@ -1272,6 +1283,9 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
     )
     assert len(artifacts) == 2
     assert {item.key for item in artifacts} != set(records)
+    assert len(starts) == 2
+    assert {item["attempt"] for item in starts} == {1}
+    assert len({item["invocation_id"] for item in starts}) == 2
 
 
 def test_static_normal_edge_cycle_has_no_controlled_exit() -> None:

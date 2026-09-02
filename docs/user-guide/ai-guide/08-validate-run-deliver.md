@@ -269,7 +269,7 @@ Content-Type: application/json
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-Lifecycle detail、events、single Run detail 和 download endpoint 当前返回 `503 runtime_monitoring_read_model_unavailable`。监控 read model 开放前，故障定位使用可信的 Lifecycle catalog、调用方 structured error 和日志中心诊断，不把底层表当作公开 Timeline 查询。
+运行监控的 management GET 可以按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。读取结果是持久化事实的 snapshot/page，不是从日志推演的跨资源 Timeline。通用 Lifecycle detail/events 与 download endpoint 返回 `503 runtime_monitoring_read_model_unavailable`；运行失败继续结合调用方 structured error 和日志中心诊断定位。
 
 常见 HTTP 范围：
 

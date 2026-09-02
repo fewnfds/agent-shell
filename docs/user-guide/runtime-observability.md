@@ -28,7 +28,9 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。当前页面提供可信的 Lifecycle 目录、搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。
 
-当前版本只开放持久化目录与删除管理。Lifecycle 详情、事件、single Run 详情和下载接口返回 `503 runtime_monitoring_read_model_unavailable`；页面也不提供 Graph、Node 历史、实时进度或运行归档。监控 read model 完成前，系统不输出缺少事实完整性保证的 Timeline。
+管理页面提供 Lifecycle 目录与删除管理。Management-only 运行监控接口可按 Lifecycle、Workflow 或单个 Run 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。活动页可使用普通 HTTP GET 进行秒级轮询；请求之间没有服务端会话、SSE、WebSocket 或统一 change feed。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 接口返回 `503 runtime_monitoring_read_model_unavailable`；运行归档没有读取入口。
+
+Workflow scope 只先选择本 Lifecycle 中 `workflow_id` 精确匹配的 Run，再沿 Registry `parent_run_id` 包含 descendants；Run forest 也只表达这条 parent/child 关系。Node、Agent、Tool、Edge 或跨 Run 因果不会从 event namespace、时间关系或 Graph 路径推演。每个资源都返回自己的 `availability`，局部 `partial|unavailable` 不会遮蔽其他可读事实。
 
 ### 持久化事实
 
@@ -36,14 +38,30 @@ Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的权威 owner。�
 
 启用采集的每个 Run 同时保存以下监控事实：
 
-- Run 注册时保存本次实际执行的不可变 `WorkflowGraphDocumentV1`、document SHA、Node source identity 和 Edge class；之后修改或删除 current Workflow 不改变这份 Graph；
-- `RunExecution` 在 v3 transformer 之后、应用 direct consumer 已解析 Shell origin 的位置，保存本次实际产生的全部 `ProtocolEvent` envelope 和 origin sidecar。监控不会额外声明 `values`、`updates`、`tasks`、`debug` 等 stream mode，也不会恢复 transformer 已抑制的事件；
-- 每次 ChatModel 调用在 LangChain `on_chat_model_start` 边界保存 message batches、绑定 Tool schema、invocation parameters、options、tags 和 metadata，并在 `on_llm_end` 或 `on_llm_error` 保存终态、usage 或安全错误类型。该边界位于 middleware 处理和模型绑定之后、Provider adapter 最终 HTTP 序列化之前；
-- Command Node 保存 `started` 与 `completed|failed` 外部观察。成功记录经过校验的 `{activate, dispatch, update}`，失败只记录稳定的 `workflow.command_failed`，不保存脚本源码、locals、MCP session 或完整输入 State。
+- Run 注册时保存本次实际执行的不可变 `WorkflowGraphDocumentV1` 与 document SHA；之后修改或删除 current Workflow 不改变这份 Graph；
+- Canvas Agent/Command Node wrapper 直接保存 LangGraph `Runtime.execution_info` 提供的 `task_id`、1-indexed `node_attempt` 与可空 `node_first_attempt_time`，并记录 `running|completed|failed|cancelled`。同一 invocation 的 retry 沿用 task ID 并增加 attempt；循环或 fan-out invocation 使用不同 task ID。终态 Run 遗留的 `running` row 会收敛为 `incomplete|interrupted` 并令 Node partition 为 `partial`；
+- `RunExecution` 在 v3 transformer 之后的 direct-consumer 边界保存本次实际产生的 raw `ProtocolEvent` envelope 与 capture time。监控不会额外声明 `values`、`updates`、`tasks`、`debug` 等 stream mode，也不会保存 Shell origin sidecar 或恢复 transformer 已抑制的事件；
+- 每次 ChatModel 调用在 LangChain `on_chat_model_start` 边界保存 message batches、绑定 Tool schema、invocation parameters、options、tags 和 metadata，并在 `on_llm_end` 或 `on_llm_error` 保存终态、usage 或安全错误类型。该边界位于 middleware 处理和模型绑定之后、Provider adapter 最终 HTTP 序列化之前；记录属于 Workflow Run，不把 callback metadata 解析成 Canvas Node、Main Agent 或 Subagent owner；
+- Command Node 按 invocation/attempt 保存 `started` 与 `completed|failed|cancelled` 外部观察。成功记录经过校验的 `{activate, dispatch, update}`，失败只记录稳定错误码，不保存脚本源码、locals、MCP session 或完整输入 State。
 
-Graph、ProtocolEvent、Model Request 和 Command 四个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。进程中断时仍处于采集中的分区标记为 `partial`；Graph 已成功冻结以及本来不适用的分区保持原状态。
+Graph、Node、ProtocolEvent、Model Request 和 Command 五个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。进程中断时仍处于采集中的分区标记为 `partial`；Graph 已成功冻结以及本来不适用的分区保持原状态。
 
-Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。Checkpoint 当前只服务 Debug，不提供 Resume、time travel 或灾难恢复入口。
+Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。监控通过官方 Checkpointer `aget_tuple()` 读取 latest persisted root State；没有 Checkpointer 时明确显示 `not_enabled`。当前不提供 State history、修改、Resume、time travel 或灾难恢复入口。
+
+完成的 Agent invocation artifact 已由 Lifecycle Store 保存时，监控先验证对应 Node attempt、frozen Agent Node 与 Agent UUID，再使用固定 Lifecycle/Run namespace 和 invocation key 通过官方 Store `aget()` 精确读取。接口不扫描 namespace，也不开放 Lifecycle input、background task、filesystem route 或任意 Store browser。
+
+### 后端读取接口
+
+- `GET /api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot`：Lifecycle scope；可选且互斥的 `workflow_id` 或 `run_id` 选择另两种 scope；
+- `GET .../monitoring/runs/{run_id}/graph`：frozen Workflow Graph；
+- `GET .../monitoring/runs/{run_id}/nodes` 与 `/nodes/{node_id}/attempts`：Node 汇总和 attempt 分页；
+- `GET .../monitoring/runs/{run_id}/protocol-events`：按 `after_sequence` 续读 raw envelope；
+- `GET .../monitoring/runs/{run_id}/model-requests`：Run 级 Model Request 分页；
+- `GET .../monitoring/runs/{run_id}/command-observations`：按 `after_sequence` 续读 Command 外部观察；
+- `GET .../monitoring/runs/{run_id}/state`：latest persisted root State；
+- `GET .../monitoring/runs/{run_id}/agent-invocations/{invocation_id}`：exact completed Agent artifact。
+
+捕获关闭的 Lifecycle 返回 `409 runtime_monitoring_disabled`；不存在的 Lifecycle、Run、Workflow scope、frozen Node 或 invocation 返回对应 404；Registry/snapshot 整体不可读返回 503。独立资源读取失败返回 `200` 和 `availability=unavailable`，允许其他区域继续显示并在下一轮重试。Protocol/Command 用响应的 `next_after_sequence` 续读；Graph、Run、Node、Model、State 与 Agent artifact 重新读取当前 snapshot/page。
 
 ### 保留与删除
 
@@ -57,7 +75,7 @@ Lifecycle 只有在 root Run、全部 child Run 和全部 background task 都进
 
 ### 敏感内容
 
-启用采集后，ProtocolEvent 和 Model Request 可以包含 prompt、用户消息、Tool schema/payload、State、路径以及其他运行材料。统一 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；平台不能识别用户主动写入普通文本或自定义对象表示中的任意密钥。`agent-shell.env` 仍是配置 secret 的唯一权威存储，监控 writer 不读取该配置文件。当前没有运行归档下载入口；后续分享任何由这些事实生成的归档前仍需人工检查自由文本。
+启用采集后，frozen Graph、Node/Command metadata、ProtocolEvent、Model Request、Checkpoint State 和 Agent invocation artifact 可以包含 prompt、用户消息、Tool schema/payload、State、路径以及其他运行材料。ProtocolEvent、Model Request 与 State 读取投影的 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；Command 的已校验外部结果与 Agent 的 OpenAI message artifact 保留普通业务内容。平台不能识别用户主动写入普通文本或自定义对象表示中的任意密钥。`agent-shell.env` 是配置 secret 的唯一权威存储，监控 writer 不读取该配置文件。所有读取接口都需要管理鉴权。运行归档下载没有入口；未来分享任何由这些事实生成的归档前需人工检查自由文本。
 
 ## LangSmith
 

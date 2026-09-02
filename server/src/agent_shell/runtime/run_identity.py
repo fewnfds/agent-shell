@@ -20,7 +20,6 @@ class WorkflowRunIdentity:
     checkpoint_thread_id: str | None = None
     parent_workflow_run_id: str = ""
     background_task_id: str = ""
-    launcher_id: str = ""
     run_depth: int = 0
 
 

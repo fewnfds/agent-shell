@@ -199,47 +199,6 @@ class WorkflowLifecycleService:
         workflow_name: str,
         created_at: str,
     ) -> dict[str, object]:
-        nodes = {node.id: node for node in document.definition.nodes}
-        node_sources: list[dict[str, object]] = []
-        for node in document.definition.nodes:
-            source_id = ""
-            if node.type == "agent":
-                source_id = str(node.config.get("main_agent_id") or "")
-            elif node.type == "command":
-                source_id = str(node.config.get("command_id") or "")
-            node_sources.append(
-                {
-                    "workflow_node_id": node.id,
-                    "node_type": node.type,
-                    "source_id": source_id,
-                }
-            )
-        edge_classes: list[dict[str, object]] = []
-        for edge in document.definition.edges:
-            source = nodes[edge.source]
-            spec = node_type_spec(source.type, source.type_version)
-            edge_class = "unknown"
-            if spec is not None:
-                handle = next(
-                    (
-                        item
-                        for item in spec.output_handles
-                        if item.id == edge.source_handle
-                    ),
-                    None,
-                )
-                if handle is not None:
-                    edge_class = handle.edge_type
-            edge_classes.append(
-                {
-                    "edge_id": edge.id,
-                    "source": edge.source,
-                    "target": edge.target,
-                    "edge_class": edge_class,
-                    "branch_key": edge.branch_key,
-                    "dispatch_key": edge.dispatch_key,
-                }
-            )
         return {
             "lifecycle_id": lifecycle_id,
             "run_id": run_id,
@@ -247,8 +206,6 @@ class WorkflowLifecycleService:
             "workflow_name": workflow_name,
             "document_sha": workflow_document_sha256(document),
             "document": document.model_dump(mode="json"),
-            "node_sources": node_sources,
-            "edge_classes": edge_classes,
             "created_at": created_at,
         }
 
@@ -265,13 +222,20 @@ class WorkflowLifecycleService:
             record.get("workflow_name") or record.get("target_name") or ""
         )
         created_at = str(record["created_at"])
-        node_types = {node.type for node in document.definition.nodes}
+        runtime_kinds = {
+            spec.runtime_kind
+            for node in document.definition.nodes
+            if (spec := node_type_spec(node.type, node.type_version)) is not None
+        }
         try:
             self._monitoring.initialize_run(
                 lifecycle_id=lifecycle_id,
                 run_id=run_id,
-                has_model_nodes="agent" in node_types,
-                has_command_nodes="command" in node_types,
+                has_executable_nodes=bool(
+                    runtime_kinds & {"agent_wrapper", "command_node"}
+                ),
+                has_model_nodes="agent_wrapper" in runtime_kinds,
+                has_command_nodes="command_node" in runtime_kinds,
                 created_at=created_at,
             )
         except Exception as exc:
@@ -303,25 +267,6 @@ class WorkflowLifecycleService:
             self._observation_error(
                 exc,
                 code="runtime_graph_record_failed",
-                lifecycle_id=lifecycle_id,
-                run_id=run_id,
-                workflow_id=workflow_id,
-                workflow_name=workflow_name,
-            )
-        try:
-            self._monitoring.append_transition(
-                {
-                    "lifecycle_id": lifecycle_id,
-                    "run_id": run_id,
-                    "occurred_at": created_at,
-                    "phase": "created",
-                    "status": "pending",
-                }
-            )
-        except Exception as exc:
-            self._observation_error(
-                exc,
-                code="runtime_run_transition_record_failed",
                 lifecycle_id=lifecycle_id,
                 run_id=run_id,
                 workflow_id=workflow_id,
@@ -414,29 +359,7 @@ class WorkflowLifecycleService:
         record = self._registry.get_run(run_id)
         if record is None:
             raise RuntimeError("the Workflow Run registry record does not exist")
-        occurred_at = _now()
-        updated = self._registry.start_run(run_id, started_at=occurred_at)
-        if not updated:
-            return False
-        if self._monitoring.status(run_id) is not None:
-            try:
-                self._monitoring.append_transition(
-                    {
-                        "lifecycle_id": record["lifecycle_id"],
-                        "run_id": run_id,
-                        "occurred_at": occurred_at,
-                        "phase": "started",
-                        "status": "running",
-                    }
-                )
-            except Exception as exc:
-                self._observation_error(
-                    exc,
-                    code="runtime_run_transition_record_failed",
-                    lifecycle_id=str(record["lifecycle_id"]),
-                    run_id=run_id,
-                )
-        return True
+        return self._registry.start_run(run_id, started_at=_now())
 
     def finish_run(
         self,
@@ -462,48 +385,19 @@ class WorkflowLifecycleService:
         )
         if not updated:
             return False
-        if self._monitoring.status(run_id) is not None:
-            phase = (
-                "cancelled"
-                if status == "cancelled"
-                else "interrupted"
-                if status == "interrupted"
-                else "failed"
-                if status == "failed"
-                else "completed"
-            )
-            try:
-                self._monitoring.append_transition(
-                    {
-                        "lifecycle_id": record["lifecycle_id"],
-                        "run_id": run_id,
-                        "occurred_at": finished_at,
-                        "phase": phase,
-                        "status": status,
-                        "error_code": error_code,
-                        "finish_reason": finish_reason,
-                        "usage": effective_usage,
-                    }
-                )
-            except Exception as exc:
-                self._observation_error(
-                    exc,
-                    code="runtime_run_transition_record_failed",
-                    lifecycle_id=str(record["lifecycle_id"]),
-                    run_id=run_id,
-                )
-            try:
+        try:
+            if self._monitoring.status(run_id) is not None:
                 self._monitoring.finish_run(
                     run_id,
                     interrupted=status == "interrupted",
                 )
-            except Exception as exc:
-                self._observation_error(
-                    exc,
-                    code="runtime_monitoring_finalize_failed",
-                    lifecycle_id=str(record["lifecycle_id"]),
-                    run_id=run_id,
-                )
+        except Exception as exc:
+            self._observation_error(
+                exc,
+                code="runtime_monitoring_finalize_failed",
+                lifecycle_id=str(record["lifecycle_id"]),
+                run_id=run_id,
+            )
         return True
 
     async def lifecycle_changed(self, lifecycle_id: str) -> None:
@@ -515,20 +409,9 @@ class WorkflowLifecycleService:
         interrupted = self._registry.interrupt_active(finished_at=finished_at)
         for record in interrupted:
             run_id = str(record["run_id"])
-            if self._monitoring.status(run_id) is None:
-                continue
             try:
-                self._monitoring.append_transition(
-                    {
-                        "lifecycle_id": record["lifecycle_id"],
-                        "run_id": run_id,
-                        "occurred_at": finished_at,
-                        "phase": "interrupted",
-                        "status": "interrupted",
-                        "error_code": "service_restarted",
-                    }
-                )
-                self._monitoring.finish_run(run_id, interrupted=True)
+                if self._monitoring.status(run_id) is not None:
+                    self._monitoring.finish_run(run_id, interrupted=True)
             except Exception as exc:
                 self._observation_error(
                     exc,
@@ -541,21 +424,32 @@ class WorkflowLifecycleService:
     def reconcile_terminal_monitoring(self) -> None:
         """Mark crash-window monitoring writers partial for terminal Runs."""
 
+        try:
+            self._monitoring.reconcile_node_attempts(finished_at=_now())
+        except Exception as exc:
+            self._observation_error(
+                exc,
+                code="runtime_monitoring_recovery_failed",
+                lifecycle_id="",
+                run_id="",
+            )
+
         for lifecycle in self._registry.list_all_lifecycles():
             lifecycle_id = str(lifecycle["lifecycle_id"])
             for record in self._registry.list_runs(lifecycle_id):
                 if record["status"] in {"pending", "running"}:
                     continue
                 run_id = str(record["run_id"])
-                status = self._monitoring.status(run_id)
-                if status is None or "capturing" not in {
-                    status["graph"],
-                    status["protocol"],
-                    status["model"],
-                    status["command"],
-                }:
-                    continue
                 try:
+                    status = self._monitoring.status(run_id)
+                    if status is None or "capturing" not in {
+                        status["graph"],
+                        status["node"],
+                        status["protocol"],
+                        status["model"],
+                        status["command"],
+                    }:
+                        continue
                     self._monitoring.finish_run(run_id, interrupted=True)
                 except Exception as exc:
                     self._observation_error(
@@ -570,17 +464,78 @@ class WorkflowLifecycleService:
         lifecycle_id: str,
         run_id: str,
         event: Mapping[str, object],
-        origin: Mapping[str, object],
     ) -> None:
+        status = self._monitoring.status(run_id)
+        if status is None or status["protocol"] != "capturing":
+            return
         self._monitoring.append_protocol_event(
             lifecycle_id=lifecycle_id,
             run_id=run_id,
             event=event,
-            origin=origin,
         )
 
-    def start_model_request(self, record: dict[str, object]) -> None:
-        self._monitoring.start_model_request(record)
+    def start_node_attempt(self, record: dict[str, object]) -> bool:
+        lifecycle_id = str(record["lifecycle_id"])
+        run_id = str(record["run_id"])
+        try:
+            status = self._monitoring.status(run_id)
+            if status is None or status["node"] != "capturing":
+                return False
+            return self._monitoring.start_node_attempt(record)
+        except Exception as exc:
+            try:
+                self._monitoring.mark_partition(run_id, "node", "partial")
+            except Exception:
+                pass
+            self._observation_error(
+                exc,
+                code="runtime_node_attempt_record_failed",
+                lifecycle_id=lifecycle_id,
+                run_id=run_id,
+            )
+            raise
+
+    def finish_node_attempt(
+        self,
+        run_id: str,
+        invocation_id: str,
+        attempt: int,
+        *,
+        status: str,
+        error_code: str = "",
+    ) -> bool:
+        try:
+            monitoring = self._monitoring.status(run_id)
+            if monitoring is None or monitoring["node"] != "capturing":
+                return False
+            return self._monitoring.finish_node_attempt(
+                run_id,
+                invocation_id,
+                attempt,
+                status=status,
+                finished_at=_now(),
+                error_code=error_code,
+            )
+        except Exception as exc:
+            record = self._registry.get_run(run_id)
+            try:
+                self._monitoring.mark_partition(run_id, "node", "partial")
+            except Exception:
+                pass
+            self._observation_error(
+                exc,
+                code="runtime_node_attempt_record_failed",
+                lifecycle_id=str(record["lifecycle_id"]) if record else "",
+                run_id=run_id,
+            )
+            raise
+
+    def start_model_request(self, record: dict[str, object]) -> bool:
+        run_id = str(record["run_id"])
+        status = self._monitoring.status(run_id)
+        if status is None or status["model"] != "capturing":
+            return False
+        return self._monitoring.start_model_request(record)
 
     def finish_model_request(
         self,
@@ -628,45 +583,6 @@ class WorkflowLifecycleService:
     def run(self, run_id: str) -> dict[str, object] | None:
         return self._registry.get_run(run_id)
 
-    def transitions(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-        after_sequence: int = 0,
-        limit: int = 1000,
-    ) -> list[dict[str, object]]:
-        return self._monitoring.transitions(
-            lifecycle_id,
-            run_id=run_id,
-            after_sequence=after_sequence,
-            limit=limit,
-        )
-
-    def model_requests(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-    ) -> list[dict[str, object]]:
-        return self._monitoring.model_requests(lifecycle_id, run_id=run_id)
-
-    def protocol_events(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str,
-    ) -> list[dict[str, object]]:
-        return self._monitoring.protocol_events(lifecycle_id, run_id=run_id)
-
-    def command_observations(
-        self,
-        lifecycle_id: str,
-        *,
-        run_id: str | None = None,
-    ) -> list[dict[str, object]]:
-        return self._monitoring.command_observations(lifecycle_id, run_id=run_id)
-
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
         summary = self._registry.summary(lifecycle_id)
         lifecycle = self._registry.get_lifecycle(lifecycle_id)
@@ -682,6 +598,7 @@ class WorkflowLifecycleService:
         has_partial = any(
             "partial" in {
                 status["graph"],
+                status["node"],
                 status["protocol"],
                 status["model"],
                 status["command"],
@@ -691,6 +608,7 @@ class WorkflowLifecycleService:
         has_capturing = any(
             "capturing" in {
                 status["graph"],
+                status["node"],
                 status["protocol"],
                 status["model"],
                 status["command"],
@@ -723,6 +641,20 @@ class WorkflowLifecycleService:
         item = await self.store.aget(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
+        )
+        return deepcopy(item.value) if item is not None else None
+
+    async def agent_invocation_artifact(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        invocation_id: str,
+    ) -> dict[str, Any] | None:
+        """Read one exact artifact through the Lifecycle Store owner."""
+
+        item = await self.store.aget(
+            lifecycle_invocations_namespace(lifecycle_id, run_id),
+            invocation_id,
         )
         return deepcopy(item.value) if item is not None else None
 
