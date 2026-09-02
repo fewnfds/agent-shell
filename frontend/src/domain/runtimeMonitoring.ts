@@ -11,6 +11,34 @@ export interface RuntimeMonitoringRunTreeNode {
   children: RuntimeMonitoringRunTreeNode[]
 }
 
+export interface RuntimeMonitoringScopeSelection {
+  scope: RuntimeMonitoringSnapshot['selector']['scope']
+  id: string | null
+}
+
+export function resolveRuntimeMonitoringScope(
+  lifecycleSnapshot: RuntimeMonitoringSnapshot,
+  requestedScope: string,
+  requestedWorkflowId: string,
+  requestedRunId: string,
+): RuntimeMonitoringScopeSelection {
+  if (
+    requestedScope === 'workflow'
+    && requestedWorkflowId
+    && lifecycleSnapshot.runs.some((run) => run.workflow_id === requestedWorkflowId)
+  ) {
+    return { scope: 'workflow', id: requestedWorkflowId }
+  }
+  if (
+    requestedScope === 'run'
+    && requestedRunId
+    && lifecycleSnapshot.runs.some((run) => run.run_id === requestedRunId)
+  ) {
+    return { scope: 'run', id: requestedRunId }
+  }
+  return { scope: 'lifecycle', id: null }
+}
+
 export function runtimeMonitoringRunForest(
   snapshot: RuntimeMonitoringSnapshot,
 ): RuntimeMonitoringRunTreeNode[] {

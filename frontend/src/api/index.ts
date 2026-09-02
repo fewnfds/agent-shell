@@ -25,10 +25,15 @@ import type {
   ConfigurationOptions,
   ConfigurationSummary,
   MainAgentSummary,
+  RuntimeMonitoringAgentInvocationResponse,
+  RuntimeMonitoringCommandObservationSequence,
   RuntimeMonitoringGraphResponse,
+  RuntimeMonitoringModelRequestPage,
   RuntimeMonitoringNodeAttemptPage,
   RuntimeMonitoringNodeSummaryPage,
+  RuntimeMonitoringProtocolEventSequence,
   RuntimeMonitoringSnapshot,
+  RuntimeMonitoringStateResponse,
   RuntimePolicySettings,
   RuntimePolicyUpdate,
   PythonPackageTemplate,
@@ -412,10 +417,16 @@ export const managementApi = {
 
   getRuntimeMonitoringSnapshot(
     lifecycleId: string,
+    request?:
+      | { workflow_id: string; run_id?: never }
+      | { run_id: string; workflow_id?: never },
     signal?: AbortSignal,
   ): Promise<RuntimeMonitoringSnapshot> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot${buildQuery({
+        workflow_id: request?.workflow_id,
+        run_id: request?.run_id,
+      })}`,
       { signal },
     )
   },
@@ -462,6 +473,101 @@ export const managementApi = {
           page: request?.page,
           page_size: request?.page_size,
         })}`,
+      { signal },
+    )
+  },
+
+  listRuntimeMonitoringProtocolEvents(
+    lifecycleId: string,
+    runId: string,
+    request?: {
+      after_sequence?: number
+      limit?: number
+      method?: string
+      node_id?: string
+      invocation_id?: string
+    },
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringProtocolEventSequence> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/protocol-events${buildQuery({
+          after_sequence: request?.after_sequence,
+          limit: request?.limit,
+          method: request?.method,
+          node_id: request?.node_id,
+          invocation_id: request?.invocation_id,
+        })}`,
+      { signal },
+    )
+  },
+
+  listRuntimeMonitoringModelRequests(
+    lifecycleId: string,
+    runId: string,
+    request?: {
+      page?: number
+      page_size?: number
+      status?: 'running' | 'completed' | 'failed'
+    },
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringModelRequestPage> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/model-requests${buildQuery({
+          page: request?.page,
+          page_size: request?.page_size,
+          status: request?.status,
+        })}`,
+      { signal },
+    )
+  },
+
+  listRuntimeMonitoringCommandObservations(
+    lifecycleId: string,
+    runId: string,
+    request?: {
+      after_sequence?: number
+      limit?: number
+      node_id?: string
+      phase?: 'started' | 'completed' | 'failed' | 'cancelled'
+    },
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringCommandObservationSequence> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/command-observations${buildQuery({
+          after_sequence: request?.after_sequence,
+          limit: request?.limit,
+          node_id: request?.node_id,
+          phase: request?.phase,
+        })}`,
+      { signal },
+    )
+  },
+
+  getRuntimeMonitoringState(
+    lifecycleId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringStateResponse> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}/state`,
+      { signal },
+    )
+  },
+
+  getRuntimeMonitoringAgentInvocation(
+    lifecycleId: string,
+    runId: string,
+    invocationId: string,
+    signal?: AbortSignal,
+  ): Promise<RuntimeMonitoringAgentInvocationResponse> {
+    return managementRequest(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/monitoring/runs/${encodeURIComponent(runId)}`
+        + `/agent-invocations/${encodeURIComponent(invocationId)}`,
       { signal },
     )
   },

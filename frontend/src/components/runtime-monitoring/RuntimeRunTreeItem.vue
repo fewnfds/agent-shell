@@ -5,7 +5,7 @@ import type { RuntimeMonitoringRunTreeNode } from '@/domain/runtimeMonitoring'
 
 defineOptions({ name: 'RuntimeRunTreeItem' })
 
-const props = defineProps<{
+defineProps<{
   item: RuntimeMonitoringRunTreeNode
   selectedRunId: string
   orphanRunIds: readonly string[]

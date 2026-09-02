@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { RuntimeMonitoringSnapshot, WorkflowGraphDocument, WorkflowNodeCatalogItem } from '@/api'
 
 import {
+  resolveRuntimeMonitoringScope,
   runtimeMonitoringRunForest,
   runtimeWorkflowCanvasState,
   selectRuntimeMonitoringRunId,
@@ -11,8 +12,8 @@ import {
 const snapshot = {
   lifecycle: { root_run_id: 'run-root' },
   runs: [
-    { run_id: 'run-child', workflow_name: 'Child' },
-    { run_id: 'run-root', workflow_name: 'Parent' },
+    { run_id: 'run-child', workflow_id: 'workflow-child', workflow_name: 'Child' },
+    { run_id: 'run-root', workflow_id: 'workflow-root', workflow_name: 'Parent' },
   ],
   forest: {
     root_run_ids: ['run-root'],
@@ -29,6 +30,17 @@ describe('runtime monitoring projection', () => {
     expect(roots[0]?.children.map((item) => item.run.run_id)).toEqual(['run-child'])
     expect(selectRuntimeMonitoringRunId(snapshot, 'run-child')).toBe('run-child')
     expect(selectRuntimeMonitoringRunId(snapshot, 'missing-run')).toBe('run-root')
+  })
+
+  it('accepts only Workflow and Run scope identities present in the Lifecycle snapshot', () => {
+    expect(resolveRuntimeMonitoringScope(snapshot, 'workflow', 'workflow-child', ''))
+      .toEqual({ scope: 'workflow', id: 'workflow-child' })
+    expect(resolveRuntimeMonitoringScope(snapshot, 'run', '', 'run-child'))
+      .toEqual({ scope: 'run', id: 'run-child' })
+    expect(resolveRuntimeMonitoringScope(snapshot, 'workflow', 'missing', ''))
+      .toEqual({ scope: 'lifecycle', id: null })
+    expect(resolveRuntimeMonitoringScope(snapshot, 'unknown', '', 'run-child'))
+      .toEqual({ scope: 'lifecycle', id: null })
   })
 
   it('turns the frozen document into a non-editable canvas without animated edges', () => {

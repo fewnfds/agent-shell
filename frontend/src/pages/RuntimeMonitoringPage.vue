@@ -1,369 +1,83 @@
 <script setup lang="ts">
 import { LteAlert, LteButton } from '@adminlte/vue'
-import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
 
-import {
-  managementApi,
-  type RuntimeMonitoringAvailability,
-  type RuntimeMonitoringGraphResponse,
-  type RuntimeMonitoringNodeAttemptPage,
-  type RuntimeMonitoringNodeSummaryPage,
-  type RuntimeMonitoringSnapshot,
-  type WorkflowNodeCatalogItem,
-} from '@/api'
 import PageShell from '@/components/PageShell.vue'
-import RuntimeNodeAttemptsPanel from '@/components/runtime-monitoring/RuntimeNodeAttemptsPanel.vue'
+import RuntimeMonitoringScopeSelector from '@/components/runtime-monitoring/RuntimeMonitoringScopeSelector.vue'
+import RuntimeNodeDetailsPanel from '@/components/runtime-monitoring/RuntimeNodeDetailsPanel.vue'
+import RuntimeRunDetailsPanel from '@/components/runtime-monitoring/RuntimeRunDetailsPanel.vue'
 import RuntimeRunIndex from '@/components/runtime-monitoring/RuntimeRunIndex.vue'
 import RuntimeWorkflowCanvas from '@/components/runtime-monitoring/RuntimeWorkflowCanvas.vue'
-import { useManagementError } from '@/composables/useManagementError'
-import {
-  runtimeMonitoringRunForest,
-  selectRuntimeMonitoringRunId,
-} from '@/domain/runtimeMonitoring'
+import { useRuntimeMonitoringPage } from '@/composables/useRuntimeMonitoringPage'
 
 const { t } = useI18n()
-const route = useRoute()
-const router = useRouter()
-const managementError = useManagementError()
-
-const snapshot = ref<RuntimeMonitoringSnapshot | null>(null)
-const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
-const selectedRunId = ref('')
-const graphResponse = ref<RuntimeMonitoringGraphResponse | null>(null)
-const nodeSummaryPage = ref<RuntimeMonitoringNodeSummaryPage | null>(null)
-const selectedNodeId = ref('')
-const nodeAttemptPage = ref<RuntimeMonitoringNodeAttemptPage | null>(null)
-const nodeAttemptPageSize = ref(20)
-const lifecycleLoading = ref(false)
-const runLoading = ref(false)
-const nodeAttemptLoading = ref(false)
-const lifecycleError = ref('')
-const catalogError = ref('')
-const runError = ref('')
-const nodeAttemptError = ref('')
-let lifecycleGeneration = 0
-let runGeneration = 0
-let nodeAttemptGeneration = 0
-let lifecycleController: AbortController | null = null
-let runController: AbortController | null = null
-let nodeAttemptController: AbortController | null = null
-let resourceRunId = ''
-let resourceNodeRequest = ''
-
-const lifecycleId = computed(() => String(route.params.lifecycleId ?? ''))
-const requestedRunId = computed(() => (
-  typeof route.query.run_id === 'string' ? route.query.run_id : ''
-))
-const requestedNodeId = computed(() => (
-  typeof route.query.node_id === 'string' ? route.query.node_id : ''
-))
-const runRoots = computed(() => snapshot.value ? runtimeMonitoringRunForest(snapshot.value) : [])
-const selectedRun = computed(() => snapshot.value?.runs.find((run) => (
-  run.run_id === selectedRunId.value
-)) ?? null)
-const graphDocument = computed(() => graphResponse.value?.graph?.document ?? null)
-const selectedNode = computed(() => graphDocument.value?.definition.nodes.find((node) => (
-  node.id === selectedNodeId.value
-)) ?? null)
-const selectedNodeSummary = computed(() => nodeSummaryPage.value?.items.find((summary) => (
-  summary.workflow_node_id === selectedNodeId.value
-)) ?? null)
-
-function localTime(value: string | null): string {
-  if (!value) return t('common.none')
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
-}
-
-function availabilityLabel(value: RuntimeMonitoringAvailability): string {
-  return t(`runtimeMonitoring.availability.${value}`)
-}
-
-function graphEmptyMessage(): string {
-  const availability = graphResponse.value?.availability
-  return availability
-    ? t(`runtimeMonitoring.graph.emptyByAvailability.${availability}`)
-    : t('runtimeMonitoring.graph.empty')
-}
-
-function isCurrentRunRequest(generation: number, runId: string): boolean {
-  return generation === runGeneration
-    && selectedRunId.value === runId
-    && resourceRunId === runId
-}
-
-function queryWithoutNode(runId = selectedRunId.value) {
-  const query = { ...route.query }
-  delete query.node_id
-  if (runId) query.run_id = runId
-  return query
-}
-
-function resetNodeSelection(): void {
-  nodeAttemptController?.abort()
-  nodeAttemptGeneration += 1
-  resourceNodeRequest = ''
-  selectedNodeId.value = ''
-  nodeAttemptPage.value = null
-  nodeAttemptError.value = ''
-  nodeAttemptLoading.value = false
-}
-
-function isCurrentNodeRequest(
-  generation: number,
-  runId: string,
-  nodeId: string,
-  requestKey: string,
-): boolean {
-  return generation === nodeAttemptGeneration
-    && selectedRunId.value === runId
-    && selectedNodeId.value === nodeId
-    && resourceNodeRequest === requestKey
-}
-
-async function loadNodeAttempts(
-  nodeId: string,
-  page = 1,
-  pageSize = nodeAttemptPageSize.value,
-  force = false,
-): Promise<void> {
-  if (!graphDocument.value?.definition.nodes.some((node) => node.id === nodeId)) return
-  const targetLifecycleId = lifecycleId.value
-  const targetRunId = selectedRunId.value
-  const requestKey = `${targetRunId}:${nodeId}:${page}:${pageSize}`
-  if (!force && resourceNodeRequest === requestKey) return
-
-  nodeAttemptController?.abort()
-  const controller = new AbortController()
-  nodeAttemptController = controller
-  const generation = ++nodeAttemptGeneration
-  resourceNodeRequest = requestKey
-  selectedNodeId.value = nodeId
-  nodeAttemptPageSize.value = pageSize
-  nodeAttemptPage.value = null
-  nodeAttemptError.value = ''
-  nodeAttemptLoading.value = true
-
-  try {
-    const response = await managementApi.listRuntimeMonitoringNodeAttempts(
-      targetLifecycleId,
-      targetRunId,
-      nodeId,
-      { page, page_size: pageSize },
-      controller.signal,
-    )
-    if (isCurrentNodeRequest(generation, targetRunId, nodeId, requestKey)) {
-      nodeAttemptPage.value = response
-    }
-  } catch (error) {
-    if (
-      !controller.signal.aborted
-      && isCurrentNodeRequest(generation, targetRunId, nodeId, requestKey)
-    ) {
-      nodeAttemptError.value = managementError.describe(
-        error,
-        'runtimeMonitoring.nodeAttempts.loadFailed',
-      ).display
-    }
-  } finally {
-    if (isCurrentNodeRequest(generation, targetRunId, nodeId, requestKey)) {
-      nodeAttemptLoading.value = false
-    }
-  }
-}
-
-function applyRouteNodeSelection(): void {
-  if (!graphDocument.value) return
-  const nodeId = requestedNodeId.value
-  if (!nodeId) {
-    if (selectedNodeId.value) resetNodeSelection()
-    return
-  }
-  if (!graphDocument.value.definition.nodes.some((node) => node.id === nodeId)) {
-    resetNodeSelection()
-    void router.replace({ query: queryWithoutNode() })
-    return
-  }
-  void loadNodeAttempts(nodeId)
-}
-
-async function loadRunResources(
-  runId: string,
-  force = false,
-  restoreNodeFromRoute = true,
-): Promise<void> {
-  if (!snapshot.value?.runs.some((run) => run.run_id === runId)) return
-  if (!force && selectedRunId.value === runId && resourceRunId === runId) return
-
-  runController?.abort()
-  const controller = new AbortController()
-  runController = controller
-  const generation = ++runGeneration
-  const targetLifecycleId = lifecycleId.value
-  selectedRunId.value = runId
-  resourceRunId = runId
-  resetNodeSelection()
-  graphResponse.value = null
-  nodeSummaryPage.value = null
-  runError.value = ''
-  runLoading.value = true
-
-  try {
-    const graph = await managementApi.getRuntimeMonitoringGraph(
-      targetLifecycleId,
-      runId,
-      controller.signal,
-    )
-    if (!isCurrentRunRequest(generation, runId)) return
-    graphResponse.value = graph
-    if (!graph.graph) return
-
-    const pageSize = Math.max(1, graph.graph.document.definition.nodes.length)
-    const nodes = await managementApi.listRuntimeMonitoringNodes(
-      targetLifecycleId,
-      runId,
-      { page: 1, page_size: pageSize },
-      controller.signal,
-    )
-    if (isCurrentRunRequest(generation, runId)) {
-      nodeSummaryPage.value = nodes
-      if (restoreNodeFromRoute) applyRouteNodeSelection()
-    }
-  } catch (error) {
-    if (!controller.signal.aborted && isCurrentRunRequest(generation, runId)) {
-      runError.value = managementError.describe(
-        error,
-        'runtimeMonitoring.graph.loadFailed',
-      ).display
-    }
-  } finally {
-    if (isCurrentRunRequest(generation, runId)) runLoading.value = false
-  }
-}
-
-function replaceInvalidRunQuery(runId: string): void {
-  if (requestedRunId.value === runId) return
-  void router.replace({
-    query: { ...route.query, run_id: runId },
-  })
-}
-
-function applyRouteSelection(): void {
-  if (!snapshot.value) return
-  const runId = selectRuntimeMonitoringRunId(snapshot.value, requestedRunId.value)
-  if (!runId) {
-    selectedRunId.value = ''
-    return
-  }
-  void loadRunResources(runId)
-  replaceInvalidRunQuery(runId)
-}
-
-async function loadLifecycle(): Promise<void> {
-  lifecycleController?.abort()
-  runController?.abort()
-  const controller = new AbortController()
-  lifecycleController = controller
-  const generation = ++lifecycleGeneration
-  runGeneration += 1
-  resourceRunId = ''
-  snapshot.value = null
-  nodeCatalog.value = []
-  selectedRunId.value = ''
-  graphResponse.value = null
-  nodeSummaryPage.value = null
-  resetNodeSelection()
-  lifecycleError.value = ''
-  catalogError.value = ''
-  runError.value = ''
-  lifecycleLoading.value = true
-  runLoading.value = false
-  const targetLifecycleId = lifecycleId.value
-
-  const [snapshotResult, catalogResult] = await Promise.allSettled([
-    managementApi.getRuntimeMonitoringSnapshot(targetLifecycleId, controller.signal),
-    managementApi.listWorkflowNodeCatalog(),
-  ])
-  if (controller.signal.aborted || generation !== lifecycleGeneration) return
-
-  if (snapshotResult.status === 'rejected') {
-    lifecycleError.value = managementError.describe(
-      snapshotResult.reason,
-      'runtimeMonitoring.snapshot.loadFailed',
-    ).display
-  } else {
-    snapshot.value = snapshotResult.value
-  }
-  if (catalogResult.status === 'rejected') {
-    catalogError.value = managementError.describe(
-      catalogResult.reason,
-      'runtimeMonitoring.graph.catalogLoadFailed',
-    ).display
-  } else {
-    nodeCatalog.value = catalogResult.value
-  }
-  lifecycleLoading.value = false
-  applyRouteSelection()
-}
-
-function selectRun(runId: string): void {
-  if (!snapshot.value?.runs.some((run) => run.run_id === runId)) return
-  if (runId === selectedRunId.value) return
-  void loadRunResources(runId, false, false)
-  if (requestedRunId.value !== runId) {
-    void router.push({ query: queryWithoutNode(runId) })
-  }
-}
-
-function selectNode(nodeId: string): void {
-  if (!graphDocument.value?.definition.nodes.some((node) => node.id === nodeId)) return
-  void loadNodeAttempts(nodeId)
-  if (requestedNodeId.value !== nodeId) {
-    void router.push({ query: { ...route.query, node_id: nodeId } })
-  }
-}
-
-function closeNodeAttempts(): void {
-  resetNodeSelection()
-  if (requestedNodeId.value) void router.push({ query: queryWithoutNode() })
-}
-
-function retryNodeAttempts(): void {
-  if (!selectedNodeId.value) return
-  void loadNodeAttempts(
-    selectedNodeId.value,
-    nodeAttemptPage.value?.page ?? 1,
-    nodeAttemptPageSize.value,
-    true,
-  )
-}
-
-function changeNodeAttemptPage(page: number): void {
-  if (selectedNodeId.value) void loadNodeAttempts(selectedNodeId.value, page)
-}
-
-function changeNodeAttemptPageSize(pageSize: number): void {
-  if (selectedNodeId.value) void loadNodeAttempts(selectedNodeId.value, 1, pageSize)
-}
-
-function retryRun(): void {
-  if (selectedRunId.value) void loadRunResources(selectedRunId.value, true)
-}
-
-watch(lifecycleId, () => { void loadLifecycle() }, { immediate: true })
-watch(requestedRunId, applyRouteSelection)
-watch(requestedNodeId, applyRouteNodeSelection)
-
-onUnmounted(() => {
-  lifecycleGeneration += 1
-  runGeneration += 1
-  nodeAttemptGeneration += 1
-  lifecycleController?.abort()
-  runController?.abort()
-  nodeAttemptController?.abort()
-})
+const {
+  lifecycleId,
+  lifecycleSnapshot,
+  snapshot,
+  nodeCatalog,
+  selectedRunId,
+  graphResponse,
+  nodeSummaryPage,
+  nodeSummaryError,
+  nodeSummaryRetrying,
+  lifecycleLoading,
+  runLoading,
+  lifecycleError,
+  catalogError,
+  runError,
+  pollRefreshing,
+  pollError,
+  nodeDetails,
+  runDetails,
+  selectedNodeId,
+  selectedInvocationId,
+  nodeAttemptPage,
+  nodeAttemptLoading,
+  nodeAttemptError,
+  agentArtifact,
+  agentArtifactLoading,
+  agentArtifactError,
+  agentProtocol,
+  agentProtocolLoading,
+  agentProtocolError,
+  commandObservations,
+  commandLoading,
+  commandError,
+  runDetailKind,
+  runProtocol,
+  runProtocolLoading,
+  runProtocolError,
+  runModels,
+  runModelsLoading,
+  runModelsError,
+  runState,
+  runStateLoading,
+  runStateError,
+  runRoots,
+  selectedRun,
+  graphDocument,
+  selectedNode,
+  selectedNodeSummary,
+  lifecycleIsActive,
+  displayedScope,
+  scopeSelectorId,
+  scopeWorkflows,
+  localTime,
+  availabilityLabel,
+  graphEmptyMessage,
+  selectScope,
+  selectScopeTarget,
+  pollOnce,
+  loadLifecycle,
+  selectRun,
+  selectNode,
+  closeNodeAttempts,
+  openRunDetails,
+  closeRunDetails,
+  retryRun,
+  retryNodeSummaries,
+} = useRuntimeMonitoringPage()
 </script>
 
 <template>
@@ -375,11 +89,50 @@ onUnmounted(() => {
           {{ t('runtimeMonitoring.lifecycleId') }}: {{ lifecycleId }}
         </p>
       </div>
-      <RouterLink class="btn btn-outline-secondary action-button" to="/system/workflow-lifecycles">
-        <i class="bi bi-arrow-left" aria-hidden="true" />
-        {{ t('runtimeMonitoring.backToCatalog') }}
-      </RouterLink>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span
+          v-if="snapshot"
+          class="badge"
+          :class="lifecycleIsActive ? 'text-bg-success' : 'text-bg-secondary'"
+          :title="lifecycleIsActive ? t('runtimeMonitoring.polling.activeHelp') : undefined"
+        >
+          <span
+            v-if="pollRefreshing"
+            class="spinner-border spinner-border-sm me-1"
+            aria-hidden="true"
+          />
+          {{ lifecycleIsActive
+            ? t('runtimeMonitoring.polling.active')
+            : t('runtimeMonitoring.polling.terminal') }}
+        </span>
+        <LteButton
+          v-if="snapshot"
+          class="action-button"
+          :disabled="pollRefreshing || lifecycleLoading"
+          type="button"
+          @click="pollOnce(true)"
+        >
+          <i class="bi bi-arrow-clockwise" aria-hidden="true" />
+          {{ t('common.refresh') }}
+        </LteButton>
+        <RouterLink class="btn btn-outline-secondary action-button" to="/system/workflow-lifecycles">
+          <i class="bi bi-arrow-left" aria-hidden="true" />
+          {{ t('runtimeMonitoring.backToCatalog') }}
+        </RouterLink>
+      </div>
     </div>
+
+    <RuntimeMonitoringScopeSelector
+      v-if="lifecycleSnapshot"
+      class="mb-3"
+      :disabled="lifecycleLoading"
+      :runs="lifecycleSnapshot.runs"
+      :scope="displayedScope.scope"
+      :selector-id="scopeSelectorId"
+      :workflows="scopeWorkflows"
+      @scope-change="selectScope"
+      @selector-change="selectScopeTarget"
+    />
 
     <div
       v-if="lifecycleLoading"
@@ -403,10 +156,14 @@ onUnmounted(() => {
       </LteButton>
     </LteAlert>
 
+    <div v-else-if="pollError && snapshot" class="alert alert-warning" role="status">
+      <p class="runtime-monitoring-error mb-0">{{ pollError }}</p>
+    </div>
+
     <div
-      v-else-if="snapshot"
+      v-if="snapshot && !lifecycleLoading && !lifecycleError"
       class="runtime-monitoring-layout"
-      :data-node-open="Boolean(selectedNode)"
+      :data-detail-open="Boolean(selectedNode || runDetailKind)"
     >
       <aside class="card runtime-monitoring-run-panel">
         <header class="card-header">
@@ -458,6 +215,17 @@ onUnmounted(() => {
                 value: availabilityLabel(graphResponse.availability),
               }) }}
             </span>
+            <div class="btn-group btn-group-sm" role="group" :aria-label="t('runtimeMonitoring.runDetails.tabs')">
+              <button class="btn btn-outline-secondary" type="button" @click="openRunDetails('protocol')">
+                {{ t('runtimeMonitoring.runDetails.kinds.protocol') }}
+              </button>
+              <button class="btn btn-outline-secondary" type="button" @click="openRunDetails('models')">
+                {{ t('runtimeMonitoring.runDetails.kinds.models') }}
+              </button>
+              <button class="btn btn-outline-secondary" type="button" @click="openRunDetails('state')">
+                {{ t('runtimeMonitoring.runDetails.kinds.state') }}
+              </button>
+            </div>
           </div>
         </header>
 
@@ -503,6 +271,27 @@ onUnmounted(() => {
               }) }}
             </div>
             <div
+              v-if="nodeSummaryError"
+              class="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0"
+              role="alert"
+            >
+              <p class="runtime-monitoring-error mb-2">{{ nodeSummaryError }}</p>
+              <LteButton
+                class="btn btn-sm btn-outline-secondary"
+                :disabled="nodeSummaryRetrying"
+                type="button"
+                @click="retryNodeSummaries"
+              >
+                <span
+                  v-if="nodeSummaryRetrying"
+                  class="spinner-border spinner-border-sm"
+                  aria-hidden="true"
+                />
+                <i v-else class="bi bi-arrow-clockwise" aria-hidden="true" />
+                {{ t('common.retry') }}
+              </LteButton>
+            </div>
+            <div
               v-if="nodeSummaryPage && nodeSummaryPage.availability !== 'available'"
               class="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0"
               role="status"
@@ -527,18 +316,55 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <RuntimeNodeAttemptsPanel
+      <RuntimeNodeDetailsPanel
         v-if="selectedNode"
+        :agent-artifact="agentArtifact"
+        :agent-artifact-error="agentArtifactError"
+        :agent-artifact-loading="agentArtifactLoading"
+        :agent-protocol="agentProtocol"
+        :agent-protocol-error="agentProtocolError"
+        :agent-protocol-loading="agentProtocolLoading"
+        :command-error="commandError"
+        :command-loading="commandLoading"
+        :command-observations="commandObservations"
         :error="nodeAttemptError"
         :loading="nodeAttemptLoading"
         :node-id="selectedNode.id"
         :node-type="selectedNode.type"
         :page="nodeAttemptPage"
+        :selected-invocation-id="selectedInvocationId"
         :summary="selectedNodeSummary"
         @close="closeNodeAttempts"
-        @page-change="changeNodeAttemptPage"
-        @page-size-change="changeNodeAttemptPageSize"
-        @retry="retryNodeAttempts"
+        @page-change="nodeDetails.changePage"
+        @page-size-change="nodeDetails.changePageSize"
+        @retry="nodeDetails.retryAttempts"
+        @retry-agent-artifact="nodeDetails.retryAgentArtifact"
+        @retry-agent-protocol="nodeDetails.retryAgentProtocol"
+        @retry-command="nodeDetails.retryCommand"
+        @select-invocation="nodeDetails.selectInvocation"
+        @view-latest="nodeDetails.viewLatest"
+      />
+      <RuntimeRunDetailsPanel
+        v-else-if="runDetailKind && selectedRun"
+        :active-kind="runDetailKind"
+        :model-page="runModels"
+        :models-error="runModelsError"
+        :models-loading="runModelsLoading"
+        :protocol="runProtocol"
+        :protocol-error="runProtocolError"
+        :protocol-loading="runProtocolLoading"
+        :run-id="selectedRun.run_id"
+        :run-name="selectedRun.workflow_name"
+        :state="runState"
+        :state-error="runStateError"
+        :state-loading="runStateLoading"
+        @close="closeRunDetails"
+        @model-page-change="runDetails.changeModelPage"
+        @model-page-size-change="runDetails.changeModelPageSize"
+        @retry-models="runDetails.retryModels"
+        @retry-protocol="runDetails.retryProtocol"
+        @retry-state="runDetails.retryState"
+        @select-kind="openRunDetails"
       />
     </div>
   </PageShell>

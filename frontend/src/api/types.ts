@@ -750,6 +750,109 @@ export interface RuntimeMonitoringNodeAttemptPage {
   total_pages: number
 }
 
+export type RuntimeMonitoringProtocolSourceType =
+  | 'agent'
+  | 'subagent'
+  | 'script'
+  | 'non_agent'
+
+export interface RuntimeMonitoringProtocolEvent {
+  sequence: number
+  method: string
+  captured_at: string
+  envelope: Record<string, JsonValue>
+  origin: {
+    source_type: RuntimeMonitoringProtocolSourceType
+    workflow_node_id: string
+    node_invocation_id: string
+    agent_profile_id: string
+    subagent_profile_id: string
+  }
+}
+
+export interface RuntimeMonitoringProtocolEventSequence {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  items: RuntimeMonitoringProtocolEvent[]
+  after_sequence: number
+  next_after_sequence: number
+  limit: number
+  remaining: number
+}
+
+export type RuntimeMonitoringModelStatus = 'running' | 'completed' | 'failed'
+
+export interface RuntimeMonitoringModelRequest {
+  sequence: number
+  model_run_id: string
+  started_at: string
+  finished_at: string | null
+  status: RuntimeMonitoringModelStatus
+  error_code: string
+  request: Record<string, JsonValue>
+  usage: Record<string, number>
+}
+
+export interface RuntimeMonitoringModelRequestPage {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  items: RuntimeMonitoringModelRequest[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
+export type RuntimeMonitoringCommandPhase =
+  | 'started'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface RuntimeMonitoringCommandObservation {
+  sequence: number
+  invocation_id: string
+  workflow_node_id: string
+  attempt: number
+  occurred_at: string
+  phase: RuntimeMonitoringCommandPhase
+  error_code: string
+  payload: Record<string, JsonValue>
+}
+
+export interface RuntimeMonitoringCommandObservationSequence {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  items: RuntimeMonitoringCommandObservation[]
+  after_sequence: number
+  next_after_sequence: number
+  limit: number
+  remaining: number
+}
+
+export interface RuntimeMonitoringPersistedState {
+  checkpoint_id: string
+  checkpoint_ns: string
+  created_at: string
+  source: string
+  step: number | null
+  pending_write_count: number
+  state: Record<string, JsonValue>
+}
+
+export interface RuntimeMonitoringStateResponse {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  state: RuntimeMonitoringPersistedState | null
+}
+
+export interface RuntimeMonitoringAgentInvocationResponse {
+  availability: RuntimeMonitoringAvailability
+  read_at: string
+  workflow_node_id: string | null
+  artifact: Record<string, JsonValue> | null
+}
+
 export type WorkflowNodeType =
   | 'start'
   | 'agent'
