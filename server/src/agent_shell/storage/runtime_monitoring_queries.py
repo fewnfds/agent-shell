@@ -64,6 +64,48 @@ def _run(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def _protocol_event(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "sequence": int(row["event_sequence"]),
+        "method": str(row["method"]),
+        "captured_at": str(row["captured_at"]),
+        "envelope": _object(str(row["envelope_json"])),
+        "origin": {
+            "source_type": str(row["source_type"]),
+            "workflow_node_id": str(row["workflow_node_id"]),
+            "node_invocation_id": str(row["node_invocation_id"]),
+            "agent_profile_id": str(row["agent_profile_id"]),
+            "subagent_profile_id": str(row["subagent_profile_id"]),
+        },
+    }
+
+
+def _model_request(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "sequence": int(row["sequence"]),
+        "model_run_id": str(row["model_run_id"]),
+        "started_at": str(row["started_at"]),
+        "finished_at": row["finished_at"],
+        "status": str(row["status"]),
+        "error_code": str(row["error_code"]),
+        "request": _object(str(row["request_json"])),
+        "usage": _object(str(row["usage_json"])),
+    }
+
+
+def _command_observation(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "sequence": int(row["sequence"]),
+        "invocation_id": str(row["invocation_id"]),
+        "workflow_node_id": str(row["workflow_node_id"]),
+        "attempt": int(row["attempt"]),
+        "occurred_at": str(row["occurred_at"]),
+        "phase": str(row["phase"]),
+        "error_code": str(row["error_code"]),
+        "payload": _object(str(row["payload_json"])),
+    }
+
+
 class RuntimeMonitoringQueryStore:
     """Read concrete runtime-monitoring views from application SQLite."""
 
@@ -412,22 +454,7 @@ class RuntimeMonitoringQueryStore:
                 + " ORDER BY event_sequence LIMIT ?",
                 (*parameters, limit),
             ).fetchall()
-        items = [
-            {
-                "sequence": int(row["event_sequence"]),
-                "method": str(row["method"]),
-                "captured_at": str(row["captured_at"]),
-                "envelope": _object(str(row["envelope_json"])),
-                "origin": {
-                    "source_type": str(row["source_type"]),
-                    "workflow_node_id": str(row["workflow_node_id"]),
-                    "node_invocation_id": str(row["node_invocation_id"]),
-                    "agent_profile_id": str(row["agent_profile_id"]),
-                    "subagent_profile_id": str(row["subagent_profile_id"]),
-                },
-            }
-            for row in rows
-        ]
+        items = [_protocol_event(row) for row in rows]
         return {
             "items": items,
             "after_sequence": after_sequence,
@@ -468,19 +495,7 @@ class RuntimeMonitoringQueryStore:
                 (*parameters, page_size, offset),
             ).fetchall()
         return {
-            "items": [
-                {
-                    "sequence": int(row["sequence"]),
-                    "model_run_id": str(row["model_run_id"]),
-                    "started_at": str(row["started_at"]),
-                    "finished_at": row["finished_at"],
-                    "status": str(row["status"]),
-                    "error_code": str(row["error_code"]),
-                    "request": _object(str(row["request_json"])),
-                    "usage": _object(str(row["usage_json"])),
-                }
-                for row in rows
-            ],
+            "items": [_model_request(row) for row in rows],
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -520,19 +535,7 @@ class RuntimeMonitoringQueryStore:
                 + " ORDER BY sequence LIMIT ?",
                 (*parameters, limit),
             ).fetchall()
-        items = [
-            {
-                "sequence": int(row["sequence"]),
-                "invocation_id": str(row["invocation_id"]),
-                "workflow_node_id": str(row["workflow_node_id"]),
-                "attempt": int(row["attempt"]),
-                "occurred_at": str(row["occurred_at"]),
-                "phase": str(row["phase"]),
-                "error_code": str(row["error_code"]),
-                "payload": _object(str(row["payload_json"])),
-            }
-            for row in rows
-        ]
+        items = [_command_observation(row) for row in rows]
         return {
             "items": items,
             "after_sequence": after_sequence,
@@ -542,6 +545,139 @@ class RuntimeMonitoringQueryStore:
             "limit": limit,
             "remaining": max(total - len(items), 0),
         }
+
+    def archive_high_waters(
+        self,
+        lifecycle_id: str,
+        run_ids: list[str],
+    ) -> dict[str, dict[str, int]]:
+        """Freeze finite per-Run record membership for one archive."""
+
+        watermarks = {
+            run_id: {"node": 0, "protocol": 0, "model": 0, "command": 0}
+            for run_id in dict.fromkeys(run_ids)
+        }
+        if not watermarks:
+            return watermarks
+        selected = set(watermarks)
+        partitions = (
+            ("node", "runtime_node_attempts", "sequence"),
+            ("protocol", "runtime_protocol_events", "event_sequence"),
+            ("model", "runtime_model_requests", "sequence"),
+            ("command", "runtime_command_observations", "sequence"),
+        )
+        with self._database.transaction() as connection:
+            for partition, table, sequence_column in partitions:
+                rows = connection.execute(
+                    f"SELECT run_id, MAX({sequence_column}) AS high_water "
+                    f"FROM {table} WHERE lifecycle_id = ? GROUP BY run_id",
+                    (lifecycle_id,),
+                ).fetchall()
+                for row in rows:
+                    run_id = str(row["run_id"])
+                    if run_id in selected:
+                        watermarks[run_id][partition] = int(row["high_water"])
+        return watermarks
+
+    def archive_node_attempts(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        *,
+        after_sequence: int,
+        through_sequence: int,
+        batch_size: int,
+    ) -> list[dict[str, object]]:
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runtime_node_attempts "
+                "WHERE lifecycle_id = ? AND run_id = ? "
+                "AND sequence > ? AND sequence <= ? "
+                "ORDER BY sequence LIMIT ?",
+                (
+                    lifecycle_id,
+                    run_id,
+                    after_sequence,
+                    through_sequence,
+                    batch_size,
+                ),
+            ).fetchall()
+        return [self._attempt(row) for row in rows]
+
+    def archive_protocol_events(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        *,
+        after_sequence: int,
+        through_sequence: int,
+        batch_size: int,
+    ) -> list[dict[str, object]]:
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runtime_protocol_events "
+                "WHERE lifecycle_id = ? AND run_id = ? "
+                "AND event_sequence > ? AND event_sequence <= ? "
+                "ORDER BY event_sequence LIMIT ?",
+                (
+                    lifecycle_id,
+                    run_id,
+                    after_sequence,
+                    through_sequence,
+                    batch_size,
+                ),
+            ).fetchall()
+        return [_protocol_event(row) for row in rows]
+
+    def archive_model_requests(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        *,
+        after_sequence: int,
+        through_sequence: int,
+        batch_size: int,
+    ) -> list[dict[str, object]]:
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runtime_model_requests "
+                "WHERE lifecycle_id = ? AND run_id = ? "
+                "AND sequence > ? AND sequence <= ? "
+                "ORDER BY sequence LIMIT ?",
+                (
+                    lifecycle_id,
+                    run_id,
+                    after_sequence,
+                    through_sequence,
+                    batch_size,
+                ),
+            ).fetchall()
+        return [_model_request(row) for row in rows]
+
+    def archive_command_observations(
+        self,
+        lifecycle_id: str,
+        run_id: str,
+        *,
+        after_sequence: int,
+        through_sequence: int,
+        batch_size: int,
+    ) -> list[dict[str, object]]:
+        with self._database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runtime_command_observations "
+                "WHERE lifecycle_id = ? AND run_id = ? "
+                "AND sequence > ? AND sequence <= ? "
+                "ORDER BY sequence LIMIT ?",
+                (
+                    lifecycle_id,
+                    run_id,
+                    after_sequence,
+                    through_sequence,
+                    batch_size,
+                ),
+            ).fetchall()
+        return [_command_observation(row) for row in rows]
 
 
 __all__ = ["RuntimeMonitoringQueryStore", "ScopeKind"]

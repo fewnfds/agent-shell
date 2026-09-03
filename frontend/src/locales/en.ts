@@ -315,6 +315,8 @@ export const en: MessageSchema = {
     searchPlaceholder: 'Search Workflow, Lifecycle, or request ID',
     monitor: 'Monitor Lifecycle',
     monitorDisabled: 'Monitoring was disabled when this Lifecycle started',
+    downloadDisabled: 'No runtime monitoring data was captured for this Lifecycle',
+    downloadFailed: 'Could not download Lifecycle runtime data',
     columns: {
       parentWorkflow: 'Parent Run Workflow',
       created: 'Created',
@@ -357,6 +359,8 @@ export const en: MessageSchema = {
     title: 'Lifecycle monitoring',
     lifecycleId: 'Lifecycle',
     backToCatalog: 'Back to Lifecycle catalog',
+    downloadRun: 'Download this Run',
+    downloadRunFailed: 'Could not download Run runtime data',
     snapshot: {
       loading: 'Loading the Lifecycle snapshot…',
       loadFailed: 'Could not load Lifecycle monitoring',
@@ -1502,7 +1506,7 @@ export const en: MessageSchema = {
     runtimeMonitoringDisabled: 'Runtime monitoring was disabled for this Lifecycle.',
     runtimeMonitoringUnavailable: 'The required runtime monitoring registry is unavailable.',
     runtimeMonitoringReadFailed: 'The runtime monitoring request failed.',
-    runtimeMonitoringReadModelUnavailable: 'The requested runtime monitoring read model is unavailable.',
+    runtimeMonitoringArchiveFailed: 'The runtime monitoring archive could not be created.',
     runtimeMonitoringSelectorConflict: 'Select either a Workflow or a Run, not both.',
     runtimeMonitoringProtocolSelectorInvalid: 'Select a Node before selecting an invocation.',
     configurationRepositoryConflict: 'The configuration repository name or identity conflicts.',

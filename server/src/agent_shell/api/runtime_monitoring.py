@@ -289,7 +289,7 @@ class AgentInvocationResponse(MonitoringResourceResponse):
     artifact: dict[str, Any] | None
 
 
-def _http_error(exc: MonitoringReadError):
+def monitoring_http_error(exc: MonitoringReadError):
     if isinstance(exc, MonitoringLifecycleNotFound):
         return management_error(
             404,
@@ -355,13 +355,13 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         try:
             return await service.application_query(call)
         except MonitoringReadError as exc:
-            raise _http_error(exc) from exc
+            raise monitoring_http_error(exc) from exc
 
     async def aread(call):
         try:
             return await call()
         except MonitoringReadError as exc:
-            raise _http_error(exc) from exc
+            raise monitoring_http_error(exc) from exc
 
     @router.get(prefix + "/snapshot", response_model=MonitoringSnapshotResponse)
     async def snapshot(
@@ -552,4 +552,5 @@ __all__ = [
     "ProtocolEventSequenceResponse",
     "WorkflowStateResponse",
     "build_runtime_monitoring_router",
+    "monitoring_http_error",
 ]

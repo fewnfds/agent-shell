@@ -402,6 +402,19 @@ export const managementApi = {
     return managementRequest(`/api/workflow-lifecycles${query ? `?${query}` : ''}`)
   },
 
+  downloadWorkflowLifecycle(id: string): Promise<NamedDownload> {
+    return managementNamedDownload(
+      `/api/workflow-lifecycles/${encodeURIComponent(id)}/download`,
+    )
+  },
+
+  downloadWorkflowRun(lifecycleId: string, runId: string): Promise<NamedDownload> {
+    return managementNamedDownload(
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+        + `/runs/${encodeURIComponent(runId)}/download`,
+    )
+  },
+
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }> {
     return managementRequest(
       `/api/workflow-lifecycles/${encodeURIComponent(id)}`,

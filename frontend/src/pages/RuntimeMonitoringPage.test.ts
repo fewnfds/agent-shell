@@ -13,9 +13,14 @@ import {
   type RuntimeMonitoringSnapshot,
   type WorkflowGraphDocument,
 } from '@/api'
+import { useToasts } from '@/composables/useToasts'
 import { en } from '@/locales/en'
 
 import RuntimeMonitoringPage from './RuntimeMonitoringPage.vue'
+
+const triggerBrowserDownload = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/download', () => ({ triggerBrowserDownload }))
 
 function run(
   runId: string,
@@ -308,15 +313,55 @@ beforeEach(() => {
     read_at: '2026-09-03T00:00:10Z',
     state: null,
   })
+  vi.spyOn(managementApi, 'downloadWorkflowRun').mockResolvedValue({
+    blob: new Blob(['runtime archive']),
+    filename: 'runtime-monitoring-run-run-root.zip',
+  })
 })
 
 afterEach(() => {
   for (const wrapper of mountedWrappers.splice(0)) wrapper.unmount()
+  const toasts = useToasts()
+  for (const toast of toasts.items.value) toasts.dismiss(toast.id)
+  triggerBrowserDownload.mockReset()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
 describe('RuntimeMonitoringPage', () => {
+  it('downloads the currently selected Run without changing the monitoring view', async () => {
+    const { router, wrapper } = await mountPage()
+
+    await wrapper.get('button[data-action="download-run"]').trigger('click')
+    await flushPromises()
+
+    expect(managementApi.downloadWorkflowRun).toHaveBeenCalledWith(
+      'lifecycle-1',
+      'run-root',
+    )
+    expect(triggerBrowserDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'runtime-monitoring-run-run-root.zip',
+    )
+    expect(router.currentRoute.value.query.run_id).toBe('run-root')
+  })
+
+  it('reports a Run archive download failure without disrupting monitoring', async () => {
+    vi.mocked(managementApi.downloadWorkflowRun).mockRejectedValueOnce(
+      new Error('download failed'),
+    )
+    const { wrapper } = await mountPage()
+
+    await wrapper.get('button[data-action="download-run"]').trigger('click')
+    await flushPromises()
+
+    expect(triggerBrowserDownload).not.toHaveBeenCalled()
+    expect(useToasts().items.value.some(
+      (toast) => toast.title === 'Could not download Run runtime data',
+    )).toBe(true)
+    expect(wrapper.get('[data-testid="runtime-workflow-canvas"]').exists()).toBe(true)
+  })
+
   it('selects the Lifecycle root by default and stores later Run selection in the URL', async () => {
     const { router, wrapper } = await mountPage()
 

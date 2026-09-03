@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
+import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -23,7 +26,7 @@ async def _create_lifecycle(client, suffix: str, *, capture: bool = True) -> str
     )
 
 
-def test_lifecycle_catalog_exposes_registry_summary_and_generic_detail_is_unavailable(
+def test_lifecycle_catalog_exposes_registry_summary_and_downloads(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -61,27 +64,41 @@ def test_lifecycle_catalog_exposes_registry_summary_and_generic_detail_is_unavai
             lifecycle_id
         ]
 
-        for path in (
-            f"/api/workflow-lifecycles/{lifecycle_id}",
-            f"/api/workflow-lifecycles/{lifecycle_id}/events",
-            f"/api/workflow-lifecycles/{lifecycle_id}/runs/run-catalog",
-            f"/api/workflow-lifecycles/{lifecycle_id}/download",
-            f"/api/workflow-lifecycles/{lifecycle_id}/runs/run-catalog/download",
-        ):
-            response = client.get(path)
-            assert response.status_code == 503, response.text
-            assert response.json()["detail"]["code"] == (
-                "runtime_monitoring_read_model_unavailable"
-            )
+        lifecycle_download = client.get(
+            f"/api/workflow-lifecycles/{lifecycle_id}/download"
+        )
+        assert lifecycle_download.status_code == 200, lifecycle_download.text
+        assert lifecycle_download.headers["content-type"] == "application/zip"
+        assert "runtime-monitoring-lifecycle-" in lifecycle_download.headers[
+            "content-disposition"
+        ]
+        with ZipFile(BytesIO(lifecycle_download.content)) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["scope"] == "lifecycle"
+            assert [run["run_id"] for run in manifest["runs"]] == ["run-catalog"]
 
-        missing = client.get("/api/workflow-lifecycles/missing")
+        run_download = client.get(
+            f"/api/workflow-lifecycles/{lifecycle_id}/runs/run-catalog/download"
+        )
+        assert run_download.status_code == 200, run_download.text
+        with ZipFile(BytesIO(run_download.content)) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["scope"] == "run"
+            assert manifest["selected_run_id"] == "run-catalog"
+        assert list(
+            (tmp_path / "runtime" / "tmp").glob(
+                ".runtime-monitoring-archive-*"
+            )
+        ) == []
+
+        missing = client.get("/api/workflow-lifecycles/missing/download")
         assert missing.status_code == 404
         assert missing.json()["detail"]["code"] == (
             "workflow_lifecycle_not_found"
         )
 
 
-def test_run_detail_and_download_validate_lifecycle_ownership_before_tbd_response(
+def test_run_download_validates_lifecycle_ownership_and_capture_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -91,17 +108,26 @@ def test_run_detail_and_download_validate_lifecycle_ownership_before_tbd_respons
         first_id = portal.call(_create_lifecycle, client, "first")
         second_id = portal.call(_create_lifecycle, client, "second")
 
-        for suffix in ("", "/download"):
-            response = client.get(
-                f"/api/workflow-lifecycles/{first_id}/runs/run-second{suffix}"
-            )
-            assert response.status_code == 404, response.text
-            assert response.json()["detail"]["code"] == "workflow_run_not_found"
+        response = client.get(
+            f"/api/workflow-lifecycles/{first_id}/runs/run-second/download"
+        )
+        assert response.status_code == 404, response.text
+        assert response.json()["detail"]["code"] == "workflow_run_not_found"
 
         own = client.get(
-            f"/api/workflow-lifecycles/{second_id}/runs/run-second"
+            f"/api/workflow-lifecycles/{second_id}/runs/run-second/download"
         )
-        assert own.status_code == 503
+        assert own.status_code == 200
+
+        async def create_disabled() -> str:
+            return await _create_lifecycle(client, "disabled", capture=False)
+
+        disabled_id = portal.call(create_disabled)
+        disabled = client.get(
+            f"/api/workflow-lifecycles/{disabled_id}/download"
+        )
+        assert disabled.status_code == 409, disabled.text
+        assert disabled.json()["detail"]["code"] == "runtime_monitoring_disabled"
 
 
 def test_explicit_delete_rejects_active_run_and_preserves_user_files(
@@ -191,12 +217,13 @@ def test_bulk_delete_uses_full_query_and_skips_active_lifecycle(
             "skipped_active": 1,
             "deleted_checkpoint_thread_count": 0,
         }
-        assert client.get(
-            f"/api/workflow-lifecycles/{terminal_id}"
-        ).status_code == 404
-        assert client.get(
-            f"/api/workflow-lifecycles/{active_id}"
-        ).status_code == 503
-        assert client.get(
-            f"/api/workflow-lifecycles/{other_id}"
-        ).status_code == 503
+        remaining = client.get(
+            "/api/workflow-lifecycles",
+            params={"page_size": 10},
+        )
+        assert remaining.status_code == 200, remaining.text
+        remaining_ids = {
+            item["lifecycle_id"] for item in remaining.json()["items"]
+        }
+        assert terminal_id not in remaining_ids
+        assert {active_id, other_id}.issubset(remaining_ids)

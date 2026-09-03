@@ -14,6 +14,10 @@ import { en } from '@/locales/en'
 
 import WorkflowLifecyclesPage from './WorkflowLifecyclesPage.vue'
 
+const triggerBrowserDownload = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/download', () => ({ triggerBrowserDownload }))
+
 const lifecycle: WorkflowLifecycleSummary = {
   lifecycle_id: 'lifecycle-1',
   lifecycle_status: 'active',
@@ -34,6 +38,7 @@ const lifecycle: WorkflowLifecycleSummary = {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  triggerBrowserDownload.mockReset()
   useConfirmation().cancel()
   const toasts = useToasts()
   for (const toast of toasts.items.value) toasts.dismiss(toast.id)
@@ -78,6 +83,12 @@ describe('WorkflowLifecyclesPage', () => {
       total_pages: 1,
     }
     const list = vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue(page)
+    const archive = {
+      blob: new Blob(['runtime archive']),
+      filename: 'runtime-monitoring-lifecycle-lifecycle-1.zip',
+    }
+    const download = vi.spyOn(managementApi, 'downloadWorkflowLifecycle')
+      .mockResolvedValue(archive)
     const remove = vi.spyOn(managementApi, 'deleteWorkflowLifecycle').mockResolvedValue({ ok: true })
     const { router, wrapper } = await mountPage()
     await flushPromises()
@@ -97,7 +108,18 @@ describe('WorkflowLifecyclesPage', () => {
     expect(monitorButtons[1]?.attributes('title')).toBe(
       'Monitoring was disabled when this Lifecycle started',
     )
-    expect(wrapper.find('button[data-action="download"]').exists()).toBe(false)
+    const downloadButtons = wrapper.findAll('button[data-action="download"]')
+    expect(downloadButtons).toHaveLength(2)
+    expect(downloadButtons[0]?.attributes('title')).toBe('Download')
+    expect(downloadButtons[1]?.attributes('disabled')).toBeDefined()
+    expect(downloadButtons[1]?.attributes('title')).toBe(
+      'No runtime monitoring data was captured for this Lifecycle',
+    )
+
+    await downloadButtons[0]!.trigger('click')
+    await flushPromises()
+    expect(download).toHaveBeenCalledWith(lifecycle.lifecycle_id)
+    expect(triggerBrowserDownload).toHaveBeenCalledWith(archive.blob, archive.filename)
 
     await monitorButtons[0]!.trigger('click')
     await flushPromises()

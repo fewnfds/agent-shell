@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { LteAlert, LteButton } from '@adminlte/vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { managementApi } from '@/api'
 import PageShell from '@/components/PageShell.vue'
 import RuntimeMonitoringScopeSelector from '@/components/runtime-monitoring/RuntimeMonitoringScopeSelector.vue'
 import RuntimeNodeDetailsPanel from '@/components/runtime-monitoring/RuntimeNodeDetailsPanel.vue'
 import RuntimeRunDetailsPanel from '@/components/runtime-monitoring/RuntimeRunDetailsPanel.vue'
 import RuntimeRunIndex from '@/components/runtime-monitoring/RuntimeRunIndex.vue'
 import RuntimeWorkflowCanvas from '@/components/runtime-monitoring/RuntimeWorkflowCanvas.vue'
+import { useManagementError } from '@/composables/useManagementError'
 import { useRuntimeMonitoringPage } from '@/composables/useRuntimeMonitoringPage'
+import { useToasts } from '@/composables/useToasts'
+import { triggerBrowserDownload } from '@/utils/download'
 
 const { t } = useI18n()
+const managementError = useManagementError()
+const { notify } = useToasts()
+const downloadingRunId = ref('')
 const {
   lifecycleId,
   lifecycleSnapshot,
@@ -78,6 +86,29 @@ const {
   retryRun,
   retryNodeSummaries,
 } = useRuntimeMonitoringPage()
+
+async function downloadSelectedRun(): Promise<void> {
+  const run = selectedRun.value
+  if (!run || downloadingRunId.value) return
+  const requestedLifecycleId = lifecycleId.value
+  const requestedRunId = run.run_id
+  downloadingRunId.value = requestedRunId
+  try {
+    const download = await managementApi.downloadWorkflowRun(
+      requestedLifecycleId,
+      requestedRunId,
+    )
+    triggerBrowserDownload(download.blob, download.filename)
+  } catch (error) {
+    notify({
+      tone: 'danger',
+      title: t('runtimeMonitoring.downloadRunFailed'),
+      message: managementError.describe(error).display,
+    })
+  } finally {
+    if (downloadingRunId.value === requestedRunId) downloadingRunId.value = ''
+  }
+}
 </script>
 
 <template>
@@ -215,6 +246,22 @@ const {
                 value: availabilityLabel(graphResponse.availability),
               }) }}
             </span>
+            <LteButton
+              class="action-button"
+              data-action="download-run"
+              :aria-busy="Boolean(downloadingRunId)"
+              :disabled="Boolean(downloadingRunId)"
+              type="button"
+              @click="downloadSelectedRun"
+            >
+              <span
+                v-if="downloadingRunId"
+                class="spinner-border spinner-border-sm"
+                aria-hidden="true"
+              />
+              <i v-else class="bi bi-download" aria-hidden="true" />
+              {{ t('runtimeMonitoring.downloadRun') }}
+            </LteButton>
             <div class="btn-group btn-group-sm" role="group" :aria-label="t('runtimeMonitoring.runDetails.tabs')">
               <button class="btn btn-outline-secondary" type="button" @click="openRunDetails('protocol')">
                 {{ t('runtimeMonitoring.runDetails.kinds.protocol') }}

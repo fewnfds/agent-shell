@@ -30,7 +30,7 @@ Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内�
 
 Node 详情显示直接保存的 attempt。Agent Node 可选择 invocation，查看 exact completed artifact 和 direct-origin ProtocolEvent 数据流；Command Node 显示直接保存的 phase、错误以及经过校验的 `activate|dispatch|update` 外部结果。Run 详情显示 raw ProtocolEvent、Model Request 和 latest persisted Checkpoint State。活动 Lifecycle 在页面可见时约每两秒读取一次数据库中的新事实，页面隐藏时暂停，完整终态后完成最后刷新并静态化；frozen Graph 不参与重复轮询，State 由用户手动刷新。各资源失败只影响自己的区域，已有成功数据继续保留。
 
-Management monitoring GET 是页面的数据来源，可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选；读取端不重新解析 namespace，也不推演 Edge 或跨资源 Timeline。通用 detail/events 与归档下载入口返回结构化 503。
+Management monitoring GET 是页面的数据来源，可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选；读取端不重新解析 namespace，也不推演 Edge 或跨资源 Timeline。Lifecycle 目录可下载整个 Lifecycle，Graph 标题区可下载当前 Run；归档使用同一批 canonical owner 的有界持久化快照，不包含用户文件、任意 Store 浏览或完整 checkpoint history。
 
 系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。root Run、全部 child Run 和全部 background task terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留 diagnostics 以及运行中写入硬盘的全部用户文件和目录。
 

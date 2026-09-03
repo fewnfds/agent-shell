@@ -3,9 +3,17 @@ from __future__ import annotations
 import math
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
+from starlette.background import BackgroundTask
 
 from agent_shell.api.errors import management_error
+from agent_shell.api.runtime_monitoring import monitoring_http_error
+from agent_shell.runtime.monitoring_archive import (
+    RuntimeMonitoringArchive,
+    RuntimeMonitoringArchiveService,
+)
+from agent_shell.runtime.monitoring_read_service import MonitoringReadError
 from agent_shell.runtime.runtime_cleanup import (
     RuntimeCleanupCoordinator,
     RuntimeLifecycleActiveError,
@@ -22,8 +30,9 @@ class WorkflowLifecycleBulkDelete(BaseModel):
 def build_workflow_lifecycle_router(
     lifecycle_service: WorkflowLifecycleService,
     runtime_cleanup: RuntimeCleanupCoordinator,
+    monitoring_archive: RuntimeMonitoringArchiveService,
 ) -> APIRouter:
-    """Expose the trustworthy catalog while the monitoring read model is built."""
+    """Expose the Lifecycle catalog, archives, and cleanup actions."""
 
     router = APIRouter()
 
@@ -45,17 +54,6 @@ def build_workflow_lifecycle_router(
             **lifecycle_service.run_summary(lifecycle_id),
         }
 
-    def generic_detail_unavailable():
-        return management_error(
-            503,
-            code="runtime_monitoring_read_model_unavailable",
-            message_key="errors.runtimeMonitoringReadModelUnavailable",
-            message=(
-                "This generic lifecycle detail or archive endpoint is not "
-                "available."
-            ),
-        )
-
     @router.get("/api/workflow-lifecycles")
     async def list_workflow_lifecycles(
         page: int = Query(default=1, ge=1),
@@ -75,52 +73,43 @@ def build_workflow_lifecycle_router(
             "total_pages": math.ceil(total / page_size) if total else 1,
         }
 
-    @router.get("/api/workflow-lifecycles/{lifecycle_id}")
-    async def get_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
-        await require_lifecycle(lifecycle_id)
-        raise generic_detail_unavailable()
-
-    @router.get("/api/workflow-lifecycles/{lifecycle_id}/events")
-    async def list_workflow_lifecycle_events(lifecycle_id: str) -> dict[str, object]:
-        await require_lifecycle(lifecycle_id)
-        raise generic_detail_unavailable()
-
-    @router.get("/api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}")
-    async def get_workflow_run(
-        lifecycle_id: str,
-        run_id: str,
-    ) -> dict[str, object]:
-        await require_lifecycle(lifecycle_id)
-        run = lifecycle_service.run(run_id)
-        if run is None or run["lifecycle_id"] != lifecycle_id:
+    async def prepare_archive(call) -> RuntimeMonitoringArchive:
+        try:
+            return await call()
+        except MonitoringReadError as exc:
+            raise monitoring_http_error(exc) from exc
+        except Exception as exc:
             raise management_error(
-                404,
-                code="workflow_run_not_found",
-                message_key="errors.workflowRunNotFound",
-                message="The Workflow Run does not exist in this lifecycle.",
-            )
-        raise generic_detail_unavailable()
+                500,
+                code="runtime_monitoring_archive_failed",
+                message_key="errors.runtimeMonitoringArchiveFailed",
+                message="The runtime monitoring archive could not be created.",
+            ) from exc
+
+    def archive_response(archive: RuntimeMonitoringArchive) -> FileResponse:
+        return FileResponse(
+            archive.path,
+            filename=archive.filename,
+            media_type="application/zip",
+            background=BackgroundTask(archive.release),
+        )
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/download")
-    async def download_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
-        await require_lifecycle(lifecycle_id)
-        raise generic_detail_unavailable()
+    async def download_workflow_lifecycle(lifecycle_id: str) -> FileResponse:
+        archive = await prepare_archive(
+            lambda: monitoring_archive.prepare_lifecycle(lifecycle_id)
+        )
+        return archive_response(archive)
 
     @router.get("/api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download")
     async def download_workflow_run(
         lifecycle_id: str,
         run_id: str,
-    ) -> dict[str, object]:
-        await require_lifecycle(lifecycle_id)
-        run = lifecycle_service.run(run_id)
-        if run is None or run["lifecycle_id"] != lifecycle_id:
-            raise management_error(
-                404,
-                code="workflow_run_not_found",
-                message_key="errors.workflowRunNotFound",
-                message="The Workflow Run does not exist in this lifecycle.",
-            )
-        raise generic_detail_unavailable()
+    ) -> FileResponse:
+        archive = await prepare_archive(
+            lambda: monitoring_archive.prepare_run(lifecycle_id, run_id)
+        )
+        return archive_response(archive)
 
     async def delete_one(lifecycle_id: str) -> dict[str, int]:
         await require_lifecycle(lifecycle_id)

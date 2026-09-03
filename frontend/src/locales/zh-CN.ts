@@ -313,6 +313,8 @@ export const zhCN = {
     searchPlaceholder: '搜索 Workflow、Lifecycle 或请求 ID',
     monitor: '监控 Lifecycle',
     monitorDisabled: '此 Lifecycle 启动时未启用监控采集',
+    downloadDisabled: '此 Lifecycle 没有采集可下载的运行监控数据',
+    downloadFailed: '无法下载 Lifecycle 运行数据',
     columns: {
       parentWorkflow: 'Parent Run Workflow',
       created: '创建时间',
@@ -355,6 +357,8 @@ export const zhCN = {
     title: 'Lifecycle 监控',
     lifecycleId: 'Lifecycle',
     backToCatalog: '返回 Lifecycle 目录',
+    downloadRun: '下载此 Run',
+    downloadRunFailed: '无法下载 Run 运行数据',
     snapshot: {
       loading: '正在载入 Lifecycle 快照…',
       loadFailed: '无法载入 Lifecycle 监控',
@@ -1500,7 +1504,7 @@ export const zhCN = {
     runtimeMonitoringDisabled: '此 Lifecycle 未启用运行监控。',
     runtimeMonitoringUnavailable: '运行监控所需的 Registry 当前不可用。',
     runtimeMonitoringReadFailed: '运行监控读取失败。',
-    runtimeMonitoringReadModelUnavailable: '请求的运行监控读取模型当前不可用。',
+    runtimeMonitoringArchiveFailed: '无法创建运行监控归档。',
     runtimeMonitoringSelectorConflict: 'Workflow 和 Run 只能选择一种范围。',
     runtimeMonitoringProtocolSelectorInvalid: '选择 invocation 前必须先选择 Node。',
     configurationRepositoryConflict: '配置仓库名称或身份冲突。',

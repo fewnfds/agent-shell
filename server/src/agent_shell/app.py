@@ -40,6 +40,7 @@ from agent_shell.runtime.background_tasks import BackgroundTaskManager
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.monitoring_read_service import MonitoringReadService
+from agent_shell.runtime.monitoring_archive import RuntimeMonitoringArchiveService
 from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
 from agent_shell.settings import (
     Settings,
@@ -195,6 +196,11 @@ def create_app(
         runtime_monitoring_queries,
         workflow_lifecycle,
         workflow_checkpoints,
+    )
+    runtime_monitoring_archive = RuntimeMonitoringArchiveService(
+        runtime_monitoring_reads,
+        runtime_monitoring_queries,
+        runtime_dir / "tmp",
     )
     python_package_authoring = PythonPackageAuthoringService(
         templates_root=python_templates_dir,
@@ -576,6 +582,7 @@ def create_app(
     app.state.workflow_checkpoints = workflow_checkpoints
     app.state.workflow_lifecycle = workflow_lifecycle
     app.state.runtime_monitoring_reads = runtime_monitoring_reads
+    app.state.runtime_monitoring_archive = runtime_monitoring_archive
     app.state.background_tasks = background_tasks
     app.state.system_log_settings = system_log_settings
     app.state.model_resources = model_resources
@@ -657,6 +664,7 @@ def create_app(
         build_workflow_lifecycle_router(
             workflow_lifecycle,
             runtime_cleanup,
+            runtime_monitoring_archive,
         )
     )
     app.include_router(build_runtime_monitoring_router(runtime_monitoring_reads))

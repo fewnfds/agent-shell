@@ -6,6 +6,7 @@ import { managementApi, type WorkflowLifecycleSummary } from '@/api'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
 import type { DataTableConfig } from '@/components/data-table/types'
 import PageShell from '@/components/PageShell.vue'
+import { triggerBrowserDownload } from '@/utils/download'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -97,6 +98,21 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
       run: (row) => router.push(
         `/system/workflow-lifecycles/${encodeURIComponent(row.lifecycle_id)}/monitoring`,
       ),
+      reloadAfter: false,
+    },
+    {
+      key: 'download',
+      label: (row) => row.monitoring_capture_enabled
+        ? t('common.download')
+        : t('workflowLifecycles.downloadDisabled'),
+      icon: 'download',
+      tone: 'secondary',
+      disabled: (row) => !row.monitoring_capture_enabled,
+      run: async (row) => {
+        const download = await managementApi.downloadWorkflowLifecycle(row.lifecycle_id)
+        triggerBrowserDownload(download.blob, download.filename)
+      },
+      failureTitle: () => t('workflowLifecycles.downloadFailed'),
       reloadAfter: false,
     },
     {

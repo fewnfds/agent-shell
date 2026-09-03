@@ -247,13 +247,13 @@ Management API 只负责 observability 和 explicit cleanup，不提供从外部
 - `DELETE /api/workflow-lifecycles/{lifecycle_id}` 显式清理一个 terminal Lifecycle；
 - `POST /api/workflow-lifecycles/delete` 按 query 清理匹配的 terminal Lifecycle。
 
-`/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot` 可以按 Lifecycle、Workflow 或 Run scope 查看 Registry Run forest；`.../monitoring/runs/{run_id}/*` 可以读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选。它们是普通 HTTP snapshot/page，不在读取端解析 namespace，也不推演 child launcher Node、Edge activation 或跨 Run Timeline。Lifecycle download 和 single Run download endpoint 返回 `503 runtime_monitoring_read_model_unavailable`。
+`/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot` 可以按 Lifecycle、Workflow 或 Run scope 查看 Registry Run forest；`.../monitoring/runs/{run_id}/*` 可以读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选。它们是普通 HTTP snapshot/page，不在读取端解析 namespace，也不推演 child launcher Node、Edge activation 或跨 Run Timeline。`/{lifecycle_id}/download` 下载整个 Lifecycle，`/{lifecycle_id}/runs/{run_id}/download` 下载 exact Run；活动运行在下载开始时固定持久化记录的 high-water。
 
 `runtime_monitoring_retention_lifecycles` 默认保留最近 `20` 个完整终态 Lifecycle；active Lifecycle 不占保留数量。值为 `0` 时关闭新 Lifecycle 的监控采集，并在其完整终态后清理运行控制数据。降低设置会立即收敛完整终态目录，提高设置不会恢复已经删除的数据。
 
 存在 active Run 或 task 时，单项删除返回 409。自动 retention 和管理台删除保留日志中心诊断以及运行中写入硬盘的全部用户文件和目录；运行监控没有删除文件产出的 API 参数。
 
-Lifecycle catalog 不返回 messages、Provider secret 或 resolved host path。后续运行归档仍属于 management-only 敏感数据，开放后按安全与部署边界处理。
+Lifecycle catalog 不返回 messages、Provider secret 或 resolved host path。运行归档可能包含消息、State、Tool payload 与路径，属于 management-only 敏感数据；不要把 ZIP 当作无敏感内容的普通日志，分享前先检查。
 
 详细观测说明见[Runtime observability](../runtime-observability.md)。
 

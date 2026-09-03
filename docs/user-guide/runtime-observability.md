@@ -26,15 +26,15 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 ## 运行监控
 
-【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。Lifecycle 目录提供搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。启用采集的记录提供【监控】入口；关闭采集的记录保留禁用入口和明确说明，避免发送必然失败的详情请求。
+【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。Lifecycle 目录提供搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。启用采集的记录提供【监控】和【下载】入口；关闭采集的记录保留带原因的禁用操作，避免发送必然失败的详情或下载请求。
 
 Lifecycle 监控详情使用 `/system/workflow-lifecycles/{lifecycle_id}/monitoring`。页面范围可选整个 Lifecycle、一个 Workflow 及其后代 Run，或单个 Run；Workflow 后代关系由后端 Registry 计算，浏览器只显示返回结果。选择与详情状态通过 `scope`、`workflow_id`、`run_id`、`node_id` 和 `view` query 保存；未指定有效 Run 时选择当前范围内的 Lifecycle root Run 或首个 Run。左侧 Run 索引只按 snapshot 返回的 roots 与 parent/child relationship 显示层级。中间用只读 Vue Flow 显示所选 Run 保存的 frozen Graph，并按 Node summary 展示 attempt 数量和状态；只有 `status_counts.running > 0` 的 Node 使用运行中强调，文字与数字同时表达状态。画布保留 frozen Node 位置与 viewport，关闭编辑、连线和 Edge 动画；空文档不会自动补画 Start/End。
 
 点击 Graph Node 或用键盘激活 Node，会在共用详情区读取当前 Lifecycle + Run + frozen Node 的持久化 attempt 分页。详情显示后端提供的 invocation ID、1-indexed attempt、sequence、开始/结束时间、状态和稳定错误码。Agent Node 可以选择一次 invocation，查看 exact completed artifact，以及 compact direct origin 明确属于该 Node + invocation 的已记录 ProtocolEvent；消息正文和标准文本 content block 直接呈现，其他结构始终可展开 raw JSON。Command Node 显示该 Node 的 `started|completed|failed|cancelled` observation，以及成功时经过校验的 `activate`、`dispatch`、`update` 外部结果，不把它们解释成 Edge 已激活结论。前端不根据时间、事件、namespace 或 Graph 路径推断 retry、激活或跨 Run 因果。
 
-所选 Run 的【事件】【模型】【State】入口使用同一个详情区。事件按 Run 显示 raw ProtocolEvent；模型请求按页显示状态、时间、usage 与原始请求；State 显示 latest persisted root Checkpoint 的 namespace、持久化时间、step、pending write 数量、channel 名称和完整 State。State 只在打开或手动刷新时读取，以持久化时间说明它与当前执行可能存在的间隔。选择历史 Agent invocation 后，后台刷新保留该选择；Node 出现更新的 attempt 时由【查看最新】按钮决定是否跳转。事件列表只在读者仍位于底部并保持【跟随最新】时自动滚动。
+所选 Run 的【事件】【模型】【State】入口使用同一个详情区。事件按 Run 显示 raw ProtocolEvent；模型请求按页显示状态、时间、usage 与原始请求；State 显示 latest persisted root Checkpoint 的 namespace、持久化时间、step、pending write 数量、channel 名称和完整 State。State 只在打开或手动刷新时读取，以持久化时间说明它与当前执行可能存在的间隔。Graph 标题区的【下载此 Run】下载当前所选 Run，不改变 scope、详情或轮询状态。选择历史 Agent invocation 后，后台刷新保留该选择；Node 出现更新的 attempt 时由【查看最新】按钮决定是否跳转。事件列表只在读者仍位于底部并保持【跟随最新】时自动滚动。
 
-活动 Lifecycle 在页面可见时约每两秒通过普通 HTTP GET 重新读取完整 Lifecycle snapshot、当前 scope snapshot 和已打开的轻量资源；frozen Graph 只在选择 Run 时读取，State 只手动刷新。页面隐藏时暂停，恢复可见时立即刷新；Lifecycle 完全终态时完成当前最后一轮资源读取并切为静态结果。一次刷新失败保留上一份成功数据并按普通间隔重试；Graph、Node summary、Node attempt、Agent artifact/event、Command、Model、State 各自在对应区域呈现 `partial|unavailable` 或请求错误，不遮蔽其他成功区域。请求之间没有服务端会话、SSE、WebSocket 或统一 change feed。通用 Lifecycle detail/events、single Run detail 和 Lifecycle/Run download 接口返回 `503 runtime_monitoring_read_model_unavailable`；运行归档没有读取入口。
+活动 Lifecycle 在页面可见时约每两秒通过普通 HTTP GET 重新读取完整 Lifecycle snapshot、当前 scope snapshot 和已打开的轻量资源；frozen Graph 只在选择 Run 时读取，State 只手动刷新。页面隐藏时暂停，恢复可见时立即刷新；Lifecycle 完全终态时完成当前最后一轮资源读取并切为静态结果。一次刷新失败保留上一份成功数据并按普通间隔重试；Graph、Node summary、Node attempt、Agent artifact/event、Command、Model、State 各自在对应区域呈现 `partial|unavailable` 或请求错误，不遮蔽其他成功区域。请求之间没有服务端会话、SSE、WebSocket 或统一 change feed。
 
 Workflow scope 只先选择本 Lifecycle 中 `workflow_id` 精确匹配的 Run，再沿 Registry `parent_run_id` 包含 descendants；Run forest 也只表达这条 parent/child 关系。Node、Agent、Tool、Edge 或跨 Run 因果不会从 event namespace、时间关系或 Graph 路径推演。每个资源都返回自己的 `availability`，局部 `partial|unavailable` 不会遮蔽其他可读事实。
 
@@ -67,11 +67,21 @@ Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥
 - `GET .../monitoring/runs/{run_id}/model-requests`：Run 级 Model Request 分页；
 - `GET .../monitoring/runs/{run_id}/command-observations`：按 `after_sequence` 续读 Command 外部观察；
 - `GET .../monitoring/runs/{run_id}/state`：latest persisted root State；
-- `GET .../monitoring/runs/{run_id}/agent-invocations/{invocation_id}`：exact completed Agent artifact。
+- `GET .../monitoring/runs/{run_id}/agent-invocations/{invocation_id}`：exact completed Agent artifact；
+- `GET /api/workflow-lifecycles/{lifecycle_id}/download`：下载整个 Lifecycle 的运行监控 ZIP；
+- `GET /api/workflow-lifecycles/{lifecycle_id}/runs/{run_id}/download`：下载属于该 Lifecycle 的单个 Run ZIP。
 
-捕获关闭的 Lifecycle 返回 `409 runtime_monitoring_disabled`；不存在的 Lifecycle、Run、Workflow scope、frozen Node 或 invocation 返回对应 404；只提供 `invocation_id` 而未提供 `node_id` 时返回 `422 runtime_monitoring_protocol_selector_invalid`；Registry/snapshot 整体不可读返回 503。独立资源读取失败返回 `200` 和 `availability=unavailable`，允许其他区域继续显示并在下一轮重试。Protocol/Command 用响应的 `next_after_sequence` 续读；Graph、Run、Node、Model、State 与 Agent artifact 重新读取当前 snapshot/page。
+捕获关闭的 Lifecycle 返回 `409 runtime_monitoring_disabled`；不存在的 Lifecycle、Run、Workflow scope、frozen Node 或 invocation 返回对应 404；只提供 `invocation_id` 而未提供 `node_id` 时返回 `422 runtime_monitoring_protocol_selector_invalid`；Registry/snapshot 整体不可读返回 503，归档物化失败返回 `500 runtime_monitoring_archive_failed`。独立资源读取失败返回 `200` 和 `availability=unavailable`，允许其他区域继续显示并在下一轮重试。Protocol/Command 用响应的 `next_after_sequence` 续读；Graph、Run、Node、Model、State 与 Agent artifact 重新读取当前 snapshot/page。
 
 这些 management GET 通过 application database 的异步执行边界读取 SQLite；数据库锁等待不会占用 FastAPI 事件循环。该机制只改变读取工作的执行位置，不把普通 HTTP 轮询升级成推送或强一致实时流。
+
+### 运行数据下载
+
+Lifecycle 与单 Run 使用同一个 `agent-shell.runtime-monitoring-archive.v1` ZIP contract。根目录包含 `manifest.json` 和 `lifecycle.json`；每个纳入范围的 Run 位于独立编号目录，包含 Registry Run、frozen Graph、Node attempt、raw ProtocolEvent、Run 级 Model Request、Command observation、latest persisted State，以及由 exact invocation ID 读取的已完成 Agent artifact 和索引。每个资源保留 `availability`、记录数或读取时间，缺失数据不会被伪装成完整空结果。
+
+活动运行下载在开始时固定 Run 集合以及 Node、Protocol、Model、Command 的当前最大 sequence，之后只读到这些 high-water；下载开始后出现的新 Run 或新记录进入下一次下载。Registry 可变行、State 和 Store artifact 各自保留实际读取时间，因此这是一定会结束的有界持久化快照，不宣称所有文件来自同一数据库时刻。
+
+归档只读取运行监控已经拥有的 canonical facts。Lifecycle input、background task 私有记录、任意 Store namespace、完整 checkpoint history、日志中心、用户文件、mapped directory 和 Lifecycle 动态目录不进入 ZIP。服务只在 application `runtime/tmp` 创建本次响应的临时目录，响应结束后释放，不建立归档历史或第二份长期运行数据。
 
 ### 保留与删除
 
@@ -85,7 +95,7 @@ Lifecycle 只有在 root Run、全部 child Run 和全部 background task 都进
 
 ### 敏感内容
 
-启用采集后，frozen Graph、Node/Command metadata、ProtocolEvent、Model Request、Checkpoint State 和 Agent invocation artifact 可以包含 prompt、用户消息、Tool schema/payload、State、路径以及其他运行材料。ProtocolEvent、Model Request 与 State 读取投影的 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；Command 的已校验外部结果与 Agent 的 OpenAI message artifact 保留普通业务内容。平台不能识别用户主动写入普通文本或自定义对象表示中的任意密钥。`agent-shell.env` 是配置 secret 的唯一权威存储，监控 writer 不读取该配置文件。所有读取接口都需要管理鉴权。运行归档下载没有入口；未来分享任何由这些事实生成的归档前需人工检查自由文本。
+启用采集后，frozen Graph、Node/Command metadata、ProtocolEvent、Model Request、Checkpoint State 和 Agent invocation artifact 可以包含 prompt、用户消息、Tool schema/payload、State、路径以及其他运行材料。ProtocolEvent、Model Request 与 State 读取投影的 JSON 转换排除 Secret 类型，并脱敏明确的 credential、API Key、token 和 password 字段；Command 的已校验外部结果与 Agent 的 OpenAI message artifact 保留普通业务内容。平台不能识别用户主动写入普通文本或自定义对象表示中的任意密钥。`agent-shell.env` 是配置 secret 的唯一权威存储，监控 writer 不读取该配置文件。所有读取与下载接口都需要管理鉴权；下载的 ZIP 应按敏感实例数据保管，分享前必须人工检查其中的自由文本、State 和 payload。
 
 ## LangSmith
 
