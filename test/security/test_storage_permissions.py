@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 import sqlite3
+import threading
 
 import pytest
 
@@ -213,3 +215,133 @@ def test_database_transaction_closes_connection_after_exit(tmp_path: Path) -> No
 
     with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
         connection.execute("SELECT 1")
+
+
+def test_database_worker_keeps_sqlite_lock_wait_off_the_event_loop(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> tuple[bool, str]:
+        database = SQLiteDatabase(tmp_path / "private" / "worker.sqlite3")
+        with database.transaction() as connection:
+            connection.execute("CREATE TABLE worker_fixture (value TEXT NOT NULL)")
+
+        blocker = sqlite3.connect(database.path)
+        blocker.execute("BEGIN IMMEDIATE")
+        attempted = threading.Event()
+
+        def write() -> None:
+            with database.transaction() as connection:
+                attempted.set()
+                connection.execute(
+                    "INSERT INTO worker_fixture (value) VALUES (?)",
+                    ("committed",),
+                )
+
+        try:
+            write_task = asyncio.create_task(database.run(write))
+            while not attempted.is_set():
+                await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            event_loop_advanced = not write_task.done()
+            blocker.rollback()
+            await write_task
+            value = await database.run(
+                lambda: _database_fixture_value(database, "worker_fixture")
+            )
+            return event_loop_advanced, value
+        finally:
+            blocker.close()
+            await database.close()
+
+    assert asyncio.run(scenario()) == (True, "committed")
+
+
+def test_database_batch_writer_preserves_order_and_batch_atomicity(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> tuple[list[str], int]:
+        database = SQLiteDatabase(tmp_path / "private" / "batch.sqlite3")
+        with database.transaction() as connection:
+            connection.execute("CREATE TABLE batch_fixture (value TEXT NOT NULL)")
+
+        def write_batch(items: tuple[str, ...]) -> None:
+            with database.transaction() as connection:
+                connection.executemany(
+                    "INSERT INTO batch_fixture (value) VALUES (?)",
+                    ((item,) for item in items),
+                )
+
+        writer = database.batch_writer(write_batch, name="ordered-batch-fixture")
+        writer.submit("first")
+        writer.submit("second")
+        writer.submit("third")
+        await writer.close()
+
+        def fail_batch(items: tuple[str, ...]) -> None:
+            with database.transaction() as connection:
+                connection.executemany(
+                    "INSERT INTO batch_fixture (value) VALUES (?)",
+                    ((item,) for item in items),
+                )
+                raise RuntimeError("batch fixture failed")
+
+        failed_writer = database.batch_writer(
+            fail_batch,
+            name="failed-batch-fixture",
+        )
+        failed_writer.submit("rolled-back")
+        with pytest.raises(RuntimeError, match="batch fixture failed"):
+            await failed_writer.close()
+
+        try:
+            values = await database.run(
+                lambda: _database_fixture_values(database, "batch_fixture")
+            )
+            return values, values.count("rolled-back")
+        finally:
+            await database.close()
+
+    assert asyncio.run(scenario()) == (["first", "second", "third"], 0)
+
+
+def test_database_close_drains_tracked_batch_writers(tmp_path: Path) -> None:
+    database_path = tmp_path / "private" / "shutdown.sqlite3"
+
+    async def scenario() -> None:
+        database = SQLiteDatabase(database_path)
+        with database.transaction() as connection:
+            connection.execute("CREATE TABLE shutdown_fixture (value TEXT NOT NULL)")
+
+        def write_batch(items: tuple[str, ...]) -> None:
+            with database.transaction() as connection:
+                connection.executemany(
+                    "INSERT INTO shutdown_fixture (value) VALUES (?)",
+                    ((item,) for item in items),
+                )
+
+        writer = database.batch_writer(write_batch, name="shutdown-batch-fixture")
+        writer.submit("accepted-before-shutdown")
+        await database.close()
+
+    asyncio.run(scenario())
+    with sqlite3.connect(database_path) as connection:
+        values = [
+            str(row[0])
+            for row in connection.execute(
+                "SELECT value FROM shutdown_fixture ORDER BY rowid"
+            ).fetchall()
+        ]
+    assert values == ["accepted-before-shutdown"]
+
+
+def _database_fixture_value(database: SQLiteDatabase, table: str) -> str:
+    with database.transaction() as connection:
+        row = connection.execute(f"SELECT value FROM {table}").fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def _database_fixture_values(database: SQLiteDatabase, table: str) -> list[str]:
+    with database.transaction() as connection:
+        rows = connection.execute(f"SELECT value FROM {table} ORDER BY rowid").fetchall()
+    return [str(row[0]) for row in rows]

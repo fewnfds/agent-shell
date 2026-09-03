@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, TypeVar
 
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
+from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.runtime_monitoring_queries import (
     RuntimeMonitoringQueryStore,
     ScopeKind,
@@ -21,6 +23,7 @@ Availability = Literal[
     "pending",
     "not_applicable",
 ]
+_ReadResult = TypeVar("_ReadResult")
 
 
 def _now() -> str:
@@ -87,13 +90,23 @@ class MonitoringReadService:
 
     def __init__(
         self,
+        database: SQLiteDatabase,
         queries: RuntimeMonitoringQueryStore,
         lifecycle: WorkflowLifecycleService,
         checkpoints: WorkflowCheckpointService,
     ) -> None:
+        self._database = database
         self._queries = queries
         self._lifecycle = lifecycle
         self._checkpoints = checkpoints
+
+    async def application_query(
+        self,
+        call: Callable[[], _ReadResult],
+    ) -> _ReadResult:
+        """Run one composed application-database view off the event loop."""
+
+        return await self._database.run(call)
 
     def _require_lifecycle(self, lifecycle_id: str) -> dict[str, object]:
         try:
@@ -453,7 +466,9 @@ class MonitoringReadService:
         lifecycle_id: str,
         run_id: str,
     ) -> dict[str, object]:
-        run = self._require_run(lifecycle_id, run_id)
+        run = await self.application_query(
+            lambda: self._require_run(lifecycle_id, run_id)
+        )
         thread_id = run.get("checkpoint_thread_id")
         if not thread_id:
             return self._resource("not_enabled", state=None)
@@ -476,14 +491,20 @@ class MonitoringReadService:
         run_id: str,
         invocation_id: str,
     ) -> dict[str, object]:
-        self._require_run(lifecycle_id, run_id)
+        await self.application_query(
+            lambda: self._require_run(lifecycle_id, run_id)
+        )
         try:
-            attempts = self._queries.invocation_attempts(
-                lifecycle_id,
-                run_id,
-                invocation_id,
+            attempts, graph = await self.application_query(
+                lambda: (
+                    self._queries.invocation_attempts(
+                        lifecycle_id,
+                        run_id,
+                        invocation_id,
+                    ),
+                    self._queries.graph(lifecycle_id, run_id),
+                )
             )
-            graph = self._queries.graph(lifecycle_id, run_id)
         except Exception:
             return self._resource("unavailable", artifact=None)
         if not attempts:

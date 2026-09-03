@@ -191,6 +191,7 @@ def create_app(
     )
     runtime_monitoring_queries = RuntimeMonitoringQueryStore(application_database)
     runtime_monitoring_reads = MonitoringReadService(
+        application_database,
         runtime_monitoring_queries,
         workflow_lifecycle,
         workflow_checkpoints,
@@ -382,12 +383,16 @@ def create_app(
                         try:
                             await workflow_lifecycle.close()
                         finally:
-                            event_logger.emit(
-                                "service_stopped", {"reason": "application_shutdown"}
-                            )
-                            runtime_diagnostics.close()
-                            if langsmith_client is not None:
-                                langsmith_client.close(timeout=5.0)
+                            try:
+                                await application_database.close()
+                            finally:
+                                event_logger.emit(
+                                    "service_stopped",
+                                    {"reason": "application_shutdown"},
+                                )
+                                runtime_diagnostics.close()
+                                if langsmith_client is not None:
+                                    langsmith_client.close(timeout=5.0)
 
     app = FastAPI(
         title=settings.app_name,

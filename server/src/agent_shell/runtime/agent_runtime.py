@@ -6,6 +6,7 @@ from copy import deepcopy
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -71,6 +72,7 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.model_request_recorder import ModelRequestRecorder
+from agent_shell.storage.database import SQLiteBatchWriter
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.validation import validate_workflow_executable
 from agent_shell.validation import ValidationReport
@@ -149,6 +151,11 @@ class RunExecution:
     final_state: dict[str, Any] | None = None
     _started: bool = False
     _lifecycle_finished: bool = False
+    _protocol_event_writer: SQLiteBatchWriter[dict[str, object]] | None = field(
+        default=None,
+        init=False,
+    )
+    _protocol_capture_failed: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.event_stream = RunEventStream(self.usage_accumulator)
@@ -193,19 +200,63 @@ class RunExecution:
             subject_name=identity.workflow_name,
         )
 
+    def _protocol_capture_error(self, exc: BaseException) -> None:
+        if self._protocol_capture_failed:
+            return
+        self._protocol_capture_failed = True
+        if self.runtime_diagnostics is not None:
+            self.runtime_diagnostics.observation_error(
+                exc,
+                code="runtime_protocol_event_record_failed",
+                component="observability",
+                context=self.diagnostic_context(),
+            )
+
+    async def _open_protocol_event_writer(self) -> None:
+        if (
+            not self.monitoring_capture_enabled
+            or self.lifecycle_service is None
+            or self.identity is None
+        ):
+            return
+        try:
+            self._protocol_event_writer = (
+                await self.lifecycle_service.protocol_event_writer(
+                    self.identity.workflow_run_id
+                )
+            )
+        except Exception as exc:
+            self._protocol_capture_error(exc)
+
+    async def _close_protocol_event_writer(self) -> None:
+        writer = self._protocol_event_writer
+        if writer is None:
+            return
+        try:
+            await writer.close()
+        except Exception as exc:
+            self._protocol_capture_error(exc)
+        finally:
+            if self._protocol_event_writer is writer:
+                self._protocol_event_writer = None
+
     async def cancel(self) -> None:
         """Converge Shell-owned cancellation before graph cleanup completes."""
 
+        await self._close_protocol_event_writer()
         if self.lifecycle_service is not None and self.identity is not None:
             try:
-                updated = self.lifecycle_service.finish_run(
+                updated = await self.lifecycle_service.afinish_run(
                     self.identity.workflow_run_id,
                     status="cancelled",
                     error_code="request_cancelled",
                     usage=self.usage,
+                    partial_monitoring_partitions=(
+                        ("protocol",) if self._protocol_capture_failed else ()
+                    ),
                 )
                 if not updated:
-                    record = self.lifecycle_service.run(
+                    record = await self.lifecycle_service.arun(
                         self.identity.workflow_run_id
                     )
                     if record is None or record["status"] not in {
@@ -248,6 +299,7 @@ class RunExecution:
             async for part in self._stream_text_inner():
                 yield part
         finally:
+            await self._close_protocol_event_writer()
             for runtime in self.middleware_runtimes:
                 await runtime.close()
             for runtime in self.tool_runtimes:
@@ -259,7 +311,6 @@ class RunExecution:
 
     async def _stream_text_inner(self) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
-        protocol_event_capture_failed = False
 
         def observation_error(
             exc: BaseException,
@@ -291,32 +342,35 @@ class RunExecution:
             envelope: object,
             origin: ResolvedEventOrigin,
         ) -> None:
-            nonlocal protocol_event_capture_failed
+            writer = self._protocol_event_writer
             if (
-                protocol_event_capture_failed
+                self._protocol_capture_failed
                 or not self.monitoring_capture_enabled
-                or self.lifecycle_service is None
+                or writer is None
                 or self.identity is None
             ):
                 return
+            if writer.failure is not None:
+                self._protocol_capture_error(writer.failure)
+                return
             try:
-                self.lifecycle_service.append_protocol_event(
-                    self.identity.lifecycle_id,
-                    self.identity.workflow_run_id,
-                    serialize_protocol_event(envelope),
-                    source_type=origin.source_type,
-                    workflow_node_id=origin.workflow_node_id,
-                    node_invocation_id=origin.node_invocation_id,
-                    agent_profile_id=origin.agent_profile_id,
-                    subagent_profile_id=origin.subagent_profile_id,
+                writer.submit(
+                    {
+                        "lifecycle_id": self.identity.lifecycle_id,
+                        "run_id": self.identity.workflow_run_id,
+                        "event": serialize_protocol_event(envelope),
+                        "source_type": origin.source_type,
+                        "workflow_node_id": origin.workflow_node_id,
+                        "node_invocation_id": origin.node_invocation_id,
+                        "agent_profile_id": origin.agent_profile_id,
+                        "subagent_profile_id": origin.subagent_profile_id,
+                        "captured_at": datetime.now(timezone.utc).isoformat(
+                            timespec="milliseconds"
+                        ),
+                    }
                 )
             except Exception as exc:
-                protocol_event_capture_failed = True
-                observation_error(
-                    exc,
-                    "runtime_protocol_event_record_failed",
-                    partition="protocol",
-                )
+                self._protocol_capture_error(exc)
 
         async def cancel_background_children() -> None:
             if self.cancel_background_children is None:
@@ -326,13 +380,15 @@ class RunExecution:
             except Exception as exc:
                 observation_error(exc, "background_child_cancellation_failed")
 
-        def start_run() -> None:
+        async def start_run() -> None:
             if self.lifecycle_service is None or self.identity is None:
                 return
-            if not self.lifecycle_service.start_run(
+            if not await self.lifecycle_service.astart_run(
                 self.identity.workflow_run_id
             ):
-                record = self.lifecycle_service.run(self.identity.workflow_run_id)
+                record = await self.lifecycle_service.arun(
+                    self.identity.workflow_run_id
+                )
                 if record is None or record["status"] != "running":
                     raise AgentRuntimeError(
                         "runtime_registry_unavailable",
@@ -340,17 +396,23 @@ class RunExecution:
                         status_code=500,
                     )
 
-        def finish_run(status: str, *, error_code: str = "") -> None:
+        async def finish_run(status: str, *, error_code: str = "") -> None:
+            await self._close_protocol_event_writer()
             if self.lifecycle_service is None or self.identity is None:
                 return
-            if not self.lifecycle_service.finish_run(
+            if not await self.lifecycle_service.afinish_run(
                 self.identity.workflow_run_id,
                 status=status,
                 error_code=error_code,
                 finish_reason=self.finish_reason if status == "completed" else "",
                 usage=self.usage,
+                partial_monitoring_partitions=(
+                    ("protocol",) if self._protocol_capture_failed else ()
+                ),
             ):
-                record = self.lifecycle_service.run(self.identity.workflow_run_id)
+                record = await self.lifecycle_service.arun(
+                    self.identity.workflow_run_id
+                )
                 if record is None or record["status"] != status:
                     raise AgentRuntimeError(
                         "runtime_registry_unavailable",
@@ -560,8 +622,9 @@ class RunExecution:
                     )
             return parts
 
-        start_run()
         try:
+            await start_run()
+            await self._open_protocol_event_writer()
             for rendered in project_run_event("start", status="running"):
                 if rendered:
                     yield rendered
@@ -854,7 +917,7 @@ class RunExecution:
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
             await cancel_background_children()
-            finish_run("failed", error_code=error.code)
+            await finish_run("failed", error_code=error.code)
             await finish_lifecycle()
             raise error from exc
         except AgentRuntimeError as exc:
@@ -868,7 +931,7 @@ class RunExecution:
                 ),
             )
             await cancel_background_children()
-            finish_run("failed", error_code=exc.code)
+            await finish_run("failed", error_code=exc.code)
             await finish_lifecycle()
             raise
         except Exception as exc:
@@ -888,10 +951,10 @@ class RunExecution:
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
             await cancel_background_children()
-            finish_run("failed", error_code=error.code)
+            await finish_run("failed", error_code=error.code)
             await finish_lifecycle()
             raise error from exc
-        finish_run("completed")
+        await finish_run("completed")
         await finish_lifecycle()
 
     async def run(self) -> tuple[str, dict[str, int]]:
@@ -936,7 +999,7 @@ class AgentRuntime:
             else RUNTIME_POLICY_DEFAULTS
         )
 
-    def _finish_registered_run(
+    async def _finish_registered_run(
         self,
         run_id: str,
         *,
@@ -945,11 +1008,11 @@ class AgentRuntime:
         context: RuntimeDiagnosticContext,
     ) -> None:
         try:
-            if not self._workflow_lifecycle.finish_run(
+            if not await self._workflow_lifecycle.afinish_run(
                 run_id,
                 status=status,
                 error_code=error_code,
-            ) and self._workflow_lifecycle.run(run_id) is None:
+            ) and await self._workflow_lifecycle.arun(run_id) is None:
                 raise RuntimeError("the Run registry record is unavailable")
         except Exception as exc:
             if self._runtime_diagnostics is not None:
@@ -1651,7 +1714,7 @@ class AgentRuntime:
                 await agent.tool_runtime.close()
                 await agent.middleware_runtime.close()
             await close_workflow_package_runtimes()
-            self._finish_registered_run(
+            await self._finish_registered_run(
                 resolved_workflow_run_id,
                 status="cancelled",
                 error_code="request_cancelled",
@@ -1678,7 +1741,7 @@ class AgentRuntime:
                     component="workflow_runtime",
                     context=assembly_diagnostic_context,
                 )
-            self._finish_registered_run(
+            await self._finish_registered_run(
                 resolved_workflow_run_id,
                 status="failed",
                 error_code=error_code,

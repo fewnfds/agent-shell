@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 import json
 from typing import Mapping
@@ -206,37 +207,77 @@ class RuntimeMonitoringStore:
         subagent_profile_id: str,
         captured_at: str | None = None,
     ) -> None:
-        sequence = event.get("seq")
-        method = event.get("method")
-        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
-            raise ValueError("the v3 ProtocolEvent must have a positive seq")
-        if not isinstance(method, str) or not method:
-            raise ValueError("the v3 ProtocolEvent must have a method")
-        occurred_at = captured_at or _now()
-        with self._database.transaction() as connection:
-            connection.execute(
-                "INSERT INTO runtime_protocol_events ("
-                "lifecycle_id, run_id, event_sequence, method, captured_at, "
-                "envelope_json, source_type, workflow_node_id, "
-                "node_invocation_id, agent_profile_id, subagent_profile_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        self.append_protocol_events(
+            (
+                {
+                    "lifecycle_id": lifecycle_id,
+                    "run_id": run_id,
+                    "event": event,
+                    "source_type": source_type,
+                    "workflow_node_id": workflow_node_id,
+                    "node_invocation_id": node_invocation_id,
+                    "agent_profile_id": agent_profile_id,
+                    "subagent_profile_id": subagent_profile_id,
+                    "captured_at": captured_at or _now(),
+                },
+            )
+        )
+
+    def append_protocol_events(
+        self,
+        records: Sequence[Mapping[str, object]],
+    ) -> None:
+        """Persist an ordered ProtocolEvent batch in one transaction."""
+
+        if not records:
+            return
+        rows: list[tuple[object, ...]] = []
+        updated_runs: dict[str, str] = {}
+        for record in records:
+            event = record.get("event")
+            if not isinstance(event, Mapping):
+                raise TypeError("the v3 ProtocolEvent must be a mapping")
+            sequence = event.get("seq")
+            method = event.get("method")
+            if (
+                isinstance(sequence, bool)
+                or not isinstance(sequence, int)
+                or sequence < 1
+            ):
+                raise ValueError("the v3 ProtocolEvent must have a positive seq")
+            if not isinstance(method, str) or not method:
+                raise ValueError("the v3 ProtocolEvent must have a method")
+            lifecycle_id = str(record["lifecycle_id"])
+            run_id = str(record["run_id"])
+            captured_at = str(record.get("captured_at") or _now())
+            rows.append(
                 (
                     lifecycle_id,
                     run_id,
                     sequence,
                     method,
-                    occurred_at,
+                    captured_at,
                     _json(dict(event)),
-                    source_type,
-                    workflow_node_id,
-                    node_invocation_id,
-                    agent_profile_id,
-                    subagent_profile_id,
-                ),
+                    record["source_type"],
+                    record["workflow_node_id"],
+                    record["node_invocation_id"],
+                    record["agent_profile_id"],
+                    record["subagent_profile_id"],
+                )
             )
-            connection.execute(
+            updated_runs[run_id] = captured_at
+        with self._database.transaction() as connection:
+            connection.executemany(
+                "INSERT INTO runtime_protocol_events ("
+                "lifecycle_id, run_id, event_sequence, method, captured_at, "
+                "envelope_json, source_type, workflow_node_id, "
+                "node_invocation_id, agent_profile_id, subagent_profile_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+            connection.executemany(
                 "UPDATE runtime_run_monitoring SET updated_at = ? WHERE run_id = ?",
-                (occurred_at, run_id),
+                ((captured_at, run_id) for run_id, captured_at in updated_runs.items()),
             )
 
     def start_model_request(self, record: dict[str, object]) -> bool:
@@ -338,7 +379,17 @@ class RuntimeMonitoringStore:
                 (status, updated_at or _now(), run_id),
             )
 
-    def finish_run(self, run_id: str, *, interrupted: bool = False) -> None:
+    def finish_run(
+        self,
+        run_id: str,
+        *,
+        interrupted: bool = False,
+        partial_partitions: Sequence[str] = (),
+    ) -> None:
+        unknown_partitions = set(partial_partitions) - MONITORING_PARTITIONS
+        if unknown_partitions:
+            raise ValueError("invalid monitoring partition")
+        forced_partial = frozenset(partial_partitions)
         finished_at = _now()
         with self._database.transaction() as connection:
             row = connection.execute(
@@ -378,7 +429,12 @@ class RuntimeMonitoringStore:
                 current = str(row[f"{partition}_status"])
                 if current != "capturing":
                     return current
-                if partition == "graph" or interrupted or incomplete:
+                if (
+                    partition == "graph"
+                    or partition in forced_partial
+                    or interrupted
+                    or incomplete
+                ):
                     return "partial"
                 return "available"
 

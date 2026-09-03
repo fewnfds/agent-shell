@@ -351,9 +351,9 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
     router = APIRouter()
     prefix = "/api/workflow-lifecycles/{lifecycle_id}/monitoring"
 
-    def read(call):
+    async def read(call):
         try:
-            return call()
+            return await service.application_query(call)
         except MonitoringReadError as exc:
             raise _http_error(exc) from exc
 
@@ -378,7 +378,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
             )
         scope = "run" if run_id else "workflow" if workflow_id else "lifecycle"
         selector_id = run_id or workflow_id
-        return read(
+        return await read(
             lambda: service.snapshot(
                 lifecycle_id,
                 scope=scope,
@@ -391,7 +391,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         response_model=MonitoringGraphResponse,
     )
     async def graph(lifecycle_id: str, run_id: str):
-        return read(lambda: service.graph(lifecycle_id, run_id))
+        return await read(lambda: service.graph(lifecycle_id, run_id))
 
     @router.get(
         prefix + "/runs/{run_id}/nodes",
@@ -404,7 +404,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         page_size: int = Query(default=50, ge=1),
         status: NodeStatus | None = Query(default=None),
     ):
-        return read(
+        return await read(
             lambda: service.node_summaries(
                 lifecycle_id,
                 run_id,
@@ -426,7 +426,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         page_size: int = Query(default=50, ge=1),
         status: NodeStatus | None = Query(default=None),
     ):
-        return read(
+        return await read(
             lambda: service.node_attempts(
                 lifecycle_id,
                 run_id,
@@ -457,7 +457,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
                 message_key="errors.runtimeMonitoringProtocolSelectorInvalid",
                 message="Select a Node before selecting an invocation.",
             )
-        return read(
+        return await read(
             lambda: service.protocol_events(
                 lifecycle_id,
                 run_id,
@@ -480,7 +480,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         page_size: int = Query(default=50, ge=1),
         status: ModelStatus | None = Query(default=None),
     ):
-        return read(
+        return await read(
             lambda: service.model_requests(
                 lifecycle_id,
                 run_id,
@@ -502,7 +502,7 @@ def build_runtime_monitoring_router(service: MonitoringReadService) -> APIRouter
         node_id: str | None = Query(default=None, min_length=1),
         phase: CommandPhase | None = Query(default=None),
     ):
-        return read(
+        return await read(
             lambda: service.command_observations(
                 lifecycle_id,
                 run_id,

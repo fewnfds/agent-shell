@@ -148,8 +148,9 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
             self.errors.append({"error": exc, **kwargs})
 
     async def scenario():
+        database = SQLiteDatabase(tmp_path / "protocol-event-failure.sqlite3")
         lifecycle = WorkflowLifecycleService(
-            SQLiteDatabase(tmp_path / "protocol-event-failure.sqlite3"),
+            database,
             store_database=SQLiteFile(
                 tmp_path / "protocol-event-failure-workflow-store.sqlite3"
             ),
@@ -170,7 +171,11 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
             def fail_record(*_args, **_kwargs) -> None:
                 raise OSError("protocol event persistence unavailable")
 
-            monkeypatch.setattr(lifecycle, "append_protocol_event", fail_record)
+            monkeypatch.setattr(
+                lifecycle.monitoring,
+                "append_protocol_events",
+                fail_record,
+            )
             diagnostics = Diagnostics()
             projector = OutputProjector(output_renderer({"custom": "{{message}}"}))
             identity = WorkflowRunIdentity(
@@ -215,7 +220,10 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
                 diagnostics.errors,
             )
         finally:
-            await lifecycle.close()
+            try:
+                await lifecycle.close()
+            finally:
+                await database.close()
 
     parts, run, monitoring, errors = asyncio.run(scenario())
 
@@ -227,10 +235,15 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
 
 
 def test_execution_persists_the_resolved_protocol_event_origin(tmp_path) -> None:
-    async def scenario() -> tuple[list[str], list[dict[str, object]]]:
+    async def scenario() -> tuple[
+        list[str],
+        list[dict[str, object]],
+        dict[str, object],
+    ]:
         database_path = tmp_path / "protocol-event-origin.sqlite3"
+        database = SQLiteDatabase(database_path)
         lifecycle = WorkflowLifecycleService(
-            SQLiteDatabase(database_path),
+            database,
             store_database=SQLiteFile(
                 tmp_path / "protocol-event-origin-workflow-store.sqlite3"
             ),
@@ -292,12 +305,18 @@ def test_execution_persists_the_resolved_protocol_event_origin(tmp_path) -> None
                 after_sequence=0,
                 limit=10,
             )["items"]
-            return parts, events
+            monitoring = lifecycle.monitoring.status("protocol-origin-run")
+            assert monitoring is not None
+            return parts, events, monitoring
         finally:
-            await lifecycle.close()
+            try:
+                await lifecycle.close()
+            finally:
+                await database.close()
 
-    parts, events = asyncio.run(scenario())
+    parts, events, monitoring = asyncio.run(scenario())
     assert parts == ["visible"]
+    assert monitoring["protocol"] == "available"
     assert events[0]["origin"] == {
         "source_type": "agent",
         "workflow_node_id": "agent-a",
@@ -305,6 +324,87 @@ def test_execution_persists_the_resolved_protocol_event_origin(tmp_path) -> None
         "agent_profile_id": "test-agent-profile",
         "subagent_profile_id": "",
     }
+
+
+def test_cancellation_drains_accepted_protocol_events_before_run_terminal(
+    tmp_path,
+) -> None:
+    async def scenario() -> tuple[str, list[int]]:
+        database = SQLiteDatabase(tmp_path / "protocol-event-cancel.sqlite3")
+        lifecycle = WorkflowLifecycleService(
+            database,
+            store_database=SQLiteFile(
+                tmp_path / "protocol-event-cancel-workflow-store.sqlite3"
+            ),
+        )
+        await lifecycle.start()
+        stream = None
+        try:
+            lifecycle_id = await lifecycle.create(
+                [{"role": "user", "content": "cancel"}],
+                request_id="protocol-cancel-request",
+                run_id="protocol-cancel-run",
+                checkpoint_thread_id=None,
+                workflow_id="protocol-cancel-workflow",
+                workflow_name="Protocol Cancel Workflow",
+                workflow_document=runtime_workflow_document(),
+                monitoring_capture_enabled=True,
+            )
+            projector = OutputProjector(output_renderer({"custom": "{{message}}"}))
+            identity = WorkflowRunIdentity(
+                request_id="protocol-cancel-request",
+                lifecycle_id=lifecycle_id,
+                workflow_run_id="protocol-cancel-run",
+                workflow_id="protocol-cancel-workflow",
+                workflow_name="Protocol Cancel Workflow",
+            )
+            execution = RunExecution(
+                graph=EventGraph(
+                    [
+                        {
+                            "type": "event",
+                            "seq": 1,
+                            "method": "custom",
+                            "params": {
+                                "namespace": [],
+                                "timestamp": 1,
+                                "data": "accepted",
+                            },
+                        }
+                    ]
+                ),
+                input_state={"messages": []},
+                response_scheduler=response_scheduler(projector),
+                event_output_projector=projector,
+                origin_resolver=event_origin_resolver(),
+                middleware_runtimes=(noop_middleware_runtime(),),
+                media_response=noop_media_response(),
+                identity=identity,
+                context=WorkflowRuntimeContext.for_run(identity=identity),
+                lifecycle_service=lifecycle,
+                monitoring_capture_enabled=True,
+            )
+            stream = execution.stream_text()
+            assert await anext(stream) == "accepted"
+            await execution.cancel()
+            run = lifecycle.run("protocol-cancel-run")
+            assert run is not None
+            events = RuntimeMonitoringQueryStore(database).protocol_events(
+                lifecycle_id,
+                "protocol-cancel-run",
+                after_sequence=0,
+                limit=10,
+            )["items"]
+            return str(run["status"]), [int(event["sequence"]) for event in events]
+        finally:
+            if stream is not None:
+                await stream.aclose()
+            try:
+                await lifecycle.close()
+            finally:
+                await database.close()
+
+    assert asyncio.run(scenario()) == ("cancelled", [1])
 
 
 def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> None:

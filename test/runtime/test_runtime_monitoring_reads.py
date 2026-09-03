@@ -112,7 +112,7 @@ def _runtime(root: Path):
         SQLiteFile(root / "workflow-checkpoints.sqlite3", create=False)
     )
     queries = RuntimeMonitoringQueryStore(database)
-    reads = MonitoringReadService(queries, lifecycle, checkpoints)
+    reads = MonitoringReadService(database, queries, lifecycle, checkpoints)
     return lifecycle, checkpoints, queries, reads
 
 

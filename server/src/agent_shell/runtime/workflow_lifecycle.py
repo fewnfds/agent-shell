@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ from langgraph.store.sqlite import AsyncSqliteStore
 from agent_shell.contracts import FilesystemBlock
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.input_messages import client_messages_sha
-from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.database import SQLiteBatchWriter, SQLiteDatabase, SQLiteFile
 from agent_shell.storage.owned_paths import resolve_data_root_relative_path
 from agent_shell.storage.runtime_monitoring import RuntimeMonitoringStore
 from agent_shell.storage.runtime_registry import RuntimeRegistryStore
@@ -85,6 +85,7 @@ class WorkflowLifecycleService:
                 "the Workflow Store must use a dedicated SQLite database file"
             )
         self._database_path = database.path
+        self._database = database
         self._store_database_path = store_database.path
         self._registry = RuntimeRegistryStore(database)
         self._monitoring = RuntimeMonitoringStore(database)
@@ -352,6 +353,9 @@ class WorkflowLifecycleService:
             raise RuntimeError("the Workflow Run registry record does not exist")
         return self._registry.start_run(run_id, started_at=_now())
 
+    async def astart_run(self, run_id: str) -> bool:
+        return await self._database.run(lambda: self.start_run(run_id))
+
     def finish_run(
         self,
         run_id: str,
@@ -360,6 +364,7 @@ class WorkflowLifecycleService:
         error_code: str = "",
         finish_reason: str = "",
         usage: dict[str, int] | None = None,
+        partial_monitoring_partitions: Sequence[str] = (),
     ) -> bool:
         record = self._registry.get_run(run_id)
         if record is None:
@@ -381,6 +386,7 @@ class WorkflowLifecycleService:
                 self._monitoring.finish_run(
                     run_id,
                     interrupted=status == "interrupted",
+                    partial_partitions=partial_monitoring_partitions,
                 )
         except Exception as exc:
             self._observation_error(
@@ -390,6 +396,27 @@ class WorkflowLifecycleService:
                 run_id=run_id,
             )
         return True
+
+    async def afinish_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        error_code: str = "",
+        finish_reason: str = "",
+        usage: dict[str, int] | None = None,
+        partial_monitoring_partitions: Sequence[str] = (),
+    ) -> bool:
+        return await self._database.run(
+            lambda: self.finish_run(
+                run_id,
+                status=status,
+                error_code=error_code,
+                finish_reason=finish_reason,
+                usage=usage,
+                partial_monitoring_partitions=partial_monitoring_partitions,
+            )
+        )
 
     async def lifecycle_changed(self, lifecycle_id: str) -> None:
         if self._cleanup_hook is not None:
@@ -487,6 +514,29 @@ class WorkflowLifecycleService:
             node_invocation_id=node_invocation_id,
             agent_profile_id=agent_profile_id,
             subagent_profile_id=subagent_profile_id,
+        )
+
+    async def protocol_event_writer(
+        self,
+        run_id: str,
+    ) -> SQLiteBatchWriter[dict[str, object]] | None:
+        status = await self._database.run(lambda: self._monitoring.status(run_id))
+        if status is None or status["protocol"] != "capturing":
+            return None
+
+        def write_batch(records: tuple[dict[str, object], ...]) -> None:
+            try:
+                self._monitoring.append_protocol_events(records)
+            except Exception:
+                try:
+                    self._monitoring.mark_partition(run_id, "protocol", "partial")
+                except Exception:
+                    pass
+                raise
+
+        return self._database.batch_writer(
+            write_batch,
+            name=f"protocol-events:{run_id}",
         )
 
     def start_node_attempt(self, record: dict[str, object]) -> bool:
@@ -597,6 +647,9 @@ class WorkflowLifecycleService:
 
     def run(self, run_id: str) -> dict[str, object] | None:
         return self._registry.get_run(run_id)
+
+    async def arun(self, run_id: str) -> dict[str, object] | None:
+        return await self._database.run(lambda: self.run(run_id))
 
     def run_summary(self, lifecycle_id: str) -> dict[str, object]:
         return self._registry.summary(lifecycle_id)

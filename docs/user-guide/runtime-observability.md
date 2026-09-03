@@ -52,6 +52,8 @@ Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的权威 owner。�
 
 Graph、Node、ProtocolEvent、Model Request 和 Command 五个分区分别具有 `capturing`、`available`、`partial` 或 `not_applicable` 状态。任一可选 writer 失败只停止该分区后续采集、标记 `partial` 并写一条不含业务正文的运行诊断，不改变 LangGraph 正式结果。Run 已进入终态而分区仍处于 `capturing` 时，读取接口立即按 `partial` 投影；Lifecycle 状态变化或服务启动恢复会幂等地持久化该收敛结果。Graph 已成功冻结以及本来不适用的分区保持原状态。
 
+ProtocolEvent 先进入本 Run 的有序内存缓冲，再由 application SQLite worker 把当时已排队的记录作为一个事务写入。正常完成、失败和取消都会先排空已经接收的记录，再提交 Run 终态；应用正常关闭也会排空仍登记的 writer。运行中的读取只显示已经提交到 SQLite 的记录，因此可以短暂落后于正在消费的 stream。进程被强制终止时，尚在内存中的可选观测记录可能丢失；恢复边界会把无法证明完整的分区呈现为 `partial`，不会伪装成完整历史。
+
 Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。监控通过官方 Checkpointer `aget_tuple()` 读取 latest persisted root State；没有 Checkpointer 时明确显示 `not_enabled`。当前不提供 State history、修改、Resume、time travel 或灾难恢复入口。
 
 完成的 Agent invocation artifact 已由 Lifecycle Store 保存时，监控先验证对应 Node attempt、frozen Agent Node 与 Agent UUID，再使用固定 Lifecycle/Run namespace 和 invocation key 通过官方 Store `aget()` 精确读取。接口不扫描 namespace，也不开放 Lifecycle input、background task、filesystem route 或任意 Store browser。
@@ -68,6 +70,8 @@ Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥
 - `GET .../monitoring/runs/{run_id}/agent-invocations/{invocation_id}`：exact completed Agent artifact。
 
 捕获关闭的 Lifecycle 返回 `409 runtime_monitoring_disabled`；不存在的 Lifecycle、Run、Workflow scope、frozen Node 或 invocation 返回对应 404；只提供 `invocation_id` 而未提供 `node_id` 时返回 `422 runtime_monitoring_protocol_selector_invalid`；Registry/snapshot 整体不可读返回 503。独立资源读取失败返回 `200` 和 `availability=unavailable`，允许其他区域继续显示并在下一轮重试。Protocol/Command 用响应的 `next_after_sequence` 续读；Graph、Run、Node、Model、State 与 Agent artifact 重新读取当前 snapshot/page。
+
+这些 management GET 通过 application database 的异步执行边界读取 SQLite；数据库锁等待不会占用 FastAPI 事件循环。该机制只改变读取工作的执行位置，不把普通 HTTP 轮询升级成推送或强一致实时流。
 
 ### 保留与删除
 
