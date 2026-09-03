@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
 from zipfile import ZipFile
 
 import pytest
@@ -115,6 +117,166 @@ def _jsonl(archive: ZipFile, path: str) -> list[dict]:
         for line in archive.read(path).decode("utf-8").splitlines()
         if line
     ]
+
+
+def _minimal_archive_service(
+    tmp_path: Path,
+    *,
+    node_read_mode: str,
+) -> RuntimeMonitoringArchiveService:
+    lifecycle_id = "lifecycle-archive"
+    run_id = "run-archive"
+    run = {
+        "run_id": run_id,
+        "status": "completed",
+        "monitoring": {
+            "graph": "available",
+            "node": "available",
+            "protocol": "available",
+            "model": "available",
+            "command": "available",
+        },
+    }
+    graph = {
+        "availability": "available",
+        "read_at": "2026-01-01T00:00:00.000+00:00",
+        "graph": {
+            "document": {
+                "definition": {
+                    "nodes": [{"id": "agent", "type": "agent"}],
+                }
+            }
+        },
+    }
+    read_at = "2026-01-01T00:00:00.000+00:00"
+
+    def archive_node_attempts(*_args, after_sequence: int, **_kwargs):
+        if node_read_mode == "partial" and after_sequence == 0:
+            return [{
+                "sequence": 1,
+                "invocation_id": "invocation-1",
+                "workflow_node_id": "agent",
+            }]
+        raise OSError("node archive read failed")
+
+    async def application_query(call):
+        return call()
+
+    async def latest_state(*_args, **_kwargs):
+        return {"availability": "not_enabled", "read_at": read_at, "state": None}
+
+    async def agent_invocation(*_args, **_kwargs):
+        return {
+            "availability": "available",
+            "read_at": read_at,
+            "workflow_node_id": "agent",
+            "artifact": {"messages": []},
+        }
+
+    def empty_partition(*_args, **_kwargs):
+        return []
+
+    queries = SimpleNamespace(
+        archive_high_waters=lambda *_args: {
+            run_id: {
+                "node": 2 if node_read_mode == "partial" else 1,
+                "protocol": 0,
+                "model": 0,
+                "command": 0,
+            }
+        },
+        lifecycle=lambda *_args: {"lifecycle_status": "active"},
+        archive_node_attempts=archive_node_attempts,
+        archive_protocol_events=empty_partition,
+        archive_model_requests=empty_partition,
+        archive_command_observations=empty_partition,
+    )
+    reads = SimpleNamespace(
+        application_query=application_query,
+        snapshot=lambda *_args, **_kwargs: {
+            "read_at": read_at,
+            "lifecycle": {"lifecycle_id": lifecycle_id},
+            "summary": {},
+            "forest": {},
+            "runs": [run],
+        },
+        graph=lambda *_args, **_kwargs: graph,
+        latest_state=latest_state,
+        agent_invocation=agent_invocation,
+    )
+    return RuntimeMonitoringArchiveService(
+        reads,  # type: ignore[arg-type]
+        queries,  # type: ignore[arg-type]
+        tmp_path / "runtime" / "tmp",
+    )
+
+
+@pytest.mark.parametrize(
+    ("node_read_mode", "expected_availability"),
+    (("unavailable", "unavailable"), ("partial", "partial")),
+)
+def test_agent_invocation_index_preserves_node_partition_read_failure(
+    tmp_path: Path,
+    node_read_mode: str,
+    expected_availability: str,
+) -> None:
+    async def scenario() -> None:
+        service = _minimal_archive_service(
+            tmp_path,
+            node_read_mode=node_read_mode,
+        )
+        prepared = await service.prepare_run("lifecycle-archive", "run-archive")
+        try:
+            with ZipFile(prepared.path) as downloaded:
+                manifest = _json(downloaded, "manifest.json")
+                run_manifest = manifest["runs"][0]
+                assert run_manifest["resources"]["node"]["availability"] == (
+                    expected_availability
+                )
+                invocation_index = _json(
+                    downloaded,
+                    "runs/0001/agent-invocations/index.json",
+                )
+                assert invocation_index["availability"] == expected_availability
+        finally:
+            prepared.release()
+
+    asyncio.run(scenario())
+
+
+def test_archive_cancellation_waits_for_blocking_writer_before_cleanup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    zip_started = Event()
+    allow_zip_to_finish = Event()
+
+    def blocking_zip(_source: Path, _destination: Path) -> None:
+        zip_started.set()
+        allow_zip_to_finish.wait()
+
+    async def scenario() -> set[Path]:
+        service = _minimal_archive_service(tmp_path, node_read_mode="unavailable")
+        monkeypatch.setattr(
+            monitoring_archive_module,
+            "_zip_directory",
+            blocking_zip,
+        )
+        task = asyncio.create_task(
+            service.prepare_run("lifecycle-archive", "run-archive")
+        )
+        assert await asyncio.to_thread(zip_started.wait, 5)
+        task.cancel()
+        try:
+            done, _pending = await asyncio.wait({task}, timeout=0.05)
+            assert not done
+        finally:
+            allow_zip_to_finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return set((tmp_path / "runtime" / "tmp").glob("*"))
+
+    assert asyncio.run(scenario()) == set()
 
 
 def test_archive_reads_canonical_owners_and_stops_at_frozen_high_water(

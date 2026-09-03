@@ -503,9 +503,13 @@ export function useRuntimeMonitoringNodeDetails(
 
   async function refresh(): Promise<void> {
     if (!selectedNodeId.value || !selectedNodeType.value) return
+    const nodeId = selectedNodeId.value
+    const nodeType = selectedNodeType.value
+    const targetRunId = runId.value
+    const invocationBeforeRefresh = selectedInvocationId.value
     const jobs: Promise<void>[] = [loadAttempts(
-      selectedNodeId.value,
-      selectedNodeType.value,
+      nodeId,
+      nodeType,
       attemptPage.value?.page ?? 1,
       attemptPageSize.value,
       {
@@ -515,12 +519,20 @@ export function useRuntimeMonitoringNodeDetails(
         refreshSpecialized: false,
       },
     )]
-    if (selectedNodeType.value === 'agent' && selectedInvocationId.value) {
+    if (nodeType === 'agent' && selectedInvocationId.value) {
       jobs.push(loadAgentProtocol(true))
       if (agentArtifact.value?.availability !== 'available') jobs.push(loadAgentArtifact(true))
     }
-    if (selectedNodeType.value === 'command') jobs.push(loadCommandObservations(true))
+    if (nodeType === 'command') jobs.push(loadCommandObservations(true))
     await Promise.all(jobs)
+    if (
+      nodeType === 'agent'
+      && currentIdentity(nodeId, targetRunId)
+      && selectedInvocationId.value
+      && selectedInvocationId.value !== invocationBeforeRefresh
+    ) {
+      await Promise.all([loadAgentArtifact(true), loadAgentProtocol(true)])
+    }
   }
 
   return {

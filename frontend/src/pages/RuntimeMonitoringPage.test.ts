@@ -961,6 +961,73 @@ describe('RuntimeMonitoringPage', () => {
     expect(managementApi.getRuntimeMonitoringSnapshot).toHaveBeenCalledTimes(2)
   })
 
+  it('loads the first Agent invocation discovered by the final terminal refresh', async () => {
+    vi.useFakeTimers()
+    const terminalSnapshot: RuntimeMonitoringSnapshot = {
+      ...snapshot,
+      lifecycle: {
+        ...snapshot.lifecycle,
+        root_status: 'completed',
+        fully_terminal_at: '2026-09-03T00:00:20Z',
+      },
+      summary: { ...snapshot.summary, active_run_count: 0 },
+      runs: snapshot.runs.map((item) => ({
+        ...item,
+        status: 'completed',
+        finished_at: '2026-09-03T00:00:20Z',
+      })),
+    }
+    const emptyAttempts: RuntimeMonitoringNodeAttemptPage = {
+      ...nodeAttemptPage('run-root', 'root-agent'),
+      items: [],
+      total: 0,
+    }
+    vi.mocked(managementApi.getRuntimeMonitoringSnapshot)
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(terminalSnapshot)
+    vi.mocked(managementApi.listRuntimeMonitoringNodeAttempts)
+      .mockResolvedValueOnce(emptyAttempts)
+      .mockResolvedValueOnce(
+        nodeAttemptPage('run-root', 'root-agent', 'invocation-final'),
+      )
+    vi.mocked(managementApi.getRuntimeMonitoringAgentInvocation).mockResolvedValue({
+      availability: 'available',
+      read_at: '2026-09-03T00:00:20Z',
+      workflow_node_id: 'root-agent',
+      artifact: {
+        invocation_id: 'invocation-final',
+        messages: [{ role: 'assistant', content: 'final invocation answer' }],
+      },
+    })
+
+    const { wrapper } = await mountPage()
+    await wrapper.get('[data-testid="select-node-root-agent"]').trigger('click')
+    await flushPromises()
+    expect(managementApi.getRuntimeMonitoringAgentInvocation).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(managementApi.getRuntimeMonitoringAgentInvocation).toHaveBeenCalledWith(
+      'lifecycle-1',
+      'run-root',
+      'invocation-final',
+      expect.any(AbortSignal),
+    )
+    expect(managementApi.listRuntimeMonitoringProtocolEvents).toHaveBeenCalledWith(
+      'lifecycle-1',
+      'run-root',
+      {
+        after_sequence: 0,
+        node_id: 'root-agent',
+        invocation_id: 'invocation-final',
+      },
+      expect.any(AbortSignal),
+    )
+    expect(wrapper.text()).toContain('final invocation answer')
+    expect(wrapper.text()).toContain('Static result')
+  })
+
   it('keeps the last good view and retries after one polling failure', async () => {
     vi.useFakeTimers()
     vi.mocked(managementApi.getRuntimeMonitoringSnapshot)

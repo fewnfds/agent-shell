@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Literal
+from typing import Any, Literal, TypeVar
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from agent_shell.runtime.monitoring_read_service import (
@@ -27,6 +27,7 @@ ARCHIVE_SCHEMA = "agent-shell.runtime-monitoring-archive.v1"
 # This bounds each SQLite read and JSONL append. The keyset loop keeps reading
 # through the frozen high-water mark, so it is not an output limit.
 _READ_BATCH_ROWS = 1000
+_BlockingResult = TypeVar("_BlockingResult")
 
 
 def _now() -> str:
@@ -88,6 +89,58 @@ def _zip_directory(source: Path, destination: Path) -> None:
         for path in sorted(source.rglob("*")):
             if path.is_file():
                 archive.write(path, path.relative_to(source).as_posix())
+
+
+async def _finish_cancelled_worker(worker: asyncio.Task[Any]) -> None:
+    while not worker.done():
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            continue
+        except BaseException:
+            break
+    if not worker.cancelled():
+        try:
+            worker.result()
+        except BaseException:
+            pass
+
+
+async def _run_blocking(
+    call: Callable[..., _BlockingResult],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> _BlockingResult:
+    worker = asyncio.create_task(asyncio.to_thread(call, *args, **kwargs))
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        await _finish_cancelled_worker(worker)
+        raise
+
+
+async def _create_temporary_root(parent: Path) -> Path:
+    await _run_blocking(parent.mkdir, parents=True, exist_ok=True)
+    worker = asyncio.create_task(
+        asyncio.to_thread(
+            tempfile.mkdtemp,
+            prefix=".runtime-monitoring-archive-",
+            dir=parent,
+        )
+    )
+    try:
+        return Path(await asyncio.shield(worker))
+    except asyncio.CancelledError:
+        await _finish_cancelled_worker(worker)
+        if not worker.cancelled():
+            try:
+                created = Path(worker.result())
+            except BaseException:
+                pass
+            else:
+                await _run_blocking(shutil.rmtree, created, ignore_errors=True)
+        raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,14 +209,7 @@ class RuntimeMonitoringArchiveService:
         )
         cut_at = _now()
 
-        await asyncio.to_thread(self._temporary_root.mkdir, parents=True, exist_ok=True)
-        export_root = Path(
-            await asyncio.to_thread(
-                tempfile.mkdtemp,
-                prefix=".runtime-monitoring-archive-",
-                dir=self._temporary_root,
-            )
-        )
+        export_root = await _create_temporary_root(self._temporary_root)
         content_root = export_root / "content"
         archive_path = export_root / "archive.zip"
         identity = run_id if scope == "run" and run_id is not None else lifecycle_id
@@ -176,7 +222,7 @@ class RuntimeMonitoringArchiveService:
         )
 
         try:
-            await asyncio.to_thread(
+            await _run_blocking(
                 _write_json,
                 content_root / "lifecycle.json",
                 {
@@ -209,7 +255,7 @@ class RuntimeMonitoringArchiveService:
                 raise MonitoringLifecycleNotFound(lifecycle_id)
 
             completed_at = _now()
-            await asyncio.to_thread(
+            await _run_blocking(
                 _write_json,
                 content_root / "manifest.json",
                 {
@@ -231,10 +277,10 @@ class RuntimeMonitoringArchiveService:
                     "runs": run_manifests,
                 },
             )
-            await asyncio.to_thread(_zip_directory, content_root, archive_path)
+            await _run_blocking(_zip_directory, content_root, archive_path)
             return prepared
         except BaseException:
-            await asyncio.to_thread(prepared.release)
+            await _run_blocking(prepared.release)
             raise
 
     async def _write_run(
@@ -249,7 +295,7 @@ class RuntimeMonitoringArchiveService:
     ) -> dict[str, object]:
         run_id = str(run["run_id"])
         run_root = content_root / directory
-        await asyncio.to_thread(
+        await _run_blocking(
             _write_json,
             run_root / "run.json",
             {"read_at": snapshot_read_at, "run": run},
@@ -258,9 +304,10 @@ class RuntimeMonitoringArchiveService:
         graph = await self._reads.application_query(
             lambda: self._reads.graph(lifecycle_id, run_id)
         )
-        await asyncio.to_thread(_write_json, run_root / "graph.json", graph)
+        await _run_blocking(_write_json, run_root / "graph.json", graph)
 
         invocation_nodes: dict[str, tuple[int, str]] = {}
+        node_availability = self._partition_availability(run, "node")
         resources: dict[str, dict[str, object]] = {
             "graph": {
                 "path": f"{directory}/graph.json",
@@ -287,9 +334,10 @@ class RuntimeMonitoringArchiveService:
             resources[partition] = result
             if partition == "node":
                 invocation_nodes = partition_invocations
+                node_availability = str(result["availability"])
 
         state = await self._reads.latest_state(lifecycle_id, run_id)
-        await asyncio.to_thread(_write_json, run_root / "state.json", state)
+        await _run_blocking(_write_json, run_root / "state.json", state)
         resources["state"] = {
             "path": f"{directory}/state.json",
             "availability": state["availability"],
@@ -303,6 +351,7 @@ class RuntimeMonitoringArchiveService:
             run_id=run_id,
             graph=graph,
             invocation_nodes=invocation_nodes,
+            node_availability=node_availability,
             run_status=str(run["status"]),
         )
         resources["agent_invocations"] = {
@@ -328,7 +377,7 @@ class RuntimeMonitoringArchiveService:
         through_sequence: int,
         source_availability: str,
     ) -> tuple[dict[str, object], dict[str, tuple[int, str]]]:
-        await asyncio.to_thread(_create_jsonl, path)
+        await _run_blocking(_create_jsonl, path)
         after_sequence = 0
         count = 0
         read_failed = False
@@ -349,7 +398,7 @@ class RuntimeMonitoringArchiveService:
                 break
             if not items:
                 break
-            await asyncio.to_thread(_append_jsonl, path, items)
+            await _run_blocking(_append_jsonl, path, items)
             count += len(items)
             if partition == "node":
                 for item in items:
@@ -424,6 +473,7 @@ class RuntimeMonitoringArchiveService:
         run_id: str,
         graph: dict[str, object],
         invocation_nodes: dict[str, tuple[int, str]],
+        node_availability: str,
         run_status: str,
     ) -> dict[str, object]:
         agent_node_ids = self._agent_node_ids(graph)
@@ -454,7 +504,7 @@ class RuntimeMonitoringArchiveService:
                     "workflow_node_id": node_id,
                     "artifact": None,
                 }
-            await asyncio.to_thread(_write_json, root / filename, response)
+            await _run_blocking(_write_json, root / filename, response)
             records.append(
                 {
                     "invocation_id": invocation_id,
@@ -468,6 +518,7 @@ class RuntimeMonitoringArchiveService:
         availability = self._agent_index_availability(
             graph_availability=str(graph["availability"]),
             has_agent_nodes=bool(agent_node_ids),
+            node_availability=node_availability,
             records=records,
             run_status=run_status,
         )
@@ -476,7 +527,7 @@ class RuntimeMonitoringArchiveService:
             "read_at": _now(),
             "items": records,
         }
-        await asyncio.to_thread(_write_json, root / "index.json", index)
+        await _run_blocking(_write_json, root / "index.json", index)
         return index
 
     @staticmethod
@@ -509,6 +560,7 @@ class RuntimeMonitoringArchiveService:
         *,
         graph_availability: str,
         has_agent_nodes: bool,
+        node_availability: str,
         records: list[dict[str, object]],
         run_status: str,
     ) -> str:
@@ -518,6 +570,10 @@ class RuntimeMonitoringArchiveService:
             return "partial"
         if not has_agent_nodes:
             return "not_applicable"
+        if node_availability == "unavailable":
+            return "unavailable"
+        if node_availability == "partial":
+            return "partial"
         statuses = {str(record["availability"]) for record in records}
         if "unavailable" in statuses or "partial" in statuses:
             return "partial"
