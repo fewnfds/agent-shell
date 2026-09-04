@@ -116,16 +116,15 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
 
     const cards = wrapper.findAll('[data-testid^="system-card-"]')
-    expect(cards).toHaveLength(4)
+    expect(cards).toHaveLength(6)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
-    expect(saveButtons).toHaveLength(4)
+    expect(saveButtons).toHaveLength(6)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-hdd-network', 'bi-key', 'bi-check2-square', 'bi-sliders'])
-
-    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
+      .toEqual(['bi-diagram-3', 'bi-cloud-arrow-up', 'bi-hdd-network', 'bi-key', 'bi-check2-square', 'bi-sliders'])
+    await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
@@ -182,7 +181,7 @@ describe('SystemSettingsPage', () => {
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()
 
-    await wrapper.get('input[type="text"]').setValue('0.0.0.0')
+    await wrapper.get('#system-host').setValue('0.0.0.0')
     await wrapper.get('#system-port').setValue('21000')
     await wrapper.get('#langgraph-jobs-per-worker').setValue('14')
     await wrapper.get('#langgraph-debug-port').setValue('21001')
@@ -195,24 +194,44 @@ describe('SystemSettingsPage', () => {
     const textareas = wrapper.findAll('textarea')
     await textareas[0]!.setValue('http://localhost:3000\nhttp://127.0.0.1:3000')
     await textareas[1]!.setValue('127.0.0.1/32')
-    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
+    await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
-    expect(api.updateSystemSettings).toHaveBeenCalledWith({
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      host: '0.0.0.0',
+      port: 21000,
+      n_jobs_per_worker: 10,
+      debug_port: null,
+      allow_remote: true,
+      langsmith_tracing_enabled: false,
+      langsmith_api_key: { operation: 'keep' },
+      management_token: { operation: 'replace', value: 'new-management-password' },
+      cors_origins: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      trusted_proxy_cidrs: ['127.0.0.1/32'],
+    }))
+
+    await wrapper.get('[data-testid="system-card-langgraph-dev"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(2, expect.objectContaining({
       host: '0.0.0.0',
       port: 21000,
       n_jobs_per_worker: 14,
       debug_port: 21001,
       allow_remote: true,
+      langsmith_tracing_enabled: false,
+      langsmith_api_key: { operation: 'keep' },
+      management_token: { operation: 'preserve' },
+    }))
+
+    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      n_jobs_per_worker: 14,
+      debug_port: 21001,
       langsmith_tracing_enabled: true,
-      langsmith_endpoint: 'https://api.smith.langchain.com',
-      langsmith_project: 'agent-shell',
-      langsmith_workspace_id: null,
       langsmith_api_key: { operation: 'replace', value: 'new-langsmith-key' },
-      management_token: { operation: 'replace', value: 'new-management-password' },
-      cors_origins: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-      trusted_proxy_cidrs: ['127.0.0.1/32'],
-    })
+      management_token: { operation: 'preserve' },
+    }))
     expect(api.saveApiServer).not.toHaveBeenCalled()
 
     await wrapper.get('[data-testid="system-card-api-server"]').trigger('submit')
@@ -265,10 +284,15 @@ describe('SystemSettingsPage', () => {
     })
     expect(api.updateSystemSettings).not.toHaveBeenCalled()
 
-    await wrapper.get('[data-testid="system-card-system"]').trigger('submit')
+    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
       langsmith_api_key: { operation: 'clear' },
+    }))
+    await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
+      management_token: { operation: 'replace', value: 'visible-management-password' },
     }))
   })
 

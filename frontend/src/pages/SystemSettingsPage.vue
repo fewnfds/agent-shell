@@ -47,11 +47,15 @@ const apiServerSettings = ref<ApiServerSettings | null>(null)
 const runtimePolicy = ref<RuntimePolicySettings | null>(null)
 const loading = ref(true)
 const loadError = ref('')
-const systemSaving = ref(false)
+const langgraphSaving = ref(false)
+const langsmithSaving = ref(false)
+const proxySaving = ref(false)
 const apiServerSaving = ref(false)
 const validationSaving = ref(false)
 const runtimePolicySaving = ref(false)
-const systemError = ref('')
+const langgraphError = ref('')
+const langsmithError = ref('')
+const proxyError = ref('')
 const apiServerError = ref('')
 const validationError = ref('')
 const runtimePolicyError = ref('')
@@ -96,12 +100,10 @@ const runtimePolicyFields: Array<{
   unit: string
   step: number
   mib?: boolean
-  helpKey?: string
 }> = [
   {
     key: 'retained_lifecycles',
     labelKey: 'systemSettings.runtimePolicy.retainedLifecycles',
-    helpKey: 'systemSettings.runtimePolicy.retainedLifecyclesHelp',
     unit: 'Lifecycle',
     step: 1,
   },
@@ -128,10 +130,20 @@ function fieldLabel(messageKey: string, wireField: string): string {
   return locale.value === 'debug' ? wireField : t(messageKey)
 }
 
-const systemSettingsValid = computed(() => {
+const langgraphSettingsValid = computed(() => {
   const normalizedPort = Number(port.value)
   const normalizedJobs = Number(nJobsPerWorker.value)
   const normalizedDebugPort = debugPort.value === '' ? null : Number(debugPort.value)
+  const savedPort = settings.value?.port ?? normalizedPort
+  return Number.isInteger(normalizedJobs)
+    && normalizedJobs >= 1
+    && (normalizedDebugPort === null
+      || (Number.isInteger(normalizedDebugPort)
+        && normalizedDebugPort >= 1
+        && normalizedDebugPort <= 65_535
+        && normalizedDebugPort !== savedPort))
+})
+const langsmithSettingsValid = computed(() => {
   const endpointValid = (() => {
     try {
       const endpoint = new URL(langsmithEndpoint.value.trim())
@@ -146,19 +158,18 @@ const systemSettingsValid = computed(() => {
   })()
   const langsmithApiKeyAvailable = Boolean(langsmithApiKey.value)
     || (!langsmithApiKeyDirty.value && Boolean(settings.value?.langsmith_api_key.configured))
-  return Number.isInteger(normalizedPort)
-    && normalizedPort >= 1
-    && normalizedPort <= 65_535
-    && Number.isInteger(normalizedJobs)
-    && normalizedJobs >= 1
-    && (normalizedDebugPort === null
-      || (Number.isInteger(normalizedDebugPort)
-        && normalizedDebugPort >= 1
-        && normalizedDebugPort <= 65_535
-        && normalizedDebugPort !== normalizedPort))
-    && endpointValid
+  return endpointValid
     && Boolean(langsmithProject.value.trim())
     && (!langsmithTracingEnabled.value || langsmithApiKeyAvailable)
+})
+const proxySettingsValid = computed(() => {
+  const normalizedPort = Number(port.value)
+  const savedDebugPort = settings.value?.debug_port
+  return Boolean(host.value.trim())
+    && Number.isInteger(normalizedPort)
+    && normalizedPort >= 1
+    && normalizedPort <= 65_535
+    && (savedDebugPort === null || savedDebugPort !== normalizedPort)
 })
 const apiServerSettingsValid = computed(() => {
   const value = Number(maxInitialMessages.value)
@@ -173,7 +184,9 @@ const runtimePolicyValid = computed(() => runtimePolicy.value !== null
     const value = Number(runtimePolicyDraft[key])
     return Number.isInteger(value) && value >= runtimePolicy.value!.minimums[key]
   }))
-const anySaving = computed(() => systemSaving.value
+const anySaving = computed(() => langgraphSaving.value
+  || langsmithSaving.value
+  || proxySaving.value
   || apiServerSaving.value
   || validationSaving.value
   || runtimePolicySaving.value)
@@ -233,6 +246,120 @@ function updateRuntimePolicyValue(field: (typeof runtimePolicyFields)[number], e
   runtimePolicyDraft[field.key] = field.mib ? Math.round(value * MIB_BYTES) : value
 }
 
+type SystemSettingsSection = 'langgraph' | 'langsmith' | 'proxy'
+
+function applySystemSettingsSection(
+  value: SystemSettings,
+  section: SystemSettingsSection,
+): void {
+  settings.value = value
+  if (section === 'langgraph') {
+    nJobsPerWorker.value = value.n_jobs_per_worker
+    debugPort.value = value.debug_port ?? ''
+    return
+  }
+  if (section === 'langsmith') {
+    langsmithTracingEnabled.value = value.langsmith_tracing_enabled
+    langsmithEndpoint.value = value.langsmith_endpoint
+    langsmithProject.value = value.langsmith_project
+    langsmithWorkspaceId.value = value.langsmith_workspace_id ?? ''
+    langsmithApiKey.value = ''
+    langsmithApiKeyDirty.value = false
+    showLangsmithApiKey.value = false
+    return
+  }
+  host.value = value.host
+  port.value = value.port
+  allowRemote.value = value.allow_remote
+  corsOrigins.value = value.cors_origins.join('\n')
+  trustedProxies.value = value.trusted_proxy_cidrs.join('\n')
+  managementPassword.value = ''
+  showManagementPassword.value = false
+}
+
+function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUpdate {
+  const saved = settings.value
+  if (!saved) {
+    throw new Error('System settings are not loaded.')
+  }
+  const langsmithApiKeyUpdate: SystemSettingsUpdate['langsmith_api_key'] = section === 'langsmith'
+    ? langsmithApiKey.value
+      ? { operation: 'replace', value: langsmithApiKey.value }
+      : langsmithApiKeyDirty.value
+        ? { operation: 'clear' }
+        : { operation: 'keep' }
+    : { operation: 'keep' }
+  const managementTokenUpdate: SystemSettingsUpdate['management_token'] = section === 'proxy'
+    ? managementPassword.value
+      ? { operation: 'replace', value: managementPassword.value }
+      : { operation: 'preserve' }
+    : { operation: 'preserve' }
+  return {
+    host: section === 'proxy' ? host.value.trim() : saved.host,
+    port: section === 'proxy' ? Number(port.value) : saved.port,
+    n_jobs_per_worker: section === 'langgraph' ? Number(nJobsPerWorker.value) : saved.n_jobs_per_worker,
+    debug_port: section === 'langgraph'
+      ? (debugPort.value === '' ? null : Number(debugPort.value))
+      : saved.debug_port,
+    allow_remote: section === 'proxy' ? allowRemote.value : saved.allow_remote,
+    langsmith_tracing_enabled: section === 'langsmith'
+      ? langsmithTracingEnabled.value
+      : saved.langsmith_tracing_enabled,
+    langsmith_endpoint: section === 'langsmith' ? langsmithEndpoint.value.trim().replace(/\/$/, '') : saved.langsmith_endpoint,
+    langsmith_project: section === 'langsmith' ? langsmithProject.value.trim() : saved.langsmith_project,
+    langsmith_workspace_id: section === 'langsmith'
+      ? langsmithWorkspaceId.value.trim() || null
+      : saved.langsmith_workspace_id,
+    langsmith_api_key: langsmithApiKeyUpdate,
+    management_token: managementTokenUpdate,
+    cors_origins: section === 'proxy' ? lines(corsOrigins.value) : saved.cors_origins,
+    trusted_proxy_cidrs: section === 'proxy' ? lines(trustedProxies.value) : saved.trusted_proxy_cidrs,
+  }
+}
+
+async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
+  const valid = section === 'langgraph'
+    ? langgraphSettingsValid.value
+    : section === 'langsmith'
+      ? langsmithSettingsValid.value
+      : proxySettingsValid.value
+  const saving = section === 'langgraph'
+    ? langgraphSaving
+    : section === 'langsmith'
+      ? langsmithSaving
+      : proxySaving
+  const error = section === 'langgraph'
+    ? langgraphError
+    : section === 'langsmith'
+      ? langsmithError
+      : proxyError
+  const invalidMessage = section === 'langgraph'
+    ? 'systemSettings.langgraphInvalid'
+    : section === 'langsmith'
+      ? 'systemSettings.langsmithInvalid'
+      : 'systemSettings.proxyInvalid'
+  const savedMessage = section === 'langgraph'
+    ? 'systemSettings.langgraphSaved'
+    : section === 'langsmith'
+      ? 'systemSettings.langsmithSaved'
+      : 'systemSettings.proxySaved'
+  if (!valid) {
+    error.value = t(invalidMessage)
+    return
+  }
+  saving.value = true
+  error.value = ''
+  try {
+    const saved = await api.updateSystemSettings(systemSettingsPayload(section))
+    applySystemSettingsSection(saved, section)
+    notify({ tone: 'success', title: t(savedMessage) })
+  } catch (caught) {
+    error.value = managementError.describe(caught).display
+  } finally {
+    saving.value = false
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
@@ -256,45 +383,6 @@ async function load(): Promise<void> {
     loadError.value = managementError.describe(error).display
   } finally {
     loading.value = false
-  }
-}
-
-async function saveSystemSettings(): Promise<void> {
-  if (!systemSettingsValid.value) {
-    systemError.value = t('systemSettings.systemInvalid')
-    return
-  }
-  systemSaving.value = true
-  systemError.value = ''
-  try {
-    const langsmithApiKeyUpdate: SystemSettingsUpdate['langsmith_api_key'] = langsmithApiKey.value
-      ? { operation: 'replace', value: langsmithApiKey.value }
-      : langsmithApiKeyDirty.value
-        ? { operation: 'clear' }
-        : { operation: 'keep' }
-    const savedSystemSettings = await api.updateSystemSettings({
-      host: host.value.trim(),
-      port: Number(port.value),
-      n_jobs_per_worker: Number(nJobsPerWorker.value),
-      debug_port: debugPort.value === '' ? null : Number(debugPort.value),
-      allow_remote: allowRemote.value,
-      langsmith_tracing_enabled: langsmithTracingEnabled.value,
-      langsmith_endpoint: langsmithEndpoint.value.trim().replace(/\/$/, ''),
-      langsmith_project: langsmithProject.value.trim(),
-      langsmith_workspace_id: langsmithWorkspaceId.value.trim() || null,
-      langsmith_api_key: langsmithApiKeyUpdate,
-      management_token: managementPassword.value
-        ? { operation: 'replace', value: managementPassword.value }
-        : { operation: 'preserve' },
-      cors_origins: lines(corsOrigins.value),
-      trusted_proxy_cidrs: lines(trustedProxies.value),
-    })
-    applySystemSettings(savedSystemSettings)
-    notify({ tone: 'success', title: t('systemSettings.systemSaved') })
-  } catch (error) {
-    systemError.value = managementError.describe(error).display
-  } finally {
-    systemSaving.value = false
   }
 }
 
@@ -397,89 +485,32 @@ onMounted(() => { void load() })
       class="row g-3"
     >
       <div class="col-12">
-        <form class="card" data-testid="system-card-system" @submit.prevent="saveSystemSettings">
+        <form class="card" data-testid="system-card-langgraph-dev" @submit.prevent="saveSystemCard('langgraph')">
           <header class="card-header d-flex align-items-center gap-2">
             <h2 class="card-title">
-              <i class="bi bi-hdd-network me-2" aria-hidden="true" />
-              {{ t('systemSettings.systemAndDeployment') }}
+              <i class="bi bi-diagram-3 me-2" aria-hidden="true" />
+              {{ t('systemSettings.langgraphDev.title') }}
             </h2>
             <LteButton
               class="action-button ms-auto"
-              data-testid="save-system-settings"
-              :disabled="systemSaving || !systemSettingsValid"
+              data-testid="save-langgraph-settings"
+              :disabled="langgraphSaving || !langgraphSettingsValid"
               type="submit"
             >
-              <span v-if="systemSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span v-if="langgraphSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
               <i v-else class="bi bi-floppy" aria-hidden="true" />
               {{ t('common.save') }}
             </LteButton>
           </header>
-          <div class="card-body" :aria-busy="systemSaving">
-            <LteAlert v-if="systemError" theme="danger" :title="t('systemSettings.systemSaveFailed')">
-              {{ systemError }}
+          <div class="card-body" :aria-busy="langgraphSaving">
+            <LteAlert v-if="langgraphError" theme="danger" :title="t('systemSettings.langgraphSaveFailed')">
+              {{ langgraphError }}
             </LteAlert>
-            <div class="row g-3">
-              <div class="col-lg-3 col-md-6">
-                <LteInput id="system-host" v-model="host" :label="fieldLabel('systemSettings.host', 'host')" spellcheck="false" />
-              </div>
-              <div class="col-lg-3 col-md-6">
-                <label class="form-label" for="system-port">
-                  {{ fieldLabel('systemSettings.port', 'port') }}
-                </label>
-                <input
-                  id="system-port"
-                  v-model.number="port"
-                  class="form-control"
-                  max="65535"
-                  min="1"
-                  required
-                  step="1"
-                  type="number"
-                >
-              </div>
-              <div class="col-lg-3 col-md-6">
-                <label class="form-label" for="management-password">
-                  {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
-                </label>
-                <div class="input-group">
-                  <input
-                    id="management-password"
-                    v-model="managementPassword"
-                    autocomplete="new-password"
-                    class="form-control"
-                    :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
-                    spellcheck="false"
-                    :type="showManagementPassword ? 'text' : 'password'"
-                  >
-                  <LteButton
-                    class="icon-action-button"
-                    :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
-                    :aria-pressed="showManagementPassword"
-                    type="button"
-                    @click="showManagementPassword = !showManagementPassword"
-                  >
-                    <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
-                    <i v-else class="bi bi-eye" aria-hidden="true" />
-                  </LteButton>
-                </div>
-              </div>
-              <div class="col-lg-3 col-md-6 d-flex align-items-center">
-                <div class="form-check form-switch">
-                  <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
-                  <label class="form-check-label" for="allow-remote">
-                    {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <h3 class="h6 mt-4 mb-3">{{ t('systemSettings.langgraphDev.title') }}</h3>
             <div class="row g-3">
               <div class="col-lg-4 col-md-6">
                 <FormField
                   control-id="langgraph-jobs-per-worker"
                   field-path="n_jobs_per_worker"
-                  :hint="t('systemSettings.langgraphDev.jobsHelp')"
                   label-key="systemSettings.langgraphDev.jobs"
                 >
                   <template #default="{ describedBy }">
@@ -500,7 +531,6 @@ onMounted(() => { void load() })
                 <FormField
                   control-id="langgraph-debug-port"
                   field-path="debug_port"
-                  :hint="t('systemSettings.langgraphDev.debugPortHelp')"
                   label-key="systemSettings.langgraphDev.debugPort"
                 >
                   <template #default="{ describedBy }">
@@ -518,37 +548,58 @@ onMounted(() => { void load() })
                   </template>
                 </FormField>
               </div>
-              <div v-if="settings" class="col-lg-4 col-md-12">
-                <div class="d-flex h-100 flex-column justify-content-end gap-2">
-                  <span class="form-label mb-0">{{ t('systemSettings.langgraphDev.tools') }}</span>
-                  <div class="d-flex flex-wrap gap-2">
-                    <a
-                      class="btn btn-outline-primary"
-                      data-testid="langgraph-api-docs-link"
-                      :href="settings.active_api_docs_url"
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      <i class="bi bi-braces me-1" aria-hidden="true" />
-                      {{ t('systemSettings.langgraphDev.apiDocs') }}
-                    </a>
-                    <a
-                      class="btn btn-outline-primary"
-                      data-testid="langgraph-studio-link"
-                      :href="settings.active_studio_url"
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      <i class="bi bi-diagram-3 me-1" aria-hidden="true" />
-                      {{ t('systemSettings.langgraphDev.studio') }}
-                    </a>
-                  </div>
-                  <small class="text-body-secondary">{{ t('systemSettings.langgraphDev.toolsHelp') }}</small>
+              <div class="col-lg-4 col-md-12">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <span class="form-label mb-0 me-1">{{ t('systemSettings.langgraphDev.tools') }}</span>
+                  <a
+                    class="btn btn-outline-primary"
+                    data-testid="langgraph-api-docs-link"
+                    :href="settings.active_api_docs_url"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <i class="bi bi-braces me-1" aria-hidden="true" />
+                    {{ t('systemSettings.langgraphDev.apiDocs') }}
+                  </a>
+                  <a
+                    class="btn btn-outline-primary"
+                    data-testid="langgraph-studio-link"
+                    :href="settings.active_studio_url"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <i class="bi bi-diagram-3 me-1" aria-hidden="true" />
+                    {{ t('systemSettings.langgraphDev.studio') }}
+                  </a>
                 </div>
               </div>
             </div>
+          </div>
+        </form>
+      </div>
 
-            <h3 class="h6 mt-4 mb-3">{{ t('systemSettings.langsmith.title') }}</h3>
+      <div class="col-12">
+        <form class="card" data-testid="system-card-langsmith" @submit.prevent="saveSystemCard('langsmith')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-cloud-arrow-up me-2" aria-hidden="true" />
+              {{ t('systemSettings.langsmith.title') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-langsmith-settings"
+              :disabled="langsmithSaving || !langsmithSettingsValid"
+              type="submit"
+            >
+              <span v-if="langsmithSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="langsmithSaving">
+            <LteAlert v-if="langsmithError" theme="danger" :title="t('systemSettings.langsmithSaveFailed')">
+              {{ langsmithError }}
+            </LteAlert>
             <div class="row g-3">
               <div class="col-lg-3 col-md-6">
                 <LteInput
@@ -609,9 +660,85 @@ onMounted(() => { void load() })
                 </div>
               </div>
             </div>
+          </div>
+        </form>
+      </div>
 
-            <h3 class="h6 mt-4 mb-3">{{ t('systemSettings.proxyAndDiagnostics') }}</h3>
+      <div class="col-12">
+        <form class="card" data-testid="system-card-proxy" @submit.prevent="saveSystemCard('proxy')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-hdd-network me-2" aria-hidden="true" />
+              {{ t('systemSettings.proxyAndDiagnostics') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-proxy-settings"
+              :disabled="proxySaving || !proxySettingsValid"
+              type="submit"
+            >
+              <span v-if="proxySaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="proxySaving">
+            <LteAlert v-if="proxyError" theme="danger" :title="t('systemSettings.proxySaveFailed')">
+              {{ proxyError }}
+            </LteAlert>
             <div class="row g-3">
+              <div class="col-lg-3 col-md-6">
+                <LteInput id="system-host" v-model="host" :label="fieldLabel('systemSettings.host', 'host')" spellcheck="false" />
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="system-port">
+                  {{ fieldLabel('systemSettings.port', 'port') }}
+                </label>
+                <input
+                  id="system-port"
+                  v-model.number="port"
+                  class="form-control"
+                  max="65535"
+                  min="1"
+                  required
+                  step="1"
+                  type="number"
+                >
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="management-password">
+                  {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
+                </label>
+                <div class="input-group">
+                  <input
+                    id="management-password"
+                    v-model="managementPassword"
+                    autocomplete="new-password"
+                    class="form-control"
+                    :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
+                    spellcheck="false"
+                    :type="showManagementPassword ? 'text' : 'password'"
+                  >
+                  <LteButton
+                    class="icon-action-button"
+                    :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
+                    :aria-pressed="showManagementPassword"
+                    type="button"
+                    @click="showManagementPassword = !showManagementPassword"
+                  >
+                    <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
+                    <i v-else class="bi bi-eye" aria-hidden="true" />
+                  </LteButton>
+                </div>
+              </div>
+              <div class="col-lg-3 col-md-6 d-flex align-items-center">
+                <div class="form-check form-switch">
+                  <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
+                  <label class="form-check-label" for="allow-remote">
+                    {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
+                  </label>
+                </div>
+              </div>
               <div class="col-md-6">
                 <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
               </div>
@@ -766,9 +893,6 @@ onMounted(() => { void load() })
                     @input="updateRuntimePolicyValue(field, $event)"
                   >
                   <span v-if="field.unit" class="input-group-text">{{ field.unit }}</span>
-                </div>
-                <div v-if="field.helpKey" class="form-text">
-                  {{ t(field.helpKey) }}
                 </div>
               </div>
             </div>

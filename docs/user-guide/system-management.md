@@ -73,7 +73,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面按四个真实后端 owner 展示和保存：系统与部署（`PUT /api/system/settings`）、API Server（`PUT /api/api-server`）、配置校验（`PUT /api/validation/settings`）和限制策略（`PUT /api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域不会提交另外三个区域。页面统一 Refresh 仍并行读取四类设置。页面管理监听地址、普通服务端口、LangGraph Dev 的每 Worker Run 槽位数与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。页面还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面按六个真实提交边界展示和保存：LangGraph Dev、LangSmith、代理设置（均使用 `PUT /api/system/settings` 的对应区域）、API Server（`PUT /api/api-server`）、配置校验（`PUT /api/validation/settings`）和限制策略（`PUT /api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只提交该区域的草稿，其他区域的未保存修改不会一起提交。页面统一 Refresh 仍并行读取四类后端设置。页面管理监听地址、普通服务端口、LangGraph Dev 的 Run 并发与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。LangGraph Dev Card 还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`n_jobs_per_worker` 默认 `10`、最小 `1`、没有产品最大值；每个经官方队列执行的 Run 占一个槽位，增大该值会同时提高并行度、CPU、内存和外部请求压力。`debug_port` 默认留空；留空时没有第二个调试 listener，填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。这三个字段均在服务重启后生效。
 
@@ -83,7 +83,9 @@ API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；
 
 Lifecycle 保留数量只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-系统与部署区域包含网络、管理密码、LangSmith、CORS 和可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于系统设置，API Key 与消息上限属于 API Server，Lifecycle 保留数量与其他 9 项数值策略属于限制策略。
+LangGraph Dev、LangSmith 和代理设置分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于代理设置，API Key 与消息上限属于 API Server，Lifecycle 保留数量与其他 9 项数值策略属于限制策略。
+
+当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；系统设置只提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
 
 限制策略中的容量字段以 MiB 展示（1 MiB = 1024² bytes），保存时仍按后端要求换算为 bytes。
 
