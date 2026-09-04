@@ -328,6 +328,7 @@ def test_pypi_install_prepares_internal_uv_on_first_use(monkeypatch, tmp_path: P
     )
     uv = runtime_root / "bootstrap" / "uv.exe"
     ensured: list[dict] = []
+    commands: list[list[str]] = []
 
     def ensure_internal_uv(_runtime_root: Path, manifest: dict) -> Path:
         ensured.append(manifest)
@@ -336,6 +337,7 @@ def test_pypi_install_prepares_internal_uv_on_first_use(monkeypatch, tmp_path: P
         return uv
 
     def run_command(command: list[str], *, cwd: Path, **_values) -> None:
+        commands.append(command)
         if "venv" in command:
             environment_python = cwd / "environment" / "Scripts" / "python.exe"
             environment_python.parent.mkdir(parents=True)
@@ -379,6 +381,7 @@ def test_pypi_install_prepares_internal_uv_on_first_use(monkeypatch, tmp_path: P
     )
 
     assert ensured == [runtime_manifest]
+    assert all("--only-binary" not in command for command in commands)
     assert manifest["entrypoint"] == "example-server"
     assert manifest["command"] == "environment/Scripts/python.exe"
     assert lock["requirements"].startswith("example-mcp==1.2.3")

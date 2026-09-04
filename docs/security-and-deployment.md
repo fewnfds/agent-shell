@@ -58,11 +58,11 @@ Bundle 保存 Filesystem 配置引用，宿主文件内容保留在源实例；�
 
 Custom Tool 和 Custom Middleware 包是受信任的本地代码，真实请求会 import 或执行。只有实例维护者可以管理这些资源，并应预先审查依赖、网络、文件和进程权限。
 
-Windows Middleware 包可以声明公开 PyPI 的二进制 wheel 依赖。第三方 wheel 与包代码具有相同的服务进程权限；
+Windows Middleware 包可以声明公开 PyPI 依赖。uv 优先使用兼容 wheel，没有 wheel 时可以执行发行包的标准源码构建流程；第三方包及其构建后端与包代码具有相同的服务进程权限。
 包名仿冒、恶意更新和依赖接管都属于供应链风险。平台固定公开 PyPI、拒绝 requirements 中的 URL/索引配置，
 并约束核心版本，但这不代替维护者对包名、发布者、版本和许可证的审查。
 
-Managed Local MCP 软件包同样是受信任的本地代码。管理台只接受 npm/PyPI 包名与精确版本，使用软件内锁定的 Node.js 或 CPython/uv toolchain，在每条 Connection 独立的 `runtime/mcp/` 环境中安装；PyPI 只接受当前 Windows x64/CPython 3.12 可用的 wheel，不调用宿主编译器。依赖隔离防止其修改核心或 Python 扩展依赖，但不是进程、文件或网络 sandbox。npm 安装阶段可以执行软件包的标准安装脚本，运行阶段 MCP Server 继承 Agent Shell 服务账号权限以及该 Connection 明确配置的 env/cwd。维护者必须审查包名、发布者、版本、安装脚本、许可证和 Server 对外提供的 Tool；不要把版本锁与 SHA/requirements lock 误解为软件包可信证明。
+Managed Local MCP 软件包同样是受信任的本地代码。管理台只接受 npm/PyPI 包名与精确版本，使用软件内锁定的 Node.js 或 CPython/uv toolchain，在每条 Connection 独立的 `runtime/mcp/` 环境中安装；PyPI 包没有兼容 wheel 时可以执行标准源码构建，并自行使用宿主已有的编译工具。依赖隔离防止其修改核心或 Python 扩展依赖，但不是进程、文件或网络 sandbox。npm 安装脚本与 PyPI 构建后端在安装阶段执行，运行阶段 MCP Server 继承 Agent Shell 服务账号权限以及该 Connection 明确配置的 env/cwd。维护者必须审查包名、发布者、版本、安装脚本、构建后端、许可证和 Server 对外提供的 Tool；不要把版本锁与 SHA/requirements lock 误解为软件包可信证明。
 
 MCP Connection 声明、安装 lock 和 secret 位于 `data/`，可执行软件包、内部 Node toolchain、下载 cache 与运行状态位于可重建的 `runtime/mcp/`。备份或迁移 `data/` 后，需要在目标软件中联网重新安装本地 MCP；Configuration Bundle 不包含 Connection、secret、安装 lock 或依赖。HTTP MCP 不下载本地代码。
 

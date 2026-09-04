@@ -236,7 +236,7 @@ Python 3.12 standard library 可以直接 import。使用 standard library 能�
 
 其他 third-party package 必须在当前 extension 自己的 `requirements.txt` 中声明 direct dependency。不要依赖核心 runtime 偶然安装的 transitive dependency。
 
-`requirements.txt` 使用普通 PyPI requirement。URL、local path、`.pth` 和只有 source distribution 的 dependency 会被拒绝。额外 package 还必须支持内置 CPython 3.12、Windows x64 和平台核心约束。
+`requirements.txt` 使用普通 PyPI requirement。URL、local path 和安装后产生不受支持 `.pth` 的 dependency 会被拒绝。uv 优先使用兼容 wheel，没有 wheel 时尝试 source build；需要 compiler 或 system library 时由实例维护者提供。额外 package 还必须支持内置 CPython 3.12、Windows x64 和平台核心约束。
 
 Management API 没有 enumerate-all-importable-modules endpoint。不能仅凭模型记忆声称某个 package 已安装。
 

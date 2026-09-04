@@ -404,7 +404,6 @@ try {
         "pip", "install", "--target", $installTarget,
         "--python-version", ([string]$lock.python),
         "--python-platform", "x86_64-pc-windows-msvc",
-        "--only-binary", ":all:",
         "--no-deps", "--require-hashes", "--requirements", $requirementsPath
     ) $project
     # uv may recreate version aliases while discovering an interpreter for pip.

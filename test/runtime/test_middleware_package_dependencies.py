@@ -249,7 +249,7 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
     assert f"python-package:{invalid_owner_id}" not in state["records"]
     assert all(item["status"] == "ready" for item in state["records"].values())
     assert (dependencies.package_site_packages(runtime_root) / "PIL").is_dir()
-    assert "--only-binary" in calls[0]
+    assert "--only-binary" not in calls[0]
     assert "--quiet" not in calls[0]
     ready = scan_middleware_package(
         folder, owner_id=owner_id, runtime_root=runtime_root

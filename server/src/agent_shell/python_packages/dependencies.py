@@ -534,8 +534,6 @@ def prepare_windows_dependencies(
                     str(manifest.get("python", "")),
                     "--python-platform",
                     "x86_64-pc-windows-msvc",
-                    "--only-binary",
-                    ":all:",
                     "--no-config",
                     "--default-index",
                     PYPI_INDEX,

@@ -146,7 +146,7 @@ Python 名称仍需显式 `import`。本地模块使用正常相对导入，例�
 
 启动器只收集启用 Workflow 可达的配置扩展 requirements：Graph 中的 Command 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
 
-依赖只接受普通 PyPI requirement、与核心约束兼容且提供 Windows wheel 的版本，不接受 URL、本地路径、`.pth` 或只有源码发行包的依赖。
+依赖只接受普通 PyPI requirement，并且必须与核心约束兼容；不接受 URL、本地路径或安装后产生不受支持 `.pth` 的依赖。uv 优先安装兼容 wheel，没有 wheel 时按发行包声明尝试源码构建。需要编译器或系统库的包由实例维护者自行准备相应环境；构建失败时启动器显示 uv 的原始错误，并继续使用上一次成功准备的依赖层。
 
 ## 安全
 

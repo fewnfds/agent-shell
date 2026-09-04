@@ -26,7 +26,7 @@ Requirement、Agent/Subagent/Command 引用属于 Configuration Repository，会
 LangChain 负责按照 `command/args/env` 启动 stdio 子进程并把 MCP Tool 转换为 LangChain Tool，不负责下载 npm/PyPI 软件包。Agent Shell 的安装层把用户声明转换为 LangChain 官方 stdio Connection：
 
 - npm 连接按 `packaging/windows/mcp-runtime-lock.json` 下载并校验软件内 Node.js，在每条 Connection 独立的 `runtime/mcp/installations/<connection-uuid>/<fingerprint>/node_modules` 安装精确版本；
-- PyPI 连接使用 `runtime/app` 的内置 CPython，并按锁在首次需要时准备 `runtime/bootstrap/uv.exe`，随后在每条 Connection 独立的 venv 中解析并安装精确版本；包及其依赖必须为 Windows x64/CPython 3.12 提供 wheel，安装不会调用宿主编译器；
+- PyPI 连接使用 `runtime/app` 的内置 CPython，并按锁在首次需要时准备 `runtime/bootstrap/uv.exe`，随后在每条 Connection 独立的 venv 中解析并安装精确版本；uv 优先使用兼容 wheel，没有 wheel 时按发行包声明尝试源码构建，所需编译器或系统库由实例维护者自行提供；
 - 安装 lock 保存于 `data/config/mcp-connections/<uuid>.installation-lock.json`，Connection 声明和 secret 仍分别保存在 Connection YAML 与 `agent-shell.env`；
 - 软件包、Node toolchain、下载 cache、失败状态和派生启动 manifest 都位于可重建的 `runtime/mcp/`，不会进入 `data/`、Configuration Bundle 或源码；
 - 修改 package、version 或 entrypoint 后当前声明变为【尚未安装】，必须重新安装。只修改 args、cwd 或 env 不要求重新下载；
