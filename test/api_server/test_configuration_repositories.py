@@ -95,9 +95,9 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
             "/api/configuration-repositories"
         ).json()["repositories"][0]
         workflow = create_workflow(client, name="Repairable Workflow")
-        checkpointer = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Temporary checkpoints", "durability": "sync"},
+        scheduling = client.post(
+            "/api/blocks/response-stream-scheduling",
+            json={"name": "Temporary scheduling"},
         ).json()
         updated = client.put(
             f"/api/workflows/{workflow['id']}",
@@ -108,18 +108,18 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
                         "name",
                         "description",
                         "workflow_event_output_id",
-                        "cancel_on_caller_termination",
+                        "durability",
+                        "on_disconnect",
                         "recursion_limit",
-                        "execution_timeout_seconds",
                         "max_concurrency",
                     )
                 },
-                "checkpointer_id": checkpointer["id"],
+                "response_stream_scheduling_id": scheduling["id"],
             },
         )
         assert updated.status_code == 200, updated.text
         deleted = client.delete(
-            f"/api/blocks/checkpointer/{checkpointer['id']}"
+            f"/api/blocks/response-stream-scheduling/{scheduling['id']}"
         )
         assert deleted.status_code == 200, deleted.text
 
@@ -133,7 +133,7 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
                 for name in archive.namelist()
                 if name.startswith("repository/workflows/")
             ]
-        assert checkpointer["id"].encode() in b"".join(workflow_documents)
+        assert scheduling["id"].encode() in b"".join(workflow_documents)
 
         copied = client.post(
             f"/api/configuration-repositories/{source_repository['id']}/copy",
@@ -146,7 +146,7 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
         assert activated.status_code == 200, activated.text
         copied_workflow = client.get("/api/workflows").json()[0]
         assert copied_workflow["id"] != workflow["id"]
-        assert copied_workflow["checkpointer_id"] == checkpointer["id"]
+        assert copied_workflow["response_stream_scheduling_id"] == scheduling["id"]
         issues = [
             issue
             for issue in activated.json()["validation"]["issues"]
@@ -154,8 +154,8 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
             and issue["code"] == "configuration.reference_not_found"
         ]
         assert len(issues) == 1
-        assert issues[0]["path"] == "checkpointer_id"
-        assert issues[0]["message_args"]["reference_id"] == checkpointer["id"]
+        assert issues[0]["path"] == "response_stream_scheduling_id"
+        assert issues[0]["message_args"]["reference_id"] == scheduling["id"]
 
 
 def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(

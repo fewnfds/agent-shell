@@ -408,9 +408,9 @@ describe('ConfigLibraryPage', () => {
     const api = createApi()
     const workflow = {
       id: 'workflow-uuid', name: 'Workflow',
-      description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 100,
-      execution_timeout_seconds: 120, max_concurrency: 4,
-      cancel_on_caller_termination: true, enabled: false,
+      description: '', workflow_event_output_id: null, response_stream_scheduling_id: null,
+      durability: 'async' as const, on_disconnect: 'cancel' as const,
+      recursion_limit: 100, max_concurrency: 4, enabled: false,
     }
     vi.mocked(api.service.listWorkflowSummaries).mockResolvedValue({
       items: [workflow], total: 1, repository_id: 'repository-id', repository_revision: 1,

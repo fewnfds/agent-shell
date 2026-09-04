@@ -313,12 +313,6 @@ class Settings(BaseSettings):
     def resolved_application_database_path(self) -> Path:
         return self.data_root / "state" / "agent-shell.sqlite3"
 
-    def resolved_workflow_checkpoint_database_path(self) -> Path:
-        return self.data_root / "state" / "workflow-checkpoints.sqlite3"
-
-    def resolved_workflow_store_database_path(self) -> Path:
-        return self.data_root / "state" / "workflow-store.sqlite3"
-
     def resolved_langgraph_dev_dir(self) -> Path:
         return self.data_root / "state" / "langgraph-dev"
 

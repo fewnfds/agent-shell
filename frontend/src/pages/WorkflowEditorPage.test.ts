@@ -20,11 +20,10 @@ const workflow: Workflow = {
   id: 'workflow-1',
   name: 'Research Workflow',
   description: 'Runs the research agent.',
-  checkpointer_id: null,
   workflow_event_output_id: null,
-  cancel_on_caller_termination: true,
+  durability: 'async',
+  on_disconnect: 'cancel',
   recursion_limit: 1_000_000,
-  execution_timeout_seconds: 1_200,
   max_concurrency: 100,
   enabled: true,
 }

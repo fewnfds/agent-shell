@@ -36,6 +36,8 @@ const currentSettings: SystemSettings = {
   trusted_proxy_cidrs: [],
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin',
+  active_api_docs_url: 'http://127.0.0.1:19100/docs',
+  active_studio_url: 'https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2F127.0.0.1%3A19100',
 }
 
 const currentApiServerSettings: ApiServerSettings = {
@@ -64,7 +66,7 @@ function validationSettingsApi() {
 }
 
 const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  runtime_monitoring_retention_lifecycles: 20,
+  retained_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -83,7 +85,7 @@ function runtimePolicyApi() {
     minimums: Object.fromEntries(
       Object.keys(runtimePolicyValues).map((key) => [
         key,
-        key === 'runtime_monitoring_retention_lifecycles' ? 0 : 1,
+        key === 'retained_lifecycles' ? 0 : 1,
       ]),
     ) as RuntimePolicySettings['minimums'],
     configurable: true,

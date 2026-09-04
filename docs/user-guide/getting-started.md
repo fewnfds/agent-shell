@@ -22,7 +22,7 @@ Windows 源码 Clone 从项目根运行：
 - 【代理】：Main Agent 与一层可复用 Subagent；
 - 【代理组件】：Main Agent 和 Subagent 使用的能力配置；
 - 【工作流】：统一的 Workflow 装配表单和 Vue Flow canvas；
-- 【工作流组件】：检查点保存器（Checkpointer）、Workflow Event Output、Response Stream Scheduling 和 Command Node 配置；
+- 【工作流组件】：Workflow Event Output、Response Stream Scheduling 和 Command Node 配置；
 - 【配置库】：顶部按全局、工作流、工作流组件、代理和代理组件分组；Repository-owned 配置支持通用列表操作与 Bundle 导入/导出，Model/MCP Connection 仅支持查看、编辑、复制和删除；
 - 【词库】：术语查询。
 

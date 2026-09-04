@@ -40,11 +40,6 @@ def test_runtime_context_keeps_run_identity_and_commands_out_of_graph_state() ->
         "operation_id",
         "workflow_runs",
     } <= fields.keys()
-    assert "checkpoint_thread_id" not in fields
-    assert "parent_workflow_run_id" not in fields
-    assert "background_task_id" not in fields
-    assert "launcher_id" not in fields
-    assert "run_depth" not in fields
     assert "workflow_name" not in fields
     assert "workflow_role" not in fields
     assert "workflow" not in fields

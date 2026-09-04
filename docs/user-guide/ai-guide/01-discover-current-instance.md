@@ -128,7 +128,6 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
     "mcp_requirements": [],
     "agent_event_output": null,
     "command": null,
-    "checkpointer": null,
     "workflow_event_output": null,
     "response_stream_scheduling": null
   },

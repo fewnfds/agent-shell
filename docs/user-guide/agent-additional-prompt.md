@@ -89,7 +89,7 @@ Main Agent 和 Subagent 分别通过自己的 `middleware_refs` 决定 Custom Mi
 ## 运行边界
 
 - AAP 构造 current Agent invocation 的私有初始提示词，客户端请求快照保持不可变；
-- Store 保存 Lifecycle 内跨 Run 公共事实，`Runtime.context` 注入 current Shell Run/Invocation scope 与 capability，LangGraph execution facts 位于 `Runtime.execution_info`，Graph State 保存参与 routing 与 reducer 的运行数据；Workflow 启用 Checkpointer 时，Graph State 同时进入 checkpoint；
+- Store 保存 Lifecycle 内跨 Run 公共事实，`Runtime.context` 注入 current Shell Run/Invocation scope 与 capability，LangGraph execution facts 位于 `Runtime.execution_info`，Graph State 保存参与 routing 与 reducer 的运行数据并由 LangGraph Dev 的 Thread/checkpoint owner 持久化；
 - upstream Agent 输出通过 `agent_invocations` 中因果可见的 reference 从 Store 读取 artifact，mapping 插入顺序不承载因果语义；
 - 同一 canvas Node 再次执行会产生新的 invocation ID，选择 upstream result 时使用明确的 Node、task 或 invocation identity；
 - Subagent template 默认保留 delegated messages，是否加入 root request 由该 Subagent 的 AAP 配置决定；

@@ -74,11 +74,6 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             )
             assert root_export.status_code == 200, root_export.text
         workflow = create_workflow(source, name="Portable Workflow")
-        checkpointer_response = source.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Portable checkpoints", "durability": "sync"},
-        )
-        assert checkpointer_response.status_code == 200, checkpointer_response.text
         scheduling_response = source.post(
             "/api/blocks/response-stream-scheduling",
             json={
@@ -101,12 +96,12 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
                         "name",
                         "description",
                         "workflow_event_output_id",
+                        "on_disconnect",
                         "recursion_limit",
-                        "execution_timeout_seconds",
                         "max_concurrency",
                     )
                 },
-                "checkpointer_id": checkpointer_response.json()["id"],
+                "durability": "sync",
                 "response_stream_scheduling_id": scheduling_response.json()["id"],
             },
         )
@@ -224,10 +219,7 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
         if item["id"] == imported["root"]["target_id"]
     )
     assert imported_workflow["enabled"] is False
-    assert imported_workflow["checkpointer_id"] in target_ids
-    imported_checkpointer = target_config["components"]["checkpointer"][0]
-    assert imported_workflow["checkpointer_id"] == imported_checkpointer["id"]
-    assert imported_checkpointer["durability"] == "sync"
+    assert imported_workflow["durability"] == "sync"
     assert imported_workflow["response_stream_scheduling_id"] in target_ids
     imported_scheduling = target_config["components"][
         "response-stream-scheduling"
@@ -805,9 +797,9 @@ def test_single_root_bundle_rejects_a_dangling_reference(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Incomplete Workflow")
-        checkpointer = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Temporary checkpoints", "durability": "sync"},
+        scheduling = client.post(
+            "/api/blocks/response-stream-scheduling",
+            json={"name": "Temporary scheduling"},
         ).json()
         updated = client.put(
             f"/api/workflows/{workflow['id']}",
@@ -818,18 +810,18 @@ def test_single_root_bundle_rejects_a_dangling_reference(
                         "name",
                         "description",
                         "workflow_event_output_id",
-                        "cancel_on_caller_termination",
+                        "durability",
+                        "on_disconnect",
                         "recursion_limit",
-                        "execution_timeout_seconds",
                         "max_concurrency",
                     )
                 },
-                "checkpointer_id": checkpointer["id"],
+                "response_stream_scheduling_id": scheduling["id"],
             },
         )
         assert updated.status_code == 200, updated.text
         deleted = client.delete(
-            f"/api/blocks/checkpointer/{checkpointer['id']}"
+            f"/api/blocks/response-stream-scheduling/{scheduling['id']}"
         )
         assert deleted.status_code == 200, deleted.text
 
@@ -840,7 +832,7 @@ def test_single_root_bundle_rejects_a_dangling_reference(
 
     assert exported.status_code == 422, exported.text
     assert exported.json()["detail"]["code"] == "configuration_bundle_invalid"
-    assert "checkpointer_id" in exported.json()["detail"]["message"]
+    assert "response_stream_scheduling_id" in exported.json()["detail"]["message"]
 
 
 def deepcopy_json(value: dict) -> dict:

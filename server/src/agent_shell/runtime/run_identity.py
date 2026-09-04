@@ -18,7 +18,6 @@ class WorkflowRunIdentity:
     workflow_name: str
     thread_id: str = ""
     assistant_id: str = ""
-    checkpoint_thread_id: str | None = None
     caller_run_id: str = ""
     operation_id: str = ""
 

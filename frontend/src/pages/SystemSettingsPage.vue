@@ -78,7 +78,7 @@ const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
 const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
-  runtime_monitoring_retention_lifecycles: 20,
+  retained_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -99,9 +99,9 @@ const runtimePolicyFields: Array<{
   helpKey?: string
 }> = [
   {
-    key: 'runtime_monitoring_retention_lifecycles',
-    labelKey: 'systemSettings.runtimePolicy.runtimeMonitoringRetention',
-    helpKey: 'systemSettings.runtimePolicy.runtimeMonitoringRetentionHelp',
+    key: 'retained_lifecycles',
+    labelKey: 'systemSettings.runtimePolicy.retainedLifecycles',
+    helpKey: 'systemSettings.runtimePolicy.retainedLifecyclesHelp',
     unit: 'Lifecycle',
     step: 1,
   },
@@ -517,6 +517,34 @@ onMounted(() => { void load() })
                     >
                   </template>
                 </FormField>
+              </div>
+              <div v-if="settings" class="col-lg-4 col-md-12">
+                <div class="d-flex h-100 flex-column justify-content-end gap-2">
+                  <span class="form-label mb-0">{{ t('systemSettings.langgraphDev.tools') }}</span>
+                  <div class="d-flex flex-wrap gap-2">
+                    <a
+                      class="btn btn-outline-primary"
+                      data-testid="langgraph-api-docs-link"
+                      :href="settings.active_api_docs_url"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <i class="bi bi-braces me-1" aria-hidden="true" />
+                      {{ t('systemSettings.langgraphDev.apiDocs') }}
+                    </a>
+                    <a
+                      class="btn btn-outline-primary"
+                      data-testid="langgraph-studio-link"
+                      :href="settings.active_studio_url"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <i class="bi bi-diagram-3 me-1" aria-hidden="true" />
+                      {{ t('systemSettings.langgraphDev.studio') }}
+                    </a>
+                  </div>
+                  <small class="text-body-secondary">{{ t('systemSettings.langgraphDev.toolsHelp') }}</small>
+                </div>
               </div>
             </div>
 

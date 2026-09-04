@@ -2,29 +2,20 @@
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { managementApi, type WorkflowLifecycleSummary } from '@/api'
+import { managementApi, type LangGraphLifecycleSummary } from '@/api'
 import DataTableWorkbench from '@/components/data-table/DataTableWorkbench.vue'
 import type { DataTableConfig } from '@/components/data-table/types'
 import PageShell from '@/components/PageShell.vue'
-import { triggerBrowserDownload } from '@/utils/download'
 
 const { t } = useI18n()
 const router = useRouter()
 
-function localTime(value: string | null): string {
-  if (!value) return t('common.none')
+function localTime(value: string): string {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
-function lifecycleStatus(row: WorkflowLifecycleSummary): string {
-  if (row.lifecycle_status !== 'active') {
-    return t(`workflowLifecycles.lifecycleStatuses.${row.lifecycle_status}`)
-  }
-  return t(`workflowLifecycles.runStatuses.${row.root_status}`)
-}
-
-const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
+const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
   id: 'workflow-lifecycles',
   ariaLabel: () => t('workflowLifecycles.tableAriaLabel'),
   emptyMessage: () => t('workflowLifecycles.empty'),
@@ -45,13 +36,13 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
   search: {
     label: () => t('common.search'),
     placeholder: () => t('workflowLifecycles.searchPlaceholder'),
-    values: (row) => [row.workflow_name, row.lifecycle_id, row.request_id],
+    values: (row) => [...row.workflow_names, row.lifecycle_id, row.request_id],
   },
   columns: [
     {
-      key: 'workflow',
-      label: () => t('workflowLifecycles.columns.entryWorkflow'),
-      value: (row) => row.workflow_name || row.workflow_id,
+      key: 'workflows',
+      label: () => t('workflowLifecycles.columns.workflows'),
+      value: (row) => row.workflow_names.join(', ') || t('common.none'),
     },
     {
       key: 'created',
@@ -61,7 +52,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
     {
       key: 'status',
       label: () => t('workflowLifecycles.columns.status'),
-      value: lifecycleStatus,
+      value: (row) => t(`workflowLifecycles.runStatuses.${row.status}`),
     },
     {
       key: 'runs',
@@ -69,50 +60,20 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
       value: (row) => `${row.active_run_count} / ${row.run_count}`,
     },
     {
-      key: 'failed',
-      label: () => t('workflowLifecycles.columns.failedRuns'),
-      value: (row) => row.failed_run_count,
-    },
-    {
-      key: 'usage',
-      label: () => t('workflowLifecycles.columns.tokens'),
-      value: (row) => row.usage.total_tokens.toLocaleString(),
-    },
-    {
-      key: 'capture',
-      label: () => t('workflowLifecycles.columns.capture'),
-      value: (row) => row.monitoring_capture_enabled
-        ? t('workflowLifecycles.capture.enabled')
-        : t('workflowLifecycles.capture.disabled'),
+      key: 'errors',
+      label: () => t('workflowLifecycles.columns.errorRuns'),
+      value: (row) => row.error_run_count,
     },
   ],
   rowActions: [
     {
       key: 'monitor',
-      label: (row) => row.monitoring_capture_enabled
-        ? t('workflowLifecycles.monitor')
-        : t('workflowLifecycles.monitorDisabled'),
+      label: () => t('workflowLifecycles.monitor'),
       icon: 'view',
       tone: 'primary',
-      disabled: (row) => !row.monitoring_capture_enabled,
       run: (row) => router.push(
         `/system/workflow-lifecycles/${encodeURIComponent(row.lifecycle_id)}/monitoring`,
       ),
-      reloadAfter: false,
-    },
-    {
-      key: 'download',
-      label: (row) => row.monitoring_capture_enabled
-        ? t('common.download')
-        : t('workflowLifecycles.downloadDisabled'),
-      icon: 'download',
-      tone: 'secondary',
-      disabled: (row) => !row.monitoring_capture_enabled,
-      run: async (row) => {
-        const download = await managementApi.downloadWorkflowLifecycle(row.lifecycle_id)
-        triggerBrowserDownload(download.blob, download.filename)
-      },
-      failureTitle: () => t('workflowLifecycles.downloadFailed'),
       reloadAfter: false,
     },
     {
@@ -120,10 +81,11 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
       label: () => t('common.delete'),
       icon: 'delete',
       tone: 'danger',
+      disabled: (row) => row.active_run_count > 0,
       confirm: (row) => ({
         title: t('workflowLifecycles.deleteTitle'),
         description: t('workflowLifecycles.deleteDescription', {
-          name: row.workflow_name || row.lifecycle_id,
+          name: row.workflow_names.join(', ') || row.lifecycle_id,
         }),
         confirmLabel: t('common.delete'),
         cancelLabel: t('common.cancel'),

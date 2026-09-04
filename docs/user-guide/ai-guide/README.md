@@ -171,7 +171,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - System Prompt、Agent Additional Prompt（AAP）；
 - Command、Custom Tool、Custom Middleware；
 - Workflow Graph、Node、Edge、handle、State、Runtime、Store；
-- Lifecycle、请求入口 Run、被调用 Run、Checkpoint Thread；
+- Lifecycle、请求入口 Run、被调用 Run、Thread、checkpoint 与 State history；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 
 详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择入口、操作顺序、运行语义和验收路径，不复制完整字段参考。

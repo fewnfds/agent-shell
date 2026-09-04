@@ -183,13 +183,6 @@ class StrictBlock(BaseModel):
     name: BlockName
 
 
-CheckpointDurability = Literal["exit", "async", "sync"]
-
-
-class CheckpointerBlock(StrictBlock):
-    durability: CheckpointDurability = "async"
-
-
 class ResponseStreamSchedulingBlock(StrictBlock):
     queue: ResponseQueuePolicy = Field(default_factory=ResponseQueuePolicy)
 
@@ -947,7 +940,6 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
 validate_capability_manifests(CAPABILITY_MANIFESTS, BLOCK_MODELS)
 BLOCK_CATALOG = PUBLIC_CAPABILITY_MANIFESTS
 WORKFLOW_COMPONENT_MODELS = {
-    "checkpointer": CheckpointerBlock,
     "workflow-event-output": WorkflowEventOutputBlock,
     "response-stream-scheduling": ResponseStreamSchedulingBlock,
     "command": CommandBlock,

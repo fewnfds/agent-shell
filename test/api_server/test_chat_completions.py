@@ -32,11 +32,11 @@ class InspectingFakeChatModel(ToolCompatibleFakeListChatModel):
             yield chunk
 
 
-@pytest.mark.parametrize("cancel_on_disconnect", (True, False))
+@pytest.mark.parametrize("on_disconnect", ("cancel", "continue"))
 def test_completion_stream_applies_workflow_disconnect_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    cancel_on_disconnect: bool,
+    on_disconnect: str,
 ) -> None:
     class Execution:
         identity = None
@@ -48,11 +48,7 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             self.started = asyncio.Event()
             self.release = asyncio.Event()
             self.cancelled = asyncio.Event()
-            self.cancel_recorded = asyncio.Event()
             self.completed = asyncio.Event()
-
-        async def cancel(self) -> None:
-            self.cancel_recorded.set()
 
         async def stream_text(self):
             self.started.set()
@@ -70,11 +66,17 @@ def test_completion_stream_applies_workflow_disconnect_policy(
 
         async def scenario() -> tuple[bool, bool]:
             execution = Execution()
+            lifecycle_cancelled = asyncio.Event()
+
+            async def cancel_lifecycle() -> None:
+                lifecycle_cancelled.set()
+
             stream = api_server._completion_stream(
                 execution,
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
-                cancel_on_disconnect=cancel_on_disconnect,
+                on_disconnect=on_disconnect,
+                cancel_lifecycle=cancel_lifecycle,
             )
             first = await anext(stream)
             assert '"role":"assistant"' in first
@@ -83,9 +85,9 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             pending.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await pending
-            if cancel_on_disconnect:
+            if on_disconnect == "cancel":
                 await asyncio.wait_for(execution.cancelled.wait(), timeout=1)
-                await asyncio.wait_for(execution.cancel_recorded.wait(), timeout=1)
+                await asyncio.wait_for(lifecycle_cancelled.wait(), timeout=1)
             else:
                 execution.release.set()
                 await asyncio.wait_for(execution.completed.wait(), timeout=1)
@@ -93,8 +95,8 @@ def test_completion_stream_applies_workflow_disconnect_policy(
 
         cancelled, completed = portal.call(scenario)
 
-    assert cancelled is cancel_on_disconnect
-    assert completed is (not cancel_on_disconnect)
+    assert cancelled is (on_disconnect == "cancel")
+    assert completed is (on_disconnect == "continue")
 
 
 def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
@@ -115,7 +117,7 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
             self.cancel_release = asyncio.Event()
             self.cancel_recorded = asyncio.Event()
 
-        async def cancel(self) -> None:
+        async def cancel_lifecycle(self) -> None:
             self.cancel_started.set()
             await self.cancel_release.wait()
             self.cancel_recorded.set()
@@ -140,7 +142,8 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
                 execution,
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
-                cancel_on_disconnect=True,
+                on_disconnect="cancel",
+                cancel_lifecycle=execution.cancel_lifecycle,
             )
             await anext(stream)
             pending = asyncio.create_task(anext(stream))
@@ -218,7 +221,7 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
         assert response.json()["error"]["code"] == "model_not_found"
 
 
-def test_workflow_runtime_limits_reach_the_graph_execution(
+def test_workflow_graph_limits_reach_the_graph_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -229,32 +232,13 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
 
     def observe_execution(self, *args, **kwargs):
         captured["run_config"] = kwargs.get("run_config")
-        captured["durability"] = kwargs.get("durability")
         captured["context"] = kwargs.get("context")
         captured["identity"] = kwargs.get("identity")
-        captured["execution_timeout_seconds"] = kwargs.get(
-            "execution_timeout_seconds"
-        )
         execution = original_execution(self, *args, **kwargs)
-        captured["monitoring_capture_enabled"] = (
-            execution.monitoring_capture_enabled
-        )
         return execution
 
     monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
     with make_client(tmp_path, monkeypatch) as client:
-        current_policy = client.get("/api/system/runtime-policy").json()
-        updated_policy = {
-            key: value
-            for key, value in current_policy.items()
-            if key not in {"defaults", "minimums", "configurable"}
-        }
-        updated_policy["runtime_monitoring_retention_lifecycles"] = 1
-        policy_reply = client.put(
-            "/api/system/runtime-policy",
-            json=updated_policy,
-        )
-        assert policy_reply.status_code == 200, policy_reply.text
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Configured limits")
         save_linear_workflow_graph(client, workflow, main_agent)
@@ -266,8 +250,9 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
                 "workflow_event_output_id": workflow[
                     "workflow_event_output_id"
                 ],
+                "durability": "sync",
+                "on_disconnect": "continue",
                 "recursion_limit": 321,
-                "execution_timeout_seconds": 42,
                 "max_concurrency": 7,
             },
         )
@@ -280,19 +265,10 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
             },
         )
         assert reply.status_code == 200, reply.text
-        assert client.app.state.workflow_checkpoints.started is False
-        assert (
-            tmp_path / "data" / "state" / "workflow-checkpoints.sqlite3"
-        ).exists() is False
-
-    assert captured["execution_timeout_seconds"] == 42
-    assert captured["monitoring_capture_enabled"] is True
     assert captured["run_config"]["recursion_limit"] == 321
     assert captured["run_config"]["max_concurrency"] == 7
     assert "run_id" not in captured["run_config"]
     assert "configurable" not in captured["run_config"]
-    assert captured["durability"] is None
-    assert captured["identity"].checkpoint_thread_id is None
 
 
 def test_request_entry_workflow_resolves_response_stream_scheduling_from_snapshot(
@@ -355,157 +331,6 @@ def test_request_entry_workflow_resolves_response_stream_scheduling_from_snapsho
             "send_interval_seconds": 0.2,
         }
     }
-
-
-def test_workflow_checkpointer_durability_is_passed_mechanically(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from agent_shell.runtime.agent_runtime import AgentRuntime
-
-    captured: list[dict[str, object]] = []
-    original_execution = AgentRuntime._workflow_execution
-
-    def observe_execution(self, *args, **kwargs):
-        captured.append(
-            {
-                "run_config": kwargs.get("run_config"),
-                "durability": kwargs.get("durability"),
-                "context": kwargs.get("context"),
-                "identity": kwargs.get("identity"),
-            }
-        )
-        return original_execution(self, *args, **kwargs)
-
-    monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
-    with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
-        for durability in ("exit", "async", "sync"):
-            checkpointer = client.post(
-                "/api/blocks/checkpointer",
-                json={
-                    "name": f"{durability} checkpoints",
-                    "durability": durability,
-                },
-            )
-            assert checkpointer.status_code == 200, checkpointer.text
-            workflow = create_workflow(
-                client,
-                name=f"{durability} Checkpoint Workflow",
-            )
-            configured = client.put(
-                f"/api/workflows/{workflow['id']}",
-                json={
-                    **{
-                        key: workflow[key]
-                        for key in (
-                            "name",
-                            "description",
-                            "workflow_event_output_id",
-                            "recursion_limit",
-                            "execution_timeout_seconds",
-                            "max_concurrency",
-                        )
-                    },
-                    "checkpointer_id": checkpointer.json()["id"],
-                },
-            )
-            assert configured.status_code == 200, configured.text
-            save_linear_workflow_graph(client, configured.json(), main_agent)
-            reply = client.post(
-                "/v1/chat/completions",
-                json={
-                    "model": workflow["name"],
-                    "messages": [{"role": "user", "content": "run"}],
-                },
-            )
-            assert reply.status_code == 200, reply.text
-
-            observed = captured[-1]
-            context = observed["context"]
-            identity = observed["identity"]
-            assert observed["durability"] == durability
-            assert identity.checkpoint_thread_id
-            assert observed["run_config"]["configurable"] == {
-                "thread_id": identity.checkpoint_thread_id,
-            }
-            run = client.app.state.workflow_lifecycle.run(
-                context.run_id
-            )
-            assert run is not None
-            assert run["checkpoint_thread_id"] == identity.checkpoint_thread_id
-            portal = client.portal
-            assert portal is not None
-            assert portal.call(
-                client.app.state.workflow_checkpoints.checkpoint_count,
-                identity.checkpoint_thread_id,
-            ) > 0
-
-        assert client.app.state.workflow_checkpoints.started is True
-
-
-def test_checkpointer_initialization_failure_isolated_to_configured_workflow(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
-        checkpointer = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Unavailable checkpoints"},
-        )
-        assert checkpointer.status_code == 200, checkpointer.text
-        configured = create_workflow(client, name="Checkpoint failure")
-        configured_response = client.put(
-            f"/api/workflows/{configured['id']}",
-            json={
-                **{
-                    key: configured[key]
-                    for key in (
-                        "name",
-                        "description",
-                        "workflow_event_output_id",
-                        "recursion_limit",
-                        "execution_timeout_seconds",
-                        "max_concurrency",
-                    )
-                },
-                "checkpointer_id": checkpointer.json()["id"],
-            },
-        )
-        assert configured_response.status_code == 200, configured_response.text
-        save_linear_workflow_graph(client, configured_response.json(), main_agent)
-
-        plain = create_workflow(client, name="No checkpoint dependency")
-        save_linear_workflow_graph(client, plain, main_agent)
-
-        async def fail_initialization():
-            raise OSError("checkpoint database unavailable")
-
-        monkeypatch.setattr(
-            client.app.state.workflow_checkpoints,
-            "require_checkpointer",
-            fail_initialization,
-        )
-        failed = client.post(
-            "/v1/chat/completions",
-            json={
-                "model": configured["name"],
-                "messages": [{"role": "user", "content": "run"}],
-            },
-        )
-        succeeded = client.post(
-            "/v1/chat/completions",
-            json={
-                "model": plain["name"],
-                "messages": [{"role": "user", "content": "run"}],
-            },
-        )
-
-    assert failed.status_code == 500
-    assert failed.json()["error"]["code"] == "workflow_checkpointer_unavailable"
-    assert succeeded.status_code == 200, succeeded.text
-    assert succeeded.json()["choices"][0]["message"]["content"] == "runtime reply"
 
 
 def test_incomplete_saved_workflow_draft_is_not_a_public_model(
@@ -753,7 +578,7 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
         "request-injection",
         "from langchain.agents.middleware import AgentMiddleware\n"
         "from langchain_core.messages import HumanMessage\n"
-        "from agent_shell.runtime.workflow_lifecycle import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
+        "from agent_shell.runtime.workflow_data import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
         "class InjectRequest(AgentMiddleware):\n"
         "    async def abefore_agent(self, state, runtime):\n"
         "        item = await runtime.store.aget(lifecycle_input_namespace(runtime.context.lifecycle_id), LIFECYCLE_INPUT_KEY)\n"

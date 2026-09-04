@@ -2,7 +2,7 @@
 
 ## Workflow
 
-【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、可选 Checkpointer、Workflow Event Output 与 Response Stream Scheduling 组件引用、默认开启的 `cancel_on_caller_termination`、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`execution_timeout_seconds`（单个 Run 的实际执行超时，不包含把已生成 SSE 文本交给慢速调用方的等待；默认 `1,200` 秒）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。所有 Workflow 使用相同配置与运行能力；某个 Run 调用当前 Workflow 时，`cancel_on_caller_termination` 决定 caller Run 失败或取消后是否取消本 Run。caller 正常完成不触发取消传播。这些运行值只有正数约束，没有额外的产品上限；实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
+【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、可选 Workflow Event Output 与 Response Stream Scheduling 组件引用、`durability`（默认 `async`）、`on_disconnect`（默认 `cancel`）、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。所有 Workflow 使用相同运行能力；数值只要求正整数，没有额外产品最大值，实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
 全部 enabled Workflow 都出现在 `/v1/models`，也都可以作为跨 Workflow 调用目标。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
@@ -16,22 +16,18 @@ Response Stream Scheduling 是【工作流组件】中的可复用配置，进�
 
 每个 canvas Agent Node 使用私有 `messages` 运行自己的 Agent graph。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入 Lifecycle/Run Store；Workflow State 的 `agent_invocations` 保存 `invocation_id`、Workflow/Node/Agent identity、`invoked_at` 和 `result_ref`。Command-dispatched Agent 的 State reference 携带 task identity。Agent Additional Prompt 可以从 Workflow State 选择当前因果可见的 reference，再通过 `runtime.store` 读取、校验和转换完整 artifact。
 
-并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，dispatch invocation 按 Command Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此启用 Checkpointer 时，旧 Checkpoint State 的旧引用仍可读取。
+并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，dispatch invocation 按 Command Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此 State history 中的旧引用仍可读取。
 
 跨 Workflow 调用由 `langgraph dev` 的官方 Assistant、Thread 和 Run 执行。Agent Shell 通过 LangGraph `Runtime.context` 为每个 Run 注入 `workflow_runs` 命令对象，Command Node、Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_workflow()`、`check()`、`list()`、`join()` 和 `cancel()`。启动命令立即返回官方身份 handle；`check()` 查询状态和终态 State，`join()` 等待终态并收集输出。调用方只把后续确实需要的 `run_id`、业务阶段或结果引用写入 `shared_vars`，无需复制一份 Run 状态机。目标必须是当前请求冻结配置中的 enabled Workflow；需要运行单个 Agent 时创建 `Start -> Agent -> End` Workflow。
 
-启动参数包含稳定 `operation_id`；去除首尾空白后必须为 1-128 个字符，否则返回 422。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
+启动参数包含稳定且非空的 `operation_id`。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
 `operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。被调用 Run 的公开事件在 response 开放期间进入 Lifecycle scheduler；`check()` 与 `join()` 返回官方 Thread State 的输出。需要跨 Run 长期交付的大型业务结果时，调用方仍应通过 Store 或 mapped Filesystem reference 显式读取和编排。
 
-【系统 / 运行监控】按一次请求入口列出 Lifecycle catalog，并显示入口 Workflow、状态、Run 数量、失败数、usage 和采集 profile。页面提供目录、搜索、分页与删除管理；启用采集的 Lifecycle 可进入独立监控详情。详情可切换 Lifecycle、Workflow + descendants 或 exact Run 范围，左侧按 Registry caller/spawned facts 显示 Run 层级，中间显示所选 Run 的 frozen Vue Flow Graph，并用 Node attempt 汇总中的真实 running 数量标记活动 Node。URL 保存 scope、Run、Node 或 Run 数据视图选择，刷新后可以恢复。
+【系统 / 运行监控】通过 LangGraph Dev 公共 Thread/Run API 按一次客户端请求聚合 Lifecycle，显示涉及的 Workflow、状态、active/total Run 和 error Run 数量。页面提供目录、搜索、分页、删除和详情入口；详情可选择任意 Run，并读取官方 Run 对象、Assistant Graph、Thread latest State 与最近 State history。
 
-Node 详情显示直接保存的 attempt。Agent Node 可选择 invocation，查看 exact completed artifact 和 direct-origin ProtocolEvent 数据流；Command Node 显示直接保存的 phase、错误以及经过校验的 `activate|dispatch|update` 外部结果。Run 详情显示 raw ProtocolEvent、Model Request 和 latest persisted Checkpoint State。活动 Lifecycle 在页面可见时约每两秒读取一次数据库中的新事实，页面隐藏时暂停，完整终态后完成最后刷新并静态化；frozen Graph 不参与重复轮询，State 由用户手动刷新。各资源失败只影响自己的区域，已有成功数据继续保留。
+系统配置的 `retained_lifecycles` 默认 `20`，只计算 terminal Lifecycle；active Lifecycle 不占保留数量。`0` 表示不保留已结束 Lifecycle。显式删除 active Lifecycle 返回冲突；删除 terminal Lifecycle 会通过公共 API 删除其 Thread、Run/checkpoint/State 和 Agent Shell-owned Server Store 前缀，文件、生成媒体和 mapped directory 由用户自行管理。
 
-Management monitoring GET 是页面的数据来源，可按 Lifecycle/Workflow/Run scope 读取 snapshot，并按 Run 读取 frozen Graph、Node attempt、raw ProtocolEvent 及 compact direct origin、Run 级 Model Request、Command observation、latest persisted State 与 exact completed Agent invocation artifact。ProtocolEvent 可按 exact Node 或 Node + invocation 筛选；读取端不重新解析 namespace，也不推演 Edge 或跨资源 Timeline。Lifecycle 目录可下载整个 Lifecycle，Graph 标题区可下载当前 Run；归档使用同一批 canonical owner 的有界持久化快照，不包含用户文件、任意 Store 浏览或完整 checkpoint history。
-
-系统配置按完整终态时间保留最近 N 个采集 Lifecycle，默认 `20`；`0` 关闭新 Lifecycle 的监控采集。请求入口 Run 与全部被调用 Run terminal 后才计算完整终态，active Lifecycle 不占保留数量。自动保留清理删除 Runtime Registry、Monitoring Facts、Lifecycle Store records 和全部非空 Checkpoint Thread，并保留 diagnostics 以及运行中写入硬盘的全部用户文件和目录。
-
-Lifecycle 中仍有 active Run 时，显式删除返回冲突。Lifecycle 删除只清理运行控制、监控、Store 与 Checkpoint 数据，文件和目录由用户自行管理。caller Run 正常到达 End 后，被调用 Run 可以继续运行；caller 取消或失败时，直接调用且启用【调用方终止时取消】的 active Run 会被取消，并逐层按各 Run 的配置传播。清理开始后 Lifecycle 进入 `deleting|purge_pending` 并冻结新的跨 Workflow 调用；清理失败时保留状态供后续重试。
+每个 Workflow 独立保存 `on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。Run 的正常完成、失败或主动取消不触发隐式连锁取消；`caller_run_id` 只表达调用关系。
 
 【编辑 Flow】进入独立全屏 Vue Flow 页面。左右各有一条始终保留的工具图标轨；点击 active 图标只收起功能 panel，图标轨不会消失。左侧提供组件库、元素追踪和问题：组件库提供当前角色允许的 Agent 和 Command，可以点击或拖到画布；元素追踪列出当前全部 Node，
 点击条目会保持当前缩放、把 Node 平滑移到视口中心并打开右侧属性；存在问题时问题图标显示红色数量角标，点击后在左侧列出当前问题。右侧属性使用紧凑的 `key : value/control` 行，编辑所选 Node 或 Edge；空白点击会清除选择并收起属性，平移、缩放和拖动不会触发收起，重新打开空选择属性时显示 Workflow 名称和 State contract。

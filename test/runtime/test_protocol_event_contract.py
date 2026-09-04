@@ -67,7 +67,7 @@ def test_locked_fixtures_keep_official_envelope_and_python_payload() -> None:
         nested_lifecycle_started_event(),
     ):
         assert "lifecycle_id" not in event
-        assert "workflow_run_id" not in event
+        assert "run_id" not in event
         assert "workflow_id" not in event
 
 

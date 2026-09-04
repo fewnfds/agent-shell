@@ -24,16 +24,12 @@ import type {
   ConfigurationCollection,
   ConfigurationOptions,
   ConfigurationSummary,
+  LangGraphGraphResponse,
+  LangGraphHistoryResponse,
+  LangGraphLifecyclePage,
+  LangGraphLifecycleSnapshot,
+  LangGraphStateResponse,
   MainAgentSummary,
-  RuntimeMonitoringAgentInvocationResponse,
-  RuntimeMonitoringCommandObservationSequence,
-  RuntimeMonitoringGraphResponse,
-  RuntimeMonitoringModelRequestPage,
-  RuntimeMonitoringNodeAttemptPage,
-  RuntimeMonitoringNodeSummaryPage,
-  RuntimeMonitoringProtocolEventSequence,
-  RuntimeMonitoringSnapshot,
-  RuntimeMonitoringStateResponse,
   RuntimePolicySettings,
   RuntimePolicyUpdate,
   PythonPackageTemplate,
@@ -46,7 +42,6 @@ import type {
   NamedDownload,
   Workflow,
   WorkflowSummary,
-  WorkflowLifecyclePage,
   WorkflowLifecycleBulkDeleteResult,
   WorkflowGraphDocument,
   WorkflowNodeCatalogItem,
@@ -389,26 +384,13 @@ export const managementApi = {
 
   listWorkflowLifecycles(
     request?: { page?: number; page_size?: number; query?: string },
-  ): Promise<WorkflowLifecyclePage> {
+  ): Promise<LangGraphLifecyclePage> {
     const params = new URLSearchParams()
     if (request?.page !== undefined) params.set('page', String(request.page))
     if (request?.page_size !== undefined) params.set('page_size', String(request.page_size))
     if (request?.query) params.set('query', request.query)
     const query = params.toString()
     return managementRequest(`/api/workflow-lifecycles${query ? `?${query}` : ''}`)
-  },
-
-  downloadWorkflowLifecycle(id: string): Promise<NamedDownload> {
-    return managementNamedDownload(
-      `/api/workflow-lifecycles/${encodeURIComponent(id)}/download`,
-    )
-  },
-
-  downloadWorkflowRun(lifecycleId: string, runId: string): Promise<NamedDownload> {
-    return managementNamedDownload(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/runs/${encodeURIComponent(runId)}/download`,
-    )
   },
 
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }> {
@@ -424,27 +406,21 @@ export const managementApi = {
     }))
   },
 
-  getRuntimeMonitoringSnapshot(
+  getLangGraphLifecycleSnapshot(
     lifecycleId: string,
-    request?:
-      | { workflow_id: string; run_id?: never }
-      | { run_id: string; workflow_id?: never },
     signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringSnapshot> {
+  ): Promise<LangGraphLifecycleSnapshot> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot${buildQuery({
-        workflow_id: request?.workflow_id,
-        run_id: request?.run_id,
-      })}`,
+      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
       { signal },
     )
   },
 
-  getRuntimeMonitoringGraph(
+  getLangGraphRunGraph(
     lifecycleId: string,
     runId: string,
     signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringGraphResponse> {
+  ): Promise<LangGraphGraphResponse> {
     return managementRequest(
       `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/graph`,
@@ -452,114 +428,11 @@ export const managementApi = {
     )
   },
 
-  listRuntimeMonitoringNodes(
-    lifecycleId: string,
-    runId: string,
-    request?: { page?: number; page_size?: number },
-    signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringNodeSummaryPage> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}/nodes${buildQuery({
-          page: request?.page,
-          page_size: request?.page_size,
-        })}`,
-      { signal },
-    )
-  },
-
-  listRuntimeMonitoringNodeAttempts(
-    lifecycleId: string,
-    runId: string,
-    nodeId: string,
-    request?: { page?: number; page_size?: number },
-    signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringNodeAttemptPage> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}`
-        + `/nodes/${encodeURIComponent(nodeId)}/attempts${buildQuery({
-          page: request?.page,
-          page_size: request?.page_size,
-        })}`,
-      { signal },
-    )
-  },
-
-  listRuntimeMonitoringProtocolEvents(
-    lifecycleId: string,
-    runId: string,
-    request?: {
-      after_sequence?: number
-      limit?: number
-      method?: string
-      node_id?: string
-      invocation_id?: string
-    },
-    signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringProtocolEventSequence> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}/protocol-events${buildQuery({
-          after_sequence: request?.after_sequence,
-          limit: request?.limit,
-          method: request?.method,
-          node_id: request?.node_id,
-          invocation_id: request?.invocation_id,
-        })}`,
-      { signal },
-    )
-  },
-
-  listRuntimeMonitoringModelRequests(
-    lifecycleId: string,
-    runId: string,
-    request?: {
-      page?: number
-      page_size?: number
-      status?: 'running' | 'completed' | 'failed'
-    },
-    signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringModelRequestPage> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}/model-requests${buildQuery({
-          page: request?.page,
-          page_size: request?.page_size,
-          status: request?.status,
-        })}`,
-      { signal },
-    )
-  },
-
-  listRuntimeMonitoringCommandObservations(
-    lifecycleId: string,
-    runId: string,
-    request?: {
-      after_sequence?: number
-      limit?: number
-      node_id?: string
-      phase?: 'started' | 'completed' | 'failed' | 'cancelled'
-    },
-    signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringCommandObservationSequence> {
-    return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}/command-observations${buildQuery({
-          after_sequence: request?.after_sequence,
-          limit: request?.limit,
-          node_id: request?.node_id,
-          phase: request?.phase,
-        })}`,
-      { signal },
-    )
-  },
-
-  getRuntimeMonitoringState(
+  getLangGraphRunState(
     lifecycleId: string,
     runId: string,
     signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringStateResponse> {
+  ): Promise<LangGraphStateResponse> {
     return managementRequest(
       `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/state`,
@@ -567,16 +440,15 @@ export const managementApi = {
     )
   },
 
-  getRuntimeMonitoringAgentInvocation(
+  getLangGraphRunHistory(
     lifecycleId: string,
     runId: string,
-    invocationId: string,
+    limit: number,
     signal?: AbortSignal,
-  ): Promise<RuntimeMonitoringAgentInvocationResponse> {
+  ): Promise<LangGraphHistoryResponse> {
     return managementRequest(
       `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
-        + `/monitoring/runs/${encodeURIComponent(runId)}`
-        + `/agent-invocations/${encodeURIComponent(invocationId)}`,
+        + `/monitoring/runs/${encodeURIComponent(runId)}/history${buildQuery({ limit })}`,
       { signal },
     )
   },

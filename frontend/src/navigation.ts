@@ -70,10 +70,6 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
     prefix: '/workflow-components',
     items: [
       {
-        path: '/workflow-components/checkpointer',
-        labelKey: 'navigation.sections.checkpointer',
-      },
-      {
         path: '/workflow-components/workflow-event-output',
         labelKey: 'navigation.sections.workflowEventOutput',
       },

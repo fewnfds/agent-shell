@@ -58,7 +58,7 @@ Tool call 在 `messages/content-block-finish` 形成完整 declaration；termina
 
 Shell 合成的 Workflow Run 状态不是 Agent-owned ProtocolEvent，由 Workflow Event Output 的可选 `run_output(run_event, origin)` 处理。Agent Event Output 提供 `output(event, origin)` 和可选 `segment_end(event, origin)`。
 
-媒体、usage、运行监控采集和 Python payload 不由 Event Output 改写；返回空字符串只影响公开文本投影，不影响 post-transformer ProtocolEvent persistence。Subagent 事件沿用所属 Main Agent package，`origin["subagent_profile_id"]` 用于区分来源。
+媒体、usage、官方 Run/State 观测和 Python payload 不由 Event Output 改写；返回空字符串只影响公开文本投影。Subagent 事件沿用所属 Main Agent package，`origin["subagent_profile_id"]` 用于区分来源。
 
 内置 `all-events` 示例将每个当前事件交给独立函数，以默认展开的 `<details open>` 输出正式消息，并在末尾用小号灰字显示 `key=value | key=value` debug metadata。示例只让 assistant text 和 reasoning 流式输出；Tool call、Tool result、生命周期、State、custom 和其他事件都是完整块。
 

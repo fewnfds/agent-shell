@@ -37,11 +37,7 @@ from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
-from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
-from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
-from agent_shell.runtime.monitoring_read_service import MonitoringReadService
-from agent_shell.runtime.monitoring_archive import RuntimeMonitoringArchiveService
-from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
+from agent_shell.runtime.workflow_data import WorkflowDataService
 from agent_shell.settings import (
     Settings,
     SettingsError,
@@ -62,7 +58,7 @@ from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
-from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.file_config import (
     ActiveRepositoryChangedError,
     FileConfigRepository,
@@ -71,9 +67,6 @@ from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
-from agent_shell.storage.runtime_monitoring_queries import (
-    RuntimeMonitoringQueryStore,
-)
 from agent_shell.storage.system_log_settings import MIB_BYTES, SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from agent_shell.storage.workflows import WorkflowStore
@@ -137,13 +130,6 @@ def create_app(
     application_database = SQLiteDatabase(
         settings.resolved_application_database_path()
     )
-    workflow_checkpoint_database = SQLiteFile(
-        settings.resolved_workflow_checkpoint_database_path(),
-        create=False,
-    )
-    workflow_store_database = SQLiteFile(
-        settings.resolved_workflow_store_database_path()
-    )
     configuration_mutations = ConfigurationMutationCoordinator()
     environment = InstanceEnvironmentStore(
         settings.environment_file,
@@ -172,7 +158,6 @@ def create_app(
         max_bytes=system_log_settings.snapshot()["max_size_mib"] * MIB_BYTES,
     )
     history_retention = HistoryRetentionStore(configuration)
-    workflow_checkpoints = WorkflowCheckpointService(workflow_checkpoint_database)
     runtime_diagnostic_details = RuntimeDiagnosticDetailStore(logs_dir / "diagnostics")
     configuration_validation_settings = ConfigurationValidationSettingsStore(configuration)
     runtime_diagnostic_store = RuntimeDiagnosticStore(
@@ -185,23 +170,7 @@ def create_app(
         packages_dir=lambda: configuration.python_packages_root,
         runtime_root=runtime_dir,
     )
-    workflow_lifecycle = WorkflowLifecycleService(
-        application_database,
-        store_database=workflow_store_database,
-        data_root=settings.data_root,
-    )
-    runtime_monitoring_queries = RuntimeMonitoringQueryStore(application_database)
-    runtime_monitoring_reads = MonitoringReadService(
-        application_database,
-        runtime_monitoring_queries,
-        workflow_lifecycle,
-        workflow_checkpoints,
-    )
-    runtime_monitoring_archive = RuntimeMonitoringArchiveService(
-        runtime_monitoring_reads,
-        runtime_monitoring_queries,
-        runtime_dir / "tmp",
-    )
+    workflow_data = WorkflowDataService(settings.data_root)
     python_package_authoring = PythonPackageAuthoringService(
         templates_root=python_templates_dir,
         examples_root=application_home / "examples",
@@ -267,14 +236,7 @@ def create_app(
         store=runtime_diagnostic_store,
         details=runtime_diagnostic_details,
     )
-    workflow_lifecycle.set_runtime_diagnostics(runtime_diagnostics)
     detached_tasks = DetachedTaskManager()
-    runtime_cleanup = RuntimeCleanupCoordinator(
-        workflow_lifecycle,
-        workflow_checkpoints,
-        runtime_policy,
-        runtime_diagnostics,
-    )
     event_logger.set_failure_reporter(
         lambda exc, request_id: runtime_diagnostics.observation_error(
             exc,
@@ -313,8 +275,7 @@ def create_app(
         skills_dir=lambda: configuration.skill_packages_root,
         provider_http_clients=provider_http_clients,
         files=file_manager,
-        workflow_checkpoints=workflow_checkpoints,
-        workflow_lifecycle=workflow_lifecycle,
+        workflow_data=workflow_data,
         detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
         runtime_policy=runtime_policy,
@@ -341,8 +302,6 @@ def create_app(
         *runtime_permissions,
         application_database.directory_permission,
         *application_database.file_permissions,
-        *workflow_checkpoint_database.file_permissions,
-        *workflow_store_database.file_permissions,
         *event_logger.permission_statuses,
         runtime_diagnostic_details.directory_permission,
     )
@@ -353,9 +312,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        await workflow_lifecycle.start()
         await detached_tasks.start()
-        await runtime_cleanup.startup_recover()
         try:
             event_logger.emit(
                 "security_configuration_loaded",
@@ -382,21 +339,15 @@ def create_app(
                     await provider_http_clients.aclose()
                 finally:
                     try:
-                        await workflow_checkpoints.close()
+                        await application_database.close()
                     finally:
-                        try:
-                            await workflow_lifecycle.close()
-                        finally:
-                            try:
-                                await application_database.close()
-                            finally:
-                                event_logger.emit(
-                                    "service_stopped",
-                                    {"reason": "application_shutdown"},
-                                )
-                                runtime_diagnostics.close()
-                                if langsmith_client is not None:
-                                    langsmith_client.close(timeout=5.0)
+                        event_logger.emit(
+                            "service_stopped",
+                            {"reason": "application_shutdown"},
+                        )
+                        runtime_diagnostics.close()
+                        if langsmith_client is not None:
+                            langsmith_client.close(timeout=5.0)
 
     app = FastAPI(
         title=settings.app_name,
@@ -577,10 +528,8 @@ def create_app(
     app.state.runtime_policy = runtime_policy
     app.state.provider_http_clients = provider_http_clients
     app.state.event_feed = event_feed
-    app.state.workflow_checkpoints = workflow_checkpoints
-    app.state.workflow_lifecycle = workflow_lifecycle
-    app.state.runtime_monitoring_reads = runtime_monitoring_reads
-    app.state.runtime_monitoring_archive = runtime_monitoring_archive
+    app.state.workflow_data = workflow_data
+    app.state.langgraph_lifecycles = agent_runtime.langgraph_lifecycles
     app.state.detached_tasks = detached_tasks
     app.state.system_log_settings = system_log_settings
     app.state.model_resources = model_resources
@@ -659,13 +608,11 @@ def create_app(
         )
     )
     app.include_router(
-        build_workflow_lifecycle_router(
-            workflow_lifecycle,
-            runtime_cleanup,
-            runtime_monitoring_archive,
-        )
+        build_workflow_lifecycle_router(agent_runtime.langgraph_lifecycles)
     )
-    app.include_router(build_runtime_monitoring_router(runtime_monitoring_reads))
+    app.include_router(
+        build_runtime_monitoring_router(agent_runtime.langgraph_lifecycles)
+    )
     app.include_router(
         build_validation_router(
             configuration_validation,
@@ -689,7 +636,7 @@ def create_app(
         build_system_settings_router(
             system_settings,
             runtime_policy,
-            on_runtime_policy_updated=runtime_cleanup.enforce_retention,
+            on_runtime_policy_updated=agent_runtime.enforce_lifecycle_retention,
         )
     )
     app.include_router(

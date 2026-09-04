@@ -32,8 +32,8 @@ def _optional_safe_text(value: object) -> str | None:
 class RuntimeDiagnosticContext:
     request_id: str = ""
     lifecycle_id: str = ""
-    workflow_run_id: str = ""
-    checkpoint_thread_id: str | None = None
+    run_id: str = ""
+    thread_id: str = ""
     entry_workflow_id: str = ""
     entry_workflow_name: str = ""
     subject_kind: str = ""
@@ -47,8 +47,6 @@ class RuntimeDiagnosticContext:
             key: _optional_safe_text(value)
             for key, value in asdict(self).items()
         }
-        values["run_id"] = values.pop("workflow_run_id")
-        values["thread_id"] = values.pop("checkpoint_thread_id")
         return values
 
 

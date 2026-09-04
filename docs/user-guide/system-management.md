@@ -20,8 +20,6 @@ data/
       journals/<transaction-uuid>.json
       staging/<transaction-uuid>/
   state/agent-shell.sqlite3*
-  state/workflow-checkpoints.sqlite3*   首次运行启用 Checkpointer 的 Workflow 时建立
-  state/workflow-store.sqlite3*
   state/langgraph-dev/.langgraph_api/   LangGraph Dev 的 Assistant、Thread、Run、State 与 Store 数据
   files/
     generated/<YYYY-MM>/<request-id>/  Agent 响应生成的媒体文件
@@ -36,7 +34,7 @@ data/
   logs/diagnostics/*.log
 ```
 
-它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行监控事实，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存 Runtime Registry、冻结 Graph、Canvas Node attempt、实际 raw v3 ProtocolEvent 及其 compact direct origin、Run 级 Model Request、Command observation 和结构化 runtime 失败诊断；`workflow-checkpoints.sqlite3` 只保存已启用检查点保存器的 Workflow Run 的官方 LangGraph checkpoint，并在首次实际使用时建立；`workflow-store.sqlite3` 保存 Lifecycle input、Agent invocation artifact、Filesystem route 和 Workflow Store 数据。LangGraph Dev 把自己的 Assistant、Thread、Run、State、Store 以及跨 Workflow Run 调用关系集中写入 `data/state/langgraph-dev/.langgraph_api/`；这是官方运行时拥有的内部目录，Agent Shell 只通过公开 SDK/API 读写，不解析其中的文件。迁移时先完全停止服务，再复制完整 `data/`，包括当时实际存在的 SQLite、WAL 和 SHM 文件。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行数据，应作为敏感数据整体备份。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 只保存结构化 runtime 失败诊断。LangGraph Dev 把 Assistant、Thread、Run、checkpoint、State/history、Server Store、Lifecycle input、Agent invocation artifact、Filesystem route 和跨 Workflow Run 调用关系集中写入 `data/state/langgraph-dev/.langgraph_api/`；这是官方运行时拥有的内部目录，Agent Shell 只通过公开 SDK/API 读写，不解析其中的文件。迁移时先完全停止服务，再复制完整 `data/`，包括当时存在的 SQLite、WAL、SHM 和 `.langgraph_api` 数据。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/config_repos/<repository-name>/python_packages/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 
@@ -75,17 +73,17 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面按四个真实后端 owner 展示和保存：系统与部署（`PUT /api/system/settings`）、API Server（`PUT /api/api-server`）、配置校验（`PUT /api/validation/settings`）和限制策略（`PUT /api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域不会提交另外三个区域。页面统一 Refresh 仍并行读取四类设置。页面管理监听地址、普通服务端口、LangGraph Dev 的每 Worker Run 槽位数与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面按四个真实后端 owner 展示和保存：系统与部署（`PUT /api/system/settings`）、API Server（`PUT /api/api-server`）、配置校验（`PUT /api/validation/settings`）和限制策略（`PUT /api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域不会提交另外三个区域。页面统一 Refresh 仍并行读取四类设置。页面管理监听地址、普通服务端口、LangGraph Dev 的每 Worker Run 槽位数与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。页面还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`n_jobs_per_worker` 默认 `10`、最小 `1`、没有产品最大值；每个经官方队列执行的 Run 占一个槽位，增大该值会同时提高并行度、CPU、内存和外部请求压力。`debug_port` 默认留空；留空时没有第二个调试 listener，填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。这三个字段均在服务重启后生效。
 
-API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置运行监控保留数量、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回 10 项数值 runtime-policy 的当前值、默认值与最小值。
+API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Lifecycle 保留数量、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回 10 项数值 runtime-policy 的当前值、默认值与最小值。
 
-`runtime_monitoring_retention_lifecycles` 默认 `20`、最小 `0`；其他 9 项只有正数约束。全部策略都没有额外产品最大值。其他默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
+`retained_lifecycles` 默认 `20`、最小 `0`；其他 9 项只有正数约束。全部策略都没有额外产品最大值。其他默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
 
-运行监控保留数量按完整终态时间保留最近 N 个 Lifecycle，活动 Lifecycle 不计入数量。`0` 会关闭新 Lifecycle 的监控采集；运行必需控制记录仍保留到该 Lifecycle 的请求入口 Run 与全部被调用 Run 完整终止，随后自动清理。每个 Lifecycle 在创建时冻结是否采集，修改设置不会改变正在运行的采集 profile；最新 N 值立即用于已终止数据，因此降低数值会永久清理超出的 Lifecycle。自动清理保留运行中写入硬盘的全部用户文件和目录。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
+Lifecycle 保留数量只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-系统与部署区域包含网络、管理密码、LangSmith、CORS 和可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于系统设置，API Key 与消息上限属于 API Server，运行监控保留数量与其他 9 项数值策略属于限制策略。
+系统与部署区域包含网络、管理密码、LangSmith、CORS 和可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于系统设置，API Key 与消息上限属于 API Server，Lifecycle 保留数量与其他 9 项数值策略属于限制策略。
 
 限制策略中的容量字段以 MiB 展示（1 MiB = 1024² bytes），保存时仍按后端要求换算为 bytes。
 
@@ -97,7 +95,7 @@ LangSmith 配置项含义如下：
 - Workspace ID：API Key 可访问多个 Workspace 时填写，否则留空；
 - API Key：只写 secret；已配置的值不会回显，留空保存时保留原值。
 
-当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、消息上限、校验去抖和限制策略立即生效；运行监控的最新保留数量立即收敛终态数据，是否采集从下一个新 Lifecycle 起按该值冻结。host、普通端口、Run 槽位数、DAP 调试端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
+当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、消息上限、校验去抖和限制策略立即生效；最新 Lifecycle 保留数量会立即收敛已结束数据。host、普通端口、Run 槽位数、DAP 调试端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
 
 【系统 / 拦截消息】管理 Chat Completions 入站拦截。开关立即生效并持久化；开启后，请求会在进入 Workflow 前直接收到 OpenAI-compatible 的“消息已拦截”回复。页面只暂存进程内最新一条原始 JSON，正文不写入 SQLite、
 系统日志或运行诊断；开关从关闭变为开启或服务重启时清空，关闭期间不捕获。已开启时重复保存不会清空当前原文。日志中心另见[日志中心与 Workflow 观测](runtime-observability.md)。

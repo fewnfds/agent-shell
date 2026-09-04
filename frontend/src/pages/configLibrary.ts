@@ -89,8 +89,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (category === 'model-connection') return { path: '/models/connections', query: { id } }
   if (category === 'mcp-connection') return { path: '/mcp/connections', query: { id } }
   if (
-    category === 'checkpointer'
-    || category === 'workflow-event-output'
+    category === 'workflow-event-output'
     || category === 'response-stream-scheduling'
     || category === 'command'
   ) {

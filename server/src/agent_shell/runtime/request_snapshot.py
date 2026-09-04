@@ -23,11 +23,11 @@ from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.runtime.errors import AgentRuntimeError, decode_server_run_error
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
+from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleService
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
-from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
-from agent_shell.runtime.workflow_lifecycle import (
+from agent_shell.runtime.workflow_data import (
     LIFECYCLE_INPUT_KEY,
-    WorkflowLifecycleService,
+    WorkflowDataService,
     lifecycle_input_namespace,
 )
 from agent_shell.runtime.workflow_run_calls import (
@@ -38,9 +38,8 @@ from agent_shell.runtime.workflow_run_calls import (
     WorkflowRunStatus,
     official_status,
     relation_key,
-    search_run_call_relations,
+    search_lifecycle_runs,
     select_relations,
-    workflow_run_calls_namespace,
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
@@ -199,8 +198,6 @@ class LifecycleRunCoordinator:
     _lifecycle_id: str = field(default="", init=False)
     _bindings: dict[str, _RunBinding] = field(default_factory=dict, init=False)
     _sessions: dict[str, _OfficialSession] = field(default_factory=dict, init=False)
-    _root_thread_id: str = field(default="", init=False)
-    _root_finished: bool = field(default=False, init=False)
 
     @property
     def lifecycle_id(self) -> str:
@@ -233,7 +230,7 @@ class LifecycleRunCoordinator:
         self._bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
         try:
-            client, thread_stream = await self._open_run_session(binding)
+            client, _thread_stream = await self._open_run_session(binding)
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
@@ -249,8 +246,7 @@ class LifecycleRunCoordinator:
                 },
                 index=False,
             )
-            self._root_thread_id = binding.thread_id
-            result = await self._start_bound_run(binding, thread_stream)
+            result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
             assert binding.execution_ready is not None
             return await binding.execution_ready
@@ -258,7 +254,6 @@ class LifecycleRunCoordinator:
             self._cancel_binding_futures(binding)
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
-            self._root_finished = True
             self._release_if_finished()
             raise
 
@@ -396,8 +391,8 @@ class LifecycleRunCoordinator:
             )
         self._bindings[binding.key] = binding
         try:
-            client, thread_stream = await self._open_run_session(binding)
-            result = await self._start_bound_run(binding, thread_stream)
+            client, _thread_stream = await self._open_run_session(binding)
+            result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
             relation = WorkflowRunCallRelation(
                 lifecycle_id=binding.lifecycle_id,
@@ -408,15 +403,6 @@ class LifecycleRunCoordinator:
                 assistant_id=binding.assistant_id,
                 thread_id=binding.thread_id,
                 run_id=binding.run_id,
-                cancel_on_caller_termination=bool(
-                    target["cancel_on_caller_termination"]
-                ),
-            )
-            await client.store.put_item(
-                workflow_run_calls_namespace(binding.lifecycle_id),
-                binding.key,
-                relation.model_dump(mode="json"),
-                index=False,
             )
             assert binding.execution_ready is not None
             execution = await binding.execution_ready
@@ -442,7 +428,7 @@ class LifecycleRunCoordinator:
         *,
         caller: WorkflowRunCaller,
     ) -> list[WorkflowRunSnapshot]:
-        relations = await self._caller_relations(caller)
+        relations = await self._lifecycle_relations(caller)
         by_run = {relation.run_id: relation for relation in relations}
         snapshots: list[WorkflowRunSnapshot] = []
         async with self._owner.new_agent_server_client() as client:
@@ -461,7 +447,7 @@ class LifecycleRunCoordinator:
         caller: WorkflowRunCaller,
         statuses: frozenset[WorkflowRunStatus] | None = None,
     ) -> list[WorkflowRunSnapshot]:
-        relations = await self._caller_relations(caller)
+        relations = await self._lifecycle_relations(caller)
         snapshots: list[WorkflowRunSnapshot] = []
         async with self._owner.new_agent_server_client() as client:
             for relation in relations:
@@ -517,24 +503,10 @@ class LifecycleRunCoordinator:
                 snapshots.append(self._snapshot_value(relation, official_status(run)))
         return snapshots
 
-    async def cancel_spawned_runs_on_caller_termination(
-        self,
-        lifecycle_id: str,
-        caller_run_id: str,
-    ) -> None:
-        caller = WorkflowRunCaller("", lifecycle_id, caller_run_id)
-        relations = await self._caller_relations(caller)
-        async with self._owner.new_agent_server_client() as client:
-            for relation in relations:
-                if not relation.cancel_on_caller_termination:
-                    continue
-                run = await client.runs.get(relation.thread_id, relation.run_id)
-                if official_status(run) in ACTIVE_WORKFLOW_RUN_STATUSES:
-                    await client.runs.cancel(
-                        relation.thread_id,
-                        relation.run_id,
-                        wait=False,
-                    )
+    async def cancel_active_runs(self) -> None:
+        if not self._lifecycle_id:
+            return
+        await self._owner.langgraph_lifecycles.cancel_active(self._lifecycle_id)
 
     async def cancel_official_run(self, thread_id: str, run_id: str) -> None:
         if not thread_id or not run_id:
@@ -561,8 +533,6 @@ class LifecycleRunCoordinator:
             await session.stream.close()
         finally:
             await session.client.aclose()
-        if thread_id == self._root_thread_id:
-            self._root_finished = True
         self._release_if_finished()
 
     def _new_binding(
@@ -635,7 +605,7 @@ class LifecycleRunCoordinator:
             await client.aclose()
             raise
 
-    async def _start_bound_run(self, binding: _RunBinding, stream: Any) -> Mapping[str, Any]:
+    async def _start_bound_run(self, binding: _RunBinding, client: Any) -> Mapping[str, Any]:
         configurable = {
             "workflow_id": str(binding.workflow["id"]),
             "request_id": binding.request_id,
@@ -643,7 +613,9 @@ class LifecycleRunCoordinator:
             "caller_run_id": binding.caller_run_id,
             "operation_id": binding.operation_id,
         }
-        return await stream.run.start(
+        return await client.runs.create(
+            binding.thread_id,
+            binding.assistant_id,
             input={
                 "shared_vars": deepcopy(dict(binding.initial_shared_vars)),
                 "agent_invocations": {},
@@ -666,6 +638,7 @@ class LifecycleRunCoordinator:
                 "caller_run_id": binding.caller_run_id,
                 "operation_id": binding.operation_id,
             },
+            durability=str(binding.workflow["durability"]),
         )
 
     @staticmethod
@@ -699,33 +672,38 @@ class LifecycleRunCoordinator:
         caller: WorkflowRunCaller,
         operation_id: str,
     ) -> WorkflowRunCallRelation | None:
-        relations = await self._caller_relations(caller)
+        relations = await self._lifecycle_relations(caller)
         return next(
             (
                 relation
                 for relation in relations
-                if relation.operation_id == operation_id
+                if relation.caller_run_id == caller.run_id
+                and relation.operation_id == operation_id
             ),
             None,
         )
 
-    async def _caller_relations(
+    async def _lifecycle_relations(
         self,
         caller: WorkflowRunCaller,
     ) -> list[WorkflowRunCallRelation]:
+        if caller.lifecycle_id != self._lifecycle_id:
+            raise AgentRuntimeError(
+                "workflow_lifecycle_mismatch",
+                "The Workflow Run caller belongs to another Lifecycle.",
+                status_code=409,
+            )
         async with self._owner.new_agent_server_client() as client:
-            relations = await search_run_call_relations(client, caller.lifecycle_id)
-        return select_relations(relations, caller_run_id=caller.run_id)
+            return await search_lifecycle_runs(client, caller.lifecycle_id)
 
     async def _selected_relations(
         self,
         caller: WorkflowRunCaller,
         run_ids: Sequence[str],
     ) -> list[WorkflowRunCallRelation]:
-        relations = await self._caller_relations(caller)
+        relations = await self._lifecycle_relations(caller)
         return select_relations(
             relations,
-            caller_run_id=caller.run_id,
             run_ids=run_ids,
         )
 
@@ -777,7 +755,7 @@ class LifecycleRunCoordinator:
         )
 
     def _release_if_finished(self) -> None:
-        if self._root_finished and not self._sessions:
+        if not self._sessions:
             self._owner.release_active_lifecycle(self)
 
 
@@ -793,8 +771,7 @@ class RequestSnapshotRuntime:
         skills_dir: Path | Callable[[], Path],
         provider_http_clients: ProviderHttpClients,
         files: FileManagerService,
-        workflow_checkpoints: WorkflowCheckpointService,
-        workflow_lifecycle: WorkflowLifecycleService,
+        workflow_data: WorkflowDataService,
         detached_tasks: DetachedTaskManager,
         runtime_diagnostics: RuntimeDiagnostics,
         runtime_policy: RuntimePolicyStore,
@@ -809,8 +786,7 @@ class RequestSnapshotRuntime:
         self._skills_dir_source = skills_dir
         self._provider_http_clients = provider_http_clients
         self._files = files
-        self._workflow_checkpoints = workflow_checkpoints
-        self._workflow_lifecycle = workflow_lifecycle
+        self._workflow_data = workflow_data
         self._detached_tasks = detached_tasks
         self._runtime_diagnostics = runtime_diagnostics
         self._runtime_policy = runtime_policy
@@ -819,12 +795,23 @@ class RequestSnapshotRuntime:
         self._agent_server_url = agent_server_url
         self._agent_server_headers = {"Authorization": f"Bearer {agent_server_token}"}
         self._active_lifecycles: dict[str, LifecycleRunCoordinator] = {}
+        self._langgraph_lifecycles = LangGraphLifecycleService(
+            self.new_agent_server_client
+        )
 
     def runtime_policy_snapshot(self):
         return self._runtime_policy.snapshot()
 
     def new_agent_server_client(self):
         return get_client(url=self._agent_server_url, headers=self._agent_server_headers)
+
+    @property
+    def langgraph_lifecycles(self) -> LangGraphLifecycleService:
+        return self._langgraph_lifecycles
+
+    async def enforce_lifecycle_retention(self) -> None:
+        retained = self._runtime_policy.snapshot().retained_lifecycles
+        await self._langgraph_lifecycles.enforce_retention(retained)
 
     def register_active_lifecycle(self, coordinator: LifecycleRunCoordinator) -> None:
         lifecycle_id = coordinator.lifecycle_id
@@ -839,6 +826,10 @@ class RequestSnapshotRuntime:
         lifecycle_id = coordinator.lifecycle_id
         if self._active_lifecycles.get(lifecycle_id) is coordinator:
             self._active_lifecycles.pop(lifecycle_id, None)
+            self._detached_tasks.create(
+                self.enforce_lifecycle_retention(),
+                name="langgraph-lifecycle-retention",
+            )
 
     def capture(self) -> RequestRuntimeSnapshot:
         with self._configuration.request_snapshot_context() as context:
@@ -861,7 +852,8 @@ class RequestSnapshotRuntime:
         )
 
         def runtime_factory(graph_store: BaseStore | None = None) -> AgentRuntime:
-            effective_store = graph_store or self._workflow_lifecycle.store
+            if graph_store is None:
+                raise RuntimeError("the LangGraph Store is unavailable")
             return AgentRuntime(
                 AgentBuilder(
                     secrets,
@@ -870,7 +862,7 @@ class RequestSnapshotRuntime:
                     skills_dir=skills_dir,
                     validation=validation,
                     provider_http_clients=self._provider_http_clients,
-                    store=effective_store,
+                    store=graph_store,
                     model_resources=model_resources,
                     mcp_resources=mcp_resources,
                     repository_id=repository_id,
@@ -880,11 +872,10 @@ class RequestSnapshotRuntime:
                 python_packages_dir=python_packages_dir,
                 runtime_dir=self._runtime_dir,
                 blocks=blocks,
-                workflow_checkpoints=self._workflow_checkpoints,
-                workflow_lifecycle=self._workflow_lifecycle,
+                workflow_data=self._workflow_data,
                 runtime_diagnostics=self._runtime_diagnostics,
                 runtime_policy=self._runtime_policy,
-                graph_store=effective_store,
+                graph_store=graph_store,
             )
 
         return RequestRuntimeSnapshot(

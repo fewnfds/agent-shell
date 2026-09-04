@@ -79,7 +79,6 @@ const props = withDefaults(defineProps<{
 type EditorModule = { default: Component }
 
 const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
-  checkpointer: () => import('@/editors/CheckpointerEditor.vue'),
   'response-stream-scheduling': () => import('@/editors/ResponseStreamSchedulingEditor.vue'),
   'model-requirement': () => import('@/editors/ModelRequirementEditor.vue'),
   'mcp-requirement': () => import('@/editors/McpRequirementEditor.vue'),

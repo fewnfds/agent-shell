@@ -73,17 +73,6 @@ def _save(
     existing = store.get_item(item_id)
     validated = _validated(payload)
     validated["enabled"] = existing["enabled"] if existing is not None else False
-    checkpointer_id = validated["checkpointer_id"]
-    if (
-        checkpointer_id is not None
-        and blocks.get_block("checkpointer", checkpointer_id) is None
-    ):
-        raise management_error(
-            422,
-            code="workflow_checkpointer_not_found",
-            message_key="errors.workflowCheckpointerNotFound",
-            message="The selected Checkpointer component does not exist.",
-        )
     event_output_id = validated["workflow_event_output_id"]
     if (
         event_output_id is not None

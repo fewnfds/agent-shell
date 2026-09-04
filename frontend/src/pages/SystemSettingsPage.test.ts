@@ -26,6 +26,8 @@ const systemSettings: SystemSettings = {
   trusted_proxy_cidrs: [],
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin',
+  active_api_docs_url: 'http://127.0.0.1:19100/docs',
+  active_studio_url: 'https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2F127.0.0.1%3A19100',
 }
 
 const apiServerSettings: ApiServerSettings = {
@@ -41,7 +43,7 @@ const apiServerSettings: ApiServerSettings = {
 }
 
 const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  runtime_monitoring_retention_lifecycles: 20,
+  retained_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
@@ -58,7 +60,7 @@ const runtimePolicySettings: RuntimePolicySettings = {
   minimums: Object.fromEntries(
     Object.keys(runtimePolicyValues).map((key) => [
       key,
-      key === 'runtime_monitoring_retention_lifecycles' ? 0 : 1,
+      key === 'retained_lifecycles' ? 0 : 1,
     ]),
   ) as RuntimePolicySettings['minimums'],
   configurable: true,
@@ -95,9 +97,13 @@ describe('SystemSettingsPage', () => {
     expect(wrapper.get('label[for="configuration-validation-debounce"]').text()).toBe('配置报警间隔')
     expect(interval.attributes('aria-describedby')).toBe('configuration-validation-debounce-unit')
     expect(wrapper.get('#configuration-validation-debounce-unit').text()).toBe('ms')
+    expect(wrapper.get('[data-testid="langgraph-api-docs-link"]').attributes('href'))
+      .toBe(systemSettings.active_api_docs_url)
+    expect(wrapper.get('[data-testid="langgraph-studio-link"]').attributes('href'))
+      .toBe(systemSettings.active_studio_url)
 
     await interval.setValue('500')
-    await wrapper.get('#runtime-policy-runtime_monitoring_retention_lifecycles').setValue('0')
+    await wrapper.get('#runtime-policy-retained_lifecycles').setValue('0')
     await wrapper.get('#runtime-policy-chat_completion_body_bytes').setValue('32')
     await wrapper.get('[data-testid="system-card-validation"]').trigger('submit')
     await flushPromises()
@@ -110,7 +116,7 @@ describe('SystemSettingsPage', () => {
     expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
       chat_completion_body_bytes: 32 * 1024 * 1024,
       provider_timeout_seconds: 600,
-      runtime_monitoring_retention_lifecycles: 0,
+      retained_lifecycles: 0,
     }))
     wrapper.unmount()
   })
@@ -148,7 +154,7 @@ describe('SystemSettingsPage', () => {
       'debounce_ms',
       'chat_completion_body_bytes',
       'provider_timeout_seconds',
-      'runtime_monitoring_retention_lifecycles',
+      'retained_lifecycles',
       'cors_origins',
       'trusted_proxy_cidrs',
     ]) {

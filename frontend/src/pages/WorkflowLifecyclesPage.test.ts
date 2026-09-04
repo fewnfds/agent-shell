@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   managementApi,
-  type WorkflowLifecyclePage,
-  type WorkflowLifecycleSummary,
+  type LangGraphLifecyclePage,
+  type LangGraphLifecycleSummary,
 } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
 import { useToasts } from '@/composables/useToasts'
@@ -14,31 +14,20 @@ import { en } from '@/locales/en'
 
 import WorkflowLifecyclesPage from './WorkflowLifecyclesPage.vue'
 
-const triggerBrowserDownload = vi.hoisted(() => vi.fn())
-
-vi.mock('@/utils/download', () => ({ triggerBrowserDownload }))
-
-const lifecycle: WorkflowLifecycleSummary = {
+const lifecycle: LangGraphLifecycleSummary = {
   lifecycle_id: 'lifecycle-1',
-  lifecycle_status: 'active',
   request_id: 'request-1',
-  root_run_id: 'run-1',
-  root_status: 'running',
-  workflow_id: 'workflow-1',
-  workflow_name: 'Research Workflow',
   created_at: '2026-08-17T00:00:00.000+00:00',
-  monitoring_capture_enabled: true,
-  messages_sha: 'sha',
-  message_count: 2,
+  updated_at: '2026-08-17T00:01:00.000+00:00',
+  status: 'running',
+  workflow_names: ['Research Workflow'],
   run_count: 4,
   active_run_count: 1,
-  failed_run_count: 1,
-  usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+  error_run_count: 1,
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
-  triggerBrowserDownload.mockReset()
   useConfirmation().cancel()
   const toasts = useToasts()
   for (const toast of toasts.items.value) toasts.dismiss(toast.id)
@@ -66,60 +55,32 @@ async function mountPage() {
 }
 
 describe('WorkflowLifecyclesPage', () => {
-  it('shows the trustworthy catalog and explicit persistence-upgrade boundary', async () => {
-    const page: WorkflowLifecyclePage = {
-      items: [
-        lifecycle,
-        {
-          ...lifecycle,
-          lifecycle_id: 'lifecycle-2',
-          lifecycle_status: 'purge_pending',
-          monitoring_capture_enabled: false,
-        },
-      ],
+  it('shows official Run summaries and allows every Lifecycle to be monitored', async () => {
+    const terminal = {
+      ...lifecycle,
+      lifecycle_id: 'lifecycle-2',
+      status: 'success' as const,
+      active_run_count: 0,
+    }
+    const page: LangGraphLifecyclePage = {
+      items: [lifecycle, terminal],
       page: 1,
       page_size: 10,
       total: 2,
       total_pages: 1,
     }
     const list = vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue(page)
-    const archive = {
-      blob: new Blob(['runtime archive']),
-      filename: 'runtime-monitoring-lifecycle-lifecycle-1.zip',
-    }
-    const download = vi.spyOn(managementApi, 'downloadWorkflowLifecycle')
-      .mockResolvedValue(archive)
     const remove = vi.spyOn(managementApi, 'deleteWorkflowLifecycle').mockResolvedValue({ ok: true })
     const { router, wrapper } = await mountPage()
     await flushPromises()
 
     expect(list).toHaveBeenCalledWith({ page: 1, page_size: 10, query: '' })
-    expect(wrapper.text()).toContain(lifecycle.workflow_name)
+    expect(wrapper.text()).toContain('Research Workflow')
     expect(wrapper.text()).toContain('Running')
-    expect(wrapper.text()).toContain('Pending automatic purge')
+    expect(wrapper.text()).toContain('Success')
     expect(wrapper.text()).toContain('1 / 4')
-    expect(wrapper.text()).toContain('150')
-    expect(wrapper.text()).toContain('Enabled')
-    expect(wrapper.text()).toContain('Disabled')
     const monitorButtons = wrapper.findAll('button[data-action="monitor"]')
     expect(monitorButtons).toHaveLength(2)
-    expect(monitorButtons[0]?.attributes('title')).toBe('Monitor Lifecycle')
-    expect(monitorButtons[1]?.attributes('disabled')).toBeDefined()
-    expect(monitorButtons[1]?.attributes('title')).toBe(
-      'Monitoring was disabled when this Lifecycle started',
-    )
-    const downloadButtons = wrapper.findAll('button[data-action="download"]')
-    expect(downloadButtons).toHaveLength(2)
-    expect(downloadButtons[0]?.attributes('title')).toBe('Download')
-    expect(downloadButtons[1]?.attributes('disabled')).toBeDefined()
-    expect(downloadButtons[1]?.attributes('title')).toBe(
-      'No runtime monitoring data was captured for this Lifecycle',
-    )
-
-    await downloadButtons[0]!.trigger('click')
-    await flushPromises()
-    expect(download).toHaveBeenCalledWith(lifecycle.lifecycle_id)
-    expect(triggerBrowserDownload).toHaveBeenCalledWith(archive.blob, archive.filename)
 
     await monitorButtons[0]!.trigger('click')
     await flushPromises()
@@ -127,15 +88,18 @@ describe('WorkflowLifecyclesPage', () => {
       '/system/workflow-lifecycles/lifecycle-1/monitoring',
     )
 
-    await wrapper.findAll('button').find((button) => button.text() === 'Delete')!.trigger('click')
+    const deleteButtons = wrapper.findAll('button[data-action="delete"]')
+    expect(deleteButtons[0]?.attributes('disabled')).toBeDefined()
+    expect(deleteButtons[1]?.attributes('disabled')).toBeUndefined()
+    await deleteButtons[1]!.trigger('click')
     useConfirmation().accept()
     await flushPromises()
 
-    expect(remove).toHaveBeenCalledWith(lifecycle.lifecycle_id)
+    expect(remove).toHaveBeenCalledWith(terminal.lifecycle_id)
     wrapper.unmount()
   })
 
-  it('bulk deletes the complete applied query and reports retained active lifecycles', async () => {
+  it('bulk deletes the complete applied query and reports retained active Lifecycles', async () => {
     vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue({
       items: [lifecycle],
       page: 1,
@@ -144,12 +108,7 @@ describe('WorkflowLifecyclesPage', () => {
       total_pages: 2,
     })
     const removeMatching = vi.spyOn(managementApi, 'deleteWorkflowLifecyclesMatching')
-      .mockResolvedValue({
-        matched: 12,
-        deleted: 11,
-        skipped_active: 1,
-        deleted_checkpoint_thread_count: 3,
-      })
+      .mockResolvedValue({ matched: 12, deleted: 11, skipped_active: 1 })
     const { wrapper } = await mountPage()
     await flushPromises()
 

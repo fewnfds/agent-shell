@@ -23,6 +23,13 @@ def clean_agent_shell_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    async def skip_external_retention(_self) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "agent_shell.runtime.request_snapshot.RequestSnapshotRuntime.enforce_lifecycle_retention",
+        skip_external_retention,
+    )
     monkeypatch.chdir(tmp_path)
     configure_scope_tokens(monkeypatch, tmp_path)
     app = create_app()
@@ -72,6 +79,11 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "management_token": {"configured": True},
         "restart_required": False,
         "active_management_url": "http://testserver/admin",
+        "active_api_docs_url": "http://testserver/docs",
+        "active_studio_url": (
+            "https://smith.langchain.com/studio/"
+            "?baseUrl=http%3A%2F%2Ftestserver"
+        ),
     }
     assert MANAGEMENT_TOKEN not in response.text
 
@@ -325,9 +337,9 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     current = client.get("/api/system/runtime-policy")
 
     assert current.status_code == 200
-    assert current.json()["runtime_monitoring_retention_lifecycles"] == 20
+    assert current.json()["retained_lifecycles"] == 20
     assert current.json()["minimums"][
-        "runtime_monitoring_retention_lifecycles"
+        "retained_lifecycles"
     ] == 0
     assert current.json()["chat_completion_body_bytes"] == 64 * 1024 * 1024
     assert current.json()["defaults"]["provider_timeout_seconds"] == 600
@@ -344,7 +356,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
             "chat_completion_body_bytes": 256 * 1024 * 1024,
             "content_blocks": 100_000,
             "provider_timeout_seconds": 3600,
-            "runtime_monitoring_retention_lifecycles": 0,
+            "retained_lifecycles": 0,
         }
     )
     saved = client.put("/api/system/runtime-policy", json=update)
@@ -353,13 +365,13 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
     assert saved.json()["content_blocks"] == 100_000
     assert saved.json()["provider_timeout_seconds"] == 3600
-    assert saved.json()["runtime_monitoring_retention_lifecycles"] == 0
+    assert saved.json()["retained_lifecycles"] == 0
     document = yaml.safe_load(
         (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
     )
     assert document["runtime_policy"]["provider_timeout_seconds"] == 3600
     assert document["runtime_policy"][
-        "runtime_monitoring_retention_lifecycles"
+        "retained_lifecycles"
     ] == 0
 
     invalid = {**update, "content_blocks": 0}
@@ -372,7 +384,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
 
     invalid_retention = {
         **update,
-        "runtime_monitoring_retention_lifecycles": -1,
+        "retained_lifecycles": -1,
     }
     rejected_retention = client.put(
         "/api/system/runtime-policy",
@@ -382,7 +394,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
 
     boolean_retention = {
         **update,
-        "runtime_monitoring_retention_lifecycles": True,
+        "retained_lifecycles": True,
     }
     rejected_boolean_retention = client.put(
         "/api/system/runtime-policy",

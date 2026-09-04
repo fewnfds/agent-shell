@@ -17,7 +17,7 @@ from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.agent_runtime import AgentRuntime
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import AgentShellState, WorkflowState
-from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespace
+from agent_shell.runtime.workflow_data import lifecycle_invocations_namespace
 from agent_shell.validation.assembly import StaticAssembly
 from agent_shell.validation import ValidationIssue, ValidationReport
 from agent_shell.workflow import (
@@ -1204,16 +1204,6 @@ def test_agent_defer_config_is_forwarded_to_langgraph_node(monkeypatch) -> None:
 
 
 def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> None:
-    starts: list[dict[str, object]] = []
-
-    class MonitoringRecorder:
-        def start_node_attempt(self, record):
-            starts.append(record)
-            return True
-
-        def finish_node_attempt(self, *_args, **_kwargs):
-            return True
-
     def answer(state: AgentShellState):
         count = int(state.get("shared_vars", {}).get("count", 0)) + 1
         return {
@@ -1235,7 +1225,6 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
             agent_id=AGENT_A,
             agent_name="Loop Agent",
         ),
-        lifecycle_service=MonitoringRecorder(),  # type: ignore[arg-type]
     )
     parent = StateGraph(WorkflowState, context_schema=WorkflowRuntimeContext)
     parent.add_node("agent-loop", node)
@@ -1281,9 +1270,6 @@ def test_repeated_node_execution_uses_distinct_langgraph_task_invocations() -> N
     )
     assert len(artifacts) == 2
     assert {item.key for item in artifacts} != set(records)
-    assert len(starts) == 2
-    assert {item["attempt"] for item in starts} == {1}
-    assert len({item["invocation_id"] for item in starts}) == 2
 
 
 def test_static_normal_edge_cycle_has_no_controlled_exit() -> None:
@@ -1407,19 +1393,11 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
             self.built_ids: list[str] = []
             self.built_nodes: list[str] = []
             self._blocks = None
-            self._workflow_checkpoints = None
+            self._workflow_data = None
             self._runtime_diagnostics = None
             self._runtime_policy = None
             lifecycle_store = InMemoryStore()
             self._graph_store = lifecycle_store
-
-            class Lifecycle:
-                store = lifecycle_store
-
-                async def create(self, *_args, **_kwargs) -> str:
-                    return "lifecycle-id"
-
-            self._workflow_lifecycle = Lifecycle()
 
             async def discover_mcp(_references):
                 return None

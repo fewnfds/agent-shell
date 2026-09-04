@@ -50,18 +50,10 @@ from agent_shell.skills.authoring import (
 
 WORKFLOW_COMPONENT_CATALOG = (
     {
-        "type": "checkpointer",
-        "terminology_key": "checkpointer",
-        "label": "Checkpointer",
-        "order": 1,
-        "icon_key": "floppy",
-        "editor_key": "checkpointer",
-    },
-    {
         "type": "workflow-event-output",
         "terminology_key": "workflow-event-output",
         "label": "Workflow Event Output",
-        "order": 2,
+        "order": 1,
         "icon_key": "braces",
         "editor_key": "workflow_event_output",
     },
@@ -69,7 +61,7 @@ WORKFLOW_COMPONENT_CATALOG = (
         "type": "response-stream-scheduling",
         "terminology_key": "response-stream-scheduling",
         "label": "Response Stream Scheduling",
-        "order": 3,
+        "order": 2,
         "icon_key": "shuffle",
         "editor_key": "response_stream_scheduling",
     },
@@ -77,7 +69,7 @@ WORKFLOW_COMPONENT_CATALOG = (
         "type": "command",
         "terminology_key": "command",
         "label": "Command Node",
-        "order": 4,
+        "order": 3,
         "icon_key": "circle-half",
         "editor_key": "command",
     },

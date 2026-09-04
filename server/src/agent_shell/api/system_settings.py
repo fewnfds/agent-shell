@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal, NoReturn
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
@@ -63,7 +64,7 @@ class SystemSettingsUpdate(BaseModel):
 class RuntimePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    runtime_monitoring_retention_lifecycles: int = Field(strict=True, ge=0)
+    retained_lifecycles: int = Field(strict=True, ge=0)
     chat_completion_body_bytes: int = Field(strict=True, ge=1)
     content_blocks: int = Field(strict=True, ge=1)
     decoded_block_bytes: int = Field(strict=True, ge=1)
@@ -85,9 +86,17 @@ def _raise_settings_error(error: SystemSettingsError) -> NoReturn:
     ) from error
 
 
-def _with_active_url(payload: dict, request: Request) -> dict:
+def _with_active_urls(payload: dict, request: Request) -> dict:
     base = str(request.base_url).rstrip("/")
-    return {**payload, "active_management_url": f"{base}/admin"}
+    return {
+        **payload,
+        "active_management_url": f"{base}/admin",
+        "active_api_docs_url": f"{base}/docs",
+        "active_studio_url": (
+            "https://smith.langchain.com/studio/?baseUrl="
+            f"{quote(base, safe='')}"
+        ),
+    }
 
 
 def build_system_settings_router(
@@ -100,7 +109,7 @@ def build_system_settings_router(
 
     @router.get("/api/system/settings")
     async def get_system_settings(request: Request) -> dict:
-        return _with_active_url(settings.get(), request)
+        return _with_active_urls(settings.get(), request)
 
     @router.put("/api/system/settings")
     async def update_system_settings(
@@ -116,7 +125,7 @@ def build_system_settings_router(
             result = settings.update(values)
         except SystemSettingsError as exc:
             _raise_settings_error(exc)
-        return _with_active_url(result, request)
+        return _with_active_urls(result, request)
 
     @router.get("/api/system/runtime-policy")
     async def get_runtime_policy() -> dict[str, object]:

@@ -11,9 +11,6 @@ from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
-from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
-from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
-from support import runtime_workflow_document
 
 def test_workflow_run_has_stable_openai_completion_reason() -> None:
     execution = RunExecution(
@@ -26,8 +23,8 @@ def test_workflow_run_has_stable_openai_completion_reason() -> None:
     assert execution.finish_reason == "stop"
 
 
-def test_workflow_execution_closes_v3_stream_and_cancels_spawned_runs_when_cancelled() -> None:
-    async def scenario() -> tuple[bool, bool]:
+def test_workflow_execution_closes_v3_stream_when_cancelled() -> None:
+    async def scenario() -> bool:
         class BlockingRun:
             def __init__(self) -> None:
                 self.pulling = asyncio.Event()
@@ -64,12 +61,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_spawned_runs_when_cance
 
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
-        spawned_runs_cancelled = False
         projector = OutputProjector(output, run_output=run_output_renderer())
-
-        async def cancel_spawned_runs() -> None:
-            nonlocal spawned_runs_cancelled
-            spawned_runs_cancelled = True
 
         execution = RunExecution(
             graph=Graph(run),
@@ -78,7 +70,6 @@ def test_workflow_execution_closes_v3_stream_and_cancels_spawned_runs_when_cance
             event_output_projector=projector,
             middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
-                cancel_spawned_runs=cancel_spawned_runs,
         )
         stream = execution.stream_text()
         assert await anext(stream) == "running"
@@ -89,107 +80,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_spawned_runs_when_cance
             await pending
         except asyncio.CancelledError:
             pass
-        return run.exited, spawned_runs_cancelled
-
-    assert asyncio.run(scenario()) == (True, True)
-
-
-def test_workflow_execution_cancel_converges_before_spawned_run_cleanup(
-    tmp_path,
-) -> None:
-    async def scenario() -> tuple[str, str, bool]:
-        lifecycle = WorkflowLifecycleService(
-            SQLiteDatabase(tmp_path / "cancel.sqlite3"),
-            store_database=SQLiteFile(tmp_path / "cancel-workflow-store.sqlite3"),
-        )
-        await lifecycle.start()
-        lifecycle_id = await lifecycle.create(
-            [{"role": "user", "content": "cancel"}],
-            request_id="cancel-request",
-            run_id="cancel-run",
-            checkpoint_thread_id=None,
-            workflow_id="cancel-workflow",
-            workflow_name="Cancel Workflow",
-            workflow_document=runtime_workflow_document(),
-            monitoring_capture_enabled=True,
-        )
-        lifecycle.start_run("cancel-run")
-        spawned_runs_cancelled = False
-        spawned_cancel_started = asyncio.Event()
-        spawned_cancel_release = asyncio.Event()
-
-        async def cancel_spawned_runs() -> None:
-            nonlocal spawned_runs_cancelled
-            spawned_runs_cancelled = True
-            spawned_cancel_started.set()
-            await spawned_cancel_release.wait()
-
-        identity = WorkflowRunIdentity(
-            request_id="cancel-request",
-            lifecycle_id=lifecycle_id,
-            run_id="cancel-run",
-            workflow_id="cancel-workflow",
-            workflow_name="Cancel Workflow",
-        )
-
-        execution = RunExecution(
-            graph=None,
-            input_state={},
-            response_scheduler=None,
-            middleware_runtimes=(noop_middleware_runtime(),),
-            media_response=noop_media_response(),
-            identity=identity,
-            context=WorkflowRuntimeContext.for_run(identity=identity),
-            lifecycle_service=lifecycle,
-            owns_lifecycle=True,
-            cancel_spawned_runs=cancel_spawned_runs,
-        )
-        try:
-            cancellation = asyncio.create_task(execution.cancel())
-            await asyncio.wait_for(spawned_cancel_started.wait(), timeout=1)
-            run = lifecycle.run("cancel-run")
-            lifecycle_record = await lifecycle.record(lifecycle_id)
-            assert run is not None
-            assert lifecycle_record is not None
-            converged = (
-                str(run["status"]),
-                str(lifecycle_record["root_status"]),
-                spawned_runs_cancelled,
-            )
-            spawned_cancel_release.set()
-            await cancellation
-            await execution.cancel()
-            return converged
-        finally:
-            spawned_cancel_release.set()
-            await lifecycle.close()
-
-    assert asyncio.run(scenario()) == ("cancelled", "cancelled", True)
-
-
-def test_execution_timeout_excludes_time_waiting_for_stream_consumer() -> None:
-    async def scenario() -> bool:
-        projector = OutputProjector(output_renderer())
-        execution = RunExecution(
-            graph=EventGraph(
-                [message_envelope(AIMessageChunk(content="ready", id="message-1"))]
-            ),
-            input_state={"messages": []},
-            response_scheduler=response_scheduler(projector),
-            event_output_projector=projector,
-            middleware_runtimes=(noop_middleware_runtime(),),
-            media_response=noop_media_response(),
-            origin_resolver=event_origin_resolver(),
-            execution_timeout_seconds=0.1,
-        )
-        stream = execution.stream_text()
-        assert await anext(stream) == "ready"
-        try:
-            await asyncio.sleep(0.2)
-        except asyncio.CancelledError:
-            return False
-        _remaining = [part async for part in stream]
-        return True
+        return run.exited
 
     assert asyncio.run(scenario()) is True
 
@@ -374,106 +265,6 @@ def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -
         return notice
 
     assert asyncio.run(scenario()) == "spawned-output"
-
-
-def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -> None:
-    async def scenario() -> tuple[bool, dict[str, object], list[dict[str, object]]]:
-        class BlockingRun:
-            def __init__(self) -> None:
-                self.exited = False
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
-                self.exited = True
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                await asyncio.Event().wait()
-                raise StopAsyncIteration
-
-            async def output(self):
-                return None
-
-        class Graph:
-            def __init__(self, run: BlockingRun) -> None:
-                self.run = run
-
-            async def astream_events(
-                self,
-                _input,
-                *,
-                config: dict,
-                version: str,
-                transformers: tuple = (),
-                context=None,
-            ):
-                assert config["recursion_limit"] == 1_000_000
-                assert context is not None
-                assert version == "v3"
-                assert transformers
-                return self.run
-
-        output = output_renderer({"lifecycle": "{{message}}"})
-        run = BlockingRun()
-        projector = OutputProjector(output, run_output=run_output_renderer())
-        lifecycle = WorkflowLifecycleService(
-            SQLiteDatabase(tmp_path / "timeout.sqlite3"),
-            store_database=SQLiteFile(tmp_path / "timeout-workflow-store.sqlite3"),
-        )
-        await lifecycle.start()
-        try:
-            lifecycle_id = await lifecycle.create(
-                [{"role": "user", "content": "wait"}],
-                request_id="timeout-request",
-                run_id="timeout-run",
-                checkpoint_thread_id="timeout-thread",
-                workflow_id="timeout-workflow",
-                workflow_name="Timeout Workflow",
-                workflow_document=runtime_workflow_document(),
-                monitoring_capture_enabled=True,
-            )
-            identity = WorkflowRunIdentity(
-                request_id="timeout-request",
-                lifecycle_id=lifecycle_id,
-                run_id="timeout-run",
-                workflow_id="timeout-workflow",
-                workflow_name="Timeout Workflow",
-                checkpoint_thread_id="timeout-thread",
-            )
-            context = WorkflowRuntimeContext.for_run(identity=identity)
-            execution = RunExecution(
-                graph=Graph(run),
-                input_state={"messages": [{"role": "user", "content": "wait"}]},
-                response_scheduler=response_scheduler(projector),
-                event_output_projector=projector,
-                middleware_runtimes=(noop_middleware_runtime(),),
-                media_response=noop_media_response(),
-                execution_timeout_seconds=0.01,
-                lifecycle_service=lifecycle,
-                owns_lifecycle=True,
-                identity=identity,
-                context=context,
-            )
-            stream = execution.stream_text()
-            assert await anext(stream) == "running"
-            assert await anext(stream) == "failed"
-            with pytest.raises(AgentRuntimeError) as captured:
-                await anext(stream)
-            assert captured.value.code == "execution_timeout"
-            record = lifecycle.run("timeout-run")
-            assert record is not None
-            return run.exited, record
-        finally:
-            await lifecycle.close()
-
-    closed, record = asyncio.run(scenario())
-    assert closed is True
-    assert record["status"] == "failed"
-    assert record["error_code"] == "execution_timeout"
 
 
 def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:

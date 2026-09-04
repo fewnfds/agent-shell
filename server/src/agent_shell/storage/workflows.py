@@ -14,12 +14,11 @@ class WorkflowStore:
         "id",
         "name",
         "description",
-        "checkpointer_id",
         "workflow_event_output_id",
         "response_stream_scheduling_id",
-        "cancel_on_caller_termination",
+        "durability",
+        "on_disconnect",
         "recursion_limit",
-        "execution_timeout_seconds",
         "max_concurrency",
         "enabled",
     )
@@ -34,13 +33,10 @@ class WorkflowStore:
             "id": str(record["id"]),
             "name": str(record["name"]),
             "description": str(record["description"]),
-            "checkpointer_id": record.get("checkpointer_id"),
             "workflow_event_output_id": record.get("workflow_event_output_id"),
-            "cancel_on_caller_termination": bool(
-                record.get("cancel_on_caller_termination", True)
-            ),
+            "durability": str(record.get("durability", "async")),
+            "on_disconnect": str(record.get("on_disconnect", "cancel")),
             "recursion_limit": int(record["recursion_limit"]),
-            "execution_timeout_seconds": int(record["execution_timeout_seconds"]),
             "max_concurrency": int(record.get("max_concurrency", 100)),
             "enabled": bool(record["enabled"]),
         }

@@ -8,7 +8,7 @@ from agent_shell.storage.file_config import FileConfigRepository
 
 @dataclass(frozen=True, slots=True)
 class RuntimePolicy:
-    runtime_monitoring_retention_lifecycles: int = 20
+    retained_lifecycles: int = 20
     chat_completion_body_bytes: int = 64 * 1024 * 1024
     content_blocks: int = 4096
     decoded_block_bytes: int = 24 * 1024 * 1024
@@ -22,7 +22,7 @@ class RuntimePolicy:
 
 RUNTIME_POLICY_DEFAULTS = RuntimePolicy()
 RUNTIME_POLICY_MINIMUMS = RuntimePolicy(
-    runtime_monitoring_retention_lifecycles=0,
+    retained_lifecycles=0,
     chat_completion_body_bytes=1,
     content_blocks=1,
     decoded_block_bytes=1,

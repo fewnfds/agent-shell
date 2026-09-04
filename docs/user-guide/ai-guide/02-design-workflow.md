@@ -124,7 +124,7 @@ reachable executable Node 可以没有 outgoing Edge。该 path 在 Node 完成�
 
 某条 path 到达 End 只结束该 path，不取消其他 active branch 或已经启动的独立 Run。
 
-循环必须有业务可达的退出 path。`recursion_limit` 和 `execution_timeout_seconds` 是失败边界，不是正常业务完成条件。
+循环必须有业务可达的退出 path。`recursion_limit` 是失败边界，不是正常业务完成条件。
 
 ## 4. Workflow State 和运行数据
 

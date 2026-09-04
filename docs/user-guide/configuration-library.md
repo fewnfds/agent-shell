@@ -8,7 +8,7 @@
 
 Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。Model/MCP Connection 与 secret 不随 Repository 复制或下载，repository-scoped Model/MCP Mapping 会按新 Requirement UUID 复制。
 
-系统设置、secret、SQLite/运行监控数据、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
+系统设置、secret、SQLite/LangGraph Dev 运行数据、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
 
 - 编辑会跳转到对应页面，并以记录 UUID 确定更新目标；
 - 复制会创建新 UUID，副本名称经过当前校验；Python private package 与 Skill package 按配置名称目录一起复制，manifest owner 改为新 UUID；
@@ -25,7 +25,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 
 Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看、编辑、整库复制、下载和切换；整库复制会重写仍存在的 target UUID，已悬空 UUID 保持不变并在副本中继续报警。Agent 装配、Workflow publish 和运行会重新校验并拒绝不完整引用；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
-Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_repos/<repository-name>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_packages/` 与 `skill_packages/`。`data/config/` 保存实例私有 Model/MCP Connection、repository-scoped Model/MCP binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。SQLite 保存运行记录、诊断、Lifecycle Store，以及已启用 Checkpointer 的 Workflow Run 的 checkpoint；checkpoint SQLite 在首次实际使用时建立。
+Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_repos/<repository-name>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_packages/` 与 `skill_packages/`。`data/config/` 保存实例私有 Model/MCP Connection、repository-scoped Model/MCP binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。`data/state/agent-shell.sqlite3` 保存 runtime diagnostic 索引；LangGraph Dev 在 `data/state/langgraph-dev/.langgraph_api/` 拥有 Assistant、Thread、Run、checkpoint、State/history 和 Server Store 运行数据。
 
 ## 原子配置 Bundle API
 

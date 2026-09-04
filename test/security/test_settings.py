@@ -222,12 +222,6 @@ def test_relative_paths_are_bound_to_explicit_application_home(tmp_path: Path) -
     assert first.resolved_application_database_path() == (
         first_home / "data" / "state" / "agent-shell.sqlite3"
     ).resolve()
-    assert first.resolved_workflow_checkpoint_database_path() == (
-        first_home / "data" / "state" / "workflow-checkpoints.sqlite3"
-    ).resolve()
-    assert first.resolved_workflow_store_database_path() == (
-        first_home / "data" / "state" / "workflow-store.sqlite3"
-    ).resolve()
     assert first.resolved_runtime_dir() == (first_home / "runtime").resolve()
     assert first.resolved_logs_dir() == (first_home / "data" / "logs").resolve()
     assert first.resolved_files_dir() == (first_home / "data" / "files").resolve()

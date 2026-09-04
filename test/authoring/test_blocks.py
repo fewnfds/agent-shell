@@ -41,7 +41,6 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "editor_defaults",
     }
     assert set(catalog["editor_defaults"]) == {
-        "checkpointer",
         "response_stream_scheduling",
         "filesystem",
         "filesystem_tools",
@@ -61,14 +60,10 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "mcp-requirement"
     ]
     assert [item["type"] for item in catalog["workflow_component_types"]] == [
-        "checkpointer",
         "workflow-event-output",
         "response-stream-scheduling",
         "command",
     ]
-    assert catalog["editor_defaults"]["checkpointer"] == {
-        "durability": "async",
-    }
     assert catalog["editor_defaults"]["response_stream_scheduling"] == {
         "queue": {
             "strategy": "request",
@@ -439,8 +434,6 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
         created = created_response.json()
         assert created["id"]
         assert created["name"] == payload["name"]
-        if block_type == "checkpointer":
-            assert created["durability"] == "async"
         if block_type == "filesystem":
             assert created["system_prompt_override"] == payload["system_prompt_override"]
             assert created["mapped_directories"][0]["permission"] == "read-only"
@@ -496,20 +489,6 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
             "ok": True
         }
         assert client.get(f"/api/blocks/{block_type}/{created['id']}").status_code == 404
-
-
-def test_checkpointer_rejects_unknown_durability(tmp_path: Path, monkeypatch) -> None:
-    client = make_client(tmp_path, monkeypatch)
-
-    response = client.post(
-        "/api/blocks/checkpointer",
-        json={"name": "Invalid durability", "durability": "eventually"},
-    )
-
-    assert response.status_code == 422
-    assert response.json()["detail"]["validation"]["issues"][0]["path"] == (
-        "durability"
-    )
 
 
 @pytest.mark.parametrize(

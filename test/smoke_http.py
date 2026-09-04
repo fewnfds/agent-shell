@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 from contextlib import closing
-from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -16,23 +14,20 @@ import tempfile
 import time
 from typing import Any
 from uuid import UUID
-from zipfile import ZipFile
 
 import httpx
 import yaml
 
 from agent_shell.capability_manifest import CAPABILITY_MANIFESTS
-from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
-from agent_shell.storage.database import SQLiteDatabase, SQLiteFile
+from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.environment import (
     InstanceEnvironmentStore,
     SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
     parse_environment_text,
 )
 from agent_shell.storage.file_config import FileConfigRepository
-from support import runtime_workflow_document
 
 
 CAPABILITY_TYPES = tuple(manifest.type for manifest in CAPABILITY_MANIFESTS)
@@ -147,38 +142,6 @@ def _payload(
     return payloads[capability_type]
 
 
-async def _seed_runtime_monitoring(
-    database_path: Path,
-    store_database_path: Path,
-) -> tuple[str, str]:
-    database = SQLiteDatabase(database_path)
-    lifecycle = WorkflowLifecycleService(
-        database,
-        store_database=SQLiteFile(store_database_path),
-    )
-    await lifecycle.start()
-    run_id = "smoke-runtime-run"
-    try:
-        lifecycle_id = await lifecycle.create(
-            [{"role": "user", "content": "runtime monitoring smoke"}],
-            request_id="smoke-runtime-request",
-            run_id=run_id,
-            checkpoint_thread_id=None,
-            workflow_id="smoke-runtime-workflow",
-            workflow_name="Runtime Monitoring Smoke",
-            workflow_document=runtime_workflow_document(),
-            monitoring_capture_enabled=True,
-        )
-        if not lifecycle.start_run(run_id):
-            raise AssertionError("runtime monitoring smoke Run did not start")
-        if not lifecycle.finish_run(run_id, status="completed"):
-            raise AssertionError("runtime monitoring smoke Run did not finish")
-        return lifecycle_id, run_id
-    finally:
-        await lifecycle.close()
-        await database.close()
-
-
 def _request(
     client: httpx.Client,
     method: str,
@@ -223,10 +186,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     work.mkdir(parents=True, exist_ok=True)
     data_dir = work / "data"
     database_path = data_dir / "state" / "agent-shell.sqlite3"
-    checkpoint_database_path = (
-        data_dir / "state" / "workflow-checkpoints.sqlite3"
-    )
-    store_database_path = data_dir / "state" / "workflow-store.sqlite3"
     port = _port()
     management_token = secrets.token_urlsafe(32)
     api_key = secrets.token_urlsafe(32)
@@ -363,9 +322,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         api_key_operation="replace",
         api_key=api_key,
     )
-    runtime_lifecycle_id, runtime_run_id = asyncio.run(
-        _seed_runtime_monitoring(database_path, store_database_path)
-    )
     output_path = work / "server-output.txt"
     output = output_path.open("wb")
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
@@ -428,45 +384,21 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             _request(client, "GET", path)
         health = _request(client, "GET", "/api/health").json()
         assert health == {"status": "ok", "runtime": "model_streaming"}
+        docs = _request(client, "GET", "/docs")
+        assert "agent server api reference" in docs.text.lower()
+        openapi = _request(client, "GET", "/openapi.json").json()
+        assert openapi["components"]["securitySchemes"]["BearerAuth"] == {
+            "type": "http",
+            "scheme": "bearer",
+        }
+        assert openapi["security"] == [{"BearerAuth": []}]
+        _request(client, "POST", "/threads/search", json_body={}, expected=401)
         _request(client, "GET", "/api/catalog", expected=401)
         _request(client, "GET", "/api/catalog", headers=inference, expected=403)
         _request(client, "GET", "/v1/unknown", headers=management, expected=403)
         _request(client, "GET", "/v1/unknown", headers=inference, expected=401)
         catalog = _request(client, "GET", "/api/catalog", headers=management).json()
         assert tuple(item["type"] for item in catalog["block_types"]) == CAPABILITY_TYPES
-        runtime_download_path = (
-            f"/api/workflow-lifecycles/{runtime_lifecycle_id}"
-            f"/runs/{runtime_run_id}/download"
-        )
-        _request(client, "GET", runtime_download_path, expected=401)
-        _request(
-            client,
-            "GET",
-            runtime_download_path,
-            headers=inference,
-            expected=403,
-        )
-        runtime_download = _request(
-            client,
-            "GET",
-            runtime_download_path,
-            headers=management,
-        )
-        assert runtime_download.headers["content-type"] == "application/zip"
-        with ZipFile(BytesIO(runtime_download.content)) as archive:
-            manifest = json.loads(archive.read("manifest.json"))
-            assert manifest["scope"] == "run"
-            assert manifest["lifecycle_id"] == runtime_lifecycle_id
-            assert manifest["selected_run_id"] == runtime_run_id
-            assert [item["run_id"] for item in manifest["runs"]] == [
-                runtime_run_id
-            ]
-        archive_deadline = time.monotonic() + 2
-        archive_temporary_root = work / "runtime" / "tmp"
-        while list(archive_temporary_root.glob(".runtime-monitoring-archive-*")):
-            if time.monotonic() >= archive_deadline:
-                raise AssertionError("runtime monitoring archive was not released")
-            time.sleep(0.05)
         tool_templates = _request(
             client,
             "GET",
@@ -699,6 +631,50 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         )
         assert completion_text.count("workflow values\n") >= 2, completion
         assert completion["choices"][0]["finish_reason"] == "stop"
+        lifecycle_page = _request(
+            client,
+            "GET",
+            "/api/workflow-lifecycles?page=1&page_size=10",
+            headers=management,
+        ).json()
+        lifecycle = next(
+            item
+            for item in lifecycle_page["items"]
+            if workflow["name"] in item["workflow_names"]
+        )
+        assert lifecycle["run_count"] >= 2
+        assert lifecycle["active_run_count"] == 0
+        lifecycle_id = lifecycle["lifecycle_id"]
+        snapshot = _request(
+            client,
+            "GET",
+            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
+            headers=management,
+        ).json()
+        assert len(snapshot["runs"]) >= 2
+        inspected_run = snapshot["runs"][0]
+        run_id = inspected_run["run_id"]
+        graph = _request(
+            client,
+            "GET",
+            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/graph",
+            headers=management,
+        ).json()
+        assert graph["run_id"] == run_id
+        state = _request(
+            client,
+            "GET",
+            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
+            headers=management,
+        ).json()
+        assert state["thread_id"] == inspected_run["thread_id"]
+        history = _request(
+            client,
+            "GET",
+            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
+            headers=management,
+        ).json()
+        assert history["thread_id"] == inspected_run["thread_id"]
         model_connection = _request(
             client,
             "POST",
@@ -890,21 +866,21 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             assert not ({"blocks", "provider_secrets", "workflows"} & tables)
             assert "checkpoints" not in tables
             assert "store" not in tables
-        assert not checkpoint_database_path.exists()
-        with closing(sqlite3.connect(store_database_path)) as connection:
-            store_tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            assert "store" in store_tables
-            assert "workflow_lifecycles" not in store_tables
+        assert not (data_dir / "state" / "workflow-checkpoints.sqlite3").exists()
+        assert not (data_dir / "state" / "workflow-store.sqlite3").exists()
+        assert (data_dir / "state" / "langgraph-dev").is_dir()
         event_path = data_dir / "logs" / "security-events.jsonl"
         event_text = event_path.read_text(encoding="utf-8")
         assert provider_secret not in event_text
         assert management_token not in event_text
         assert api_key not in event_text
+
+        _request(
+            client,
+            "DELETE",
+            f"/api/workflow-lifecycles/{lifecycle_id}",
+            headers=management,
+        )
 
         _request(
             client,

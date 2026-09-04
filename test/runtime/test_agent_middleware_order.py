@@ -91,7 +91,7 @@ def test_custom_middleware_reads_private_agent_state_and_parent_workflow_snapsho
             run_id="run-1",
             workflow_id="workflow-1",
             workflow_name="Workflow",
-            checkpoint_thread_id="thread-1",
+            thread_id="thread-1",
         ),
     ).for_workflow_agent(
         workflow_node_id="agent-current",

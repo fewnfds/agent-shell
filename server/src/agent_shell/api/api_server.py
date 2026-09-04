@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -300,7 +300,8 @@ async def _completion_stream(
     model: str,
     *,
     detached_tasks: DetachedTaskManager,
-    cancel_on_disconnect: bool,
+    on_disconnect: Literal["cancel", "continue"],
+    cancel_lifecycle: Callable[[], Awaitable[None]],
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
     created = int(time.time())
@@ -339,14 +340,14 @@ async def _completion_stream(
             if not cancelled:
                 await deliver("done", None)
 
-    workflow_run_id = (
+    run_id = (
         execution.identity.run_id
         if execution.identity is not None
         else "unbound"
     )
     producer = detached_tasks.create(
         consume_execution(),
-        name=f"request-workflow:{workflow_run_id}",
+        name=f"request-workflow:{run_id}",
     )
     try:
         yield encode(
@@ -450,12 +451,62 @@ async def _completion_stream(
                 queue.get_nowait()
         except asyncio.QueueEmpty:
             pass
-        if cancel_on_disconnect and not producer.done():
-            if producer.cancel():
-                detached_tasks.create(
-                    execution.cancel(),
-                        name=f"cancel-request-workflow:{workflow_run_id}",
-                )
+        disconnected = not producer.done()
+        if disconnected and on_disconnect == "cancel":
+            producer.cancel()
+            detached_tasks.create(
+                cancel_lifecycle(),
+                name=f"cancel-workflow-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
+            )
+
+
+async def _completion_result(
+    execution: RunExecution,
+    *,
+    detached_tasks: DetachedTaskManager,
+    on_disconnect: Literal["cancel", "continue"],
+    cancel_lifecycle: Callable[[], Awaitable[None]],
+) -> tuple[str, dict[str, int]]:
+    queue: asyncio.Queue[tuple[Literal["result", "error"], object]] = asyncio.Queue(
+        maxsize=1
+    )
+    detached = asyncio.Event()
+
+    async def consume_execution() -> None:
+        try:
+            result = await execution.run()
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:
+            if not detached.is_set():
+                await queue.put(("error", exc))
+        else:
+            if not detached.is_set():
+                await queue.put(("result", result))
+
+    run_id = execution.identity.run_id if execution.identity else "unbound"
+    producer = detached_tasks.create(
+        consume_execution(),
+        name=f"request-workflow:{run_id}",
+    )
+    try:
+        kind, value = await queue.get()
+        if kind == "error":
+            if isinstance(value, BaseException):
+                raise value
+            raise RuntimeError("the Workflow execution failed without an exception")
+        if not isinstance(value, tuple) or len(value) != 2:
+            raise RuntimeError("the Workflow execution returned an invalid result")
+        return value
+    except asyncio.CancelledError:
+        detached.set()
+        if on_disconnect == "cancel":
+            producer.cancel()
+            detached_tasks.create(
+                cancel_lifecycle(),
+                name=f"cancel-workflow-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
+            )
+        raise
 
 
 def build_api_server_router(
@@ -696,7 +747,8 @@ def build_api_server_router(
                     execution,
                     model,
                     detached_tasks=detached_tasks,
-                    cancel_on_disconnect=True,
+                    on_disconnect=workflow["on_disconnect"],
+                    cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -705,7 +757,12 @@ def build_api_server_router(
                 },
             )
         try:
-            content, _usage = await execution.run()
+            content, _usage = await _completion_result(
+                execution,
+                detached_tasks=detached_tasks,
+                on_disconnect=workflow["on_disconnect"],
+                cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
+            )
         except AgentRuntimeError as exc:
             return _openai_error(
                 exc.status_code,

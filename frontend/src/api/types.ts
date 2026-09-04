@@ -22,7 +22,6 @@ export type BlockType =
   | 'prompt-caching'
 
 export type WorkflowComponentType =
-  | 'checkpointer'
   | 'workflow-event-output'
   | 'response-stream-scheduling'
   | 'command'
@@ -303,6 +302,8 @@ export interface SystemSettings {
   trusted_proxy_cidrs: string[]
   restart_required: boolean
   active_management_url: string
+  active_api_docs_url: string
+  active_studio_url: string
 }
 
 export interface SystemSettingsUpdate {
@@ -327,7 +328,7 @@ export interface ConfigurationValidationSettings {
 }
 
 export interface RuntimePolicyValues {
-  runtime_monitoring_retention_lifecycles: number
+  retained_lifecycles: number
   chat_completion_body_bytes: number
   content_blocks: number
   decoded_block_bytes: number
@@ -549,12 +550,11 @@ export interface ResponseStreamPolicy {
 export interface WorkflowPayload {
   name: string
   description: string
-  checkpointer_id: string | null
   workflow_event_output_id: string | null
   response_stream_scheduling_id?: string | null
-  cancel_on_caller_termination: boolean
+  durability: 'sync' | 'async' | 'exit'
+  on_disconnect: 'cancel' | 'continue'
   recursion_limit: number
-  execution_timeout_seconds: number
   max_concurrency: number
 }
 
@@ -563,292 +563,76 @@ export interface Workflow extends WorkflowPayload {
   enabled: boolean
 }
 
-export interface WorkflowLifecycleSummary {
-  lifecycle_id: string
-  lifecycle_status: 'active' | 'purge_pending' | 'deleting'
-  request_id: string
-  root_run_id: string
-  root_status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
-  workflow_id: string
-  workflow_name: string
-  created_at: string
-  monitoring_capture_enabled: boolean
-  fully_terminal_at?: string
-  messages_sha: string
-  message_count: number
-  run_count: number
-  active_run_count: number
-  failed_run_count: number
-  usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-}
-
-export type WorkflowLifecyclePage = PaginationResponse<WorkflowLifecycleSummary>
-
 export interface WorkflowLifecycleBulkDeleteResult {
   matched: number
   deleted: number
   skipped_active: number
-  deleted_checkpoint_thread_count: number
 }
 
-export type RuntimeMonitoringRunStatus =
+export type LangGraphRunStatus =
   | 'pending'
   | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
+  | 'error'
+  | 'success'
+  | 'timeout'
   | 'interrupted'
 
-export type RuntimeMonitoringAvailability =
-  | 'not_enabled'
-  | 'unavailable'
-  | 'capturing'
-  | 'available'
-  | 'partial'
-  | 'pending'
-  | 'not_applicable'
-
-export interface RuntimeMonitoringPartitionStates {
-  graph: 'capturing' | 'available' | 'partial' | 'not_applicable'
-  node: 'capturing' | 'available' | 'partial' | 'not_applicable'
-  protocol: 'capturing' | 'available' | 'partial' | 'not_applicable'
-  model: 'capturing' | 'available' | 'partial' | 'not_applicable'
-  command: 'capturing' | 'available' | 'partial' | 'not_applicable'
+export interface LangGraphThread {
+  thread_id: string
   created_at: string
   updated_at: string
+  metadata: Record<string, JsonValue>
+  status: string
+  values: JsonValue
+  interrupts: Record<string, JsonValue[]>
 }
 
-export interface RuntimeMonitoringLifecycle {
+export interface LangGraphRun {
+  run_id: string
+  thread_id: string
+  assistant_id: string
+  created_at: string
+  updated_at: string
+  status: LangGraphRunStatus
+  metadata: Record<string, JsonValue>
+  multitask_strategy: string
+}
+
+export interface LangGraphLifecycleSummary {
   lifecycle_id: string
   request_id: string
-  root_run_id: string
-  workflow_id: string
-  workflow_name: string
   created_at: string
-  lifecycle_status: 'active' | 'purge_pending' | 'deleting'
-  root_status: RuntimeMonitoringRunStatus
-  monitoring_capture_enabled: boolean
-  fully_terminal_at: string | null
-  message_count: number
+  updated_at: string
+  status: LangGraphRunStatus
+  workflow_names: string[]
+  run_count: number
+  active_run_count: number
+  error_run_count: number
 }
 
-export interface RuntimeMonitoringRun {
+export type LangGraphLifecyclePage = PaginationResponse<LangGraphLifecycleSummary>
+
+export interface LangGraphLifecycleSnapshot extends LangGraphLifecycleSummary {
+  threads: LangGraphThread[]
+  runs: LangGraphRun[]
+}
+
+export interface LangGraphGraphResponse {
   run_id: string
-  lifecycle_id: string
-  request_id: string
-  checkpoint_thread_id: string | null
-  workflow_id: string
-  workflow_name: string
-  caller_run_id: string | null
-  operation_id: string | null
-  status: RuntimeMonitoringRunStatus
-  created_at: string
-  started_at: string | null
-  finished_at: string | null
-  finish_reason: string
-  error_code: string
-  usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-  monitoring: RuntimeMonitoringPartitionStates | null
+  assistant_id: string
+  graph: Record<string, JsonValue>
 }
 
-export interface RuntimeMonitoringSnapshot {
-  selector: {
-    scope: 'lifecycle' | 'workflow' | 'run'
-    id: string | null
-  }
-  read_at: string
-  lifecycle: RuntimeMonitoringLifecycle
-  summary: {
-    run_count: number
-    active_run_count: number
-    failed_run_count: number
-    run_status_counts: Record<string, number>
-    node_attempt_status_counts: Record<string, number>
-    usage: { input_tokens: number; output_tokens: number; total_tokens: number }
-    partition_availability: {
-      graph: RuntimeMonitoringAvailability
-      node: RuntimeMonitoringAvailability
-      protocol: RuntimeMonitoringAvailability
-      model: RuntimeMonitoringAvailability
-      command: RuntimeMonitoringAvailability
-    }
-  }
-  runs: RuntimeMonitoringRun[]
-  forest: {
-    root_run_ids: string[]
-    relationships: Array<{ caller_run_id: string; spawned_run_id: string }>
-    orphan_run_ids: string[]
-    relationship_availability: 'available' | 'partial'
-  }
-}
-
-export interface RuntimeMonitoringGraphResponse {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  graph: {
-    run_id: string
-    lifecycle_id: string
-    workflow_id: string
-    workflow_name: string
-    document_sha: string
-    document: WorkflowGraphDocument
-    created_at: string
-  } | null
-}
-
-export interface RuntimeMonitoringNodeSummary {
-  workflow_node_id: string
-  first_sequence: number
-  latest_sequence: number
-  first_started_at: string
-  latest_started_at: string
-  attempt_count: number
-  status_counts: Record<string, number>
-}
-
-export interface RuntimeMonitoringNodeSummaryPage {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  items: RuntimeMonitoringNodeSummary[]
-  page: number
-  page_size: number
-  total: number
-  total_pages: number
-}
-
-export type RuntimeMonitoringNodeStatus =
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'interrupted'
-  | 'incomplete'
-
-export interface RuntimeMonitoringNodeAttempt {
-  sequence: number
-  lifecycle_id: string
+export interface LangGraphStateResponse {
   run_id: string
-  workflow_node_id: string
-  invocation_id: string
-  attempt: number
-  node_first_attempt_time: number | null
-  started_at: string
-  finished_at: string | null
-  status: RuntimeMonitoringNodeStatus
-  error_code: string
-}
-
-export interface RuntimeMonitoringNodeAttemptPage {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  items: RuntimeMonitoringNodeAttempt[]
-  page: number
-  page_size: number
-  total: number
-  total_pages: number
-}
-
-export type RuntimeMonitoringProtocolSourceType =
-  | 'agent'
-  | 'subagent'
-  | 'script'
-  | 'non_agent'
-
-export interface RuntimeMonitoringProtocolEvent {
-  sequence: number
-  method: string
-  captured_at: string
-  envelope: Record<string, JsonValue>
-  origin: {
-    source_type: RuntimeMonitoringProtocolSourceType
-    workflow_node_id: string
-    node_invocation_id: string
-    agent_profile_id: string
-    subagent_profile_id: string
-  }
-}
-
-export interface RuntimeMonitoringProtocolEventSequence {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  items: RuntimeMonitoringProtocolEvent[]
-  after_sequence: number
-  next_after_sequence: number
-  limit: number
-  remaining: number
-}
-
-export type RuntimeMonitoringModelStatus = 'running' | 'completed' | 'failed'
-
-export interface RuntimeMonitoringModelRequest {
-  sequence: number
-  model_run_id: string
-  started_at: string
-  finished_at: string | null
-  status: RuntimeMonitoringModelStatus
-  error_code: string
-  request: Record<string, JsonValue>
-  usage: Record<string, number>
-}
-
-export interface RuntimeMonitoringModelRequestPage {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  items: RuntimeMonitoringModelRequest[]
-  page: number
-  page_size: number
-  total: number
-  total_pages: number
-}
-
-export type RuntimeMonitoringCommandPhase =
-  | 'started'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-
-export interface RuntimeMonitoringCommandObservation {
-  sequence: number
-  invocation_id: string
-  workflow_node_id: string
-  attempt: number
-  occurred_at: string
-  phase: RuntimeMonitoringCommandPhase
-  error_code: string
-  payload: Record<string, JsonValue>
-}
-
-export interface RuntimeMonitoringCommandObservationSequence {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  items: RuntimeMonitoringCommandObservation[]
-  after_sequence: number
-  next_after_sequence: number
-  limit: number
-  remaining: number
-}
-
-export interface RuntimeMonitoringPersistedState {
-  checkpoint_id: string
-  checkpoint_ns: string
-  created_at: string
-  source: string
-  step: number | null
-  pending_write_count: number
+  thread_id: string
   state: Record<string, JsonValue>
 }
 
-export interface RuntimeMonitoringStateResponse {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  state: RuntimeMonitoringPersistedState | null
-}
-
-export interface RuntimeMonitoringAgentInvocationResponse {
-  availability: RuntimeMonitoringAvailability
-  read_at: string
-  workflow_node_id: string | null
-  artifact: Record<string, JsonValue> | null
+export interface LangGraphHistoryResponse {
+  run_id: string
+  thread_id: string
+  history: Array<Record<string, JsonValue>>
 }
 
 export type WorkflowNodeType =

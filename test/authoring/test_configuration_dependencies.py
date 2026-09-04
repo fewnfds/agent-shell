@@ -22,7 +22,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "skill": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         "workflow": "77777777-7777-4777-8777-777777777777",
         "workflow_output": "88888888-8888-4888-8888-888888888888",
-        "checkpointer": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         "scheduling": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
         "command": "99999999-9999-4999-8999-999999999999",
     }
@@ -85,7 +84,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             {
                 "id": ids["workflow"],
                 "name": "Workflow",
-                "checkpointer_id": ids["checkpointer"],
                 "workflow_event_output_id": ids["workflow_output"],
                 "response_stream_scheduling_id": ids["scheduling"],
                 "definition": {
@@ -156,13 +154,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             "component",
             "custom-middleware",
             ids["middleware"],
-        ),
-        (
-            "workflow",
-            "checkpointer_id",
-            "component",
-            "checkpointer",
-            ids["checkpointer"],
         ),
         (
             "workflow",

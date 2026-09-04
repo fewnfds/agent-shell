@@ -104,33 +104,6 @@ def workflow_executable_report(
                 )
             )
 
-    checkpointer_id = workflow.get("checkpointer_id")
-    if checkpointer_id is not None:
-        stored_checkpointer = blocks.get_block_internal(
-            "checkpointer",
-            str(checkpointer_id),
-        )
-        if stored_checkpointer is None:
-            referenced_issues.append(
-                _component_reference_issue(
-                    configuration_validation,
-                    workflow=workflow,
-                    path="checkpointer_id",
-                    reference_id=str(checkpointer_id),
-                    expected_type="checkpointer",
-                )
-            )
-        else:
-            project_component_issues(
-                "checkpointer_id",
-                configuration_validation.validate_stored_block(
-                    "checkpointer",
-                    stored_checkpointer,
-                    stage=WORKFLOW_EXECUTABLE_STAGE,
-                    check_dependencies=True,
-                ),
-            )
-
     workflow_event_output_id = workflow.get("workflow_event_output_id")
     if workflow_event_output_id is not None:
         stored_output = blocks.get_block_internal(

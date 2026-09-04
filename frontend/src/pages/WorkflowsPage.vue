@@ -17,7 +17,6 @@ import { useConfigurationResource } from '@/composables/useConfigurationResource
 
 const { t } = useI18n()
 const router = useRouter()
-const checkpointers = ref<ConfigurationSummary[]>([])
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
 const responseStreamSchedulingComponents = ref<ConfigurationSummary[]>([])
 
@@ -37,12 +36,11 @@ function blankWorkflow(): WorkflowResource {
     id: '',
     name: '',
     description: '',
-    checkpointer_id: null,
     workflow_event_output_id: null,
     response_stream_scheduling_id: null,
-    cancel_on_caller_termination: true,
+    durability: 'async',
+    on_disconnect: 'cancel',
     recursion_limit: 1_000_000,
-    execution_timeout_seconds: 1_200,
     max_concurrency: 100,
     enabled: false,
   }
@@ -55,12 +53,11 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     id: workflow.id ?? '',
     name: workflow.name ?? '',
     description: workflow.description ?? '',
-    checkpointer_id: workflow.checkpointer_id ?? null,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
     response_stream_scheduling_id: workflow.response_stream_scheduling_id ?? null,
-    cancel_on_caller_termination: workflow.cancel_on_caller_termination ?? true,
+    durability: workflow.durability ?? 'async',
+    on_disconnect: workflow.on_disconnect ?? 'cancel',
     recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
-    execution_timeout_seconds: workflow.execution_timeout_seconds ?? defaults.execution_timeout_seconds,
     max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
     enabled: workflow.enabled ?? false,
   }
@@ -70,11 +67,10 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
   const payload: WorkflowPayload = {
     name: workflow.name.trim(),
     description: workflow.description.trim(),
-    checkpointer_id: workflow.checkpointer_id || null,
     workflow_event_output_id: workflow.workflow_event_output_id || null,
-    cancel_on_caller_termination: workflow.cancel_on_caller_termination,
+    durability: workflow.durability,
+    on_disconnect: workflow.on_disconnect,
     recursion_limit: Number(workflow.recursion_limit),
-    execution_timeout_seconds: Number(workflow.execution_timeout_seconds),
     max_concurrency: Number(workflow.max_concurrency),
   }
   payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
@@ -171,7 +167,6 @@ async function saveWorkflow(): Promise<void> {
 async function loadWorkspace(): Promise<void> {
   await initializeWorkspace(async () => {
     const options = await managementApi.getConfigurationOptions()
-    checkpointers.value = options.components.checkpointer ?? []
     workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
     responseStreamSchedulingComponents.value = options.components['response-stream-scheduling'] ?? []
     return options.workflows
@@ -223,42 +218,8 @@ onMounted(() => { void loadWorkspace() })
             <FormField field-path="description" label-key="workflows.fields.description">
               <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
             </FormField>
-            <FormField
-              control-id="workflow-cancel-on-caller-termination"
-              field-path="cancel_on_caller_termination"
-              label-key="workflows.termination.caller.label"
-            >
-              <template #default>
-                <div class="form-check form-switch">
-                  <input
-                    id="workflow-cancel-on-caller-termination"
-                    v-model="form.cancel_on_caller_termination"
-                    class="form-check-input"
-                    type="checkbox"
-                  >
-                  <label class="form-check-label visually-hidden" for="workflow-cancel-on-caller-termination">
-                    {{ t('workflows.termination.caller.label') }}
-                  </label>
-                </div>
-              </template>
-            </FormField>
             <div class="row g-3" data-testid="workflow-component-assembly-row" data-ui-control-row>
-              <div class="col-lg-4">
-                <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
-                  <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
-                    <option :value="null">{{ t('common.none') }}</option>
-                    <option
-                      v-if="form.checkpointer_id && !hasConfiguration(checkpointers, form.checkpointer_id)"
-                      disabled
-                      :value="form.checkpointer_id"
-                    >
-                      {{ t('common.missingConfiguration', { id: form.checkpointer_id }) }}
-                    </option>
-                    <option v-for="checkpointer in checkpointers" :key="checkpointer.id" :value="checkpointer.id">{{ checkpointer.name }}</option>
-                  </select>
-                </FormField>
-              </div>
-              <div class="col-lg-4">
+              <div class="col-lg-6">
                 <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
                   <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
@@ -273,7 +234,7 @@ onMounted(() => { void loadWorkspace() })
                   </select>
                 </FormField>
               </div>
-              <div class="col-lg-4">
+              <div class="col-lg-6">
                 <FormField control-id="workflow-response-stream-scheduling" field-path="response_stream_scheduling_id" label-key="workflows.fields.responseStreamScheduling">
                   <select id="workflow-response-stream-scheduling" v-model="form.response_stream_scheduling_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
@@ -290,20 +251,29 @@ onMounted(() => { void loadWorkspace() })
               </div>
             </div>
             <div class="row g-3" data-ui-control-row>
-              <div class="col-lg-4">
+              <div class="col-lg-3">
+                <FormField control-id="workflow-durability" field-path="durability" label-key="workflows.fields.durability">
+                  <select id="workflow-durability" v-model="form.durability" class="form-select">
+                    <option value="sync">{{ t('workflows.durability.sync') }}</option>
+                    <option value="async">{{ t('workflows.durability.async') }}</option>
+                    <option value="exit">{{ t('workflows.durability.exit') }}</option>
+                  </select>
+                </FormField>
+              </div>
+              <div class="col-lg-3">
+                <FormField control-id="workflow-on-disconnect" field-path="on_disconnect" label-key="workflows.fields.onDisconnect">
+                  <select id="workflow-on-disconnect" v-model="form.on_disconnect" class="form-select">
+                    <option value="cancel">{{ t('workflows.onDisconnect.cancel') }}</option>
+                    <option value="continue">{{ t('workflows.onDisconnect.continue') }}</option>
+                  </select>
+                </FormField>
+              </div>
+              <div class="col-lg-3">
                 <FormField field-path="recursion_limit" label-key="workflows.fields.recursionLimit">
                   <input v-model.number="form.recursion_limit" class="form-control" min="1" step="1" type="number" required>
                 </FormField>
               </div>
-              <div class="col-lg-4">
-                <FormField field-path="execution_timeout_seconds" label-key="workflows.fields.executionTimeoutSeconds">
-                  <div class="input-group">
-                    <input v-model.number="form.execution_timeout_seconds" class="form-control" min="1" step="1" type="number" required>
-                    <span class="input-group-text">{{ t('workflows.seconds') }}</span>
-                  </div>
-                </FormField>
-              </div>
-              <div class="col-lg-4">
+              <div class="col-lg-3">
                 <FormField field-path="max_concurrency" label-key="workflows.fields.maxConcurrency">
                   <input v-model.number="form.max_concurrency" class="form-control" min="1" step="1" type="number" required>
                 </FormField>

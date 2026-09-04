@@ -233,16 +233,6 @@ def _workflow_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
     payload = owner.payload
-    checkpointer_id = payload.get("checkpointer_id")
-    if checkpointer_id is not None:
-        yield _reference(
-            owner,
-            path="checkpointer_id",
-            target_id=checkpointer_id,
-            target_kind="component",
-            target_component_type="checkpointer",
-            location=("checkpointer_id",),
-        )
     event_output_id = payload.get("workflow_event_output_id")
     if event_output_id is not None:
         yield _reference(

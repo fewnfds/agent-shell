@@ -157,8 +157,8 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
                 context=RuntimeDiagnosticContext(
                     request_id=request_id,
                     lifecycle_id="lifecycle-one",
-                    workflow_run_id="run-one",
-                    checkpoint_thread_id="thread-one",
+                    run_id="run-one",
+                    thread_id="thread-one",
                     entry_workflow_id="workflow-entry",
                     entry_workflow_name="Published Workflow",
                     subject_kind="agent",
@@ -261,7 +261,7 @@ def test_runtime_diagnostic_keeps_structured_entry_when_detail_write_fails(
             code="workflow_run_event_record_failed",
             component="observability",
             context=RuntimeDiagnosticContext(
-                workflow_run_id="run-without-detail"
+                run_id="run-without-detail"
             ),
         )
         entries = client.app.state.runtime_diagnostics.snapshot()["entries"]

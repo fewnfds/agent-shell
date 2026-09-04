@@ -50,11 +50,10 @@ def test_response_stream_scheduling_component_is_referenced_by_any_workflow(
             for key in (
                 "name",
                 "description",
-                "checkpointer_id",
                 "workflow_event_output_id",
-                "cancel_on_caller_termination",
+                "durability",
+                "on_disconnect",
                 "recursion_limit",
-                "execution_timeout_seconds",
                 "max_concurrency",
             )
         }
@@ -128,21 +127,24 @@ def test_workflow_runtime_boundaries_are_managed(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Managed boundaries")
-        assert workflow["cancel_on_caller_termination"] is True
+        assert workflow["durability"] == "async"
+        assert workflow["on_disconnect"] == "cancel"
         updated = client.put(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": workflow["description"],
-                "cancel_on_caller_termination": False,
+                "durability": "sync",
+                "on_disconnect": "continue",
                 "recursion_limit": 250,
-                "execution_timeout_seconds": 900,
                 "max_concurrency": 32,
             },
         )
         assert updated.status_code == 200, updated.text
+        assert updated.json()["durability"] == "sync"
+        assert updated.json()["on_disconnect"] == "continue"
+        assert updated.json()["recursion_limit"] == 250
         assert updated.json()["max_concurrency"] == 32
-        assert updated.json()["cancel_on_caller_termination"] is False
 
 
 def test_workflow_copy_preserves_graph_layout_as_a_draft(
@@ -201,8 +203,8 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
             json={
                 **{key: workflow[key] for key in (
                         "name", "description",
-                        "recursion_limit",
-                        "execution_timeout_seconds", "max_concurrency"
+                        "durability", "on_disconnect",
+                        "recursion_limit", "max_concurrency"
                     )},
                 "workflow_event_output_id": output.json()["id"],
             },
@@ -225,184 +227,6 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
         assert saved["workflow_event_output_id"] == output.json()["id"]
 
 
-def test_workflow_checkpointer_delete_preserves_references_for_each_owner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        first = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Fast checkpoints"},
-        )
-        second = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Durable checkpoints", "durability": "sync"},
-        )
-        assert first.status_code == 200, first.text
-        assert second.status_code == 200, second.text
-        assert first.json()["durability"] == "async"
-
-        workflow = create_workflow(client, name="Checkpointed Workflow")
-        assert workflow["checkpointer_id"] is None
-        updated = client.put(
-            f"/api/workflows/{workflow['id']}",
-            json={
-                **{
-                    key: workflow[key]
-                    for key in (
-                        "name",
-                        "description",
-                        "workflow_event_output_id",
-                        "recursion_limit",
-                        "execution_timeout_seconds",
-                        "max_concurrency",
-                    )
-                },
-                "checkpointer_id": first.json()["id"],
-            },
-        )
-        assert updated.status_code == 200, updated.text
-        assert updated.json()["checkpointer_id"] == first.json()["id"]
-
-        copied = client.post(
-            f"/api/workflows/{workflow['id']}/copy",
-            json={"name": "Copied Checkpointed Workflow"},
-        )
-        assert copied.status_code == 200, copied.text
-        assert copied.json()["checkpointer_id"] == first.json()["id"]
-
-        other = create_workflow(client, name="Other Checkpointed Workflow")
-        other_updated = client.put(
-            f"/api/workflows/{other['id']}",
-            json={
-                **{
-                    key: other[key]
-                    for key in (
-                        "name",
-                        "description",
-                        "workflow_event_output_id",
-                        "recursion_limit",
-                        "execution_timeout_seconds",
-                        "max_concurrency",
-                    )
-                },
-                "checkpointer_id": second.json()["id"],
-            },
-        )
-        assert other_updated.status_code == 200, other_updated.text
-
-        deleted = client.post(
-            "/api/blocks/checkpointer/delete",
-            json={"ids": [first.json()["id"], second.json()["id"]]},
-        )
-        assert deleted.status_code == 200, deleted.text
-        assert deleted.json() == {"deleted": 2}
-        assert client.get(f"/api/workflows/{workflow['id']}").json()[
-            "checkpointer_id"
-        ] == first.json()["id"]
-        assert client.get(f"/api/workflows/{copied.json()['id']}").json()[
-            "checkpointer_id"
-        ] == first.json()["id"]
-        assert client.get(f"/api/workflows/{other['id']}").json()[
-            "checkpointer_id"
-        ] == second.json()["id"]
-        for owner_id, reference_id in (
-            (workflow["id"], first.json()["id"]),
-            (copied.json()["id"], first.json()["id"]),
-            (other["id"], second.json()["id"]),
-        ):
-            issues = repository_reference_issues(client, owner_id=owner_id)
-            assert len(issues) == 1
-            assert issues[0]["path"] == "checkpointer_id"
-            assert issues[0]["message_args"]["reference_id"] == reference_id
-
-
-def test_workflow_publish_rejects_a_deleted_checkpointer_reference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Missing Checkpointer publish")
-        checkpointer = client.post(
-            "/api/blocks/checkpointer",
-            json={"name": "Publish checkpoints", "durability": "sync"},
-        ).json()
-        configured = client.put(
-            f"/api/workflows/{workflow['id']}",
-            json={
-                "name": workflow["name"],
-                "description": workflow["description"],
-                "checkpointer_id": checkpointer["id"],
-            },
-        )
-        assert configured.status_code == 200, configured.text
-        document = save_linear_workflow_graph(
-            client,
-            configured.json(),
-            main_agent,
-        )
-        deleted = client.delete(
-            f"/api/blocks/checkpointer/{checkpointer['id']}"
-        )
-        assert deleted.status_code == 200, deleted.text
-
-        validated = client.post(
-            f"/api/workflows/{workflow['id']}/validate",
-            json=document,
-        )
-        published = client.put(
-            f"/api/workflows/{workflow['id']}/graph",
-            json=document,
-        )
-
-    assert validated.status_code == 200, validated.text
-    issue = next(
-        item
-        for item in validated.json()["issues"]
-        if item["path"] == "checkpointer_id"
-    )
-    assert issue["code"] == "configuration.reference_not_found"
-    assert issue["message_args"]["reference_id"] == checkpointer["id"]
-    assert published.status_code == 422, published.text
-
-
-def test_workflow_rejects_missing_or_wrong_type_checkpointer_reference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client, name="Missing Checkpointer")
-        wrong_type = client.post(
-            "/api/blocks/system-prompt",
-            json={"name": "Wrong type", "system_prompt": "Be precise."},
-        )
-        assert wrong_type.status_code == 200, wrong_type.text
-        for checkpointer_id in (
-            "00000000-0000-4000-8000-000000000099",
-            wrong_type.json()["id"],
-        ):
-            response = client.put(
-                f"/api/workflows/{workflow['id']}",
-                json={
-                    **{
-                        key: workflow[key]
-                        for key in (
-                            "name",
-                            "description",
-                            "workflow_event_output_id",
-                            "recursion_limit",
-                            "execution_timeout_seconds",
-                            "max_concurrency",
-                        )
-                    },
-                    "checkpointer_id": checkpointer_id,
-                },
-            )
-
-            assert response.status_code == 422
-            assert response.json()["detail"]["code"] == (
-                "workflow_checkpointer_not_found"
-            )
-
-
 def test_workflow_validation_reports_a_missing_event_output_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -422,8 +246,9 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
                     for key in (
                         "name",
                         "description",
+                        "durability",
+                        "on_disconnect",
                         "recursion_limit",
-                        "execution_timeout_seconds",
                         "max_concurrency",
                     )
                 },

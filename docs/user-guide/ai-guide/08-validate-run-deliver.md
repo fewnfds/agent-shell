@@ -248,7 +248,7 @@ Content-Type: application/json
 - Agent Workflow：确认 AAP 或其他输入 owner 把目标材料交给正确 Agent，并得到 Agent Event Output；
 - Command Workflow：确认预期 branch、State update、task 生成、worker input、routing key、downstream completion 和 termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
-- 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败与取消传播以及 result handoff；
+- 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败、主动取消以及 result handoff；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
 纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
@@ -267,7 +267,7 @@ Content-Type: application/json
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-运行监控页面可以按 Lifecycle、Workflow + descendants 或 exact Run 范围浏览 snapshot；选择 Run 后查看 frozen Graph 与真实 Node attempt，选择 Agent Node 后查看 exact invocation artifact 和 direct-origin ProtocolEvent，选择 Command Node 后查看直接 phase 与 `activate|dispatch|update` 外部结果，Run 详情还提供 raw ProtocolEvent、Model Request 和 latest persisted Checkpoint State。活动 Lifecycle 在页面可见时短间隔读取持久化事实，State 只手动刷新。读取结果是 snapshot/page，不是从日志推演的 Edge 状态或跨资源 Timeline。Lifecycle 目录可下载整个 Lifecycle，Graph 标题区可下载当前 Run；活动归档固定下载开始时的持久化记录范围。运行失败继续结合调用方 structured error 和日志中心诊断定位。
+运行监控页面按 Lifecycle 浏览本次请求的全部官方 Run；选择 Run 后可查看原始 Run 对象、Assistant Graph、Thread latest State 和最近 State history。页面通过刷新按钮重新读取公共 API，不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
 
 常见 HTTP 范围：
 

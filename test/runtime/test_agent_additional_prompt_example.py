@@ -10,7 +10,7 @@ from langgraph.store.memory import InMemoryStore
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
-from agent_shell.runtime.workflow_lifecycle import (
+from agent_shell.runtime.workflow_data import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
 )
@@ -50,7 +50,7 @@ def test_agent_additional_prompt_example_adds_private_dispatch_task() -> None:
             run_id="run-id",
             workflow_id="workflow-id",
             workflow_name="Workflow",
-            checkpoint_thread_id="thread-id",
+            thread_id="thread-id",
         ),
     )
     store = InMemoryStore()

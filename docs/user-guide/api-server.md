@@ -33,11 +33,9 @@ Chat 请求体、content block、输入媒体单项/合计和输出媒体边界�
 当前可执行 Node class 为 Start、Agent、Command 和 End，Edge class 为 normal、branch 与 dispatch；一张图可以包含多个 Agent Node，并可串联、
 fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接映射 LangGraph 官方 `START/END`，Normal Edge 映射 `StateGraph.add_edge()`；Command 脚本读取完整 Workflow State 和 Runtime Context，可同时返回 State partial update、Branch key 与具名 JSON dispatch task。runtime 把 Branch target 与每个 LangGraph `Send` 放入同一个 `Command.goto`，并把 `workflow_task` 放入 target Agent 的私有 State。Start 不注入客户端消息。规范化后的 `messages[]` 保存在本次 Lifecycle 的官方 Server Store namespace；Runtime Context 只携带定位输入所需的 lifecycle/run/invocation 身份。只有已装配的 `before_agent`/`abefore_agent` Middleware 决定如何读取、切割并写入 Agent state。
 
-每个 Workflow 显式配置 `cancel_on_caller_termination`、`recursion_limit`、`execution_timeout_seconds` 和 `max_concurrency`。终止传播开关默认开启：当前 Workflow 被另一个 Run 调用后，caller Run 取消或失败会取消仍 active 的本 Run；关闭后本 Run 独立继续，caller 正常到达 End 不触发传播。请求入口连接在 Run 完成前断开时取消请求入口 Run。三个运行值默认分别是 `1,000,000`、`1,200` 秒和 `100`，只有正数约束，没有额外的产品上限。`recursion_limit` 与 `max_concurrency` 传给 LangGraph Runnable config；`execution_timeout_seconds` 限制单个 Run 的实际执行时间，不包含生成器停在 `yield` 等待慢速调用方消费已生成 SSE 文本的时间。
+每个 Workflow 显式配置 `durability`、`on_disconnect`、`recursion_limit` 和 `max_concurrency`。`durability=exit|async|sync` 原样传给官方 Run，默认 `async`；`recursion_limit` 和 `max_concurrency` 默认分别为 `1,000,000` 与 `100`，只要求正整数，没有额外产品最大值。全部 Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev 官方运行时拥有。
 
-全部 Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev 官方运行时拥有。当前 Server-managed 执行路径不读取 Workflow 的 `checkpointer_id`；该配置面将在 persistence 阶段收敛。
-
-Checkpointer 为运行 Debug 和监控中的 latest persisted root State 提供检查点，不提供 State history、修改、Resume 或灾难恢复入口。`exit` 在 Graph 正常结束、报错或触发 interrupt 时写入，运行期开销最低但进程崩溃会丢失中间状态；`async` 在下一步执行时异步写入，默认用于平衡延迟与持久性；`sync` 在下一步开始前完成写入，持久性最强且写入延迟最高。
+每个 Workflow 独立保存 `on_disconnect=cancel|continue`，默认 `cancel`。客户端在 Run 完成前断开时，只读取本次请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 在后台继续。其他 Run 的成功、失败或取消不会触发隐式连锁取消，调用关系也不形成 Parent/Child 权限。
 
 作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 引用【工作流组件】中的 Response Stream Scheduling 配置。未装配时使用内置默认；装配后从当前请求冻结的 Configuration Repository 快照读取 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。组件只调度 Agent/Workflow Event Output 已批准的文本，不拥有事件可见性或修饰规则。
 
@@ -48,7 +46,7 @@ Checkpointer 为运行 Debug 和监控中的 latest persisted root State 提供�
 ## 拦截消息
 
 【系统 / 拦截消息】提供一个独立于 Workflow 的 Shell 入站开关。开启后，合法 Chat Completions 请求完成鉴权、
-请求体大小限制和基础 OpenAI 字段检查（含 `max_initial_messages` 数量上限）后立即短路，不捕获 Workflow 配置快照，不装配 Agent，也不创建 checkpoint。
+请求体大小限制和基础 OpenAI 字段检查（含 `max_initial_messages` 数量上限）后立即短路，不捕获 Workflow 配置快照，不装配 Agent，也不创建 Run。
 调用方按原 `stream` 模式收到 OpenAI-compatible 的“消息已拦截”回复，token usage 为零。
 
 页面通过 management-only API 显示进程内最新一条请求原文。开关持久化，正文仅保存在当前进程；开关从关闭变为开启或服务重启时清空原文。
@@ -62,7 +60,7 @@ Checkpointer 为运行 Debug 和监控中的 latest persisted root State 提供�
 - 每个被调用 Run 使用自己的 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 只按 Run identity 隔离输出，不建立静态运行角色；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- Assistant、Thread、Run 与 State 可通过同端口的 LangGraph Dev 官方 API 读取；官方 route 使用管理密码。`/api/workflow-lifecycles` 当前只读取 application Runtime Registry，Server-managed 请求入口和被调用 Run 尚未投影到该目录，执行状态以官方 API 为准。
+- Assistant、Thread、Run 与 State 可通过同端口的 LangGraph Dev 官方 API 读取；官方 route 使用管理密码。`/api/workflow-lifecycles` 通过公共 Thread/Run API 聚合本次请求的全部 Run，并提供 Graph、latest State 和 State history 读取。
 
 ## API Key 与状态
 

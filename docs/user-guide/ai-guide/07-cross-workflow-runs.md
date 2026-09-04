@@ -1,6 +1,6 @@
 # 跨 Workflow Run 调用
 
-本章说明一个 Workflow Run 如何启动、查询、等待和取消另一个能力相同的 Workflow Run，以及 State isolation、取消传播和结果收集。
+本章说明一个 Workflow Run 如何启动、查询、等待和取消另一个能力相同的 Workflow Run，以及 State isolation、断连策略和结果收集。
 
 Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时编译为 LangGraph Graph。Assistant 是 Graph 加配置后的官方执行入口；Thread 保存该执行上下文的持久化 State；Run 是对 Assistant/Graph 的一次调用。Workflow 没有静态运行角色。
 
@@ -27,7 +27,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 Start -> Agent -> End
 ```
 
-目标 Workflow 使用自己的 Graph、Agent/Component 引用、`recursion_limit`、`execution_timeout_seconds`、`max_concurrency`、事件输出和 `cancel_on_caller_termination`。caller 的 Workflow 配置不会覆盖它。
+目标 Workflow 使用自己的 Graph、Agent/Component 引用、`durability`、`recursion_limit`、`max_concurrency` 和事件输出。caller 的 Workflow 配置不会覆盖它。每个 Workflow 也保存自己的 `on_disconnect`，但该字段只在它作为客户端请求入口时读取，不参与内部 Run 调用。
 
 ## 3. Runtime command
 
@@ -119,7 +119,7 @@ Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三�
 
 需要完整结果时优先使用 `join()`。caller 还要执行其他工作或根据多个 Run 状态作业务决策时使用 `check()` 或 `list()`。
 
-轮询循环必须有业务退出条件，例如全部 terminal、达到业务 deadline、已有 winner 或用户取消。`execution_timeout_seconds` 和 `recursion_limit` 是运行失败边界，不代替正常退出条件。
+轮询循环必须有业务退出条件，例如全部 terminal、达到业务 deadline、已有 winner 或用户取消。`recursion_limit` 是运行失败边界，不代替正常退出条件。
 
 同时启动多个 Workflow Run 是正常用法。每个调用使用独立 Thread，因此可以并行运行；实际吞吐受用户配置的 Worker 并发和宿主资源影响。Agent Shell 不额外设置隐藏的 Run 数量上限。
 
@@ -133,22 +133,17 @@ Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三�
 
 如果 caller 在公开 response 封口前没有等待被调用 Run，后者可以继续执行，但之后产生的文本没有可写入的原 response。要求把完整事件流交付给同一 response 时，caller 必须在自己结束前 `join()` 对应 Run。
 
-## 9. 取消与传播
+## 9. 取消与客户端断开
 
 `cancel()` 主动取消指定的直接调用 Run，并等待公共 Run API 返回终态。官方取消终态是 `interrupted`。
 
-每个 Workflow 的 `cancel_on_caller_termination` 默认是 `true`：
+普通 Run 的成功、失败或主动取消不会触发隐式连锁取消。用户代码需要业务级联时，应使用已保存的 Run ID 显式调用 `cancel()`。
 
-- caller Run 失败或取消时，仍 active 的直接调用 Run 会被取消；
-- 被取消 Run 再按它直接调用目标的配置继续逐层传播；
-- caller 正常到达 End 不触发传播；
-- 目标 Workflow 将该字段设为 `false` 时，该 Run 独立继续。
-
-传播只使用已经保存的直接 caller→spawned relation，不按时间、event namespace、Graph Edge 或 Workflow name 猜测关系。官方已终态的 Run 不重复发送 cancel。
+每个 Workflow 独立保存 `on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。该规则不监控请求入口 Run 的终态，也不沿 caller→spawned relation 传播。
 
 ## 10. 观测与交付检查
 
-运行监控的 Lifecycle scope 显示请求入口 Run 与全部被调用 Run；Workflow scope 显示匹配 Workflow 的 Run 及其后代；Run scope 只显示 exact Run。层级只来自 Registry 的 `caller_run_id -> spawned_run_id` 事实。
+运行监控按 Lifecycle 显示本次请求的全部官方 Run，并允许选择任意 Run 查看原始 Run 对象、Assistant Graph、Thread latest State 和 State history。`caller_run_id` 只用于理解调用关系，不形成 Parent/Child 能力层级。
 
 交付前确认：
 
@@ -157,6 +152,6 @@ Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三�
 - 需要后续控制的 `run_id` 已保存，官方状态没有复制为第二套 State；
 - `join()`、`check()` 或 fire-and-forget 符合预期结果交付方式；
 - 大型结果通过 Store/Filesystem reference 交付；
-- `cancel_on_caller_termination` 符合 caller 失败或取消后的预期；
+- 请求入口 Workflow 的 `on_disconnect` 符合客户端断开后的预期；
 - 循环有业务退出条件；
 - 要进入同一公开 response 的输出在请求入口 Run 结束前完成收集。

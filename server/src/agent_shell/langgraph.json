@@ -6,7 +6,21 @@
     "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph"
   },
   "auth": {
-    "path": "agent_shell.langgraph_dev:auth"
+    "path": "agent_shell.langgraph_dev:auth",
+    "openapi": {
+      "securitySchemes": {
+        "BearerAuth": {
+          "type": "http",
+          "scheme": "bearer"
+        }
+      },
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ]
+    },
+    "disable_studio_auth": false
   },
   "http": {
     "app": "agent_shell.langgraph_dev:app"

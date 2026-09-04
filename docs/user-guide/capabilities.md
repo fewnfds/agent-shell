@@ -18,7 +18,6 @@
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
 | MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |
-| 检查点保存器（Checkpointer） | 为明确选择它的 Workflow 持久化 LangGraph State 检查点，并配置写入时机 | Workflow metadata 可选绑定 | 不属于 Agent capability |
 | Workflow Event Output | 用文件化 Python 扩展把 Workflow-owned v3 事件投影为响应字符串 | Workflow 可选绑定 | 不属于 Agent capability |
 | Command | 读取完整 Workflow State/Context，更新 State、激活具名 Branch Edge，并通过 Dispatch Edge 动态 Send Agent task | canvas Node 引用 | 不属于 Agent capability |
 
@@ -40,8 +39,6 @@ Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式�
 这条 Agent graph 与 Workflow State 的输出映射不需要额外的结束 Hook 或 Recorder 组件。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
-
-Checkpointer 组件仍可保存在 Workflow metadata 中；Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 当前由 LangGraph Dev runtime 统一拥有，执行路径不读取 `checkpointer_id`。该配置面将在 persistence 阶段收敛。当前软件不提供 Resume 或灾难恢复入口。
 
 Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。调度语义覆盖该 Lifecycle 的公开响应，包括公开 response 封口前由入口 Run 直接或间接调用的其他 Run。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
 

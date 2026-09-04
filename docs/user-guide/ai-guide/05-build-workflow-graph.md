@@ -11,7 +11,7 @@
 - active Configuration Repository 没有变化；
 - 已读取当前 `/api/workflow-node-catalog`；
 - design record 已明确 topology、State owner 和结束条件；
-- Graph 使用的 Main Agent、Command、Checkpointer 和 Workflow Event Output UUID 已记录；
+- Graph 使用的 Main Agent、Command 和 Workflow Event Output UUID 已记录；
 - 缺少 Python-backed Component 时，先按[编写 Python extension](06-python-extensions.md)创建，再返回本章。
 
 从已有 Graph 或示例复制 Node type、version、handle 或 Component UUID 前，先通过当前 Catalog 和当前 Repository 确认这些值仍然有效。
@@ -39,12 +39,11 @@ POST /api/workflows
 
 Workflow metadata 还可以保存：
 
-- `checkpointer_id`：可空 Checkpointer Component reference；
 - `workflow_event_output_id`：可空 Workflow Event Output reference；
 - `response_stream_scheduling_id`：可空 Response Stream Scheduling Component reference；当前 Workflow 作为请求入口时选择本次 response 调度策略；
-- `cancel_on_caller_termination`：默认 `true`；当前 Workflow 被另一个 Run 调用时，控制 caller 失败或取消后的传播；
+- `durability`：`sync|async|exit`，默认 `async`，原样传给官方 Run；
+- `on_disconnect`：`cancel|continue`，默认 `cancel`；当前 Workflow 作为客户端请求入口时决定断开后的 Lifecycle 行为；
 - `recursion_limit`：默认 `1000000`；
-- `execution_timeout_seconds`：默认 `1200`；
 - `max_concurrency`：默认 `100`。
 
 创建时省略这些字段会使用当前 backend default。显式提交的字段表示用户为该 Workflow 选择的 runtime value。
@@ -52,13 +51,12 @@ Workflow metadata 还可以保存：
 如果用户需要调整运行值，先说明：
 
 - `recursion_limit` 限制 Graph 执行步数，正常循环仍需业务退出条件；
-- `execution_timeout_seconds` 限制单个 Run 的实际执行时间；
 - `max_concurrency` 控制该 Run 的 LangGraph 并发；
-- 三个数值只要求正整数，没有额外产品最大值，真实资源代价取决于 Workflow、Provider、Tool、进程和宿主机。
+- 两个数值只要求正整数，没有额外产品最大值，真实资源代价取决于 Workflow、Provider、Tool、进程和宿主机。
 
 修改现有 Workflow 时先 GET，保留未修改的 metadata。metadata PUT 不改变当前 `enabled`。
 
-Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev runtime 统一拥有。当前执行路径不读取 `checkpointer_id`；新配置不要依赖该字段改变运行行为。该配置面将在 persistence 阶段收敛。
+Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev runtime 统一拥有。项目不创建应用级 Checkpointer 组件；持久化写入时机由 Workflow 的官方 `durability` 配置决定。
 
 需要调整公开响应的排队和排水时，先创建 Response Stream Scheduling Component：
 
@@ -82,7 +80,7 @@ POST /api/blocks/response-stream-scheduling
 
 需要公开 Command 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
 
-`cancel_on_caller_termination=true` 时，调用本 Workflow 的 Run 取消或失败会取消当前仍 active 的 Run；当前 Run 的取消继续按每个被调用 Workflow 自己的配置逐层传播。caller 正常完成不触发传播。请求入口连接在完成前断开时取消请求入口 Run。
+每个 Workflow 独立设置 `on_disconnect`。只有当前 Workflow 作为某次客户端请求入口时才读取该值：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。被调用 Workflow 的该字段不参与当前请求的判断；Run 终态也不会触发隐式取消传播。
 
 ## 4. Graph document
 

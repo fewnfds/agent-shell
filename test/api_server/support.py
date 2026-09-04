@@ -5,17 +5,23 @@ import os
 import asyncio
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import (
     FakeListChatModel,
 )
+from langgraph.store.memory import InMemoryStore
 from starlette.requests import Request
 
 from agent_shell.app import create_app
 from agent_shell.api.api_server import ApiServerEventHub
 from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.workflow_data import (
+    LIFECYCLE_INPUT_KEY,
+    lifecycle_input_namespace,
+)
 from support import API_KEY, ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -60,6 +66,8 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         ),
     )
 
+    graph_store = InMemoryStore()
+
     async def direct_test_run(coordinator, workflow, raw_messages, **kwargs):
         """Stand in for the external dev server in API unit tests.
 
@@ -75,8 +83,16 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
                 "The selected Workflow graph does not exist.",
                 status_code=422,
             )
+        lifecycle_id = str(uuid4())
+        coordinator._lifecycle_id = lifecycle_id
+        await graph_store.aput(
+            lifecycle_input_namespace(lifecycle_id),
+            LIFECYCLE_INPUT_KEY,
+            {"messages": raw_messages},
+            index=False,
+        )
         runtime = coordinator._snapshot.new_runtime(
-            store=coordinator._owner._workflow_lifecycle.store
+            store=graph_store
         )
         return await runtime.start_workflow(
             document,
@@ -84,11 +100,20 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             workflow_snapshot=workflow,
             request_id=str(kwargs.get("request_id", "")),
             public_model=str(kwargs.get("public_model", workflow["name"])),
+            lifecycle_id=lifecycle_id,
         )
 
     monkeypatch.setattr(
         "agent_shell.runtime.request_snapshot.LifecycleRunCoordinator.start_workflow",
         direct_test_run,
+    )
+
+    async def skip_external_retention(_self) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "agent_shell.runtime.request_snapshot.RequestSnapshotRuntime.enforce_lifecycle_retention",
+        skip_external_retention,
     )
     return ScopedAuthTestClient(create_app())
 

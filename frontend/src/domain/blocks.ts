@@ -14,7 +14,6 @@ import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
-import { checkpointerAdapter } from './blocks/checkpointer'
 import { responseStreamSchedulingAdapter } from './blocks/responseStreamScheduling'
 
 export type {
@@ -86,10 +85,6 @@ export type {
   CommandDraft,
 } from './blocks/command'
 export type {
-  CheckpointDurability,
-  CheckpointerDraft,
-} from './blocks/checkpointer'
-export type {
   ResponseStreamSchedulingDefaults,
   ResponseStreamSchedulingDraft,
 } from './blocks/responseStreamScheduling'
@@ -111,7 +106,6 @@ export {
   todoListAdapter,
   workflowEventOutputAdapter,
   commandAdapter,
-  checkpointerAdapter,
   responseStreamSchedulingAdapter,
 }
 
@@ -134,7 +128,6 @@ export const blockTypes = [
 export const managedComponentTypes = [
   ...blockTypes,
   'mcp-requirement',
-  'checkpointer',
   'workflow-event-output',
   'response-stream-scheduling',
   'command',
@@ -155,7 +148,6 @@ export const blockAdapters = {
   summarization: summarizationAdapter,
   'prompt-caching': promptCachingAdapter,
   'mcp-requirement': mcpRequirementAdapter,
-  checkpointer: checkpointerAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'response-stream-scheduling': responseStreamSchedulingAdapter,
   'command': commandAdapter,

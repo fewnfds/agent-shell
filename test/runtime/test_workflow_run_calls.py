@@ -6,47 +6,50 @@ from types import SimpleNamespace
 import pytest
 
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
-from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _OfficialRunEventStream,
 )
 from agent_shell.runtime.workflow_run_calls import relation_key
+from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
 
 
-def _relation(
-    run_id: str,
-    *,
-    operation_id: str,
-    cancel_on_caller_termination: bool = True,
-) -> dict[str, object]:
+def _relation(run_id: str, *, operation_id: str, caller_run_id: str) -> dict[str, object]:
     return {
-        "contract_version": 1,
         "lifecycle_id": "lifecycle-1",
         "operation_id": operation_id,
-        "caller_run_id": "caller-run-1",
+        "caller_run_id": caller_run_id,
         "workflow_id": f"workflow-{run_id}",
         "workflow_name": f"Workflow {run_id}",
         "assistant_id": f"assistant-{run_id}",
         "thread_id": f"thread-{run_id}",
         "run_id": run_id,
-        "cancel_on_caller_termination": cancel_on_caller_termination,
     }
 
 
-class _Store:
-    def __init__(self, relations: list[dict[str, object]]) -> None:
-        self.relations = relations
-
-    async def search_items(self, _namespace, *, limit, offset):
-        items = self.relations[offset : offset + limit]
-        return {"items": [{"value": value} for value in items]}
-
-
 class _Runs:
-    def __init__(self, statuses: dict[str, str]) -> None:
+    def __init__(self, relations: list[dict[str, object]], statuses: dict[str, str]) -> None:
+        self._relations = relations
         self.statuses = statuses
         self.cancelled: list[str] = []
+
+    async def list(self, thread_id: str, *, limit: int, offset: int):
+        values = [
+            {
+                "run_id": relation["run_id"],
+                "assistant_id": relation["assistant_id"],
+                "status": self.statuses[str(relation["run_id"])],
+                "metadata": {
+                    "operation_id": relation["operation_id"],
+                    "caller_run_id": relation["caller_run_id"],
+                    "workflow_id": relation["workflow_id"],
+                    "workflow_name": relation["workflow_name"],
+                },
+            }
+            for relation in self._relations
+            if relation["thread_id"] == thread_id
+        ]
+        return values[offset : offset + limit]
 
     async def get(self, thread_id: str, run_id: str):
         return {
@@ -67,15 +70,34 @@ class _Runs:
 
 
 class _Threads:
+    def __init__(self, relations: list[dict[str, object]]) -> None:
+        self._relations = relations
+
+    async def search(self, *, metadata, limit: int, offset: int):
+        lifecycle_id = metadata["lifecycle_id"]
+        values = [
+            {
+                "thread_id": relation["thread_id"],
+                "metadata": {
+                    "lifecycle_id": relation["lifecycle_id"],
+                    "operation_id": relation["operation_id"],
+                    "caller_run_id": relation["caller_run_id"],
+                    "workflow_id": relation["workflow_id"],
+                },
+            }
+            for relation in self._relations
+            if relation["lifecycle_id"] == lifecycle_id
+        ]
+        return values[offset : offset + limit]
+
     async def get_state(self, thread_id: str):
         return {"values": {"shared_vars": {"thread_id": thread_id}}}
 
 
 class _Client:
     def __init__(self, relations: list[dict[str, object]], statuses: dict[str, str]):
-        self.store = _Store(relations)
-        self.runs = _Runs(statuses)
-        self.threads = _Threads()
+        self.runs = _Runs(relations, statuses)
+        self.threads = _Threads(relations)
 
     async def __aenter__(self):
         return self
@@ -94,12 +116,12 @@ def _coordinator(client: _Client) -> LifecycleRunCoordinator:
     return coordinator
 
 
-def test_run_commands_project_official_status_join_output_and_cancel() -> None:
+def test_run_commands_treat_every_lifecycle_run_as_an_equal_target() -> None:
     async def scenario() -> None:
         relations = [
-            _relation("run-active", operation_id="active"),
-            _relation("run-error", operation_id="error"),
-            _relation("run-join", operation_id="join"),
+            _relation("run-active", operation_id="active", caller_run_id="run-a"),
+            _relation("run-error", operation_id="error", caller_run_id="run-b"),
+            _relation("run-join", operation_id="join", caller_run_id="run-c"),
         ]
         client = _Client(
             relations,
@@ -110,14 +132,13 @@ def test_run_commands_project_official_status_join_output_and_cancel() -> None:
             },
         )
         coordinator = _coordinator(client)
-        caller = WorkflowRunCaller("request-1", "lifecycle-1", "caller-run-1")
+        caller = WorkflowRunCaller("request-1", "lifecycle-1", "unrelated-run")
 
         checked = await coordinator.check_workflow_runs(
             ["run-active", "run-error", "missing"],
             caller=caller,
         )
         assert [item.status for item in checked] == ["running", "error", "not_found"]
-        assert checked[0].output is None
         assert checked[1].output == {
             "shared_vars": {"thread_id": "thread-run-error"}
         }
@@ -136,92 +157,11 @@ def test_run_commands_project_official_status_join_output_and_cancel() -> None:
     asyncio.run(scenario())
 
 
-def test_caller_termination_cancels_only_selected_active_spawned_runs() -> None:
-    async def scenario() -> None:
-        relations = [
-            _relation("run-follow", operation_id="follow"),
-            _relation(
-                "run-independent",
-                operation_id="independent",
-                cancel_on_caller_termination=False,
-            ),
-            _relation("run-finished", operation_id="finished"),
-        ]
-        client = _Client(
-            relations,
-            {
-                "run-follow": "pending",
-                "run-independent": "running",
-                "run-finished": "success",
-            },
-        )
-        coordinator = _coordinator(client)
-
-        await coordinator.cancel_spawned_runs_on_caller_termination(
-            "lifecycle-1",
-            "caller-run-1",
-        )
-
-        assert client.runs.cancelled == ["run-follow"]
-
-    asyncio.run(scenario())
-
-
-def test_cancellation_propagates_one_dynamic_call_edge_at_a_time() -> None:
-    async def scenario() -> None:
-        relations = [
-            _relation("run-b", operation_id="a-to-b"),
-            {
-                **_relation("run-c", operation_id="b-to-c"),
-                "caller_run_id": "run-b",
-            },
-            {
-                **_relation(
-                    "run-independent",
-                    operation_id="b-to-independent",
-                    cancel_on_caller_termination=False,
-                ),
-                "caller_run_id": "run-b",
-            },
-        ]
-        client = _Client(
-            relations,
-            {
-                "run-b": "running",
-                "run-c": "pending",
-                "run-independent": "running",
-            },
-        )
-        coordinator = _coordinator(client)
-        original_cancel = client.runs.cancel
-
-        async def cancel_with_run_boundary(thread_id, run_id, *, wait=False):
-            await original_cancel(thread_id, run_id, wait=wait)
-            if run_id == "run-b":
-                await coordinator.cancel_spawned_runs_on_caller_termination(
-                    "lifecycle-1",
-                    "run-b",
-                )
-
-        client.runs.cancel = cancel_with_run_boundary
-
-        await coordinator.cancel_spawned_runs_on_caller_termination(
-            "lifecycle-1",
-            "caller-run-1",
-        )
-
-        assert client.runs.cancelled == ["run-b", "run-c"]
-
-    asyncio.run(scenario())
-
-
 def test_official_run_cancellation_skips_a_terminal_run() -> None:
     async def scenario() -> None:
         client = _Client([], {"run-finished": "error"})
         coordinator = _coordinator(client)
-
         await coordinator.cancel_official_run("thread-finished", "run-finished")
-
         assert client.runs.cancelled == []
 
     asyncio.run(scenario())
@@ -250,10 +190,13 @@ def test_official_run_stream_restores_safe_product_error() -> None:
             },
         }
 
+    async def close_session(_thread_id: str) -> None:
+        return None
+
     async def scenario() -> None:
         stream = _OfficialRunEventStream(
             events(),
-            SimpleNamespace(close_official_session=lambda _thread_id: None),
+            SimpleNamespace(close_official_session=close_session),
             "thread-1",
         )
         with pytest.raises(AgentRuntimeError) as captured:

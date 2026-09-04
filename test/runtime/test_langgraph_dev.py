@@ -60,7 +60,7 @@ def test_factory_uses_assistant_config_and_product_run_context() -> None:
                 "caller_run_id": "caller-run-1",
                 "operation_id": "operation-1",
                 "workflow_id": "caller-copy-must-be-ignored",
-                "workflow_run_id": "caller-copy-must-be-ignored",
+                "run_id": "caller-copy-must-be-ignored",
             }
         )
     )

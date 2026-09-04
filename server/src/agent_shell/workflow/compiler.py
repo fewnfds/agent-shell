@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import replace
-from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages.utils import convert_to_openai_messages
@@ -22,13 +20,11 @@ from agent_shell.command import (
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
 from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
 from agent_shell.runtime.state import WorkflowNodeInputState, WorkflowState
-from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespace
+from agent_shell.runtime.workflow_data import lifecycle_invocations_namespace
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
 
-if TYPE_CHECKING:
-    from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.workflow.validation import admit_workflow_document
 
 
@@ -118,72 +114,10 @@ def _node_runtime_context(
     return server_context.for_server_run(execution_info.run_id)
 
 
-def _start_node_observation(
-    lifecycle_service: WorkflowLifecycleService | None,
-    runtime: Runtime[WorkflowRuntimeContext],
-    *,
-    node_id: str,
-    invocation_id: str,
-    attempt: int | None,
-    node_first_attempt_time: float | None,
-) -> bool:
-    if lifecycle_service is None or attempt is None:
-        if lifecycle_service is not None:
-            try:
-                lifecycle_service.mark_monitoring_partial(
-                    runtime.context.run_id,
-                    "node",
-                )
-            except Exception:
-                pass
-        return False
-    try:
-        return lifecycle_service.start_node_attempt(
-            {
-                "lifecycle_id": runtime.context.lifecycle_id,
-                "run_id": runtime.context.run_id,
-                "workflow_node_id": node_id,
-                "invocation_id": invocation_id,
-                "attempt": attempt,
-                "node_first_attempt_time": node_first_attempt_time,
-                "started_at": datetime.now(timezone.utc).isoformat(
-                    timespec="milliseconds"
-                ),
-            }
-        )
-    except Exception:
-        return False
-
-
-def _finish_node_observation(
-    lifecycle_service: WorkflowLifecycleService | None,
-    runtime: Runtime[WorkflowRuntimeContext],
-    *,
-    invocation_id: str,
-    attempt: int | None,
-    started: bool,
-    status: str,
-    error_code: str = "",
-) -> None:
-    if lifecycle_service is None or attempt is None or not started:
-        return
-    try:
-        lifecycle_service.finish_node_attempt(
-            runtime.context.run_id,
-            invocation_id,
-            attempt,
-            status=status,
-            error_code=error_code,
-        )
-    except Exception:
-        pass
-
-
 def _make_agent_node(
     *,
     node_id: str,
     built_agent: Any,
-    lifecycle_service: WorkflowLifecycleService | None = None,
     runtime_context: WorkflowRuntimeContext | None = None,
 ):
     async def call_agent(
@@ -191,15 +125,7 @@ def _make_agent_node(
         config: RunnableConfig,
         runtime: Runtime[WorkflowRuntimeContext],
     ) -> dict[str, Any]:
-        invocation_id, attempt, invoked_at = _invocation_metadata(runtime)
-        node_observation_started = _start_node_observation(
-            lifecycle_service,
-            runtime,
-            node_id=node_id,
-            invocation_id=invocation_id,
-            attempt=attempt,
-            node_first_attempt_time=invoked_at,
-        )
+        invocation_id, _attempt, invoked_at = _invocation_metadata(runtime)
         try:
             bound_context = _node_runtime_context(runtime, runtime_context)
             workflow_id = bound_context.workflow_id
@@ -305,40 +231,10 @@ def _make_agent_node(
             )
             if files:
                 update["files"] = files
-        except asyncio.CancelledError:
-            _finish_node_observation(
-                lifecycle_service,
-                runtime,
-                invocation_id=invocation_id,
-                attempt=attempt,
-                started=node_observation_started,
-                status="cancelled",
-                error_code="request_cancelled",
-            )
-            raise
         except Exception as exc:
-            _finish_node_observation(
-                lifecycle_service,
-                runtime,
-                invocation_id=invocation_id,
-                attempt=attempt,
-                started=node_observation_started,
-                status="failed",
-                error_code=(
-                    exc.code if isinstance(exc, AgentRuntimeError) else type(exc).__name__
-                ),
-            )
             if runtime_context is not None and isinstance(exc, AgentRuntimeError):
                 raise RuntimeError(encode_server_run_error(exc)) from exc
             raise
-        _finish_node_observation(
-            lifecycle_service,
-            runtime,
-            invocation_id=invocation_id,
-            attempt=attempt,
-            started=node_observation_started,
-            status="completed",
-        )
         return update
 
     return call_agent
@@ -350,22 +246,13 @@ def _make_command_node(
     command: CommandCallable,
     command_targets: Mapping[str, str],
     dispatch_targets: Mapping[str, str],
-    lifecycle_service: WorkflowLifecycleService | None,
     runtime_context: WorkflowRuntimeContext | None = None,
 ):
     async def call_command(
         state: WorkflowState,
         runtime: Runtime[WorkflowRuntimeContext],
     ) -> Command:
-        invocation_id, attempt, invoked_at = _invocation_metadata(runtime)
-        node_observation_started = _start_node_observation(
-            lifecycle_service,
-            runtime,
-            node_id=node_id,
-            invocation_id=invocation_id,
-            attempt=attempt,
-            node_first_attempt_time=invoked_at,
-        )
+        invocation_id, _attempt, _invoked_at = _invocation_metadata(runtime)
         bound_context = _node_runtime_context(runtime, runtime_context)
         node_runtime = runtime.override(
             context=bound_context.for_workflow_node(
@@ -373,34 +260,6 @@ def _make_command_node(
                 node_invocation_id=invocation_id,
             )
         )
-        monitoring_failed = False
-
-        def observe(phase: str, *, payload=None, error_code: str = "") -> None:
-            nonlocal monitoring_failed
-            if lifecycle_service is None or monitoring_failed:
-                return
-            try:
-                if attempt is None:
-                    return
-                lifecycle_service.append_command_observation(
-                    {
-                        "lifecycle_id": runtime.context.lifecycle_id,
-                        "run_id": runtime.context.run_id,
-                        "invocation_id": invocation_id,
-                        "workflow_node_id": node_id,
-                        "attempt": attempt,
-                        "occurred_at": datetime.now(timezone.utc).isoformat(
-                            timespec="milliseconds"
-                        ),
-                        "phase": phase,
-                        "error_code": error_code,
-                        "payload": payload or {},
-                    }
-                )
-            except Exception:
-                monitoring_failed = True
-
-        observe("started")
         try:
             result = await run_command(
                 command,
@@ -409,29 +268,7 @@ def _make_command_node(
                 allowed_branches=command_targets,
                 allowed_dispatch_keys=dispatch_targets,
             )
-        except asyncio.CancelledError:
-            observe("cancelled", error_code="request_cancelled")
-            _finish_node_observation(
-                lifecycle_service,
-                runtime,
-                invocation_id=invocation_id,
-                attempt=attempt,
-                started=node_observation_started,
-                status="cancelled",
-                error_code="request_cancelled",
-            )
-            raise
         except CommandError as exc:
-            observe("failed", error_code="workflow.command_failed")
-            _finish_node_observation(
-                lifecycle_service,
-                runtime,
-                invocation_id=invocation_id,
-                attempt=attempt,
-                started=node_observation_started,
-                status="failed",
-                error_code="workflow.command_failed",
-            )
             error = AgentRuntimeError(
                 "workflow.command_failed",
                 "The Command Node script failed.",
@@ -461,22 +298,6 @@ def _make_command_node(
         branch_targets = [
             command_targets[branch] for branch in result.activate
         ]
-        observe(
-            "completed",
-            payload={
-                "activate": list(result.activate),
-                "dispatch": [item.model_dump(mode="json") for item in result.dispatch],
-                "update": deepcopy(result.update),
-            },
-        )
-        _finish_node_observation(
-            lifecycle_service,
-            runtime,
-            invocation_id=invocation_id,
-            attempt=attempt,
-            started=node_observation_started,
-            status="completed",
-        )
         return Command(update=result.update, goto=[*branch_targets, *sends])
 
     return call_command
@@ -487,9 +308,7 @@ def compile_workflow(
     *,
     node_agents: Mapping[str, Any],
     commands: Mapping[str, CommandCallable] | None = None,
-    checkpointer: Any | None = None,
     store: BaseStore | None = None,
-    lifecycle_service: WorkflowLifecycleService | None = None,
     runtime_context: WorkflowRuntimeContext | None = None,
     initial_files: Mapping[str, Any] | None = None,
 ) -> Any:
@@ -587,7 +406,6 @@ def compile_workflow(
                     command=command,
                     command_targets=targets,
                     dispatch_targets=dispatches,
-                    lifecycle_service=lifecycle_service,
                     runtime_context=runtime_context,
                 ),
                 destinations=tuple(
@@ -606,7 +424,6 @@ def compile_workflow(
             _make_agent_node(
                 node_id=node.id,
                 built_agent=built_agent,
-                lifecycle_service=lifecycle_service,
                 runtime_context=runtime_context,
             ),
             defer=bool(node.config.get("defer", False)),
@@ -638,7 +455,7 @@ def compile_workflow(
         if not sources:
             continue
         builder.add_edge(sources[0] if len(sources) == 1 else sources, target)
-    return builder.compile(checkpointer=checkpointer, store=store)
+    return builder.compile(store=store)
 
 
 __all__ = ["compile_workflow"]
