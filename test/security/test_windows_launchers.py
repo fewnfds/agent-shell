@@ -103,7 +103,8 @@ def test_windows_runtime_allows_source_builds_and_limits_path_files() -> None:
     ).read_text(encoding="utf-8")
 
     path_file_filter = (
-        '$_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"'
+        '$_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth" '
+        '-and $_.Name -ne "distutils-precedence.pth"'
     )
     assert "--only-binary" not in bootstrap
     assert bootstrap.count(path_file_filter) == 2

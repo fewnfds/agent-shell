@@ -419,7 +419,7 @@ try {
     $editableLinks = @(
         Get-ChildItem -LiteralPath $installTarget -Filter "*.pth" -File -ErrorAction SilentlyContinue |
             Where-Object {
-                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"
+                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth" -and $_.Name -ne "distutils-precedence.pth"
             }
     )
     $directUrls = @(Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse -ErrorAction SilentlyContinue)
@@ -458,7 +458,7 @@ try {
     $editableLinks = @(
         Get-ChildItem -LiteralPath $sitePackages -Filter "*.pth" -File -ErrorAction SilentlyContinue |
             Where-Object {
-                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth"
+                $_.Name -notlike "*-nspkg.pth" -and $_.Name -ne "pywin32.pth" -and $_.Name -ne "distutils-precedence.pth"
             }
     )
     $directUrls = @(Get-ChildItem -LiteralPath $sitePackages -Filter "direct_url.json" -File -Recurse -ErrorAction SilentlyContinue)
