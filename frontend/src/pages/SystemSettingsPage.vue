@@ -507,7 +507,7 @@ onMounted(() => { void load() })
               {{ langgraphError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-lg-4 col-md-6">
+              <div class="col-lg-6 col-md-6">
                 <FormField
                   control-id="langgraph-jobs-per-worker"
                   field-path="n_jobs_per_worker"
@@ -527,7 +527,7 @@ onMounted(() => { void load() })
                   </template>
                 </FormField>
               </div>
-              <div class="col-lg-4 col-md-6">
+              <div class="col-lg-6 col-md-6">
                 <FormField
                   control-id="langgraph-debug-port"
                   field-path="debug_port"
@@ -548,9 +548,9 @@ onMounted(() => { void load() })
                   </template>
                 </FormField>
               </div>
-              <div class="col-lg-4 col-md-12">
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                  <span class="form-label mb-0 me-1">{{ t('systemSettings.langgraphDev.tools') }}</span>
+              <div class="col-12">
+                <h3 class="h6 mb-2">{{ t('systemSettings.langgraphDev.tools') }}</h3>
+                <div class="d-flex flex-wrap gap-2">
                   <a
                     class="btn btn-outline-primary"
                     data-testid="langgraph-api-docs-link"
@@ -558,7 +558,6 @@ onMounted(() => { void load() })
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <i class="bi bi-braces me-1" aria-hidden="true" />
                     {{ t('systemSettings.langgraphDev.apiDocs') }}
                   </a>
                   <a
@@ -568,7 +567,6 @@ onMounted(() => { void load() })
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <i class="bi bi-diagram-3 me-1" aria-hidden="true" />
                     {{ t('systemSettings.langgraphDev.studio') }}
                   </a>
                 </div>
@@ -651,7 +649,7 @@ onMounted(() => { void load() })
                   </LteButton>
                 </div>
               </div>
-              <div class="col-lg-3 col-md-6">
+              <div class="col-12">
                 <div class="form-check form-switch">
                   <input id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-check-input" role="switch" type="checkbox">
                   <label class="form-check-label" for="langsmith-tracing">
@@ -731,7 +729,7 @@ onMounted(() => { void load() })
                   </LteButton>
                 </div>
               </div>
-              <div class="col-lg-3 col-md-6 d-flex align-items-center">
+              <div class="col-12">
                 <div class="form-check form-switch">
                   <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
                   <label class="form-check-label" for="allow-remote">

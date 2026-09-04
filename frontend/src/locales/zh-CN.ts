@@ -528,7 +528,7 @@ export const zhCN = {
       jobs: 'Run 并发',
       debugPort: 'DAP 调试端口（可选）',
       debugPortDisabled: '关闭',
-      tools: '官方调试工具',
+      tools: '调试工具',
       apiDocs: 'API 文档',
       studio: 'LangGraph Studio',
     },

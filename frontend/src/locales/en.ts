@@ -530,7 +530,7 @@ export const en: MessageSchema = {
       jobs: 'Run concurrency',
       debugPort: 'DAP debug port (optional)',
       debugPortDisabled: 'Disabled',
-      tools: 'Official debugging tools',
+      tools: 'Debug tools',
       apiDocs: 'API Docs',
       studio: 'LangGraph Studio',
     },
