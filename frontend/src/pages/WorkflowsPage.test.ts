@@ -26,12 +26,11 @@ function i18n() {
 const workflow: Workflow = {
   id: 'workflow-1',
   name: 'Research Workflow',
-  workflow_role: 'parent',
   description: 'Runs the research agent.',
   checkpointer_id: null,
   workflow_event_output_id: null,
   response_stream_scheduling_id: null,
-  cancel_on_upstream_termination: true,
+  cancel_on_caller_termination: true,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,
@@ -76,8 +75,6 @@ function testRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: '/workflows', component: { template: '<div />' } },
-      { path: '/workflows/parents', component: { template: '<div />' } },
-      { path: '/workflows/children', component: { template: '<div />' } },
       { path: '/workflows/:id/editor', component: { template: '<div />' } },
     ],
   })
@@ -103,11 +100,10 @@ describe('WorkflowsPage', () => {
     mockComponentLists([workflow])
     const create = vi.spyOn(managementApi, 'createWorkflow').mockResolvedValue(workflow)
     const router = testRouter()
-    await router.push('/workflows/parents')
+    await router.push('/workflows')
     await router.isReady()
 
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -129,11 +125,11 @@ describe('WorkflowsPage', () => {
     await wrapper.get('#workflow-checkpointer').setValue(checkpointer.id)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
     await wrapper.get('#workflow-response-stream-scheduling').setValue(responseStreamScheduling.id)
-    const terminateWithUpstream = wrapper.get('#workflow-cancel-on-upstream-termination')
-    expect(wrapper.text()).toContain('Terminate when the client disconnects')
+    const terminateWithCaller = wrapper.get('#workflow-cancel-on-caller-termination')
+    expect(wrapper.text()).toContain('Terminate when the calling Run is cancelled or fails')
     expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
-    expect((terminateWithUpstream.element as HTMLInputElement).checked).toBe(true)
-    await terminateWithUpstream.setValue(false)
+    expect((terminateWithCaller.element as HTMLInputElement).checked).toBe(true)
+    await terminateWithCaller.setValue(false)
     const runtimeLimits = wrapper.findAll('input[type="number"]')
     await runtimeLimits[0]!.setValue(250)
     await runtimeLimits[1]!.setValue(90_000)
@@ -143,12 +139,11 @@ describe('WorkflowsPage', () => {
 
     expect(create).toHaveBeenCalledWith({
       name: 'New Workflow',
-      workflow_role: 'parent',
       description: 'New description',
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
       response_stream_scheduling_id: responseStreamScheduling.id,
-      cancel_on_upstream_termination: false,
+      cancel_on_caller_termination: false,
       recursion_limit: 250,
       execution_timeout_seconds: 90_000,
       max_concurrency: 300,
@@ -167,10 +162,9 @@ describe('WorkflowsPage', () => {
     }
     const copy = vi.spyOn(managementApi, 'copyWorkflow').mockResolvedValue(copied)
     const router = testRouter()
-    await router.push('/workflows/parents')
+    await router.push('/workflows')
     await router.isReady()
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -190,10 +184,9 @@ describe('WorkflowsPage', () => {
     mockComponentLists([workflow])
     const remove = vi.spyOn(managementApi, 'deleteWorkflow').mockResolvedValue({ ok: true })
     const router = testRouter()
-    await router.push(`/workflows/parents?id=${workflow.id}`)
+    await router.push(`/workflows?id=${workflow.id}`)
     await router.isReady()
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -209,62 +202,21 @@ describe('WorkflowsPage', () => {
     wrapper.unmount()
   })
 
-  it('queries and creates child Workflows from the child page', async () => {
-    mockComponentLists()
-    const child = { ...workflow, id: 'workflow-child', workflow_role: 'child' as const }
-    const create = vi.spyOn(managementApi, 'createWorkflow').mockResolvedValue(child)
-    const router = testRouter()
-    await router.push('/workflows/children')
-    await router.isReady()
-
-    const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'child' },
-      global: { plugins: [i18n(), router] },
-    })
-    await flushPromises()
-
-    expect(managementApi.getConfigurationOptions).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('Terminate when the parent Run is cancelled or fails')
-    expect(wrapper.find('#workflow-response-stream-scheduling').exists()).toBe(false)
-    const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
-    expect(assemblyColumns).toHaveLength(2)
-    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-6'))).toBe(true)
-    expect(wrapper.find('[data-ui-slot="help"]').exists()).toBe(false)
-    await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
-    await wrapper.get('[data-field="record-name"]').setValue('Child Workflow')
-    await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
-    await flushPromises()
-
-    expect(create).toHaveBeenCalledWith({
-      name: 'Child Workflow',
-      workflow_role: 'child',
-      description: '',
-      checkpointer_id: null,
-      workflow_event_output_id: null,
-      cancel_on_upstream_termination: true,
-      recursion_limit: 1_000_000,
-      execution_timeout_seconds: 1_200,
-      max_concurrency: 100,
-    })
-    wrapper.unmount()
-  })
-
   it('round-trips event output and can remove the Checkpointer reference', async () => {
     const configured = {
       ...workflow,
       checkpointer_id: checkpointer.id,
       workflow_event_output_id: eventOutput.id,
       response_stream_scheduling_id: null,
-      cancel_on_upstream_termination: true,
+      cancel_on_caller_termination: true,
     }
     mockComponentLists([configured])
     const update = vi.spyOn(managementApi, 'updateWorkflow').mockResolvedValue(configured)
     const router = testRouter()
-    await router.push('/workflows/parents')
+    await router.push('/workflows')
     await router.isReady()
 
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -277,12 +229,11 @@ describe('WorkflowsPage', () => {
 
     expect(update).toHaveBeenCalledWith(workflow.id, {
       name: workflow.name,
-      workflow_role: 'parent',
       description: workflow.description,
       checkpointer_id: null,
       workflow_event_output_id: eventOutput.id,
       response_stream_scheduling_id: null,
-      cancel_on_upstream_termination: true,
+      cancel_on_caller_termination: true,
       recursion_limit: 1_000_000,
       execution_timeout_seconds: 1_200,
       max_concurrency: 100,
@@ -330,10 +281,9 @@ describe('WorkflowsPage', () => {
       ],
     })
     const router = testRouter()
-    await router.push(`/workflows/parents?id=${workflow.id}`)
+    await router.push(`/workflows?id=${workflow.id}`)
     await router.isReady()
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -350,10 +300,9 @@ describe('WorkflowsPage', () => {
     mockComponentLists([workflow])
     vi.spyOn(managementApi, 'createWorkflow').mockReturnValue(pending.promise)
     const router = testRouter()
-    await router.push('/workflows/parents')
+    await router.push('/workflows')
     await router.isReady()
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -381,10 +330,9 @@ describe('WorkflowsPage', () => {
   it('canonicalizes an invalid Workflow query and removes it for an empty list', async () => {
     const options = mockComponentLists([workflow])
     const router = testRouter()
-    await router.push('/workflows/parents?id=missing')
+    await router.push('/workflows?id=missing')
     await router.isReady()
     const wrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), router] },
     })
     await flushPromises()
@@ -405,10 +353,9 @@ describe('WorkflowsPage', () => {
       workflows: [],
     })
     const emptyRouter = testRouter()
-    await emptyRouter.push('/workflows/parents?id=missing')
+    await emptyRouter.push('/workflows?id=missing')
     await emptyRouter.isReady()
     const emptyWrapper = mount(WorkflowsPage, {
-      props: { workflowRole: 'parent' },
       global: { plugins: [i18n(), emptyRouter] },
     })
     await flushPromises()
@@ -467,7 +414,6 @@ describe('WorkflowsPage', () => {
         title_key: '',
         description_key: '',
         config_schema: {},
-        workflow_roles: ['parent', 'child'],
         input_handles: [],
         output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
       },
@@ -478,7 +424,6 @@ describe('WorkflowsPage', () => {
         title_key: '',
         description_key: '',
         config_schema: {},
-        workflow_roles: ['parent', 'child'],
         input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
         output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
       },
@@ -489,7 +434,6 @@ describe('WorkflowsPage', () => {
         title_key: '',
         description_key: '',
         config_schema: {},
-        workflow_roles: ['parent', 'child'],
         input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
         output_handles: [],
       },

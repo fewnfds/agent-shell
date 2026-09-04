@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
@@ -18,8 +19,8 @@ from agent_shell.command import (
     CommandError,
     run_command,
 )
-from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
+from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
 from agent_shell.runtime.state import WorkflowNodeInputState, WorkflowState
 from agent_shell.runtime.workflow_lifecycle import lifecycle_invocations_namespace
 from agent_shell.workflow.catalog import node_type_spec
@@ -29,7 +30,6 @@ from agent_shell.workflow.topology import validate_workflow_topology
 if TYPE_CHECKING:
     from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.workflow.validation import admit_workflow_document
-from agent_shell.workflow_contracts import WorkflowRole
 
 
 def _compile_error(code: str, message: str) -> AgentRuntimeError:
@@ -50,6 +50,22 @@ def _mapping_delta(
     if include_deletions:
         delta.update({key: None for key in before.keys() - after.keys()})
     return delta
+
+
+def _server_input_node_id(node_ids: set[str]) -> str:
+    node_id = "__agent_shell_input__"
+    while node_id in node_ids:
+        node_id += "_"
+    return node_id
+
+
+def _make_server_input_node(initial_files: Mapping[str, Any] | None):
+    frozen_files = deepcopy(dict(initial_files or {}))
+
+    def initialize(_state: WorkflowState) -> dict[str, Any]:
+        return {"files": deepcopy(frozen_files)} if frozen_files else {}
+
+    return initialize
 
 
 def _invocation_metadata(
@@ -77,6 +93,31 @@ def _invocation_metadata(
     )
 
 
+def _node_runtime_context(
+    runtime: Runtime[WorkflowRunContext],
+    server_context: WorkflowRuntimeContext | None,
+) -> WorkflowRuntimeContext:
+    """Bind official Server Run identity at the Node execution boundary."""
+
+    if server_context is None:
+        context = runtime.context
+        if not isinstance(context, WorkflowRuntimeContext):
+            raise AgentRuntimeError(
+                "workflow.context_unavailable",
+                "The Workflow runtime context is unavailable.",
+                status_code=500,
+            )
+        return context
+    execution_info = runtime.execution_info
+    if execution_info is None or not execution_info.run_id:
+        raise AgentRuntimeError(
+            "workflow.run_identity_unavailable",
+            "The LangGraph Server Run identity is unavailable.",
+            status_code=500,
+        )
+    return server_context.for_server_run(execution_info.run_id)
+
+
 def _start_node_observation(
     lifecycle_service: WorkflowLifecycleService | None,
     runtime: Runtime[WorkflowRuntimeContext],
@@ -90,7 +131,7 @@ def _start_node_observation(
         if lifecycle_service is not None:
             try:
                 lifecycle_service.mark_monitoring_partial(
-                    runtime.context.workflow_run_id,
+                    runtime.context.run_id,
                     "node",
                 )
             except Exception:
@@ -100,7 +141,7 @@ def _start_node_observation(
         return lifecycle_service.start_node_attempt(
             {
                 "lifecycle_id": runtime.context.lifecycle_id,
-                "run_id": runtime.context.workflow_run_id,
+                "run_id": runtime.context.run_id,
                 "workflow_node_id": node_id,
                 "invocation_id": invocation_id,
                 "attempt": attempt,
@@ -128,7 +169,7 @@ def _finish_node_observation(
         return
     try:
         lifecycle_service.finish_node_attempt(
-            runtime.context.workflow_run_id,
+            runtime.context.run_id,
             invocation_id,
             attempt,
             status=status,
@@ -143,6 +184,7 @@ def _make_agent_node(
     node_id: str,
     built_agent: Any,
     lifecycle_service: WorkflowLifecycleService | None = None,
+    runtime_context: WorkflowRuntimeContext | None = None,
 ):
     async def call_agent(
         state: WorkflowNodeInputState,
@@ -159,7 +201,8 @@ def _make_agent_node(
             node_first_attempt_time=invoked_at,
         )
         try:
-            workflow_id = runtime.context.workflow_id
+            bound_context = _node_runtime_context(runtime, runtime_context)
+            workflow_id = bound_context.workflow_id
             if not workflow_id:
                 raise AgentRuntimeError(
                     "workflow.identity_unavailable",
@@ -186,7 +229,7 @@ def _make_agent_node(
             child_input["workflow_state_snapshot"] = deepcopy(
                 {key: value for key, value in state.items() if key != "files"}
             )
-            child_context = runtime.context.for_workflow_agent(
+            child_context = bound_context.for_workflow_agent(
                 workflow_node_id=node_id,
                 agent_profile_id=built_agent.agent_id,
                 node_invocation_id=invocation_id,
@@ -216,8 +259,8 @@ def _make_agent_node(
                 }
             await runtime.store.aput(
                 lifecycle_invocations_namespace(
-                    runtime.context.lifecycle_id,
-                    runtime.context.workflow_run_id,
+                    bound_context.lifecycle_id,
+                    bound_context.run_id,
                 ),
                 invocation_id,
                 invocation_artifact,
@@ -285,6 +328,8 @@ def _make_agent_node(
                     exc.code if isinstance(exc, AgentRuntimeError) else type(exc).__name__
                 ),
             )
+            if runtime_context is not None and isinstance(exc, AgentRuntimeError):
+                raise RuntimeError(encode_server_run_error(exc)) from exc
             raise
         _finish_node_observation(
             lifecycle_service,
@@ -306,6 +351,7 @@ def _make_command_node(
     command_targets: Mapping[str, str],
     dispatch_targets: Mapping[str, str],
     lifecycle_service: WorkflowLifecycleService | None,
+    runtime_context: WorkflowRuntimeContext | None = None,
 ):
     async def call_command(
         state: WorkflowState,
@@ -320,8 +366,9 @@ def _make_command_node(
             attempt=attempt,
             node_first_attempt_time=invoked_at,
         )
+        bound_context = _node_runtime_context(runtime, runtime_context)
         node_runtime = runtime.override(
-            context=runtime.context.for_workflow_node(
+            context=bound_context.for_workflow_node(
                 workflow_node_id=node_id,
                 node_invocation_id=invocation_id,
             )
@@ -338,7 +385,7 @@ def _make_command_node(
                 lifecycle_service.append_command_observation(
                     {
                         "lifecycle_id": runtime.context.lifecycle_id,
-                        "run_id": runtime.context.workflow_run_id,
+                        "run_id": runtime.context.run_id,
                         "invocation_id": invocation_id,
                         "workflow_node_id": node_id,
                         "attempt": attempt,
@@ -385,11 +432,14 @@ def _make_command_node(
                 status="failed",
                 error_code="workflow.command_failed",
             )
-            raise AgentRuntimeError(
+            error = AgentRuntimeError(
                 "workflow.command_failed",
                 "The Command Node script failed.",
                 status_code=422,
-            ) from exc
+            )
+            if runtime_context is not None:
+                raise RuntimeError(encode_server_run_error(error)) from exc
+            raise error from exc
         parent_state = {
             key: state[key]
             for key in WorkflowState.__annotations__
@@ -437,17 +487,15 @@ def compile_workflow(
     *,
     node_agents: Mapping[str, Any],
     commands: Mapping[str, CommandCallable] | None = None,
-    workflow_role: WorkflowRole | None = None,
     checkpointer: Any | None = None,
     store: BaseStore | None = None,
     lifecycle_service: WorkflowLifecycleService | None = None,
+    runtime_context: WorkflowRuntimeContext | None = None,
+    initial_files: Mapping[str, Any] | None = None,
 ) -> Any:
     """Compile catalog-declared canvas nodes into an official StateGraph."""
 
-    admission, normalized = admit_workflow_document(
-        document,
-        workflow_role=workflow_role,
-    )
+    admission, normalized = admit_workflow_document(document)
     if normalized is None:
         issue = admission.issues[0]
         raise _compile_error(issue.code, issue.message)
@@ -500,7 +548,26 @@ def compile_workflow(
                 END if edge.target in exit_ids else edge.target
             )
 
-    builder = StateGraph(WorkflowState, context_schema=WorkflowRuntimeContext)
+    builder = StateGraph(
+        WorkflowState,
+        context_schema=(
+            WorkflowRunContext
+            if runtime_context is not None
+            else WorkflowRuntimeContext
+        ),
+    )
+    server_input_node = (
+        _server_input_node_id(set(node_by_id))
+        if runtime_context is not None
+        else None
+    )
+    graph_entry = server_input_node or START
+    if server_input_node is not None:
+        builder.add_node(
+            server_input_node,
+            _make_server_input_node(initial_files),
+        )
+        builder.add_edge(START, server_input_node)
     for node in executable_nodes:
         spec = node_type_spec(node.type, node.type_version)
         assert spec is not None
@@ -521,6 +588,7 @@ def compile_workflow(
                     command_targets=targets,
                     dispatch_targets=dispatches,
                     lifecycle_service=lifecycle_service,
+                    runtime_context=runtime_context,
                 ),
                 destinations=tuple(
                     dict.fromkeys((*targets.values(), *dispatches.values()))
@@ -539,6 +607,7 @@ def compile_workflow(
                 node_id=node.id,
                 built_agent=built_agent,
                 lifecycle_service=lifecycle_service,
+                runtime_context=runtime_context,
             ),
             defer=bool(node.config.get("defer", False)),
         )
@@ -550,7 +619,7 @@ def compile_workflow(
     for edge in normalized.definition.edges:
         if edge_types[edge.id] != "normal":
             continue
-        source = START if edge.source in entry_ids else edge.source
+        source = graph_entry if edge.source in entry_ids else edge.source
         target = END if edge.target in exit_ids else edge.target
         sources = incoming.setdefault(target, [])
         if source not in sources:
@@ -560,12 +629,12 @@ def compile_workflow(
             for source in sources:
                 builder.add_edge(source, END)
             continue
-        # START independently activates the target when the graph begins. It is
-        # never part of an all-of barrier; real predecessors may activate the
-        # same target again later, including through a loop.
-        if START in sources:
-            builder.add_edge(START, target)
-            sources = [source for source in sources if source != START]
+        # The graph entry independently activates the target when execution
+        # begins. It is never part of an all-of barrier; real predecessors may
+        # activate the same target again later, including through a loop.
+        if graph_entry in sources:
+            builder.add_edge(graph_entry, target)
+            sources = [source for source in sources if source != graph_entry]
         if not sources:
             continue
         builder.add_edge(sources[0] if len(sources) == 1 else sources, target)

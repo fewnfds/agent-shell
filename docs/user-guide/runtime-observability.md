@@ -5,9 +5,9 @@
 【系统 / 日志中心】只合并两类运维记录（management-only，需要管理鉴权；相关系统设置见[数据、文件与系统设置](system-management.md)）：
 
 - 系统日志：服务、配置、安全和管理请求事件；
-- 运行诊断：Workflow、Agent、background task、持久化或观测链路的失败摘要。
+- 运行诊断：Workflow、Agent、跨 Workflow 调用、持久化或观测链路的失败摘要。
 
-运行诊断使用 `diagnostic_id`，并按可用范围关联 `request_id`、`lifecycle_id`、`run_id`、仅在启用 Checkpointer 时存在的 `thread_id`、parent Workflow、
+运行诊断使用 `diagnostic_id`，并按可用范围关联 `request_id`、`lifecycle_id`、`run_id`、`thread_id`、Workflow、
 `subject_kind/id/name`、Workflow Node、`node_invocation_id` 和 `exception_type`；没有值的字段不存储。正常完成的 Run 不生成运行诊断。
 
 页面提供时间、来源、级别和全文筛选、摘要查看、按筛选条件批量删除，以及超大 JSON 条目下载。系统日志按文件大小保留（默认 `5 MiB`，最小 `1 MiB`），运行诊断按条数保留（默认 `20` 条，最小 `1` 条）；两者只清理自己拥有的日志数据。
@@ -26,9 +26,11 @@ Provider 有明确 4xx/5xx 状态时，普通 HTTP 调用方收到该状态和�
 
 ## 运行监控
 
-【系统 / 运行监控】以一次顶层请求的 Lifecycle 聚合 root Workflow Run 和全部 background Workflow Run，属于需要管理鉴权的实例级功能。Lifecycle 目录提供搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示 parent Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。启用采集的记录提供【监控】和【下载】入口；关闭采集的记录保留带原因的禁用操作，避免发送必然失败的详情或下载请求。
+当前 LangGraph Dev 执行迁移期间，Server-managed 请求入口 Run 与被调用 Run 尚未写入 application Runtime Registry，因此不会出现在【系统 / 运行监控】目录；这些 Run 的 Assistant、Thread、Run 与 State 通过同端口官方 API 读取。以下页面和归档行为适用于 Registry 中已经登记的 Lifecycle/Run，Management 读取面将在 Lifecycle/Monitoring 阶段改为组合官方对象。
 
-Lifecycle 监控详情使用 `/system/workflow-lifecycles/{lifecycle_id}/monitoring`。页面范围可选整个 Lifecycle、一个 Workflow 及其后代 Run，或单个 Run；Workflow 后代关系由后端 Registry 计算，浏览器只显示返回结果。选择与详情状态通过 `scope`、`workflow_id`、`run_id`、`node_id` 和 `view` query 保存；未指定有效 Run 时选择当前范围内的 Lifecycle root Run 或首个 Run。左侧 Run 索引只按 snapshot 返回的 roots 与 parent/child relationship 显示层级。中间用只读 Vue Flow 显示所选 Run 保存的 frozen Graph，并按 Node summary 展示 attempt 数量和状态；只有 `status_counts.running > 0` 的 Node 使用运行中强调，文字与数字同时表达状态。画布保留 frozen Node 位置与 viewport，关闭编辑、连线和 Edge 动画；空文档不会自动补画 Start/End。
+【系统 / 运行监控】以一次请求入口的 Lifecycle 聚合入口 Workflow Run 和全部被调用 Workflow Run，属于需要管理鉴权的实例级功能。Lifecycle 目录提供搜索、分页、单项删除和按当前服务端搜索条件批量删除；目录展示入口 Workflow、创建时间、状态、Run 数量、失败数、Token 用量和本次 Lifecycle 是否启用监控采集。启用采集的记录提供【监控】和【下载】入口；关闭采集的记录保留带原因的禁用操作，避免发送必然失败的详情或下载请求。
+
+Lifecycle 监控详情使用 `/system/workflow-lifecycles/{lifecycle_id}/monitoring`。页面范围可选整个 Lifecycle、一个 Workflow 及其后代 Run，或单个 Run；Workflow 后代关系由后端 Registry 计算，浏览器只显示返回结果。选择与详情状态通过 `scope`、`workflow_id`、`run_id`、`node_id` 和 `view` query 保存；未指定有效 Run 时选择当前范围内的 Lifecycle root Run 或首个 Run。左侧 Run 索引只按 snapshot 返回的 roots 与 caller/spawned relationship 显示层级。中间用只读 Vue Flow 显示所选 Run 保存的 frozen Graph，并按 Node summary 展示 attempt 数量和状态；只有 `status_counts.running > 0` 的 Node 使用运行中强调，文字与数字同时表达状态。画布保留 frozen Node 位置与 viewport，关闭编辑、连线和 Edge 动画；空文档不会自动补画 Start/End。
 
 点击 Graph Node 或用键盘激活 Node，会在共用详情区读取当前 Lifecycle + Run + frozen Node 的持久化 attempt 分页。详情显示后端提供的 invocation ID、1-indexed attempt、sequence、开始/结束时间、状态和稳定错误码。Agent Node 可以选择一次 invocation，查看 exact completed artifact，以及 compact direct origin 明确属于该 Node + invocation 的已记录 ProtocolEvent；消息正文和标准文本 content block 直接呈现，其他结构始终可展开 raw JSON。Command Node 显示该 Node 的 `started|completed|failed|cancelled` observation，以及成功时经过校验的 `activate`、`dispatch`、`update` 外部结果，不把它们解释成 Edge 已激活结论。前端不根据时间、事件、namespace 或 Graph 路径推断 retry、激活或跨 Run 因果。
 
@@ -36,11 +38,11 @@ Lifecycle 监控详情使用 `/system/workflow-lifecycles/{lifecycle_id}/monitor
 
 活动 Lifecycle 在页面可见时约每两秒通过普通 HTTP GET 重新读取完整 Lifecycle snapshot、当前 scope snapshot 和已打开的轻量资源；frozen Graph 只在选择 Run 时读取，State 只手动刷新。页面隐藏时暂停，恢复可见时立即刷新；Lifecycle 完全终态时完成当前最后一轮资源读取并切为静态结果。一次刷新失败保留上一份成功数据并按普通间隔重试；Graph、Node summary、Node attempt、Agent artifact/event、Command、Model、State 各自在对应区域呈现 `partial|unavailable` 或请求错误，不遮蔽其他成功区域。请求之间没有服务端会话、SSE、WebSocket 或统一 change feed。
 
-Workflow scope 只先选择本 Lifecycle 中 `workflow_id` 精确匹配的 Run，再沿 Registry `parent_run_id` 包含 descendants；Run forest 也只表达这条 parent/child 关系。Node、Agent、Tool、Edge 或跨 Run 因果不会从 event namespace、时间关系或 Graph 路径推演。每个资源都返回自己的 `availability`，局部 `partial|unavailable` 不会遮蔽其他可读事实。
+Workflow scope 只先选择本 Lifecycle 中 `workflow_id` 精确匹配的 Run，再沿 Registry `caller_run_id` 包含 descendants；Run forest 也只表达 `caller_run_id -> spawned_run_id` 关系。Node、Agent、Tool、Edge 或跨 Run 因果不会从 event namespace、时间关系或 Graph 路径推演。scope 外的 caller 使当前 Run 成为局部视图 root，不构成 orphan。每个资源都返回自己的 `availability`，局部 `partial|unavailable` 不会遮蔽其他可读事实。
 
 ### 持久化事实
 
-Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的权威 owner。每个 root/background Run 使用独立 `run_id`，并保存 parent/background relationship、Workflow identity、状态、起止时间、终止原因、错误码和 usage。Registry 注册、开始或终态提交失败属于运行控制故障，不能作为可选观测写入吞掉。
+Runtime Registry 是 Lifecycle 与 Workflow Run 控制事实的当前 owner。每个入口或被调用 Run 使用独立 `run_id`，并保存可空 `caller_run_id`、可空 `operation_id`、Workflow identity、状态、起止时间、终止原因、错误码和 usage。Registry 注册、开始或终态提交失败属于运行控制故障，不能作为可选观测写入吞掉。
 
 启用采集的每个 Run 同时保存以下监控事实：
 
@@ -54,9 +56,9 @@ Graph、Node、ProtocolEvent、Model Request 和 Command 五个分区分别具�
 
 ProtocolEvent 先进入本 Run 的有序内存缓冲，再由 application SQLite worker 把当时已排队的记录作为一个事务写入。正常完成、失败和取消都会先排空已经接收的记录，再提交 Run 终态；应用正常关闭也会排空仍登记的 writer。运行中的读取只显示已经提交到 SQLite 的记录，因此可以短暂落后于正在消费的 stream。进程被强制终止时，尚在内存中的可选观测记录可能丢失；恢复边界会把无法证明完整的分区呈现为 `partial`，不会伪装成完整历史。
 
-Workflow Run 只有在自己的 Workflow 引用 Checkpointer Component 时才拥有 `checkpoint_thread_id`，并由共享的官方 LangGraph `AsyncSqliteSaver` 写入 Checkpoint。Parent 与 background child 独立读取各自冻结配置。监控通过官方 Checkpointer `aget_tuple()` 读取 latest persisted root State；没有 Checkpointer 时明确显示 `not_enabled`。当前不提供 State history、修改、Resume、time travel 或灾难恢复入口。
+Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev runtime 拥有。应用监控中的 `checkpoint_thread_id` 与 latest State 读取面将在 persistence/monitoring 阶段改为公共 Thread API；当前不提供 State 修改、Resume、time travel 或灾难恢复入口。
 
-完成的 Agent invocation artifact 已由 Lifecycle Store 保存时，监控先验证对应 Node attempt、frozen Agent Node 与 Agent UUID，再使用固定 Lifecycle/Run namespace 和 invocation key 通过官方 Store `aget()` 精确读取。接口不扫描 namespace，也不开放 Lifecycle input、background task、filesystem route 或任意 Store browser。
+完成的 Agent invocation artifact 已由 Lifecycle Store 保存时，监控先验证对应 Node attempt、frozen Agent Node 与 Agent UUID，再使用固定 Lifecycle/Run namespace 和 invocation key 通过官方 Store `aget()` 精确读取。接口不扫描 namespace，也不开放 Lifecycle input、filesystem route 或任意 Store browser。
 
 ### 后端读取接口
 
@@ -81,15 +83,15 @@ Lifecycle 与单 Run 使用同一个 `agent-shell.runtime-monitoring-archive.v1`
 
 活动运行下载在开始时固定 Run 集合以及 Node、Protocol、Model、Command 的当前最大 sequence，之后只读到这些 high-water；下载开始后出现的新 Run 或新记录进入下一次下载。Registry 可变行、State 和 Store artifact 各自保留实际读取时间，因此这是一定会结束的有界持久化快照，不宣称所有文件来自同一数据库时刻。
 
-归档只读取运行监控已经拥有的 canonical facts。Lifecycle input、background task 私有记录、任意 Store namespace、完整 checkpoint history、日志中心、用户文件、mapped directory 和 Lifecycle 动态目录不进入 ZIP。服务只在 application `runtime/tmp` 创建本次响应的临时目录，响应结束后释放，不建立归档历史或第二份长期运行数据。
+归档只读取运行监控已经拥有的 canonical facts。Lifecycle input、Run call relation、任意 Store namespace、完整 checkpoint history、日志中心、用户文件、mapped directory 和 Lifecycle 动态目录不进入 ZIP。服务只在 application `runtime/tmp` 创建本次响应的临时目录，响应结束后释放，不建立归档历史或第二份长期运行数据。
 
 ### 保留与删除
 
 【系统 / 系统配置】的 `runtime_monitoring_retention_lifecycles` 默认值为 `20`、最小值为 `0`，没有产品最大值。创建 Lifecycle 时以当时的值是否大于 `0` 冻结 `monitoring_capture_enabled`；运行中修改设置不会改变该 Lifecycle 的采集 profile。全局保留数量始终使用最新设置，因此降低数值会立即收敛已经完整终止的数据。
 
-Lifecycle 只有在 root Run、全部 child Run 和全部 background task 都进入终态后才取得 `fully_terminal_at`。活动 Lifecycle 不计入保留数量；完整终态的数据按 `(fully_terminal_at, lifecycle_id)` 保留最近 N 个，因此创建较早但结束较晚的长任务按实际结束顺序参与保留。服务启动时先把遗留 active Run 和失去进程 owner 的 background task 归一为 `interrupted`，再判断完整终态并执行保留策略。
+Lifecycle 只有在请求入口 Run 和全部被调用 Run 都进入终态后才取得 `fully_terminal_at`。活动 Lifecycle 不计入保留数量；完整终态的数据按 `(fully_terminal_at, lifecycle_id)` 保留最近 N 个，因此创建较早但结束较晚的长任务按实际结束顺序参与保留。
 
-值为 `0` 时，新 Lifecycle 不写监控事实，但 Registry、Lifecycle input 和 background task 等运行必需控制数据仍服务到完整终态，随后自动清理。自动保留清理删除该 Lifecycle 的 Registry、监控事实、官方 Store input/task/invocation/filesystem route，以及所有非空 `checkpoint_thread_id` 对应的官方 checkpoint；它不删除日志中心诊断以及任何运行中写入硬盘的用户文件或目录。
+值为 `0` 时，新 Lifecycle 不写监控事实，但 Registry、Lifecycle input 和 Run call relation 等运行必需控制数据仍服务到完整终态，随后自动清理。自动保留清理删除该 Lifecycle 的 Registry、监控事实、官方 Store input/run-call/invocation/filesystem route，以及应用仍登记的 checkpoint 数据；它不删除日志中心诊断以及任何运行中写入硬盘的用户文件或目录。
 
 单项删除和批量删除同样拒绝 active Lifecycle。Lifecycle 动态模式创建的 `lifecycle-{lifecycle_id}` 目录及其内容属于用户文件，运行监控不登记、保留计数或删除它们；用户通过文件管理入口或宿主文件系统自行管理。批量删除作用于服务端完整匹配集，跳过 active Lifecycle；空搜索条件匹配全部目录记录。
 

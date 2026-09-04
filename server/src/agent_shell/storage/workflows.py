@@ -9,19 +9,15 @@ from agent_shell.workflow.contracts import (
     WorkflowGraphDocumentV1,
     WorkflowLayoutV1,
 )
-from agent_shell.workflow_contracts import WorkflowRole
-
-
 class WorkflowStore:
     _PUBLIC_FIELDS = (
         "id",
         "name",
-        "workflow_role",
         "description",
         "checkpointer_id",
         "workflow_event_output_id",
         "response_stream_scheduling_id",
-        "cancel_on_upstream_termination",
+        "cancel_on_caller_termination",
         "recursion_limit",
         "execution_timeout_seconds",
         "max_concurrency",
@@ -37,29 +33,26 @@ class WorkflowStore:
         public = {
             "id": str(record["id"]),
             "name": str(record["name"]),
-            "workflow_role": str(record["workflow_role"]),
             "description": str(record["description"]),
             "checkpointer_id": record.get("checkpointer_id"),
             "workflow_event_output_id": record.get("workflow_event_output_id"),
-            "cancel_on_upstream_termination": bool(
-                record.get("cancel_on_upstream_termination", True)
+            "cancel_on_caller_termination": bool(
+                record.get("cancel_on_caller_termination", True)
             ),
             "recursion_limit": int(record["recursion_limit"]),
             "execution_timeout_seconds": int(record["execution_timeout_seconds"]),
             "max_concurrency": int(record.get("max_concurrency", 100)),
             "enabled": bool(record["enabled"]),
         }
-        if public["workflow_role"] == "parent":
-            public["response_stream_scheduling_id"] = record.get(
-                "response_stream_scheduling_id"
-            )
+        public["response_stream_scheduling_id"] = record.get(
+            "response_stream_scheduling_id"
+        )
         return public
 
     def list_items(
         self,
         *,
         enabled_only: bool = False,
-        workflow_role: WorkflowRole | None = None,
     ) -> list[dict]:
         records = [
             self._public(item)
@@ -69,23 +62,13 @@ class WorkflowStore:
         ]
         if enabled_only:
             records = [item for item in records if item["enabled"]]
-        if workflow_role is not None:
-            records = [item for item in records if item["workflow_role"] == workflow_role]
         return sorted(records, key=lambda value: (value["name"].casefold(), value["id"]))
 
     def list_item_summaries(
         self,
-        *,
-        workflow_role: WorkflowRole | None = None,
     ) -> list[dict]:
-        fields = ("id", "name", "workflow_role", "description", "enabled")
+        fields = ("id", "name", "description", "enabled")
         records = self._repository.list_records("workflows", fields=fields)
-        if workflow_role is not None:
-            records = [
-                item
-                for item in records
-                if item.get("workflow_role") == workflow_role
-            ]
         return sorted(
             records,
             key=lambda value: (
@@ -126,8 +109,6 @@ class WorkflowStore:
                 raise ValueError("workflow name already exists")
             stored = deepcopy(data)
             stored["id"] = item_id
-            if stored.get("workflow_role") != "parent":
-                stored.pop("response_stream_scheduling_id", None)
             stored.setdefault("definition", deepcopy(empty_definition))
             stored.setdefault("layout", deepcopy(empty_layout))
             for index, item in enumerate(records):
@@ -174,8 +155,6 @@ class WorkflowStore:
                 source.get("definition", empty_definition)
             )
             stored["layout"] = deepcopy(source.get("layout", empty_layout))
-            if stored.get("workflow_role") != "parent":
-                stored.pop("response_stream_scheduling_id", None)
             records.append(stored)
             copied = True
 

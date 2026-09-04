@@ -47,6 +47,87 @@ def _consume(
     return signals
 
 
+def _server_message(payload: dict) -> dict:
+    return {
+        "type": "event",
+        "method": "messages",
+        "params": {
+            "namespace": ["agent-a:invocation-1"],
+            "data": payload,
+        },
+    }
+
+
+def test_server_protocol_message_objects_feed_the_existing_response_signals() -> None:
+    stream, usage, resolver = _stream()
+    started = _consume(
+        stream,
+        resolver,
+        _server_message(
+            {
+                "event": "message-start",
+                "role": "ai",
+                "id": "message-1",
+                "metadata": {"langgraph_node": "agent-a"},
+            }
+        ),
+    )
+    block_started = _consume(
+        stream,
+        resolver,
+        _server_message(
+            {
+                "event": "content-block-start",
+                "index": 0,
+                "content": {"type": "text", "text": ""},
+            }
+        ),
+    )
+    delta = _consume(
+        stream,
+        resolver,
+        _server_message(
+            {
+                "event": "content-block-delta",
+                "index": 0,
+                "delta": {"type": "text-delta", "text": "official"},
+            }
+        ),
+    )
+    finished = _consume(
+        stream,
+        resolver,
+        _server_message(
+            {
+                "event": "message-finish",
+                "usage": {
+                    "input_tokens": 2,
+                    "output_tokens": 1,
+                    "total_tokens": 3,
+                },
+            }
+        ),
+    )
+
+    assert [(type(event), event.phase) for event in started] == [
+        (ResponseModelCallBoundary, "start")
+    ]
+    assert [(event.kind, event.phase) for event in block_started] == [
+        ("content", "start")
+    ]
+    assert [(event.kind, event.phase) for event in delta] == [
+        ("content", "delta")
+    ]
+    assert [(type(event), event.phase) for event in finished] == [
+        (ResponseModelCallBoundary, "end")
+    ]
+    assert usage.snapshot == {
+        "input_tokens": 2,
+        "output_tokens": 1,
+        "total_tokens": 3,
+    }
+
+
 def test_streamed_message_finish_closes_the_model_call_without_inventing_block_end() -> None:
     stream, usage, resolver = _stream()
     started = _consume(

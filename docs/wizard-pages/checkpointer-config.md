@@ -11,6 +11,5 @@
 - `async`：下一步执行时异步写入当前检查点；在延迟与持久性之间取默认平衡；
 - `sync`：完成当前检查点写入后再开始下一步；持久性最强，写入延迟最高。
 
-选择后，每个 Workflow Run 都生成自己的 `checkpoint_thread_id`。Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承所在 Workflow root 的 saver。parent Workflow 与 background child Workflow 分别读取自己的配置。
-
-未选择时，Graph 不传 checkpoint thread 或 durability，也不会因该 Run 启动 saver。最终进程内 State、Store、Runtime Registry、启用采集时的 Graph/Node/ProtocolEvent/Model Request/Command facts、Agent invocation artifact、background Run、Tracing、Diagnostics 和 usage 保持可用；运行监控的 persisted State 资源显示 `not_enabled`，Checkpoint Thread 和检查点计数自然不存在。选择后，运行监控可通过官方 Checkpointer 接口读取 latest persisted root State。当前软件不提供 State history、修改、Resume、time travel 或灾难恢复入口。
+Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 当前由 LangGraph Dev runtime 统一拥有，执行路径不读取 Workflow 的 `checkpointer_id`。该配置面将在 persistence 阶段收敛；当前配置任务不应依赖本组件改变运行行为。
+当前软件不提供 State history、修改、Resume、time travel 或灾难恢复入口。

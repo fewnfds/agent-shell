@@ -6,9 +6,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from agent_shell.configuration.identity import ConfigurationId
-from agent_shell.workflow_contracts import WorkflowRole
-
-
 class EmptyNodeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -63,7 +60,6 @@ class NodeTypeSpec:
     config_model: type[BaseModel]
     input_handles: tuple[NodeHandleSpec, ...]
     output_handles: tuple[NodeHandleSpec, ...]
-    workflow_roles: tuple[WorkflowRole, ...]
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -75,7 +71,6 @@ class NodeTypeSpec:
             "config_schema": self.config_model.model_json_schema(),
             "input_handles": [item.as_dict() for item in self.input_handles],
             "output_handles": [item.as_dict() for item in self.output_handles],
-            "workflow_roles": list(self.workflow_roles),
         }
 
 
@@ -102,7 +97,6 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         config_model=EmptyNodeConfig,
         input_handles=(),
         output_handles=_NEXT,
-        workflow_roles=("parent", "child"),
     ),
     NodeTypeSpec(
         type="agent",
@@ -113,7 +107,6 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         config_model=AgentNodeConfig,
         input_handles=_AGENT_IN,
         output_handles=_NEXT,
-        workflow_roles=("parent", "child"),
     ),
     NodeTypeSpec(
         type="command",
@@ -124,7 +117,6 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         config_model=CommandNodeConfig,
         input_handles=_IN,
         output_handles=_BRANCH + _DISPATCH,
-        workflow_roles=("parent", "child"),
     ),
     NodeTypeSpec(
         type="end",
@@ -135,7 +127,6 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         config_model=EmptyNodeConfig,
         input_handles=_IN,
         output_handles=(),
-        workflow_roles=("parent", "child"),
     ),
 )
 

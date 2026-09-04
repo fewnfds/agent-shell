@@ -3,7 +3,6 @@ from __future__ import annotations
 from agent_shell.runtime.state import (
     AgentShellState,
     WorkflowState,
-    merge_background_tasks,
     merge_agent_invocations,
     merge_shared_vars,
 )
@@ -23,22 +22,24 @@ def test_shared_vars_reducer_merges_independent_patches() -> None:
 def test_agent_shell_state_exposes_shared_vars_as_public_graph_state() -> None:
     assert "shared_vars" in AgentShellState.__annotations__
     assert "workflow_state_snapshot" in AgentShellState.__annotations__
-    assert "background_tasks" in WorkflowState.__annotations__
+    assert "background_tasks" not in WorkflowState.__annotations__
 
 
-def test_runtime_context_keeps_identity_without_lifecycle_or_parent_state_payloads() -> None:
+def test_runtime_context_keeps_run_identity_and_commands_out_of_graph_state() -> None:
     fields = WorkflowRuntimeContext.__dataclass_fields__
 
     assert {
         "lifecycle_id",
-        "workflow_run_id",
+        "request_id",
+        "run_id",
         "workflow_id",
         "workflow_node_id",
         "agent_profile_id",
         "node_invocation_id",
-        "background_runs",
+        "caller_run_id",
+        "operation_id",
+        "workflow_runs",
     } <= fields.keys()
-    assert "request_id" not in fields
     assert "checkpoint_thread_id" not in fields
     assert "parent_workflow_run_id" not in fields
     assert "background_task_id" not in fields
@@ -46,7 +47,6 @@ def test_runtime_context_keeps_identity_without_lifecycle_or_parent_state_payloa
     assert "run_depth" not in fields
     assert "workflow_name" not in fields
     assert "workflow_role" not in fields
-    assert "run_id" not in fields
     assert "workflow" not in fields
     assert "messages" not in fields
     assert "messages_sha" not in fields
@@ -95,16 +95,3 @@ def test_agent_invocation_reducer_replaces_the_same_logical_slots() -> None:
     }
 
     assert merge_agent_invocations(current, update) == update
-
-
-def test_background_task_reducer_replaces_each_task_with_latest_check() -> None:
-    assert merge_background_tasks(
-        {"task-1": {"runtime_status": "running"}},
-        {
-            "task-1": {"runtime_status": "succeeded"},
-            "task-2": {"runtime_status": "failed"},
-        },
-    ) == {
-        "task-1": {"runtime_status": "succeeded"},
-        "task-2": {"runtime_status": "failed"},
-    }

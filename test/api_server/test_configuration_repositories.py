@@ -106,10 +106,9 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
                     key: workflow[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
-                        "cancel_on_upstream_termination",
+                        "cancel_on_caller_termination",
                         "recursion_limit",
                         "execution_timeout_seconds",
                         "max_concurrency",

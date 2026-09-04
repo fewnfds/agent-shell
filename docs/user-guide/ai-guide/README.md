@@ -25,23 +25,23 @@ Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭
 
 Management API 使用 `/api/*`，负责发现、创建、修改、校验和发布配置。
 
-OpenAI-compatible API 使用 `/v1/*`，负责发现和运行已经 enabled 的 parent Workflow。
+OpenAI-compatible API 使用 `/v1/*`，负责发现和运行全部 enabled Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
 一次外部请求按以下路径运行：
 
 ```text
 OpenAI-compatible messages[]
-  -> 按 model 选择 enabled parent Workflow name
+  -> 按 model 选择 enabled Workflow name
   -> 捕获当前配置与 Model/MCP 资源快照
-  -> 创建 Lifecycle 与 parent Run
-  -> 保存不可变 request messages[]
-  -> 物化 Workflow Graph、Agent、Middleware 和 Python extension
-  -> 执行 LangGraph StateGraph
+  -> 创建或复用官方 Assistant，并创建本次请求的 Thread 与 Run
+  -> 把不可变 request messages[] 写入官方 Server Store
+  -> dynamic graph factory 从同一快照物化 Workflow Graph、Agent、Middleware 和 Python extension
+  -> LangGraph Dev Worker 执行 StateGraph
   -> 投影 Agent 与 Workflow event
   -> 返回 OpenAI-compatible response
 ```
 
-客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。它们保存在当前 Lifecycle Store，不会自动进入 Workflow root State，也不会跨请求累积为产品聊天历史。
+客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。它们作为本次请求的不可变输入保存在官方 Server Store Lifecycle namespace，不会自动进入 Workflow root State，也不会跨请求累积为产品聊天历史。Workflow State 保存当前 Thread/Run 的执行状态；需要跨 Run 查询的请求材料、Agent invocation artifact 和大型业务结果继续由 Store 或 Filesystem 持有。
 
 需要让某个 Agent 使用 request、task 或上游结果时，为该 Agent 装配 Agent Additional Prompt（AAP）或其他明确的 Custom Middleware。AAP 在 Agent invocation 开始前选择材料，并构造该 Agent 私有的初始 `messages`。
 
@@ -55,7 +55,7 @@ Component
   -> Main Agent
   -> Workflow metadata
   -> Workflow Graph
-  -> enabled parent Workflow
+  -> enabled Workflow
   -> /v1/chat/completions
 ```
 
@@ -72,7 +72,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 1. 用户需要的可观察结果是什么；
 2. 哪些步骤需要模型推理，哪些步骤是确定性逻辑；
 3. Node 数量是否在设计时已知；
-4. 是否使用 independent background child Run，以及 parent/child 的 State、cancellation 和 result handoff；
+4. 是否启动另一个独立 Workflow Run，以及 caller/spawned Run 的 State、cancellation 和 result handoff；
 5. 每类运行数据由哪个 State、Store 或 Filesystem owner 保存；
 6. 每个 Agent 从哪里获得初始工作材料；
 7. 正常成功、业务失败和循环退出分别由什么条件表示。
@@ -113,7 +113,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 创建或修改 Command、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明五类 Python package 共用的文件与 dependency contract。
 
-使用 independent child Workflow Run 时读[使用 background Run](07-background-runs.md)。普通异步 Python、parallel Node、Subagent 和 Command dispatch task 都在 current Run 内执行。
+需要从 current Run 启动另一个独立 Workflow Run 时读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。普通异步 Python、parallel Node、Subagent 和 Command dispatch task 都在 current Run 内执行。
 
 所有任务最后读[验证、运行与交付](08-validate-run-deliver.md)。
 
@@ -156,7 +156,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - 所有可达 Agent、Subagent 和 Command 使用的 MCP Requirement 已绑定，所需 secret slot 不为 `missing`；
 - 可达 Python extension 的 dependency status 满足运行条件；
 - 至少一次最接近用户需求的真实 invocation 得到可解释结果，或外部阻塞已经明确记录；
-- 没有意外遗留的 active background task；
+- 没有意外遗留的 active Workflow Run；
 - 交付报告说明新建或复用的对象、关键 UUID、运行入口、验证结果和未验证项。
 
 ## 9. 术语
@@ -171,7 +171,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - System Prompt、Agent Additional Prompt（AAP）；
 - Command、Custom Tool、Custom Middleware；
 - Workflow Graph、Node、Edge、handle、State、Runtime、Store；
-- Lifecycle、Run、background Run、Checkpoint Thread；
+- Lifecycle、请求入口 Run、被调用 Run、Checkpoint Thread；
 - Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
 
 详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择入口、操作顺序、运行语义和验收路径，不复制完整字段参考。

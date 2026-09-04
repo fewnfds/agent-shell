@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph"
+  },
+  "auth": {
+    "path": "agent_shell.langgraph_dev:auth"
+  },
+  "http": {
+    "app": "agent_shell.langgraph_dev:app"
+  }
+}

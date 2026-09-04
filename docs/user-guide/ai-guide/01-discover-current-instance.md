@@ -11,7 +11,7 @@
 Agent Shell 使用两类 credential：
 
 - `/api/*` 使用 management token，负责配置、validation、API Server 控制和 Lifecycle 管理；
-- `/v1/*` 使用独立 API Key，负责列出和运行 enabled parent Workflow。
+- `/v1/*` 使用独立 API Key，负责列出和运行全部 enabled Workflow。
 
 Management API 没有提交密码后再换取 token 的登录接口。首次启动设置的管理密码就是 `/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
 
@@ -76,7 +76,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 
 1. `GET /api/configuration-repositories`，记录 active Repository；
 2. `GET /api/catalog`，读取 Component type、required flag、Subagent policy 和 editor default；
-3. `GET /api/workflow-node-catalog`，读取 Node type、version、`config_schema`、input handle、output handle 和允许的 Workflow role；
+3. `GET /api/workflow-node-catalog`，读取 Node type、version、`config_schema`、input handle 和 output handle；
 4. `GET /api/configuration-options`，取得当前 Repository 的引用摘要；
 5. 读取准备复用、修改或排查的完整对象；
 6. 需要 Python-backed component 时，读取对应 template catalog；
@@ -92,7 +92,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 - `GET /api/configuration-options` 返回 active Repository identity、revision 和可引用对象摘要；
 - `GET /api/blocks/{type}` 返回某类 Component；`GET /api/blocks/{type}/{id}` 返回一条完整记录；
 - `GET /api/main-agents` 和 `GET /api/subagents` 返回 Agent configuration；
-- `GET /api/workflows?workflow_role=parent` 返回 parent Workflow；role 可以改为 `child`；
+- `GET /api/workflows` 返回全部 Workflow；可以通过通用 collection 参数读取 summary、搜索或分页；
 - `GET /api/model-connections` 返回当前实例私有 Model Connection 的 masked 或 missing projection；
 - `GET /api/model-requirements` 返回当前 Repository 的 Model Requirement 和本机 binding projection；
 - `GET /api/mcp-connections` 返回当前实例私有 MCP Connection；每个 secret env/Header 只显示 `masked` 或 `missing`；
@@ -138,8 +138,7 @@ Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
   },
   "workflow": {
     "id": null,
-    "name": null,
-    "role": "parent"
+    "name": null
   },
   "model_binding": {
     "requirement_id": null,

@@ -33,6 +33,8 @@ def _payload(**overrides) -> dict:
     payload = {
         "host": "127.0.0.1",
         "port": 19100,
+        "n_jobs_per_worker": 10,
+        "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
         "langsmith_endpoint": "https://api.smith.langchain.com",
@@ -57,6 +59,8 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
     assert response.json() == {
         "host": "127.0.0.1",
         "port": 19100,
+        "n_jobs_per_worker": 10,
+        "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
         "langsmith_endpoint": "https://api.smith.langchain.com",
@@ -86,6 +90,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
         "/api/system/settings",
         json=_payload(
             port=9123,
+            n_jobs_per_worker=12,
+            debug_port=9124,
             langsmith_tracing_enabled=True,
             langsmith_project="workflow-debug",
             langsmith_api_key={
@@ -99,6 +105,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     assert response.status_code == 200, response.text
     assert response.json()["restart_required"] is True
     assert response.json()["port"] == 9123
+    assert response.json()["n_jobs_per_worker"] == 12
+    assert response.json()["debug_port"] == 9124
     assert response.json()["langsmith_tracing_enabled"] is True
     assert response.json()["langsmith_api_key"] == {"configured": True}
     assert "langsmith-test-key" not in response.text
@@ -106,12 +114,16 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     assert app.state.settings.port == 19100
     document = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
     assert document["settings"]["port"] == 9123
+    assert document["settings"]["n_jobs_per_worker"] == 12
+    assert document["settings"]["debug_port"] == 9124
     assert document["settings"]["langsmith_tracing_enabled"] is True
     assert document["settings"]["langsmith_project"] == "workflow-debug"
     assert "langsmith_api_key" not in document["settings"]
     assert document["settings"]["cors_origins"] == ["https://console.example:8443"]
     restarted = get_settings(application_home=tmp_path)
     assert restarted.port == 9123
+    assert restarted.n_jobs_per_worker == 12
+    assert restarted.debug_port == 9124
     assert restarted.langsmith_tracing_enabled is True
     assert restarted.langsmith_api_key is not None
     assert restarted.langsmith_api_key.get_secret_value() == "langsmith-test-key"

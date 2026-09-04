@@ -53,14 +53,14 @@ synchronous Subagent 在 Main Agent loop 内提供模型选择的 specialist del
 - Main Agent 等待 Subagent 返回后继续同一个 Agent loop；
 - 不需要独立 Workflow Run 或 State。
 
-background Run 启动独立 child Workflow Run：
+跨 Workflow 调用启动另一个独立的官方 Run：
 
-- child 必须拥有独立 `run_id` 和独立 Workflow State；
-- launcher 需要在 child 仍运行时继续；
-- parent 需要自行决定检查、等待、取消或忽略 child；
-- task 需要由 enabled child Workflow 表达。
+- 被调用工作需要独立 `run_id`、Thread 和 Workflow State；
+- caller 需要在被调用 Run 仍运行时继续；
+- caller 需要自行决定检查、等待、取消或忽略该 Run；
+- 工作需要由另一个 enabled Workflow 表达。
 
-parallel Node、异步 Python、synchronous Subagent 和 Command dispatch worker 都属于 current Run。background Run 拥有独立 child `run_id` 和 Workflow State。
+parallel Node、异步 Python、synchronous Subagent 和 Command dispatch worker 都属于 current Run。跨 Workflow 调用创建另一个能力相同的官方 Run。
 
 ## 3. LangGraph 执行约束
 
@@ -122,24 +122,23 @@ Start 和 Agent Node 使用 static Normal Edge。Command 使用 Branch Edge 和 
 
 reachable executable Node 可以没有 outgoing Edge。该 path 在 Node 完成后自然结束。
 
-某条 path 到达 End 只结束该 path，不取消其他 active branch 或 independent background Run。
+某条 path 到达 End 只结束该 path，不取消其他 active branch 或已经启动的独立 Run。
 
 循环必须有业务可达的退出 path。`recursion_limit` 和 `execution_timeout_seconds` 是失败边界，不是正常业务完成条件。
 
 ## 4. Workflow State 和运行数据
 
-Workflow root State 声明四个 channel：
+Workflow root State 声明三个 channel：
 
 - `shared_vars` 保存当前 Run 的轻量控制状态；
 - `agent_invocations` 保存 Agent invocation identity 和 `result_ref`；
-- `background_tasks` 保存 background task handle 或最近一次 snapshot；
 - `files` 保存当前 Run 的 Deep Agents StateBackend 文件状态。
 
 Command 通过 `Send` 为单个 Agent worker 注入私有 `workflow_task`。它不是 Workflow root State channel。
 
-`runtime.context` 保存 lifecycle、run、可空 checkpoint thread、Node、Agent 和 background command 等当前 invocation identity 和服务入口。
+`runtime.context` 保存 lifecycle、run、caller/operation、Node、Agent 等当前 invocation identity，以及 `workflow_runs` 等窄服务入口。
 
-`runtime.store` 保存 Lifecycle input、完整 Agent invocation artifact、background task record 和其他通过 reference 读取的结构化数据。
+`runtime.store` 保存 Lifecycle input、完整 Agent invocation artifact、最小 Run call relation 和其他通过 reference 读取的结构化数据。
 
 ### 4.1 `shared_vars`
 
@@ -183,11 +182,11 @@ Command 通过 `Send` 为单个 Agent worker 注入私有 `workflow_task`。它�
 
 不要根据 mapping 插入顺序、Agent 开始时间或结束时间推导并行业务顺序。
 
-### 4.3 `background_tasks`
+### 4.3 跨 Run 控制状态
 
-调用 `start_workflow()`、`check()` 或 `cancel()` 后，可以把 handle 或 snapshot 的 `model_dump(mode="json")` 结果写入 `background_tasks`。
+`start_workflow()` 返回 Assistant、Thread 与 Run identity；`check()`、`list()`、`join()` 和 `cancel()` 从公共 Agent Server API 返回官方状态与输出。Agent Shell 不在 Workflow State 中维护第二套 task 状态机。
 
-业务 phase、winner、pending ID 和聚合进度放入 `shared_vars`。background task 的运行事实放入 `background_tasks`。
+后续步骤确实需要引用某个 Run 时，把 `run_id` 和业务 phase、winner、pending ID 或聚合进度放入调用方拥有的 `shared_vars`。官方 Run 状态、时间、错误和 Thread State 保持由 Agent Server 持有，不复制进 `shared_vars`。
 
 ### 4.4 `workflow_task`
 
@@ -209,7 +208,7 @@ payload 定义当前 worker 的私有 JSON input，字段由该 task contract �
 
 ### 4.5 Filesystem 和 Store
 
-`files` 适合 current Run 的 Agent 工作文件。独立 background Run 不自动复制或 merge parent 的 `files` channel。
+`files` 适合 current Run 的 Agent 工作文件。另一个 Workflow Run 不自动复制或 merge caller 的 `files` channel。
 
 大型正文、数据集和跨 Run artifact 使用 mapped Filesystem 或明确的 Store namespace，并在 State 或 task payload 中保存稳定 reference。
 
@@ -269,18 +268,18 @@ Command
 
 Command 根据运行时才确定的 task 集合生成 Agent invocation。每个 task 使用稳定 `task_id`、明确 `dispatch_key` 和 JSON payload。同一 Dispatch Edge 可以承载任意数量的 task，每个 task 对应一次 LangGraph `Send`。
 
-### 6.5 Independent child Run
+### 6.5 独立 Workflow Run
 
 ```text
-Start child
-  -> persist handle
-  -> check
+Start Workflow Run
+  -> keep required run_id
+  -> check or join
   -> business decision
   -> optional cancel or finalize
   -> End
 ```
 
-background Run 为 child 提供独立 Run、State、cancellation 和 result handoff。具体 command 与数据流见[使用 background Run](07-background-runs.md)。
+跨 Workflow 调用为被调用工作提供独立 Thread、Run、State、cancellation 和 result handoff。具体命令与数据流见[跨 Workflow Run 调用](07-cross-workflow-runs.md)。
 
 ## 7. 输出 design record
 
@@ -288,7 +287,6 @@ background Run 为 child 提供独立 Run、State、cancellation 和 result hand
 
 ```text
 observable result: <用户将看到或取得什么>
-workflow role: parent | child
 topology: Start -> ... -> End
 agent nodes: <Main Agent role，或 none>
 deterministic nodes: <Command role，或 none>
@@ -298,7 +296,7 @@ large artifacts: <Store namespace 或 virtual Filesystem path>
 success condition: <业务条件>
 failure condition: <业务条件>
 loop exit: <业务可达 path，或 no loop>
-background policy: <none | wait | poll | fire-and-forget | cancel redundant child>
+called Run policy: <none | join | poll | fire-and-forget | cancel redundant Run>
 ```
 
 ## 8. 本章完成结果
@@ -306,7 +304,7 @@ background policy: <none | wait | poll | fire-and-forget | cancel redundant chil
 进入配置阶段前确认：
 
 - Node 和 execution mechanism 已表达目标 topology 与运行边界；
-- 已区分固定 fan-out、dynamic map、Subagent 和 background Run；
+- 已区分固定 fan-out、dynamic map、Subagent 和跨 Workflow Run 调用；
 - 每个 `shared_vars` top-level key 有明确 owner；
 - parallel branch 不会覆盖同一个 top-level value；
 - 大型 artifact 使用 reference；

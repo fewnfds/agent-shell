@@ -57,6 +57,8 @@ const validationError = ref('')
 const runtimePolicyError = ref('')
 const host = ref('127.0.0.1')
 const port = ref(19100)
+const nJobsPerWorker = ref(10)
+const debugPort = ref<number | ''>('')
 const allowRemote = ref(false)
 const langsmithTracingEnabled = ref(false)
 const langsmithEndpoint = ref('https://api.smith.langchain.com')
@@ -128,6 +130,8 @@ function fieldLabel(messageKey: string, wireField: string): string {
 
 const systemSettingsValid = computed(() => {
   const normalizedPort = Number(port.value)
+  const normalizedJobs = Number(nJobsPerWorker.value)
+  const normalizedDebugPort = debugPort.value === '' ? null : Number(debugPort.value)
   const endpointValid = (() => {
     try {
       const endpoint = new URL(langsmithEndpoint.value.trim())
@@ -145,6 +149,13 @@ const systemSettingsValid = computed(() => {
   return Number.isInteger(normalizedPort)
     && normalizedPort >= 1
     && normalizedPort <= 65_535
+    && Number.isInteger(normalizedJobs)
+    && normalizedJobs >= 1
+    && (normalizedDebugPort === null
+      || (Number.isInteger(normalizedDebugPort)
+        && normalizedDebugPort >= 1
+        && normalizedDebugPort <= 65_535
+        && normalizedDebugPort !== normalizedPort))
     && endpointValid
     && Boolean(langsmithProject.value.trim())
     && (!langsmithTracingEnabled.value || langsmithApiKeyAvailable)
@@ -175,6 +186,8 @@ function applySystemSettings(value: SystemSettings): void {
   settings.value = value
   host.value = value.host
   port.value = value.port
+  nJobsPerWorker.value = value.n_jobs_per_worker
+  debugPort.value = value.debug_port ?? ''
   allowRemote.value = value.allow_remote
   langsmithTracingEnabled.value = value.langsmith_tracing_enabled
   langsmithEndpoint.value = value.langsmith_endpoint
@@ -262,6 +275,8 @@ async function saveSystemSettings(): Promise<void> {
     const savedSystemSettings = await api.updateSystemSettings({
       host: host.value.trim(),
       port: Number(port.value),
+      n_jobs_per_worker: Number(nJobsPerWorker.value),
+      debug_port: debugPort.value === '' ? null : Number(debugPort.value),
       allow_remote: allowRemote.value,
       langsmith_tracing_enabled: langsmithTracingEnabled.value,
       langsmith_endpoint: langsmithEndpoint.value.trim().replace(/\/$/, ''),
@@ -455,6 +470,53 @@ onMounted(() => { void load() })
                     {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
                   </label>
                 </div>
+              </div>
+            </div>
+
+            <h3 class="h6 mt-4 mb-3">{{ t('systemSettings.langgraphDev.title') }}</h3>
+            <div class="row g-3">
+              <div class="col-lg-4 col-md-6">
+                <FormField
+                  control-id="langgraph-jobs-per-worker"
+                  field-path="n_jobs_per_worker"
+                  :hint="t('systemSettings.langgraphDev.jobsHelp')"
+                  label-key="systemSettings.langgraphDev.jobs"
+                >
+                  <template #default="{ describedBy }">
+                    <input
+                      id="langgraph-jobs-per-worker"
+                      v-model.number="nJobsPerWorker"
+                      :aria-describedby="describedBy"
+                      class="form-control"
+                      min="1"
+                      required
+                      step="1"
+                      type="number"
+                    >
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-4 col-md-6">
+                <FormField
+                  control-id="langgraph-debug-port"
+                  field-path="debug_port"
+                  :hint="t('systemSettings.langgraphDev.debugPortHelp')"
+                  label-key="systemSettings.langgraphDev.debugPort"
+                >
+                  <template #default="{ describedBy }">
+                    <input
+                      id="langgraph-debug-port"
+                      v-model.number="debugPort"
+                      :aria-describedby="describedBy"
+                      class="form-control"
+                      max="65535"
+                      min="1"
+                      :placeholder="t('systemSettings.langgraphDev.debugPortDisabled')"
+                      step="1"
+                      type="number"
+                    >
+                  </template>
+                </FormField>
               </div>
             </div>
 

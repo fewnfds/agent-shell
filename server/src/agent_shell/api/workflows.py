@@ -27,7 +27,7 @@ from agent_shell.workflow.validation import (
     WORKFLOW_ADMISSION_STAGE,
     admit_workflow_document,
 )
-from agent_shell.workflow_contracts import WorkflowDefinition, WorkflowRole
+from agent_shell.workflow_contracts import WorkflowDefinition
 
 
 class WorkflowBulkDelete(BaseModel):
@@ -35,14 +35,11 @@ class WorkflowBulkDelete(BaseModel):
 
     ids: list[str] | None = Field(default=None, min_length=1)
     q: str | None = Field(default=None, min_length=1)
-    workflow_role: WorkflowRole | None = None
 
     @model_validator(mode="after")
     def select_ids_or_query(self) -> "WorkflowBulkDelete":
         if (self.ids is None) == (self.q is None):
             raise ValueError("exactly one of ids or q is required")
-        if self.workflow_role is not None and self.q is None:
-            raise ValueError("workflow_role is only valid with q")
         return self
 
 
@@ -54,10 +51,7 @@ class WorkflowCopy(BaseModel):
 
 def _validated(payload: dict) -> dict:
     try:
-        validated = WorkflowDefinition.model_validate(payload).model_dump(mode="json")
-        if validated["workflow_role"] == "child":
-            validated.pop("response_stream_scheduling_id", None)
-        return validated
+        return WorkflowDefinition.model_validate(payload).model_dump(mode="json")
     except ValidationError as exc:
         raise management_error(
             422,
@@ -162,18 +156,17 @@ def build_workflow_router(
     @router.get("/api/workflows")
     async def list_workflows(
         request: Request,
-        workflow_role: WorkflowRole | None = None,
         view: Literal["full", "summary"] = "full",
         q: str | None = None,
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int | None, Query(ge=1)] = None,
     ) -> list[dict] | dict:
         if not configuration_collection_requested(request.query_params):
-            return store.list_items(workflow_role=workflow_role)
+            return store.list_items()
         items = (
-            store.list_items(workflow_role=workflow_role)
+            store.list_items()
             if view == "full"
-            else store.list_item_summaries(workflow_role=workflow_role)
+            else store.list_item_summaries()
         )
         return configuration_collection(
             items,
@@ -245,9 +238,7 @@ def build_workflow_router(
             if payload.ids is not None
             else [
                 str(item["id"])
-                for item in store.list_item_summaries(
-                    workflow_role=payload.workflow_role
-                )
+                for item in store.list_item_summaries()
                 if matches_configuration_query(
                     item, payload.q or "", ("name", "description", "id")
                 )
@@ -319,10 +310,7 @@ def build_workflow_router(
                 message_key="errors.workflowNotFound",
                 message="The Workflow does not exist.",
             )
-        admission, document = admit_workflow_document(
-            payload,
-            workflow_role=workflow["workflow_role"],
-        )
+        admission, document = admit_workflow_document(payload)
         if document is None:
             raise HTTPException(
                 status_code=422,
@@ -393,10 +381,7 @@ def build_workflow_router(
                 message_key="errors.workflowNotFound",
                 message="The Workflow does not exist.",
             )
-        admission, document = admit_workflow_document(
-            payload,
-            workflow_role=workflow["workflow_role"],
-        )
+        admission, document = admit_workflow_document(payload)
         if document is None:
             return admission.as_dict()
         return workflow_executable_report(

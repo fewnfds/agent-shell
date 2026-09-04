@@ -92,9 +92,8 @@ class MonitoringRun(MonitoringResponseModel):
     checkpoint_thread_id: str | None
     workflow_id: str
     workflow_name: str
-    parent_run_id: str | None
-    background_task_id: str | None
-    run_depth: int
+    caller_run_id: str | None
+    operation_id: str | None
     status: RunStatus
     created_at: str
     started_at: str | None
@@ -129,8 +128,8 @@ class MonitoringSummary(MonitoringResponseModel):
 
 
 class RunRelationship(MonitoringResponseModel):
-    parent_run_id: str
-    child_run_id: str
+    caller_run_id: str
+    spawned_run_id: str
 
 
 class RunForest(MonitoringResponseModel):

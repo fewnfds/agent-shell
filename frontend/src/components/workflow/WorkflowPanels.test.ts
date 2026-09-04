@@ -35,7 +35,6 @@ const agentCatalog: WorkflowNodeCatalogItem = {
   title_key: 'workflow.nodes.agent.title',
   description_key: 'workflow.nodes.agent.description',
   config_schema: {},
-  workflow_roles: ['parent', 'child'],
   input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
   output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
 }
@@ -47,7 +46,6 @@ const startCatalog: WorkflowNodeCatalogItem = {
   title_key: 'workflow.nodes.start.title',
   description_key: 'workflow.nodes.start.description',
   config_schema: {},
-  workflow_roles: ['parent', 'child'],
   input_handles: [],
   output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
 }
@@ -59,7 +57,6 @@ const endCatalog: WorkflowNodeCatalogItem = {
   title_key: 'workflow.nodes.end.title',
   description_key: 'workflow.nodes.end.description',
   config_schema: {},
-  workflow_roles: ['parent', 'child'],
   input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
   output_handles: [],
 }
@@ -71,7 +68,6 @@ const commandCatalog: WorkflowNodeCatalogItem = {
   title_key: 'workflow.nodes.command.title',
   description_key: 'workflow.nodes.command.description',
   config_schema: {},
-  workflow_roles: ['parent', 'child'],
   input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal', 'branch'], max_connections: null }],
   output_handles: [
     { id: 'branch', kind: 'control', edge_type: 'branch', accepted_edge_types: ['branch'], max_connections: null },

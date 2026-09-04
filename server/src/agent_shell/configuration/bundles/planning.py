@@ -298,15 +298,6 @@ class BundleImportPlanner:
                 "type": parsed.manifest.root.component_type,
                 "source_id": parsed.manifest.root.source_id,
                 "target_id": target_ids[parsed.manifest.root.source_id],
-                "workflow_role": (
-                    next(
-                        entity.payload.get("workflow_role")
-                        for entity in source_entities
-                        if entity.id == parsed.manifest.root.source_id
-                    )
-                    if parsed.manifest.root.kind == "workflow"
-                    else None
-                ),
             },
             "target_ids": dict(sorted(target_ids.items())),
             "records": name_plans,

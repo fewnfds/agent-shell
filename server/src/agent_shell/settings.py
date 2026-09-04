@@ -7,7 +7,14 @@ from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import Field, PrivateAttr, SecretStr, ValidationError, field_validator
+from pydantic import (
+    Field,
+    PrivateAttr,
+    SecretStr,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_shell.configuration.repositories import ensure_active_configuration_repository
@@ -82,6 +89,8 @@ class Settings(BaseSettings):
     app_name: str = "agent-shell"
     host: str = "127.0.0.1"
     port: int = Field(default=19100, ge=1, le=65535)
+    n_jobs_per_worker: int = Field(default=10, ge=1)
+    debug_port: int | None = Field(default=None, ge=1, le=65535)
     allow_remote: bool = False
     langsmith_tracing_enabled: bool = False
     langsmith_endpoint: str = DEFAULT_LANGSMITH_ENDPOINT
@@ -117,6 +126,17 @@ class Settings(BaseSettings):
         if getattr(address, "scope_id", None):
             raise ValueError("scoped IPv6 addresses are not supported")
         return str(address)
+
+    @field_validator("debug_port")
+    @classmethod
+    def validate_debug_port(
+        cls,
+        value: int | None,
+        info: ValidationInfo,
+    ) -> int | None:
+        if value is not None and value == info.data.get("port"):
+            raise ValueError("must differ from the service port")
+        return value
 
     @field_validator("management_token")
     @classmethod
@@ -299,6 +319,20 @@ class Settings(BaseSettings):
     def resolved_workflow_store_database_path(self) -> Path:
         return self.data_root / "state" / "workflow-store.sqlite3"
 
+    def resolved_langgraph_dev_dir(self) -> Path:
+        return self.data_root / "state" / "langgraph-dev"
+
+    def internal_service_url(self) -> str:
+        """Return the direct URL used by this process for Agent Server APIs."""
+
+        host = self.host
+        if host == "0.0.0.0":
+            host = "127.0.0.1"
+        elif host == "::":
+            host = "::1"
+        authority = f"[{host}]" if ":" in host else host
+        return f"http://{authority}:{self.port}"
+
     def resolved_files_dir(self) -> Path:
         return self.data_root / "files"
 
@@ -336,6 +370,7 @@ class Settings(BaseSettings):
             self.resolved_skill_packages_dir(),
             self.resolved_skill_templates_dir(),
             self.resolved_logs_dir(),
+            self.resolved_langgraph_dev_dir(),
             self.resolved_runtime_dir() / "cache",
             self.resolved_runtime_dir() / "tmp",
             self.resolved_runtime_dir() / "home",

@@ -4,12 +4,11 @@ import os
 from pathlib import Path
 
 import pytest
-import uvicorn
 import yaml
 from fastapi.testclient import TestClient
 
 from agent_shell.app import create_app
-from agent_shell.settings import SettingsError, get_settings
+from agent_shell.settings import Settings, SettingsError, get_settings
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.file_config import FileConfigRepository
@@ -106,32 +105,88 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
     assert (python_packages_dir / "agent_middleware").is_dir()
 
 
-def test_official_launcher_uses_only_validated_settings_and_disables_proxy_headers(
+def test_official_launcher_uses_validated_langgraph_dev_settings_and_data_cwd(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     from agent_shell import __main__ as launcher
 
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    _write_system_settings(tmp_path, host="127.0.0.2", port=9123)
+    calls: list[dict[str, object]] = []
+    _write_system_settings(
+        tmp_path,
+        host="127.0.0.2",
+        port=9123,
+        n_jobs_per_worker=17,
+        debug_port=9124,
+    )
     _write_environment_file(
         tmp_path, "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n"
     )
     monkeypatch.setattr(
-        uvicorn,
-        "run",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
+        launcher,
+        "_run_server",
+        lambda **kwargs: calls.append({**kwargs, "cwd": Path.cwd()}),
     )
 
     assert launcher.main(serve_frontend=False) == 0
     assert len(calls) == 1
-    assert calls[0][0][0].title == "agent-shell"
-    assert calls[0][1] == {
-        "host": "127.0.0.2",
-        "port": 9123,
-        "proxy_headers": False,
-        "ws": "websockets-sansio",
-    }
+    settings = calls[0]["settings"]
+    assert settings.host == "127.0.0.2"
+    assert settings.port == 9123
+    assert settings.n_jobs_per_worker == 17
+    assert settings.debug_port == 9124
+    assert calls[0]["config_path"] == launcher._langgraph_config_path()
+    assert calls[0]["cwd"] == tmp_path / "data" / "state" / "langgraph-dev"
+    assert Path.cwd() == tmp_path
+
+
+def test_langgraph_dev_cli_receives_only_the_configured_listener_and_worker_options(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from agent_shell import __main__ as launcher
+    from langgraph_cli.cli import cli
+
+    _write_system_settings(
+        tmp_path,
+        host="127.0.0.2",
+        port=9123,
+        n_jobs_per_worker=17,
+        debug_port=9124,
+    )
+    _write_environment_file(
+        tmp_path,
+        "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n",
+    )
+    settings = get_settings(application_home=tmp_path)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(cli, "main", lambda **kwargs: calls.append(kwargs))
+    config_path = launcher._langgraph_config_path()
+
+    launcher._run_server(settings=settings, config_path=config_path)
+
+    assert calls == [
+        {
+            "args": [
+                "dev",
+                "--config",
+                str(config_path),
+                "--host",
+                "127.0.0.2",
+                "--port",
+                "9123",
+                "--no-reload",
+                "--no-browser",
+                "--allow-blocking",
+                "--n-jobs-per-worker",
+                "17",
+                "--debug-port",
+                "9124",
+            ],
+            "prog_name": "langgraph",
+            "standalone_mode": False,
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -161,7 +216,7 @@ def test_project_langsmith_tracing_boundary_is_explicit(
         "configure",
         lambda **kwargs: configured.append(kwargs),
     )
-    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(launcher, "_run_server", lambda **_kwargs: None)
 
     assert launcher.main(serve_frontend=False) == 0
     assert os.environ["LANGSMITH_TRACING"] == expected
@@ -183,9 +238,9 @@ def test_official_launcher_prints_effective_settings_for_windows_script(
     _write_environment_file(tmp_path, "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        uvicorn,
-        "run",
-        lambda *args, **kwargs: pytest.fail("settings query must not start uvicorn"),
+        launcher,
+        "_run_server",
+        lambda **_kwargs: pytest.fail("settings query must not start the server"),
     )
 
     assert (
@@ -212,10 +267,10 @@ def test_windows_launcher_prepares_and_prints_settings_in_one_process(
         "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n",
     )
     monkeypatch.setattr(
-        uvicorn,
-        "run",
-        lambda *_args, **_kwargs: pytest.fail(
-            "launch preparation must not start uvicorn"
+        launcher,
+        "_run_server",
+        lambda **_kwargs: pytest.fail(
+            "launch preparation must not start the server"
         ),
     )
 
@@ -253,8 +308,11 @@ def test_official_launcher_prepares_package_dependencies_before_app(
     )
     app = object()
 
-    def tracked_create_app(**_kwargs: object) -> object:
+    def tracked_create_app(**kwargs: object) -> object:
         calls.append("app")
+        settings = kwargs["settings"]
+        assert isinstance(settings, Settings)
+        settings.ensure_directories()
         return app
 
     monkeypatch.setattr(launcher, "_create_application", tracked_create_app)
@@ -317,7 +375,7 @@ def test_official_launcher_warns_when_remote_http_backend_is_enabled(
         api_key_operation="replace",
         api_key=api_key,
     )
-    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(launcher, "_run_server", lambda **_kwargs: None)
 
     assert launcher.main(serve_frontend=False) == 0
     captured = capsys.readouterr()
@@ -341,10 +399,10 @@ def test_official_launcher_reports_safe_startup_error(
         f"AGENT_SHELL_INFERENCE_TOKEN={sentinel}\n",
     )
     monkeypatch.setattr(
-        uvicorn,
-        "run",
-        lambda *args, **kwargs: pytest.fail(
-            "invalid settings must not start uvicorn"
+        launcher,
+        "_run_server",
+        lambda **_kwargs: pytest.fail(
+            "invalid settings must not start the server"
         ),
     )
 

@@ -39,20 +39,40 @@ def _activate_package_site(runtime_root: Path) -> None:
 
 
 def _create_application(*, settings: Settings, serve_frontend: bool) -> object:
-    from agent_shell.app import create_app
+    from agent_shell.langgraph_dev import configure_runtime
 
-    return create_app(settings=settings, serve_frontend=serve_frontend)
+    return configure_runtime(settings, serve_frontend=serve_frontend)
 
 
-def _run_server(app: object, *, host: str, port: int) -> None:
-    import uvicorn
+def _langgraph_config_path() -> Path:
+    from agent_shell import langgraph_dev
 
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        proxy_headers=False,
-        ws="websockets-sansio",
+    return Path(langgraph_dev.__file__).with_name("langgraph.json").resolve()
+
+
+def _run_server(*, settings: Settings, config_path: Path) -> None:
+    from langgraph_cli.cli import cli
+
+    arguments = [
+        "dev",
+        "--config",
+        str(config_path),
+        "--host",
+        settings.host,
+        "--port",
+        str(settings.port),
+        "--no-reload",
+        "--no-browser",
+        "--allow-blocking",
+        "--n-jobs-per-worker",
+        str(settings.n_jobs_per_worker),
+    ]
+    if settings.debug_port is not None:
+        arguments.extend(("--debug-port", str(settings.debug_port)))
+    cli.main(
+        args=arguments,
+        prog_name="langgraph",
+        standalone_mode=False,
     )
 
 
@@ -290,12 +310,15 @@ def main(
         )
 
     _activate_package_site(settings.resolved_runtime_dir())
-    app = _create_application(settings=settings, serve_frontend=serve_frontend)
-    _run_server(
-        app,
-        host=settings.host,
-        port=settings.port,
-    )
+    _create_application(settings=settings, serve_frontend=serve_frontend)
+    config_path = _langgraph_config_path()
+    langgraph_data_dir = settings.resolved_langgraph_dev_dir()
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(langgraph_data_dir)
+        _run_server(settings=settings, config_path=config_path)
+    finally:
+        os.chdir(previous_cwd)
     return 0
 
 

@@ -99,7 +99,6 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
                     key: workflow[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
                         "recursion_limit",
@@ -817,10 +816,9 @@ def test_single_root_bundle_rejects_a_dangling_reference(
                     key: workflow[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
-                        "cancel_on_upstream_termination",
+                        "cancel_on_caller_termination",
                         "recursion_limit",
                         "execution_timeout_seconds",
                         "max_concurrency",

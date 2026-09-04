@@ -88,7 +88,7 @@ def test_custom_middleware_reads_private_agent_state_and_parent_workflow_snapsho
         identity=WorkflowRunIdentity(
             request_id="request-1",
             lifecycle_id="lifecycle-1",
-            workflow_run_id="run-1",
+            run_id="run-1",
             workflow_id="workflow-1",
             workflow_name="Workflow",
             checkpoint_thread_id="thread-1",

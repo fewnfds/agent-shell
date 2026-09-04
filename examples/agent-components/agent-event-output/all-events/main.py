@@ -28,6 +28,9 @@ def _params(event):
 
 def _message_parts(event):
     data = _params(event).get("data")
+    if isinstance(data, Mapping):
+        metadata = data.get("metadata")
+        return data, metadata if isinstance(metadata, Mapping) else {}
     if not isinstance(data, (list, tuple)) or len(data) != 2:
         return None, {}
     metadata = data[1] if isinstance(data[1], Mapping) else {}
@@ -82,12 +85,12 @@ def _metadata(event, origin, event_name, payload=None, message_metadata=None):
         ),
         ("tool_name", nested.get("name") or subject.get("name")),
         ("lifecycle_id", origin.get("lifecycle_id")),
-        ("workflow_run_id", origin.get("workflow_run_id")),
-        ("parent_workflow_run_id", origin.get("parent_workflow_run_id")),
+        ("run_id", origin.get("run_id")),
+        ("thread_id", origin.get("thread_id")),
+        ("assistant_id", origin.get("assistant_id")),
+        ("caller_run_id", origin.get("caller_run_id")),
+        ("operation_id", origin.get("operation_id")),
         ("workflow_id", origin.get("workflow_id")),
-        ("workflow_role", origin.get("workflow_role")),
-        ("background_task_id", origin.get("background_task_id")),
-        ("run_depth", origin.get("run_depth")),
         ("workflow_node_id", origin.get("workflow_node_id")),
         ("node_invocation_id", origin.get("node_invocation_id")),
         ("agent_profile_id", origin.get("agent_profile_id")),

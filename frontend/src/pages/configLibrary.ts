@@ -17,11 +17,10 @@ import type {
   SubagentSummary,
   ValidationReport,
   Workflow,
-  WorkflowRole,
   WorkflowSummary,
 } from '@/api'
 
-export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'parent-workflow' | 'child-workflow' | 'model-connection' | 'mcp-connection'
+export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'workflow' | 'model-connection' | 'mcp-connection'
 export type LibraryItem = ConfigurationSummary | MainAgentSummary | ModelConnection | McpConnection | SubagentSummary | WorkflowSummary
 export type LibraryDetailItem = SavedBlock | MainAgent | ModelConnection | McpConnection | Subagent | Workflow
 type BundleCategoryId = Exclude<LibraryCategoryId, 'model-connection' | 'mcp-connection'>
@@ -33,7 +32,7 @@ export interface ConfigLibraryApi {
   listBlockSummaries(type: ManagedComponentType, request?: SummaryRequest): Promise<ConfigurationCollection<ConfigurationSummary>>
   listMainAgentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<MainAgentSummary>>
   listSubagentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<SubagentSummary>>
-  listWorkflowSummaries(role?: WorkflowRole, request?: SummaryRequest): Promise<ConfigurationCollection<WorkflowSummary>>
+  listWorkflowSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<WorkflowSummary>>
   listModelConnections(): Promise<ModelConnection[]>
   listMcpConnections(): Promise<McpConnection[]>
   getBlock(type: ManagedComponentType, id: string): Promise<SavedBlock>
@@ -62,7 +61,7 @@ export interface ConfigLibraryApi {
   deleteSubagents(ids: string[]): Promise<{ deleted: number }>
   deleteSubagentsMatching(query: string): Promise<{ deleted: number }>
   deleteWorkflows(ids: string[]): Promise<{ deleted: number }>
-  deleteWorkflowsMatching(query: string, role?: WorkflowRole): Promise<{ deleted: number }>
+  deleteWorkflowsMatching(query: string): Promise<{ deleted: number }>
   exportConfigurationBundle(root: ConfigurationBundleRoot): Promise<NamedDownload>
   previewConfigurationBundle(bundle: File): Promise<ConfigurationBundlePreview>
   importConfigurationBundle(bundle: File, digest: string, planToken: string, resolutions: ConfigurationBundleResolutions): Promise<ConfigurationBundleImportResult>
@@ -73,7 +72,7 @@ export const agentLibraryCategories = [
   'subagent-profile',
 ] as const
 
-export const workflowLibraryCategories = ['parent-workflow', 'child-workflow'] as const
+export const workflowLibraryCategories = ['workflow'] as const
 export const globalLibraryCategories = ['configuration-repositories', 'model-connection', 'mcp-connection'] as const
 
 export function routeCategory(value: unknown): string {
@@ -86,8 +85,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
 } {
   if (category === 'main-agent') return { path: '/agents/main', query: { id } }
   if (category === 'subagent-profile') return { path: '/agents/subagents', query: { id } }
-  if (category === 'parent-workflow') return { path: '/workflows/parents', query: { id } }
-  if (category === 'child-workflow') return { path: '/workflows/children', query: { id } }
+  if (category === 'workflow') return { path: '/workflows', query: { id } }
   if (category === 'model-connection') return { path: '/models/connections', query: { id } }
   if (category === 'mcp-connection') return { path: '/mcp/connections', query: { id } }
   if (
@@ -104,6 +102,6 @@ export function editLocation(category: LibraryCategoryId, id: string): {
 export function bundleRoot(category: BundleCategoryId, id: string): ConfigurationBundleRoot {
   if (category === 'main-agent') return { kind: 'main_agent', source_id: id }
   if (category === 'subagent-profile') return { kind: 'subagent', source_id: id }
-  if (category === 'parent-workflow' || category === 'child-workflow') return { kind: 'workflow', source_id: id }
+  if (category === 'workflow') return { kind: 'workflow', source_id: id }
   return { kind: 'component', type: category, source_id: id }
 }

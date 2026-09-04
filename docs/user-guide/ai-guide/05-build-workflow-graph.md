@@ -18,7 +18,7 @@
 
 ## 2. 创建 Workflow metadata
 
-创建 parent Workflow 的 payload 示例：
+创建 Workflow 的 payload 示例：
 
 ```http
 POST /api/workflows
@@ -27,16 +27,13 @@ POST /api/workflows
 ```json
 {
   "name": "ai-workflow",
-  "workflow_role": "parent",
   "description": "Runs the configured workflow nodes."
 }
 ```
 
-需要作为 background target 时创建 `workflow_role: "child"`。
-
 新 Workflow 固定从 `enabled=false` 开始。创建 payload 不能直接启用 Workflow；只有完整 Graph publish 成功后才会设置 `enabled=true`。
 
-保存 response 中的 Workflow UUID 和精确 name。enabled parent Workflow name 是 `/v1/chat/completions` 的 `model` 值。child Workflow、Main Agent name 和 UUID 不会直接出现在 `/v1/models`。
+保存 response 中的 Workflow UUID 和精确 name。全部 enabled Workflow name 都是 `/v1/chat/completions` 可用的 `model` 值，也都可以作为跨 Workflow 调用目标。Main Agent name 和 UUID 不直接出现在 `/v1/models`。
 
 ## 3. Runtime metadata
 
@@ -44,8 +41,8 @@ Workflow metadata 还可以保存：
 
 - `checkpointer_id`：可空 Checkpointer Component reference；
 - `workflow_event_output_id`：可空 Workflow Event Output reference；
-- `response_stream_scheduling_id`：仅 Parent Run Workflow 可用的 Response Stream Scheduling Component reference；
-- `cancel_on_upstream_termination`：默认 `true`；
+- `response_stream_scheduling_id`：可空 Response Stream Scheduling Component reference；当前 Workflow 作为请求入口时选择本次 response 调度策略；
+- `cancel_on_caller_termination`：默认 `true`；当前 Workflow 被另一个 Run 调用时，控制 caller 失败或取消后的传播；
 - `recursion_limit`：默认 `1000000`；
 - `execution_timeout_seconds`：默认 `1200`；
 - `max_concurrency`：默认 `100`。
@@ -55,28 +52,13 @@ Workflow metadata 还可以保存：
 如果用户需要调整运行值，先说明：
 
 - `recursion_limit` 限制 Graph 执行步数，正常循环仍需业务退出条件；
-- `execution_timeout_seconds` 限制单个 parent 或 child Run 的实际执行时间；
+- `execution_timeout_seconds` 限制单个 Run 的实际执行时间；
 - `max_concurrency` 控制该 Run 的 LangGraph 并发；
 - 三个数值只要求正整数，没有额外产品最大值，真实资源代价取决于 Workflow、Provider、Tool、进程和宿主机。
 
 修改现有 Workflow 时先 GET，保留未修改的 metadata。metadata PUT 不改变当前 `enabled`。
 
-Checkpointer 为当前 Debug 与运行监控的留档提供 State 持久化。未选择时不创建 Checkpoint Thread，监控也没有 persisted State 可读。当前没有 State 修改、history/time travel 或外围 Resume 产品流程。
-
-配置 Debug checkpoint 时，先创建 Checkpointer Component：
-
-```http
-POST /api/blocks/checkpointer
-```
-
-```json
-{
-  "name": "Workflow debug checkpoints",
-  "durability": "async"
-}
-```
-
-`durability` 可以是 `exit`、`async` 或 `sync`，默认是 `async`。保存 response UUID，再把它写入 Workflow metadata 的 `checkpointer_id`。该选择会增加 checkpoint 持久化和存储成本。
+Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev runtime 统一拥有。当前执行路径不读取 `checkpointer_id`；新配置不要依赖该字段改变运行行为。该配置面将在 persistence 阶段收敛。
 
 需要调整公开响应的排队和排水时，先创建 Response Stream Scheduling Component：
 
@@ -96,15 +78,11 @@ POST /api/blocks/response-stream-scheduling
 }
 ```
 
-把 response UUID 写入 Parent Workflow metadata 的 `response_stream_scheduling_id`。省略或提交 `null` 时使用内置默认；Child Run Workflow 不接受该引用。该组件只排序和节流 Event Output 已批准的文本，不决定事件可见性或文本修饰。
+把 response UUID 写入可能作为请求入口的 Workflow metadata 的 `response_stream_scheduling_id`。省略或提交 `null` 时使用内置默认。该组件只排序和节流 Event Output 已批准的文本，不决定事件可见性或文本修饰。
 
 需要公开 Command 或其他 Workflow-owned event 时，创建 Workflow Event Output，并把 UUID 写入 `workflow_event_output_id`。创建和编辑 package 的流程见[编写 Python extension](06-python-extensions.md)。
 
-`cancel_on_upstream_termination` 的含义取决于 Workflow role：
-
-- parent 为 `true` 时，OpenAI streaming client 在 Run 完成前断开会取消 parent Run；
-- child 为 `true` 时，launcher Run 取消或失败会取消 child；
-- parent 正常完成不会自动取消 child。
+`cancel_on_caller_termination=true` 时，调用本 Workflow 的 Run 取消或失败会取消当前仍 active 的 Run；当前 Run 的取消继续按每个被调用 Workflow 自己的配置逐层传播。caller 正常完成不触发传播。请求入口连接在完成前断开时取消请求入口 Run。
 
 ## 4. Graph document
 
@@ -252,7 +230,7 @@ Command：
 - config 引用 `command_id`；
 - input handle 是 `in`；
 - dynamic output handle 是 `branch` 和 `dispatch`；
-- Python callable 返回 Branch `activate` key、Agent `dispatch` task 和 parent State `update`；
+- Python callable 返回 Branch `activate` key、Agent `dispatch` task 和 Workflow State `update`；
 - Branch 与 Dispatch 可以由同一次 invocation 同时产生；
 - 每个非空 `activate` key 必须对应同源 Branch Edge 的 `branch_key`；
 - 每个 dispatch item 的 `dispatch_key` 必须对应同源 Dispatch Edge。
@@ -370,7 +348,7 @@ Content-Type: application/json
 
 draft save 不执行完整 Node Catalog、topology、reference、Python package 或 Agent assembly validation。基础字段类型、ID、extra field 和 layout 数值不合法时仍返回 422。
 
-保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/v1/models` 和 enabled child target 集合移除。
+保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/v1/models` 和跨 Workflow 调用的 enabled target 集合移除。
 
 保存后 GET 回读：
 
@@ -379,7 +357,7 @@ GET /api/workflows/<workflow UUID>
 GET /api/workflows/<workflow UUID>/graph
 ```
 
-核对 Workflow UUID、name、role、`enabled=false`、Node、Edge 和 layout。
+核对 Workflow UUID、name、`enabled=false`、Node、Edge 和 layout。
 
 ## 12. 本章完成结果
 
@@ -401,4 +379,4 @@ GET /api/workflows/<workflow UUID>/graph
 - layout 不承载运行语义；
 - 完整 Graph document 已保存为 draft 并回读一致。
 
-如果缺少或需要修改 Python-backed Component，阅读[编写 Python extension](06-python-extensions.md)并重新保存 draft。需要 independent child Run 时阅读[使用 background Run](07-background-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。
+如果缺少或需要修改 Python-backed Component，阅读[编写 Python extension](06-python-extensions.md)并重新保存 draft。需要跨 Workflow Run 调用时阅读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。

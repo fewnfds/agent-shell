@@ -193,10 +193,10 @@ def test_all_events_examples_render_streamed_and_atomic_event_families() -> None
     source_root = Path(__file__).resolve().parents[2] / "examples"
     origin = {
         "lifecycle_id": "lifecycle-1",
-        "workflow_run_id": "workflow-run-1",
+        "run_id": "workflow-run-1",
+        "thread_id": "thread-1",
+        "assistant_id": "assistant-1",
         "workflow_id": "workflow-1",
-        "workflow_role": "parent",
-        "run_depth": 0,
         "workflow_node_id": "agent-node",
         "node_invocation_id": "invoke-1",
         "agent_profile_id": "agent-1",
@@ -224,7 +224,7 @@ def test_all_events_examples_render_streamed_and_atomic_event_families() -> None
         assert value.startswith("<details open>")
         assert value.endswith("</details>\n")
         assert "font-size:0.78em" in value
-        assert "workflow_run_id=workflow-run-1" in value
+        assert "run_id=workflow-run-1" in value
         assert " | " in value
         assert "request_id=" not in value
 
@@ -232,7 +232,7 @@ def test_all_events_examples_render_streamed_and_atomic_event_families() -> None
         assert value.startswith("</div>\n")
         assert value.endswith("</details>\n")
         assert "font-size:0.78em" in value
-        assert "workflow_run_id=workflow-run-1" in value
+        assert "run_id=workflow-run-1" in value
         assert " | " in value
 
     for relative_path in (

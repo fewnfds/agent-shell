@@ -1,6 +1,6 @@
 # Response Stream Scheduling
 
-Response Stream Scheduling 是可复用的 Workflow Component，使用现有 Configuration Repository 和配置库 CRUD 管理。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 装配一个配置；未装配时使用下表中的内置默认。Child Run Workflow 不拥有该引用。
+Response Stream Scheduling 是可复用的 Workflow Component，使用现有 Configuration Repository 和配置库 CRUD 管理。可能作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 装配一个配置；未装配时使用下表中的内置默认。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
@@ -30,6 +30,6 @@ POST /api/blocks/response-stream-scheduling
 }
 ```
 
-保存 response 中的组件 UUID，再写入 Parent Workflow metadata 的 `response_stream_scheduling_id`。组件引用会进入 Repository validation、copy 和 Configuration Bundle 依赖闭包；请求启动时从同一冻结 Repository 快照解析。删除组件不会改写引用方 UUID，Repository validation 会报告缺失引用。
+保存 response 中的组件 UUID，再写入 Workflow metadata 的 `response_stream_scheduling_id`。组件引用会进入 Repository validation、copy 和 Configuration Bundle 依赖闭包；Workflow 作为请求入口启动时从同一冻结 Repository 快照解析。删除组件不会改写引用方 UUID，Repository validation 会报告缺失引用。
 
-本组件只负责已经由 Agent Event Output 或 Workflow Event Output 批准的文本排序、Tool transaction 原子性、合批和节流发送。事件是否输出、正文内容和首尾修饰仍由对应 Event Output 唯一决定。Parent Run 与同一公开 response 生命周期内启动的 independent child/background Run 都向同一个 scheduler 提交已投影事件；scheduler 明确识别每个 Run identity 及其 Parent/child origin，并用它隔离 lane 和 transaction。当前所有 role 使用相同调度权重，尚未配置基于 Parent/child 的优先级策略。
+本组件只负责已经由 Agent Event Output 或 Workflow Event Output 批准的文本排序、Tool transaction 原子性、合批和节流发送。事件是否输出、正文内容和首尾修饰仍由对应 Event Output 唯一决定。请求入口 Run 与同一公开 response 生命周期内直接或间接调用的 Run 都向同一个 scheduler 提交已投影事件；scheduler 明确识别每个 Run identity，并用它隔离 lane 和 transaction。

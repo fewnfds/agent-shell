@@ -262,7 +262,6 @@ def workflow_executable_report(
         document,
         validate_main_agent=validate_main_agent,
         commands=commands,
-        workflow_role=workflow["workflow_role"],
     )
     return ValidationReport(
         stage=WORKFLOW_EXECUTABLE_STAGE,
@@ -297,10 +296,7 @@ def validate_stored_workflow(
         definition=stored.definition,
         layout=stored.layout,
     )
-    admission, normalized = admit_workflow_document(
-        document,
-        workflow_role=stored.workflow_role,
-    )
+    admission, normalized = admit_workflow_document(document)
     issues = list(admission.issues)
     if stored.enabled and normalized is not None:
         issues.extend(

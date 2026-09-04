@@ -21,6 +21,8 @@
 
 Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按 `packaging/windows/runtime-lock.json` 在 `runtime/app` 准备固定的内置 CPython 3.12 和锁定依赖，后端直接读取当前源码；前端输入变化时执行锁定的 npm build。项目只维护这套内置解释器，不声明兼容宿主 Python。
 
+最终服务进程由锁定的 `langgraph dev --no-reload` 启动。现有 FastAPI 作为 custom app 与官方 Assistant、Thread、Run、State 和 Store route 共用同一个 `host:port`；普通启动不创建第二个 API listener。只有系统设置显式配置 `debug_port` 时才额外创建 DAP 调试 listener。LangGraph Dev 的运行目录固定为实例 `data/state/langgraph-dev/`。
+
 ```powershell
 .\start_server.bat
 ```
@@ -56,6 +58,7 @@ git pull --ff-only
 | FastAPI / Uvicorn | `0.141.1` / `0.52.1` |
 | LangChain adapters | Anthropic `1.7.0`；DeepSeek `1.1.0`；Google GenAI `4.3.7`；Google Vertex AI `3.2.4`；OpenAI `1.6.0`；xAI `1.3.0` |
 | LangChain core/graph | `langchain 1.3.18`；`langchain-core 1.6.1`；`langgraph 1.2.11`；LangSmith `0.11.2` |
+| LangGraph Dev | CLI `0.4.31`；API `0.13.3`；in-memory runtime `0.33.3`；SDK `0.4.4` |
 | 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
 
 第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一依赖锁、`packaging/windows/runtime-lock.json` 或 `packaging/windows/mcp-runtime-lock.json` 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。`mcp-runtime-lock.json` 只锁定 Managed Local npm MCP 按需使用的内部 Node.js，不进入核心 Python runtime fingerprint；前端源码构建使用的 Node.js 22 仍由开发机提供。

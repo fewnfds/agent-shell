@@ -80,6 +80,7 @@ from agent_shell.validation.assembly import ResolvedMcpReference, StaticAssembly
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import ToolCallTransformer
+from langgraph.store.base import BaseStore
 
 EXECUTION_TIMEOUT_SECONDS = 1_200
 
@@ -147,7 +148,8 @@ class RunExecution:
     public_output: bool = True
     monitoring_capture_enabled: bool = False
     execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS
-    cancel_background_children: Callable[[], Awaitable[None]] | None = None
+    cancel_run: Callable[[], Awaitable[None]] | None = None
+    cancel_spawned_runs: Callable[[], Awaitable[None]] | None = None
     final_state: dict[str, Any] | None = None
     _started: bool = False
     _lifecycle_finished: bool = False
@@ -156,6 +158,7 @@ class RunExecution:
         init=False,
     )
     _protocol_capture_failed: bool = field(default=False, init=False)
+    _resources_closed: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.event_stream = RunEventStream(self.usage_accumulator)
@@ -168,7 +171,7 @@ class RunExecution:
         register_origin = getattr(self.response_scheduler, "register_origin", None)
         if callable(register_origin):
             register_origin(
-                self.identity.workflow_run_id,
+                self.identity.run_id,
                 self.identity.workflow_id,
             )
 
@@ -191,10 +194,10 @@ class RunExecution:
         return RuntimeDiagnosticContext(
             request_id=identity.request_id or self.request_id,
             lifecycle_id=identity.lifecycle_id,
-            workflow_run_id=identity.workflow_run_id,
+            workflow_run_id=identity.run_id,
             checkpoint_thread_id=identity.checkpoint_thread_id,
-            parent_workflow_id=identity.workflow_id if self.owns_lifecycle else "",
-            parent_workflow_name=identity.workflow_name if self.owns_lifecycle else "",
+            entry_workflow_id=identity.workflow_id if self.owns_lifecycle else "",
+            entry_workflow_name=identity.workflow_name if self.owns_lifecycle else "",
             subject_kind="workflow",
             subject_id=identity.workflow_id,
             subject_name=identity.workflow_name,
@@ -222,7 +225,7 @@ class RunExecution:
         try:
             self._protocol_event_writer = (
                 await self.lifecycle_service.protocol_event_writer(
-                    self.identity.workflow_run_id
+                    self.identity.run_id
                 )
             )
         except Exception as exc:
@@ -244,10 +247,21 @@ class RunExecution:
         """Converge Shell-owned cancellation before graph cleanup completes."""
 
         await self._close_protocol_event_writer()
+        if self.cancel_run is not None:
+            try:
+                await self.cancel_run()
+            except Exception as exc:
+                if self.runtime_diagnostics is not None:
+                    self.runtime_diagnostics.observation_error(
+                        exc,
+                        code="official_run_cancellation_failed",
+                        component="observability",
+                        context=self.diagnostic_context(),
+                    )
         if self.lifecycle_service is not None and self.identity is not None:
             try:
                 updated = await self.lifecycle_service.afinish_run(
-                    self.identity.workflow_run_id,
+                    self.identity.run_id,
                     status="cancelled",
                     error_code="request_cancelled",
                     usage=self.usage,
@@ -257,7 +271,7 @@ class RunExecution:
                 )
                 if not updated:
                     record = await self.lifecycle_service.arun(
-                        self.identity.workflow_run_id
+                        self.identity.run_id
                     )
                     if record is None or record["status"] not in {
                         "cancelled",
@@ -275,9 +289,9 @@ class RunExecution:
                         context=self.diagnostic_context(),
                     )
 
-        if self.cancel_background_children is not None:
+        if self.cancel_spawned_runs is not None:
             try:
-                await self.cancel_background_children()
+                await self.cancel_spawned_runs()
             except Exception as exc:
                 if self.runtime_diagnostics is not None:
                     self.runtime_diagnostics.observation_error(
@@ -300,14 +314,22 @@ class RunExecution:
                 yield part
         finally:
             await self._close_protocol_event_writer()
-            for runtime in self.middleware_runtimes:
-                await runtime.close()
-            for runtime in self.tool_runtimes:
-                await runtime.close()
-            if self.command_runtime is not None:
-                await self.command_runtime.close()
-            for runtime in self.event_output_runtimes:
-                await runtime.close()
+            await self.close_resources()
+
+    async def close_resources(self) -> None:
+        """Release execution-only package resources exactly once."""
+
+        if self._resources_closed:
+            return
+        self._resources_closed = True
+        for runtime in self.middleware_runtimes:
+            await runtime.close()
+        for runtime in self.tool_runtimes:
+            await runtime.close()
+        if self.command_runtime is not None:
+            await self.command_runtime.close()
+        for runtime in self.event_output_runtimes:
+            await runtime.close()
 
     async def _stream_text_inner(self) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
@@ -325,7 +347,7 @@ class RunExecution:
             ):
                 try:
                     self.lifecycle_service.mark_monitoring_partial(
-                        self.identity.workflow_run_id,
+                        self.identity.run_id,
                         partition,
                     )
                 except Exception:
@@ -357,7 +379,7 @@ class RunExecution:
                 writer.submit(
                     {
                         "lifecycle_id": self.identity.lifecycle_id,
-                        "run_id": self.identity.workflow_run_id,
+                        "run_id": self.identity.run_id,
                         "event": serialize_protocol_event(envelope),
                         "source_type": origin.source_type,
                         "workflow_node_id": origin.workflow_node_id,
@@ -372,22 +394,30 @@ class RunExecution:
             except Exception as exc:
                 self._protocol_capture_error(exc)
 
-        async def cancel_background_children() -> None:
-            if self.cancel_background_children is None:
+        async def cancel_spawned_runs() -> None:
+            if self.cancel_spawned_runs is None:
                 return
             try:
-                await self.cancel_background_children()
+                await self.cancel_spawned_runs()
             except Exception as exc:
                 observation_error(exc, "background_child_cancellation_failed")
+
+        async def cancel_official_run() -> None:
+            if self.cancel_run is None:
+                return
+            try:
+                await self.cancel_run()
+            except Exception as exc:
+                observation_error(exc, "official_run_cancellation_failed")
 
         async def start_run() -> None:
             if self.lifecycle_service is None or self.identity is None:
                 return
             if not await self.lifecycle_service.astart_run(
-                self.identity.workflow_run_id
+                self.identity.run_id
             ):
                 record = await self.lifecycle_service.arun(
-                    self.identity.workflow_run_id
+                    self.identity.run_id
                 )
                 if record is None or record["status"] != "running":
                     raise AgentRuntimeError(
@@ -401,7 +431,7 @@ class RunExecution:
             if self.lifecycle_service is None or self.identity is None:
                 return
             if not await self.lifecycle_service.afinish_run(
-                self.identity.workflow_run_id,
+                self.identity.run_id,
                 status=status,
                 error_code=error_code,
                 finish_reason=self.finish_reason if status == "completed" else "",
@@ -411,7 +441,7 @@ class RunExecution:
                 ),
             ):
                 record = await self.lifecycle_service.arun(
-                    self.identity.workflow_run_id
+                    self.identity.run_id
                 )
                 if record is None or record["status"] != status:
                     raise AgentRuntimeError(
@@ -457,7 +487,7 @@ class RunExecution:
             if self.identity is None:
                 return scheduler.origin_run_id, scheduler.origin_workflow_id
             return (
-                self.identity.workflow_run_id,
+                self.identity.run_id,
                 self.identity.workflow_id,
             )
 
@@ -916,7 +946,8 @@ class RunExecution:
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
-            await cancel_background_children()
+            await cancel_official_run()
+            await cancel_spawned_runs()
             await finish_run("failed", error_code=error.code)
             await finish_lifecycle()
             raise error from exc
@@ -930,7 +961,8 @@ class RunExecution:
                     exc.__cause__ if isinstance(exc, EventOutputError) else None
                 ),
             )
-            await cancel_background_children()
+            await cancel_official_run()
+            await cancel_spawned_runs()
             await finish_run("failed", error_code=exc.code)
             await finish_lifecycle()
             raise
@@ -950,7 +982,8 @@ class RunExecution:
             for rendered in failure_output(error.code):
                 yield rendered
             record_runtime_error(error, error.code, detail_exception=exc)
-            await cancel_background_children()
+            await cancel_official_run()
+            await cancel_spawned_runs()
             await finish_run("failed", error_code=error.code)
             await finish_lifecycle()
             raise error from exc
@@ -981,6 +1014,7 @@ class AgentRuntime:
         workflow_lifecycle: WorkflowLifecycleService,
         runtime_diagnostics: RuntimeDiagnostics | None = None,
         runtime_policy: RuntimePolicyStore | None = None,
+        graph_store: BaseStore | None = None,
     ) -> None:
         self._builder = builder
         self._files = files
@@ -991,12 +1025,115 @@ class AgentRuntime:
         self._workflow_lifecycle = workflow_lifecycle
         self._runtime_diagnostics = runtime_diagnostics
         self._runtime_policy = runtime_policy
+        self._graph_store = graph_store or workflow_lifecycle.store
 
     def _input_policy(self):
         return (
             self._runtime_policy.snapshot()
             if self._runtime_policy is not None
             else RUNTIME_POLICY_DEFAULTS
+        )
+
+    def build_workflow_structure(
+        self,
+        document: WorkflowGraphDocumentV1,
+        *,
+        workflow_snapshot: Mapping[str, Any],
+        server_context: WorkflowRuntimeContext,
+    ) -> Any:
+        """Compile topology and schemas without opening execution resources."""
+
+        from types import SimpleNamespace
+
+        from agent_shell.command import CommandBlock
+        from agent_shell.workflow.catalog import AgentNodeConfig, CommandNodeConfig
+        from agent_shell.workflow.compiler import compile_workflow
+
+        assemblies: dict[str, StaticAssembly] = {}
+
+        def validate_main_agent(main_agent_id: str) -> ValidationReport:
+            try:
+                if main_agent_id not in assemblies:
+                    assemblies[main_agent_id] = self._builder.resolve(main_agent_id)
+            except AgentRuntimeError as exc:
+                if exc.validation_report is not None:
+                    return exc.validation_report
+                raise
+            return ValidationReport(stage="workflow_publish")
+
+        structural_agents: dict[str, Any] = {}
+        for node in document.definition.nodes:
+            if node.type != "agent":
+                continue
+            main_agent_id = str(
+                AgentNodeConfig.model_validate(node.config).main_agent_id
+            )
+            report = validate_main_agent(main_agent_id)
+            if not report.valid:
+                issue = report.issues[0]
+                raise AgentRuntimeError(
+                    issue.code,
+                    issue.message,
+                    status_code=409,
+                    validation_report=report,
+                )
+            assembly = assemblies[main_agent_id]
+            structural_agents[node.id] = SimpleNamespace(
+                agent_id=str(assembly.main_agent["id"]),
+                input_state={},
+            )
+
+        async def unavailable_command(*_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeError(
+                "structural Workflow graphs cannot execute Command nodes"
+            )
+
+        structural_commands: dict[str, Any] = {}
+        validation_commands: dict[str, CommandBlock] = {}
+        for node in document.definition.nodes:
+            if node.type != "command":
+                continue
+            command_id = str(
+                CommandNodeConfig.model_validate(node.config).command_id
+            )
+            stored = (
+                self._blocks.get_block_internal("command", command_id)
+                if self._blocks is not None
+                else None
+            )
+            if stored is None:
+                continue
+            try:
+                validation_commands[node.id] = CommandBlock.model_validate(
+                    {key: value for key, value in stored.items() if key != "id"}
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow.command_invalid",
+                    "The selected Command Node configuration is invalid.",
+                    status_code=422,
+                ) from exc
+            structural_commands[node.id] = unavailable_command
+
+        executable = validate_workflow_executable(
+            document,
+            validate_main_agent=validate_main_agent,
+            commands=validation_commands,
+        )
+        if not executable.valid:
+            issue = executable.issues[0]
+            raise AgentRuntimeError(
+                issue.code,
+                issue.message,
+                status_code=422,
+                validation_report=executable,
+            )
+        return compile_workflow(
+            document,
+            node_agents=structural_agents,
+            commands=structural_commands,
+            store=self._graph_store,
+            runtime_context=server_context,
         )
 
     async def _finish_registered_run(
@@ -1138,11 +1275,12 @@ class AgentRuntime:
         owns_lifecycle: bool = False,
         public_output: bool = True,
         execution_timeout_seconds: int = EXECUTION_TIMEOUT_SECONDS,
-        cancel_background_children: Callable[[], Awaitable[None]] | None = None,
+        cancel_spawned_runs: Callable[[], Awaitable[None]] | None = None,
         response_stream_policy: ResponseStreamPolicy | None = None,
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
         monitoring_capture_enabled: bool = False,
+        lifecycle_service: WorkflowLifecycleService | None,
     ) -> RunExecution:
         workflow_agents = workflow_built
         workflow_sources = {
@@ -1176,7 +1314,7 @@ class AgentRuntime:
             else ResponseStreamPolicy()
         )
         lifecycle_identity = identity.lifecycle_id
-        run_identity = identity.workflow_run_id
+        run_identity = identity.run_id
         workflow_identity = identity.workflow_id
         usage_accumulator = RunUsageAccumulator()
         origin_resolver = RunEventOriginResolver(
@@ -1226,7 +1364,7 @@ class AgentRuntime:
             context=context,
             run_config=run_config,
             durability=durability,
-            lifecycle_service=self._workflow_lifecycle,
+            lifecycle_service=lifecycle_service,
             owns_lifecycle=owns_lifecycle,
             runtime_diagnostics=self._runtime_diagnostics,
             request_id=request_id,
@@ -1234,7 +1372,7 @@ class AgentRuntime:
             public_output=public_output,
             monitoring_capture_enabled=monitoring_capture_enabled,
             execution_timeout_seconds=execution_timeout_seconds,
-            cancel_background_children=cancel_background_children,
+            cancel_spawned_runs=cancel_spawned_runs,
         )
 
     async def start_workflow(
@@ -1246,17 +1384,19 @@ class AgentRuntime:
         request_id: str = "",
         public_model: str = "",
         lifecycle_id: str | None = None,
-        workflow_run_id: str | None = None,
+        run_id: str | None = None,
+        thread_id: str = "",
+        assistant_id: str = "",
         checkpoint_thread_id: str | None = None,
-        parent_workflow_run_id: str = "",
-        background_task_id: str = "",
-        run_depth: int = 0,
+        caller_run_id: str = "",
+        operation_id: str = "",
         initial_shared_vars: Mapping[str, Any] | None = None,
         initial_workflow_task: Mapping[str, Any] | None = None,
-        background_runtime: Any | None = None,
+        workflow_run_runtime: Any | None = None,
         public_output: bool = True,
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
+        server_context: WorkflowRuntimeContext | None = None,
     ) -> RunExecution:
         from agent_shell.workflow.catalog import (
             AgentNodeConfig,
@@ -1272,8 +1412,13 @@ class AgentRuntime:
             for node in document.definition.nodes
             if node.type == "command"
         ]
+        server_managed = server_context is not None
         runtime_policy = self._input_policy()
-        messages = validate_client_messages(raw_messages, runtime_policy)
+        messages = (
+            []
+            if server_managed and not agent_nodes
+            else validate_client_messages(raw_messages, runtime_policy)
+        )
         messages_sha = client_messages_sha(messages)
         assemblies: dict[str, StaticAssembly] = {}
 
@@ -1325,7 +1470,6 @@ class AgentRuntime:
             document,
             validate_main_agent=validate_main_agent,
             commands=resolved_command_nodes,
-            workflow_role=(workflow_snapshot or {}).get("workflow_role"),
         )
         if not executable.valid:
             issue = executable.issues[0]
@@ -1338,14 +1482,20 @@ class AgentRuntime:
         workflow_checkpoints = self._workflow_checkpoints
         runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
         workflow_identity = dict(workflow_snapshot or {})
-        resolved_workflow_run_id = workflow_run_id or str(uuid4())
+        resolved_run_id = (
+            run_id or ("" if server_managed else str(uuid4()))
+        )
         workflow_id = str(workflow_identity.get("id", ""))
         workflow_name = str(
             workflow_identity.get("name", public_model or "workflow")
         )
         checkpointer_id = workflow_identity.get("checkpointer_id")
         checkpointer_component: CheckpointerBlock | None = None
-        if checkpointer_id is not None:
+        if server_managed:
+            # Agent Server owns Thread checkpoints and durability around the
+            # graph returned by the dynamic factory.
+            checkpoint_thread_id = None
+        elif checkpointer_id is not None:
             stored_checkpointer = (
                 self._blocks.get_block_internal("checkpointer", str(checkpointer_id))
                 if self._blocks is not None
@@ -1412,15 +1562,24 @@ class AgentRuntime:
             response_stream_policy = ResponseStreamPolicy(
                 queue=scheduling.queue.model_copy(deep=True)
             )
-        owns_lifecycle = lifecycle_id is None
-        if owns_lifecycle:
+        owns_lifecycle = not server_managed and lifecycle_id is None
+        if server_context is not None:
+            resolved_lifecycle_id = server_context.lifecycle_id
+            monitoring_capture_enabled = False
+            if server_context.workflow_id and server_context.workflow_id != workflow_id:
+                raise AgentRuntimeError(
+                    "workflow.identity_mismatch",
+                    "The Server Run context does not match the selected Workflow.",
+                    status_code=409,
+                )
+        elif owns_lifecycle:
             monitoring_capture_enabled = (
                 runtime_policy.runtime_monitoring_retention_lifecycles > 0
             )
             resolved_lifecycle_id = await self._workflow_lifecycle.create(
                 messages,
                 request_id=request_id,
-                run_id=resolved_workflow_run_id,
+                run_id=resolved_run_id,
                 checkpoint_thread_id=checkpoint_thread_id,
                 workflow_id=workflow_id,
                 workflow_name=workflow_name,
@@ -1448,24 +1607,24 @@ class AgentRuntime:
         identity = WorkflowRunIdentity(
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
-            workflow_run_id=resolved_workflow_run_id,
+            run_id=resolved_run_id,
             workflow_id=workflow_id,
             workflow_name=workflow_name,
-            workflow_role=str(workflow_identity.get("workflow_role", "")),
+            thread_id=thread_id,
+            assistant_id=assistant_id,
             checkpoint_thread_id=checkpoint_thread_id,
-            parent_workflow_run_id=parent_workflow_run_id,
-            background_task_id=background_task_id,
-            run_depth=run_depth,
+            caller_run_id=caller_run_id,
+            operation_id=operation_id,
         )
         assembly_diagnostic_context = RuntimeDiagnosticContext(
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
-            workflow_run_id=resolved_workflow_run_id,
+            workflow_run_id=resolved_run_id,
             checkpoint_thread_id=checkpoint_thread_id,
-            parent_workflow_id=(
+            entry_workflow_id=(
                 workflow_id if owns_lifecycle else ""
             ),
-            parent_workflow_name=(
+            entry_workflow_name=(
                 workflow_name if owns_lifecycle else ""
             ),
             subject_kind="workflow",
@@ -1552,10 +1711,17 @@ class AgentRuntime:
                 if mcp_runtime is not None
                 else {}
             )
-            context = WorkflowRuntimeContext.for_run(
-                identity=identity,
-                background_runtime=background_runtime,
-                mcp_commands_by_node=mcp_commands_by_node,
+            context = (
+                server_context.with_runtime_bindings(
+                    workflow_run_runtime=workflow_run_runtime,
+                    mcp_commands_by_node=mcp_commands_by_node,
+                )
+                if server_context is not None
+                else WorkflowRuntimeContext.for_run(
+                    identity=identity,
+                    workflow_run_runtime=workflow_run_runtime,
+                    mcp_commands_by_node=mcp_commands_by_node,
+                )
             )
 
             output_id = (workflow_snapshot or {}).get("workflow_event_output_id")
@@ -1696,33 +1862,35 @@ class AgentRuntime:
                 document,
                 node_agents=dict(built_agents),
                 commands=commands,
-                workflow_role=(workflow_snapshot or {}).get("workflow_role"),
                 checkpointer=(
                     checkpoint_binding.checkpointer
                     if checkpoint_binding is not None
                     else None
                 ),
-                store=self._workflow_lifecycle.store,
+                store=self._graph_store,
                 lifecycle_service=(
                     self._workflow_lifecycle
                     if monitoring_capture_enabled
                     else None
                 ),
+                runtime_context=(context if server_managed else None),
+                initial_files=(workflow_initial_files if server_managed else None),
             )
         except asyncio.CancelledError:
             for _, agent in built_agents:
                 await agent.tool_runtime.close()
                 await agent.middleware_runtime.close()
             await close_workflow_package_runtimes()
-            await self._finish_registered_run(
-                resolved_workflow_run_id,
-                status="cancelled",
-                error_code="request_cancelled",
-                context=assembly_diagnostic_context,
-            )
-            await self._workflow_lifecycle.lifecycle_changed(
-                resolved_lifecycle_id
-            )
+            if not server_managed:
+                await self._finish_registered_run(
+                    resolved_run_id,
+                    status="cancelled",
+                    error_code="request_cancelled",
+                    context=assembly_diagnostic_context,
+                )
+                await self._workflow_lifecycle.lifecycle_changed(
+                    resolved_lifecycle_id
+                )
             raise
         except Exception as exc:
             for _, agent in built_agents:
@@ -1741,31 +1909,31 @@ class AgentRuntime:
                     component="workflow_runtime",
                     context=assembly_diagnostic_context,
                 )
-            await self._finish_registered_run(
-                resolved_workflow_run_id,
-                status="failed",
-                error_code=error_code,
-                context=assembly_diagnostic_context,
-            )
-            await self._workflow_lifecycle.lifecycle_changed(
-                resolved_lifecycle_id
-            )
+            if not server_managed:
+                await self._finish_registered_run(
+                    resolved_run_id,
+                    status="failed",
+                    error_code=error_code,
+                    context=assembly_diagnostic_context,
+                )
+                await self._workflow_lifecycle.lifecycle_changed(
+                    resolved_lifecycle_id
+                )
             raise
         input_state: dict[str, Any] = {
             "shared_vars": deepcopy(dict(initial_shared_vars or {})),
             "agent_invocations": {},
-            "background_tasks": {},
         }
         if initial_workflow_task is not None:
             input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
         if workflow_initial_files:
             input_state["files"] = workflow_initial_files
 
-        async def cancel_background_children() -> None:
-            if background_runtime is not None:
-                await background_runtime.cancel_children_on_parent_termination(
+        async def cancel_spawned_runs() -> None:
+            if workflow_run_runtime is not None:
+                await workflow_run_runtime.cancel_spawned_runs_on_caller_termination(
                     resolved_lifecycle_id,
-                    resolved_workflow_run_id,
+                    resolved_run_id,
                 )
 
         return self._workflow_execution(
@@ -1817,8 +1985,8 @@ class AgentRuntime:
                     EXECUTION_TIMEOUT_SECONDS,
                 )
             ),
-            cancel_background_children=(
-                cancel_background_children if background_runtime is not None else None
+            cancel_spawned_runs=(
+                cancel_spawned_runs if workflow_run_runtime is not None else None
             ),
             durability=(
                 checkpoint_binding.durability
@@ -1832,4 +2000,7 @@ class AgentRuntime:
             response_scheduler=response_scheduler,
             response_consumer=response_consumer,
             monitoring_capture_enabled=monitoring_capture_enabled,
+            lifecycle_service=(
+                None if server_managed else self._workflow_lifecycle
+            ),
         )

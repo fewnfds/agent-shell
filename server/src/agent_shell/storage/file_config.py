@@ -76,6 +76,8 @@ def _default_system() -> dict[str, Any]:
         "settings": {
             "host": "127.0.0.1",
             "port": 19100,
+            "n_jobs_per_worker": 10,
+            "debug_port": None,
             "allow_remote": False,
             "langsmith_tracing_enabled": False,
             "langsmith_endpoint": "https://api.smith.langchain.com",

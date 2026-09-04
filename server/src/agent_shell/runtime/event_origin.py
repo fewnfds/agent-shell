@@ -9,12 +9,12 @@ from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 class EventOutputOriginDict(TypedDict):
     lifecycle_id: str
-    workflow_run_id: str
-    parent_workflow_run_id: str
+    run_id: str
+    thread_id: str
+    assistant_id: str
+    caller_run_id: str
+    operation_id: str
     workflow_id: str
-    workflow_role: str
-    background_task_id: str
-    run_depth: int
     workflow_node_id: str
     node_invocation_id: str
     agent_profile_id: str
@@ -79,6 +79,9 @@ def _namespace_scope(value: str) -> str:
 
 
 def _message_metadata(data: object) -> Mapping[str, object]:
+    if isinstance(data, Mapping):
+        metadata = data.get("metadata")
+        return metadata if isinstance(metadata, Mapping) else {}
     if not isinstance(data, (list, tuple)) or len(data) != 2:
         return {}
     return data[1] if isinstance(data[1], Mapping) else {}
@@ -235,18 +238,12 @@ class RunEventOriginResolver:
         identity = self._identity
         return {
             "lifecycle_id": identity.lifecycle_id if identity is not None else "",
-            "workflow_run_id": (
-                identity.workflow_run_id if identity is not None else ""
-            ),
-            "parent_workflow_run_id": (
-                identity.parent_workflow_run_id if identity is not None else ""
-            ),
+            "run_id": identity.run_id if identity is not None else "",
+            "thread_id": identity.thread_id if identity is not None else "",
+            "assistant_id": identity.assistant_id if identity is not None else "",
+            "caller_run_id": identity.caller_run_id if identity is not None else "",
+            "operation_id": identity.operation_id if identity is not None else "",
             "workflow_id": identity.workflow_id if identity is not None else "",
-            "workflow_role": identity.workflow_role if identity is not None else "",
-            "background_task_id": (
-                identity.background_task_id if identity is not None else ""
-            ),
-            "run_depth": identity.run_depth if identity is not None else 0,
             "workflow_node_id": workflow_node_id,
             "node_invocation_id": node_invocation_id,
             "agent_profile_id": agent_profile_id,

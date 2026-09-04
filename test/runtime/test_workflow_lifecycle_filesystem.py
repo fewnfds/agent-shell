@@ -5,8 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent_shell.contracts import FilesystemBlock
-from agent_shell.runtime.background_tasks import BackgroundTaskManager
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.runtime_cleanup import RuntimeCleanupCoordinator
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import (
@@ -43,7 +42,7 @@ def _runtime(
         ),
         data_root=data_root,
     )
-    tasks = BackgroundTaskManager(lifecycle)
+    tasks = DetachedTaskManager()
     checkpoints = WorkflowCheckpointService(
         SQLiteFile(
             database_path.with_name("workflow-checkpoints.sqlite3"),
@@ -53,7 +52,6 @@ def _runtime(
     policy = _Policy(retention)
     cleanup = RuntimeCleanupCoordinator(
         lifecycle,
-        tasks,
         checkpoints,
         policy,  # type: ignore[arg-type]
     )
@@ -188,7 +186,7 @@ def test_lifecycle_relative_mapping_cannot_escape_data_root(tmp_path: Path) -> N
     asyncio.run(scenario())
 
 
-def test_full_terminal_waits_for_child_run_then_retention_converges(
+def test_full_terminal_waits_for_called_run_then_retention_converges(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -199,27 +197,26 @@ def test_full_terminal_waits_for_child_run_then_retention_converges(
         await lifecycle.start()
         await tasks.start()
         try:
-            lifecycle_id = await _create_lifecycle(lifecycle, "parent")
+            lifecycle_id = await _create_lifecycle(lifecycle, "entry")
             lifecycle.register_run(
                 {
-                    "run_id": "run-child",
+                    "run_id": "run-called",
                     "lifecycle_id": lifecycle_id,
-                    "request_id": "request-parent",
-                    "workflow_id": "child-workflow",
-                    "workflow_name": "Child Workflow",
-                    "parent_run_id": "run-parent",
-                    "background_task_id": "child-task",
-                    "run_depth": 1,
+                    "request_id": "request-entry",
+                    "workflow_id": "called-workflow",
+                    "workflow_name": "Called Workflow",
+                    "caller_run_id": "run-entry",
+                    "operation_id": "call-workflow",
                 },
                 workflow_document=runtime_workflow_document(),
             )
-            assert lifecycle.finish_run("run-parent", status="completed")
+            assert lifecycle.finish_run("run-entry", status="completed")
             await cleanup.enforce_retention()
-            parent_terminal = await lifecycle.record(lifecycle_id)
-            assert parent_terminal is not None
-            assert "fully_terminal_at" not in parent_terminal
+            entry_terminal = await lifecycle.record(lifecycle_id)
+            assert entry_terminal is not None
+            assert "fully_terminal_at" not in entry_terminal
 
-            assert lifecycle.finish_run("run-child", status="completed")
+            assert lifecycle.finish_run("run-called", status="completed")
             await cleanup.enforce_retention()
             complete = await lifecycle.record(lifecycle_id)
             assert complete is not None
@@ -560,53 +557,6 @@ def test_purge_pending_lifecycle_does_not_consume_retention_quota(
             pending = await lifecycle.record(pending_id)
             assert pending is not None
             assert pending["lifecycle_status"] == "purge_pending"
-        finally:
-            await tasks.close()
-            await lifecycle.close()
-
-    asyncio.run(scenario())
-
-
-def test_purge_pending_lifecycle_rejects_new_background_run(
-    tmp_path: Path,
-) -> None:
-    async def scenario() -> None:
-        lifecycle, tasks, _checkpoints, _policy, _cleanup = _runtime(
-            tmp_path / "agent-shell.sqlite3"
-        )
-        await lifecycle.start()
-        await tasks.start()
-        lifecycle_id = await _create_lifecycle(lifecycle, "pending")
-        lifecycle.registry.mark_purge_pending(
-            lifecycle_id,
-            started_at="2026-01-01T00:00:00.000+00:00",
-        )
-        invoked = False
-
-        async def factory(_identity):
-            nonlocal invoked
-            invoked = True
-            raise AssertionError("purge-pending work must not execute")
-
-        try:
-            try:
-                await tasks.start_workflow(
-                    lifecycle_id=lifecycle_id,
-                    request_id="request-pending",
-                    launcher_run_id="run-pending",
-                    operation_id="blocked",
-                    caller_run_depth=0,
-                    target_id="workflow",
-                    target_name="Workflow",
-                    target_document=runtime_workflow_document(),
-                    checkpoint_thread_id=None,
-                    cancel_on_upstream_termination=True,
-                    execution_factory=factory,
-                )
-                raise AssertionError("background start should be rejected")
-            except AgentRuntimeError as exc:
-                assert exc.code == "workflow_lifecycle_deleting"
-            assert invoked is False
         finally:
             await tasks.close()
             await lifecycle.close()

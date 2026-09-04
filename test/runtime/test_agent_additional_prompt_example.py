@@ -47,7 +47,7 @@ def test_agent_additional_prompt_example_adds_private_dispatch_task() -> None:
         identity=WorkflowRunIdentity(
             request_id="request-id",
             lifecycle_id="lifecycle-id",
-            workflow_run_id="run-id",
+            run_id="run-id",
             workflow_id="workflow-id",
             workflow_name="Workflow",
             checkpoint_thread_id="thread-id",

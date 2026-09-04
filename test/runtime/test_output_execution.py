@@ -181,7 +181,7 @@ def test_monitoring_event_record_failure_does_not_replace_run_result(
             identity = WorkflowRunIdentity(
                 request_id="debug-event-request",
                 lifecycle_id=lifecycle_id,
-                workflow_run_id="debug-event-run",
+                run_id="debug-event-run",
                 workflow_id="debug-event-workflow",
                 workflow_name="Debug Event Workflow",
             )
@@ -266,7 +266,7 @@ def test_execution_persists_the_resolved_protocol_event_origin(tmp_path) -> None
             identity = WorkflowRunIdentity(
                 request_id="protocol-origin-request",
                 lifecycle_id=lifecycle_id,
-                workflow_run_id="protocol-origin-run",
+                run_id="protocol-origin-run",
                 workflow_id="protocol-origin-workflow",
                 workflow_name="Protocol Origin Workflow",
             )
@@ -354,7 +354,7 @@ def test_cancellation_drains_accepted_protocol_events_before_run_terminal(
             identity = WorkflowRunIdentity(
                 request_id="protocol-cancel-request",
                 lifecycle_id=lifecycle_id,
-                workflow_run_id="protocol-cancel-run",
+                run_id="protocol-cancel-run",
                 workflow_id="protocol-cancel-workflow",
                 workflow_name="Protocol Cancel Workflow",
             )

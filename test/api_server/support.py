@@ -15,6 +15,7 @@ from starlette.requests import Request
 
 from agent_shell.app import create_app
 from agent_shell.api.api_server import ApiServerEventHub
+from agent_shell.runtime.errors import AgentRuntimeError
 from support import API_KEY, ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -57,6 +58,37 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         lambda _block, _credential, _http_clients: ToolCompatibleFakeListChatModel(
             responses=["runtime reply"]
         ),
+    )
+
+    async def direct_test_run(coordinator, workflow, raw_messages, **kwargs):
+        """Stand in for the external dev server in API unit tests.
+
+        The SDK/Agent Server boundary has its own direct tests and isolated
+        process smoke. API unit tests execute the same frozen Graph locally so
+        they do not depend on a second listening process.
+        """
+
+        document = coordinator._snapshot.workflow_document(str(workflow["id"]))
+        if document is None:
+            raise AgentRuntimeError(
+                "workflow_graph_not_found",
+                "The selected Workflow graph does not exist.",
+                status_code=422,
+            )
+        runtime = coordinator._snapshot.new_runtime(
+            store=coordinator._owner._workflow_lifecycle.store
+        )
+        return await runtime.start_workflow(
+            document,
+            raw_messages,
+            workflow_snapshot=workflow,
+            request_id=str(kwargs.get("request_id", "")),
+            public_model=str(kwargs.get("public_model", workflow["name"])),
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.runtime.request_snapshot.LifecycleRunCoordinator.start_workflow",
+        direct_test_run,
     )
     return ScopedAuthTestClient(create_app())
 
@@ -174,14 +206,12 @@ def create_workflow(
     client: TestClient,
     *,
     name: str | None = None,
-    workflow_role: str = "parent",
 ) -> dict:
     workflow_name = name or "Test Workflow"
     response = client.post(
         "/api/workflows",
         json={
             "name": workflow_name,
-            "workflow_role": workflow_role,
             "description": "Test Workflow.",
         },
     )

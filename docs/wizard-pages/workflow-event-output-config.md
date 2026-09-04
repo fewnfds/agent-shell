@@ -24,7 +24,7 @@ def run_output(event, origin):
 
 `event` 保持官方 envelope：`seq` 严格递增，`method` 是 channel，`params.namespace` 是从 root 到 nested graph 的 segment 路径，`params.timestamp` 是 wall-clock timestamp，`params.data` 是 channel-specific Python payload。不得期待 `event_type`、`phase`、`message`、`workflow_node_id` 等平台重新封装字段；Node 和 Agent 身份从 `origin` 获取。
 
-`origin` 字段为 `lifecycle_id`、`workflow_run_id`、`parent_workflow_run_id`、`workflow_id`、`workflow_role`、`background_task_id`、`run_depth`、`workflow_node_id`、`node_invocation_id`、`agent_profile_id` 和 `subagent_profile_id`。它只保存 Shell 产品身份；model run、Tool、namespace、seq 和 payload 细节继续从 `event` 读取。无法证明归属时不猜测身份。
+`origin` 字段为 `lifecycle_id`、`run_id`、`thread_id`、`assistant_id`、`caller_run_id`、`operation_id`、`workflow_id`、`workflow_node_id`、`node_invocation_id`、`agent_profile_id` 和 `subagent_profile_id`。它保存官方执行对象引用和 Shell 产品身份；model run、Tool、namespace、seq 和 payload 细节继续从 `event` 读取。无法证明归属时不猜测身份。
 
 `output`、可选 `segment_end` 和可选 `run_output` 的函数签名都必须恰好接受 `event, origin`，不接受异步函数、默认参数或额外参数。异常或非字符串返回值以 `event_output.execution_failed`（502）终止运行；依赖未准备好时返回 `python_package.dependencies_not_ready`（409）。原始事件不会因过滤而丢失，Response Stream Scheduler 仅负责所有 Run 之间的先后、公平排队和节流。
 

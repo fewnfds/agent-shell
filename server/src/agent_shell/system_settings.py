@@ -69,6 +69,8 @@ class SystemSettingsService:
         return {
             "host": settings.host,
             "port": settings.port,
+            "n_jobs_per_worker": settings.n_jobs_per_worker,
+            "debug_port": settings.debug_port,
             "allow_remote": settings.allow_remote,
             "langsmith_tracing_enabled": settings.langsmith_tracing_enabled,
             "langsmith_endpoint": settings.langsmith_endpoint,
@@ -128,6 +130,8 @@ class SystemSettingsService:
         values = {
             "host": payload["host"],
             "port": payload["port"],
+            "n_jobs_per_worker": payload["n_jobs_per_worker"],
+            "debug_port": payload["debug_port"],
             "allow_remote": payload["allow_remote"],
             "langsmith_tracing_enabled": payload["langsmith_tracing_enabled"],
             "langsmith_endpoint": payload["langsmith_endpoint"],
@@ -219,6 +223,8 @@ class SystemSettingsService:
                 system["settings"] = {
                     "host": candidate.host,
                     "port": candidate.port,
+                    "n_jobs_per_worker": candidate.n_jobs_per_worker,
+                    "debug_port": candidate.debug_port,
                     "allow_remote": candidate.allow_remote,
                     "langsmith_tracing_enabled": candidate.langsmith_tracing_enabled,
                     "langsmith_endpoint": candidate.langsmith_endpoint,

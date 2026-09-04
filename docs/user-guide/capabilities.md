@@ -36,14 +36,14 @@ Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由
 
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
-每个 canvas Agent Node wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；parent Workflow State 的 `agent_invocations` 只保存 identity 和 `result_ref`，并按 Node/Command dispatch task 逻辑槽保留最新 reference。synchronous Subagent 仍由 Deep Agents official Middleware 在 Main Agent 内部调度，不建立隐藏的 archive wrapper。
-这条 parent/child State 输出映射不需要额外的结束 Hook 或 Recorder 组件。
+每个 canvas Agent Node wrapper 在 Main Agent graph 成功完成后，把公开返回的完整 reduced messages 以 invocation ID 幂等写入 Lifecycle/Run Store；Workflow State 的 `agent_invocations` 只保存 identity 和 `result_ref`，并按 Node/Command dispatch task 逻辑槽保留最新 reference。synchronous Subagent 仍由 Deep Agents official Middleware 在 Main Agent 内部调度，不建立隐藏的 archive wrapper。
+这条 Agent graph 与 Workflow State 的输出映射不需要额外的结束 Hook 或 Recorder 组件。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 
-检查点保存器也是 Workflow-owned 组件。Workflow 通过可空 `checkpointer_id` 选择一个配置，默认【无】；组件只有 `name` 和 `durability=exit|async|sync`，默认 `async`。选择后，Workflow root 使用官方 `AsyncSqliteSaver`，其 Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承 saver；parent 与 background child Workflow 分别读取自己的配置。未选择时最终 State、Store、Lifecycle、Run/Event/Model Request History、background Run、Tracing、Diagnostics 和 usage 继续工作，只缺少 Checkpoint State 与 Checkpoint Thread。当前软件不提供 Resume 或灾难恢复入口。字段见[检查点保存器](../wizard-pages/checkpointer-config.md)。
+Checkpointer 组件仍可保存在 Workflow metadata 中；Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 当前由 LangGraph Dev runtime 统一拥有，执行路径不读取 `checkpointer_id`。该配置面将在 persistence 阶段收敛。当前软件不提供 Resume 或灾难恢复入口。
 
-Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。Parent Run Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。引用挂在每个 Lifecycle 唯一的 Parent Workflow 上，但调度语义覆盖该 Lifecycle 的公开响应。Child Run Workflow 不装配该组件。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
+Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。调度语义覆盖该 Lifecycle 的公开响应，包括公开 response 封口前由入口 Run 直接或间接调用的其他 Run。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
 
 Command 组件保存一个 `workflow-node/command` Python 扩展引用和普通 config。扩展通过同步 `create_command()` 工厂物化 `async command(state, runtime)`；用户在画布 Branch Edge 与 Dispatch Edge 上填写业务 key，command 通过 `activate` 返回 Branch key，通过 `dispatch` 返回带唯一 `task_id`、`dispatch_key` 和严格 JSON `payload` 的 Agent task，并可通过 `update` 返回 State 局部更新。runtime 把 Branch target 与每项 LangGraph `Send` 放入同一个官方 `Command.goto`。
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。

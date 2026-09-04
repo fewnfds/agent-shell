@@ -19,22 +19,20 @@ import WorkflowEditorPage from './WorkflowEditorPage.vue'
 const workflow: Workflow = {
   id: 'workflow-1',
   name: 'Research Workflow',
-  workflow_role: 'parent',
   description: 'Runs the research agent.',
   checkpointer_id: null,
   workflow_event_output_id: null,
-  cancel_on_upstream_termination: true,
+  cancel_on_caller_termination: true,
   recursion_limit: 1_000_000,
   execution_timeout_seconds: 1_200,
   max_concurrency: 100,
   enabled: true,
 }
 
-const childWorkflow: Workflow = {
+const anotherWorkflow: Workflow = {
   ...workflow,
   id: 'workflow-child-1',
-  name: 'Research Child',
-  workflow_role: 'child',
+  name: 'Review Workflow',
 }
 
 const agent: MainAgent = {
@@ -123,7 +121,6 @@ const nodeCatalog: WorkflowNodeCatalogItem[] = [
     title_key: '',
     description_key: '',
     config_schema: {},
-    workflow_roles: ['parent', 'child'],
     input_handles: [],
     output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
   },
@@ -134,7 +131,6 @@ const nodeCatalog: WorkflowNodeCatalogItem[] = [
     title_key: '',
     description_key: '',
     config_schema: {},
-    workflow_roles: ['parent', 'child'],
     input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
     output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
   },
@@ -145,7 +141,6 @@ const nodeCatalog: WorkflowNodeCatalogItem[] = [
     title_key: '',
     description_key: '',
     config_schema: {},
-    workflow_roles: ['parent', 'child'],
     input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
     output_handles: [
       { id: 'branch', kind: 'control', edge_type: 'branch', max_connections: null },
@@ -159,7 +154,6 @@ const nodeCatalog: WorkflowNodeCatalogItem[] = [
     title_key: '',
     description_key: '',
     config_schema: {},
-    workflow_roles: ['parent', 'child'],
     input_handles: [{
       id: 'in',
       kind: 'control',
@@ -249,7 +243,7 @@ beforeEach(() => {
     components: { command: [] },
     main_agents: [agent],
     subagents: [],
-    workflows: [childWorkflow],
+    workflows: [anotherWorkflow],
   })
   vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(nodeCatalog)
   vi.spyOn(managementApi, 'validateWorkflow').mockResolvedValue({

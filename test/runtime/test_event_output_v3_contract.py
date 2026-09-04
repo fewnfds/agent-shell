@@ -24,13 +24,13 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
     identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="11111111-1111-4111-8111-111111111111",
-        workflow_run_id="22222222-2222-4222-8222-222222222222",
-        parent_workflow_run_id="33333333-3333-4333-8333-333333333333",
-        background_task_id="44444444-4444-4444-8444-444444444444",
-        run_depth=1,
+        run_id="22222222-2222-4222-8222-222222222222",
+        thread_id="33333333-3333-4333-8333-333333333333",
+        assistant_id="44444444-4444-4444-8444-444444444444",
+        caller_run_id="77777777-7777-4777-8777-777777777777",
+        operation_id="review-report",
         workflow_id="55555555-5555-4555-8555-555555555555",
-        workflow_name="Child Workflow",
-        workflow_role="child",
+        workflow_name="Review Workflow",
     )
     source = WorkflowNodeSource(
         source_type="agent",
@@ -54,12 +54,12 @@ def test_output_projector_passes_raw_protocol_event_and_origin_unchanged() -> No
     assert seen == [(event, origin)]
     assert origin == {
         "lifecycle_id": "11111111-1111-4111-8111-111111111111",
-        "workflow_run_id": "22222222-2222-4222-8222-222222222222",
-        "parent_workflow_run_id": "33333333-3333-4333-8333-333333333333",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "thread_id": "33333333-3333-4333-8333-333333333333",
+        "assistant_id": "44444444-4444-4444-8444-444444444444",
+        "caller_run_id": "77777777-7777-4777-8777-777777777777",
+        "operation_id": "review-report",
         "workflow_id": "55555555-5555-4555-8555-555555555555",
-        "workflow_role": "child",
-        "background_task_id": "44444444-4444-4444-8444-444444444444",
-        "run_depth": 1,
         "workflow_node_id": "agent-a",
         "node_invocation_id": "invoke-1",
         "agent_profile_id": "66666666-6666-4666-8666-666666666666",
@@ -100,10 +100,9 @@ def test_origin_resolver_reads_lifecycle_namespace_from_protocol_payload() -> No
     identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="11111111-1111-4111-8111-111111111111",
-        workflow_run_id="22222222-2222-4222-8222-222222222222",
+        run_id="22222222-2222-4222-8222-222222222222",
         workflow_id="55555555-5555-4555-8555-555555555555",
-        workflow_name="Parent Workflow",
-        workflow_role="parent",
+        workflow_name="Entry Workflow",
     )
     source = WorkflowNodeSource(
         source_type="agent",
@@ -136,7 +135,7 @@ def test_run_origin_stays_at_workflow_scope() -> None:
     identity = WorkflowRunIdentity(
         request_id="request-1",
         lifecycle_id="lifecycle-1",
-        workflow_run_id="run-1",
+        run_id="run-1",
         workflow_id="workflow-1",
         workflow_name="Workflow",
     )

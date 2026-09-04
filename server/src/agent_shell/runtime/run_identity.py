@@ -13,14 +13,14 @@ class WorkflowRunIdentity:
 
     request_id: str
     lifecycle_id: str
-    workflow_run_id: str
+    run_id: str
     workflow_id: str
     workflow_name: str
-    workflow_role: str = ""
+    thread_id: str = ""
+    assistant_id: str = ""
     checkpoint_thread_id: str | None = None
-    parent_workflow_run_id: str = ""
-    background_task_id: str = ""
-    run_depth: int = 0
+    caller_run_id: str = ""
+    operation_id: str = ""
 
 
 __all__ = ["WorkflowRunIdentity"]

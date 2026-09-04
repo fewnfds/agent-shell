@@ -48,13 +48,6 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
     ],
   },
   {
-    prefix: '/workflows',
-    items: [
-      { path: '/workflows/parents', labelKey: 'navigation.sections.parentWorkflows' },
-      { path: '/workflows/children', labelKey: 'navigation.sections.childWorkflows' },
-    ],
-  },
-  {
     prefix: '/system',
     items: [
       { path: '/system/config', labelKey: 'navigation.sections.systemSettings' },

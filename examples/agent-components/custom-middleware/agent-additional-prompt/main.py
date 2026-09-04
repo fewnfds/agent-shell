@@ -49,7 +49,7 @@ async def load_invocation_artifact(
     item = await runtime.store.aget(
         lifecycle_invocations_namespace(
             context.lifecycle_id,
-            context.workflow_run_id,
+            context.run_id,
         ),
         result_ref,
     )

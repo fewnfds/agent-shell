@@ -14,8 +14,8 @@ from agent_shell.runtime.response_scheduler import (
 
 
 LIFECYCLE_ID = "lifecycle-1"
-RUN_ID = "run-parent"
-WORKFLOW_ID = "workflow-parent"
+RUN_ID = "run-entry"
+WORKFLOW_ID = "workflow-entry"
 
 
 def _policy(**updates: object) -> ResponseStreamPolicy:
@@ -1061,7 +1061,7 @@ def test_input_port_rejects_unregistered_run_identity() -> None:
         scheduler.submit(
             ResponseEventInput(
                 lifecycle_id=LIFECYCLE_ID,
-                origin_run_id="child-run",
+                origin_run_id="called-run",
                 origin_workflow_id=WORKFLOW_ID,
                 event=_event("agent-a", "assistant_text", "start", 1),
             ),
@@ -1069,7 +1069,7 @@ def test_input_port_rejects_unregistered_run_identity() -> None:
         )
 
 
-def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None:
+def test_entry_and_called_run_events_share_one_fifo_batch_queue() -> None:
     scheduler = _scheduler(
         _policy(
             queue={
@@ -1077,7 +1077,7 @@ def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None
             }
         )
     )
-    scheduler.register_origin("child-run", "child-workflow")
+    scheduler.register_origin("called-run", "called-workflow")
 
     def submit(
         run_id: str,
@@ -1110,24 +1110,24 @@ def test_registered_child_and_parent_events_share_one_fifo_batch_queue() -> None
             )
         ]
 
-    assert submit(RUN_ID, WORKFLOW_ID, "parent-first", 1, 0) == [
-        "<custom>parent-first</custom>"
+    assert submit(RUN_ID, WORKFLOW_ID, "entry-first", 1, 0) == [
+        "<custom>entry-first</custom>"
     ]
     assert submit(
-        "child-run",
-        "child-workflow",
-        "child-second",
+        "called-run",
+        "called-workflow",
+        "called-second",
         2,
         0.01,
     ) == []
-    assert submit(RUN_ID, WORKFLOW_ID, "parent-third", 3, 0.02) == []
+    assert submit(RUN_ID, WORKFLOW_ID, "entry-third", 3, 0.02) == []
     assert [frame.text for frame in scheduler.advance(now=0.1)] == [
-        "<custom>child-second</custom>",
-        "<custom>parent-third</custom>",
+        "<custom>called-second</custom>",
+        "<custom>entry-third</custom>",
     ]
 
 
-def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
+def test_aborting_called_run_lanes_keeps_entry_content_owner_open() -> None:
     scheduler = _scheduler(
         _policy(
             queue={
@@ -1136,7 +1136,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
             }
         )
     )
-    scheduler.register_origin("child-run", "child-workflow")
+    scheduler.register_origin("called-run", "called-workflow")
 
     def submit(
         run_id: str,
@@ -1160,71 +1160,71 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
             if frame.text
         ]
 
-    parent_start = _event(
+    entry_start = _event(
         "shared-agent",
         "assistant_text",
         "start",
         1,
         stream_id="0",
-        turn_id="parent-turn",
+        turn_id="entry-turn",
     )
-    parent_delta = replace(
-        parent_start,
+    entry_delta = replace(
+        entry_start,
         phase="delta",
         sequence=2,
-        data={"type": "text", "text": "parent"},
+        data={"type": "text", "text": "entry"},
     )
-    child_start = _event(
+    called_start = _event(
         "shared-agent",
         "assistant_text",
         "start",
         1,
         stream_id="0",
-        turn_id="child-turn",
+        turn_id="called-turn",
     )
-    child_delta = replace(
-        child_start,
+    called_delta = replace(
+        called_start,
         phase="delta",
         sequence=2,
-        data={"type": "text", "text": "child"},
+        data={"type": "text", "text": "called"},
     )
 
-    assert submit(RUN_ID, WORKFLOW_ID, parent_start, "", 0) == []
-    assert submit(RUN_ID, WORKFLOW_ID, parent_delta, "parent", 0) == ["parent"]
+    assert submit(RUN_ID, WORKFLOW_ID, entry_start, "", 0) == []
+    assert submit(RUN_ID, WORKFLOW_ID, entry_delta, "entry", 0) == ["entry"]
     assert submit(
-        "child-run",
-        "child-workflow",
-        child_start,
+        "called-run",
+        "called-workflow",
+        called_start,
         "",
         0.01,
     ) == []
     assert submit(
-        "child-run",
-        "child-workflow",
-        child_delta,
-        "child",
+        "called-run",
+        "called-workflow",
+        called_delta,
+        "called",
         0.01,
     ) == []
 
     scheduler.abort_origin(
-        "child-run",
-        "child-workflow",
+        "called-run",
+        "called-workflow",
         now=0.02,
     )
     scheduler.finish_origin(
-        "child-run",
-        "child-workflow",
+        "called-run",
+        "called-workflow",
         now=0.02,
     )
-    parent_continuation = replace(
-        parent_delta,
+    entry_continuation = replace(
+        entry_delta,
         sequence=3,
         data={"type": "text", "text": "-continues"},
     )
     assert submit(
         RUN_ID,
         WORKFLOW_ID,
-        parent_continuation,
+        entry_continuation,
         "-continues",
         0.03,
     ) == ["-continues"]
@@ -1232,7 +1232,7 @@ def test_aborting_child_lanes_keeps_parent_content_owner_open() -> None:
 
 def test_same_tool_call_identity_in_two_runs_does_not_cross_pair() -> None:
     scheduler = _scheduler(_policy(queue={"send_interval_seconds": 0}))
-    scheduler.register_origin("child-run", "child-workflow")
+    scheduler.register_origin("called-run", "called-workflow")
 
     def submit(
         run_id: str,
@@ -1256,78 +1256,78 @@ def test_same_tool_call_identity_in_two_runs_does_not_cross_pair() -> None:
             if frame.text
         ]
 
-    parent_call = _event(
+    entry_call = _event(
         "shared-agent",
         "tool_call",
         "end",
         1,
-        message="parent-call",
+        message="entry-call",
         tool_call_id="shared-call",
     )
-    child_result = _event(
+    called_result = _event(
         "shared-agent",
         "tool_result",
         "end",
         2,
-        message="child-result",
+        message="called-result",
         tool_call_id="shared-call",
     )
-    child_call = replace(
-        parent_call,
+    called_call = replace(
+        entry_call,
         sequence=3,
-        data={"message": "child-call", "tool_call_id": "shared-call"},
+        data={"message": "called-call", "tool_call_id": "shared-call"},
     )
-    parent_result = replace(
-        child_result,
+    entry_result = replace(
+        called_result,
         sequence=4,
-        data={"message": "parent-result", "tool_call_id": "shared-call"},
+        data={"message": "entry-result", "tool_call_id": "shared-call"},
     )
 
     assert submit(
         RUN_ID,
         WORKFLOW_ID,
-        parent_call,
-        "<parent-call>",
+        entry_call,
+        "<entry-call>",
         0,
     ) == []
     assert submit(
-        "child-run",
-        "child-workflow",
-        child_result,
-        "<child-result>",
+        "called-run",
+        "called-workflow",
+        called_result,
+        "<called-result>",
         0.01,
     ) == []
     assert submit(
-        "child-run",
-        "child-workflow",
-        child_call,
-        "<child-call>",
+        "called-run",
+        "called-workflow",
+        called_call,
+        "<called-call>",
         0.02,
-    ) == ["<child-call><child-result>"]
+    ) == ["<called-call><called-result>"]
     assert submit(
         RUN_ID,
         WORKFLOW_ID,
-        parent_result,
-        "<parent-result>",
+        entry_result,
+        "<entry-result>",
         0.03,
-    ) == ["<parent-call><parent-result>"]
+    ) == ["<entry-call><entry-result>"]
 
 
-def test_parent_response_seal_rejects_late_child_output() -> None:
+def test_entry_response_seal_rejects_late_called_run_output() -> None:
     scheduler = _scheduler(_policy(queue={"send_interval_seconds": 0}))
-    scheduler.register_origin("child-run", "child-workflow")
+    scheduler.register_origin("called-run", "called-workflow")
 
     scheduler.finish_origin(RUN_ID, WORKFLOW_ID, now=0)
     assert scheduler.finish(now=0) == []
-    assert not scheduler.accepting("child-run", "child-workflow")
+    assert not scheduler.accepting("called-run", "called-workflow")
 
     scheduler.publish(
         ResponseEventInput(
             lifecycle_id=LIFECYCLE_ID,
-            origin_run_id="child-run",
-            origin_workflow_id="child-workflow",
+            origin_run_id="called-run",
+            origin_workflow_id="called-workflow",
             event=_event(
-                "child-script",
+                "called-script",
                 "custom",
                 "end",
                 1,

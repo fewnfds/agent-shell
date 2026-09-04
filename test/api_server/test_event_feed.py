@@ -27,8 +27,8 @@ def test_event_feed_exposes_only_supported_sources(
             summary="request failed",
             component="workflow_runtime",
             detail_available=False,
-            parent_workflow_id="workflow-parent",
-            parent_workflow_name="Published Workflow",
+            entry_workflow_id="workflow-entry",
+            entry_workflow_name="Published Workflow",
             subject_kind="agent",
             subject_id="agent-one",
             subject_name="Published Main Agent",
@@ -159,8 +159,8 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
                     lifecycle_id="lifecycle-one",
                     workflow_run_id="run-one",
                     checkpoint_thread_id="thread-one",
-                    parent_workflow_id="workflow-parent",
-                    parent_workflow_name="Published Workflow",
+                    entry_workflow_id="workflow-entry",
+                    entry_workflow_name="Published Workflow",
                     subject_kind="agent",
                     subject_id="agent-one",
                     subject_name="Published Main Agent",
@@ -200,7 +200,7 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
     assert download.headers["content-type"].startswith("text/plain")
     assert download.headers["content-disposition"].endswith('.log"')
     detail_text = download.content.decode("utf-8")
-    assert "parent_workflow_name=Published Workflow" in detail_text
+    assert "entry_workflow_name=Published Workflow" in detail_text
     assert "run_id=run-one" in detail_text
     assert "TypeError: private-debug-detail" in detail_text
     assert "RuntimeError: outer debug failure" in detail_text

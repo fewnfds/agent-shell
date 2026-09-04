@@ -22,7 +22,7 @@ export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', component: ApiServerSettingsPage, meta: { titleKey: 'apiServer.homeTitle' } },
-    { path: '/workflows', redirect: '/workflows/parents' },
+    { path: '/workflows', component: WorkflowsPage, meta: { titleKey: 'workflows.title' } },
     { path: '/models', redirect: '/models/connections' },
     { path: '/mcp', redirect: '/mcp/connections' },
     {
@@ -39,18 +39,6 @@ export const router = createRouter({
       meta: { titleKey: 'navigation.mcp' },
     },
     { path: '/mcp/mapping', component: McpMappingPage, meta: { titleKey: 'navigation.mcp' } },
-    {
-      path: '/workflows/parents',
-      component: WorkflowsPage,
-      props: { workflowRole: 'parent' },
-      meta: { titleKey: 'workflows.title' },
-    },
-    {
-      path: '/workflows/children',
-      component: WorkflowsPage,
-      props: { workflowRole: 'child' },
-      meta: { titleKey: 'workflows.title' },
-    },
     {
       path: '/system/workflow-lifecycles',
       component: WorkflowLifecyclesPage,

@@ -25,8 +25,7 @@ vi.mock('@/utils/download', () => ({ triggerBrowserDownload }))
 function run(
   runId: string,
   workflowName: string,
-  parentRunId: string | null,
-  runDepth: number,
+  callerRunId: string | null,
 ) {
   return {
     run_id: runId,
@@ -35,9 +34,8 @@ function run(
     checkpoint_thread_id: null,
     workflow_id: `workflow-${runId}`,
     workflow_name: workflowName,
-    parent_run_id: parentRunId,
-    background_task_id: null,
-    run_depth: runDepth,
+    caller_run_id: callerRunId,
+    operation_id: callerRunId ? `operation-${runId}` : null,
     status: runId === 'run-root' ? 'running' as const : 'completed' as const,
     created_at: '2026-09-03T00:00:00Z',
     started_at: '2026-09-03T00:00:00Z',
@@ -65,7 +63,7 @@ const snapshot: RuntimeMonitoringSnapshot = {
     request_id: 'request-1',
     root_run_id: 'run-root',
     workflow_id: 'workflow-root',
-    workflow_name: 'Parent Workflow',
+    workflow_name: 'Entry Workflow',
     created_at: '2026-09-03T00:00:00Z',
     lifecycle_status: 'active',
     root_status: 'running',
@@ -89,12 +87,12 @@ const snapshot: RuntimeMonitoringSnapshot = {
     },
   },
   runs: [
-    run('run-root', 'Parent Workflow', null, 0),
-    run('run-child', 'Child Workflow', 'run-root', 1),
+    run('run-root', 'Entry Workflow', null),
+    run('run-child', 'Spawned Workflow', 'run-root'),
   ],
   forest: {
     root_run_ids: ['run-root'],
-    relationships: [{ parent_run_id: 'run-root', child_run_id: 'run-child' }],
+    relationships: [{ caller_run_id: 'run-root', spawned_run_id: 'run-child' }],
     orphan_run_ids: [],
     relationship_availability: 'available',
   },
@@ -106,7 +104,7 @@ function scopedSnapshot(
 ): RuntimeMonitoringSnapshot {
   const runIds = new Set(runs.map((item) => item.run_id))
   const relationships = snapshot.forest.relationships.filter((item) => (
-    runIds.has(item.parent_run_id) && runIds.has(item.child_run_id)
+    runIds.has(item.caller_run_id) && runIds.has(item.spawned_run_id)
   ))
   return {
     ...snapshot,
@@ -120,7 +118,7 @@ function scopedSnapshot(
     runs,
     forest: {
       root_run_ids: runs.filter((item) => (
-        !item.parent_run_id || !runIds.has(item.parent_run_id)
+        !item.caller_run_id || !runIds.has(item.caller_run_id)
       )).map((item) => item.run_id),
       relationships,
       orphan_run_ids: [],
@@ -163,7 +161,7 @@ function graphResponse(
       run_id: runId,
       lifecycle_id: 'lifecycle-1',
       workflow_id: `workflow-${runId}`,
-      workflow_name: runId === 'run-root' ? 'Parent Workflow' : 'Child Workflow',
+      workflow_name: runId === 'run-root' ? 'Entry Workflow' : 'Spawned Workflow',
       document_sha: `sha-${runId}`,
       document: document(nodeIds),
       created_at: '2026-09-03T00:00:00Z',
@@ -374,7 +372,7 @@ describe('RuntimeMonitoringPage', () => {
     expect(router.currentRoute.value.query.run_id).toBe('run-root')
 
     const childButton = wrapper.findAll('.runtime-run-index-button').find((button) => (
-      button.text().includes('Child Workflow')
+      button.text().includes('Spawned Workflow')
     ))
     await childButton!.trigger('click')
     await flushPromises()
@@ -408,7 +406,7 @@ describe('RuntimeMonitoringPage', () => {
       expect.any(AbortSignal),
     )
     expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(1)
-    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Child Workflow')
+    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Spawned Workflow')
     expect(router.currentRoute.value.query.run_id).toBe('run-child')
   })
 
@@ -446,7 +444,7 @@ describe('RuntimeMonitoringPage', () => {
       run_id: child.run_id,
     })
     expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(1)
-    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Child Workflow')
+    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Spawned Workflow')
   })
 
   it('uses the backend exact Run scope and keeps that identity in the deep link', async () => {
@@ -466,7 +464,7 @@ describe('RuntimeMonitoringPage', () => {
       expect.any(AbortSignal),
     )
     expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(1)
-    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Child Workflow')
+    expect(wrapper.get('.runtime-run-index-button').text()).toContain('Spawned Workflow')
     expect(router.currentRoute.value.query).toMatchObject({ scope: 'run', run_id: 'run-child' })
   })
 
@@ -480,7 +478,7 @@ describe('RuntimeMonitoringPage', () => {
     const { wrapper } = await mountPage()
 
     const childButton = wrapper.findAll('.runtime-run-index-button').find((button) => (
-      button.text().includes('Child Workflow')
+      button.text().includes('Spawned Workflow')
     ))
     await childButton!.trigger('click')
     await flushPromises()
@@ -505,7 +503,7 @@ describe('RuntimeMonitoringPage', () => {
     expect(wrapper.findAll('.runtime-run-index-button')).toHaveLength(2)
 
     const childButton = wrapper.findAll('.runtime-run-index-button').find((button) => (
-      button.text().includes('Child Workflow')
+      button.text().includes('Spawned Workflow')
     ))
     await childButton!.trigger('click')
     await flushPromises()
@@ -616,7 +614,7 @@ describe('RuntimeMonitoringPage', () => {
     expect(wrapper.find('.runtime-monitoring-node-panel').exists()).toBe(true)
 
     const childButton = wrapper.findAll('.runtime-run-index-button').find((button) => (
-      button.text().includes('Child Workflow')
+      button.text().includes('Spawned Workflow')
     ))
     await childButton!.trigger('click')
     await flushPromises()

@@ -34,8 +34,8 @@ class RuntimeDiagnosticContext:
     lifecycle_id: str = ""
     workflow_run_id: str = ""
     checkpoint_thread_id: str | None = None
-    parent_workflow_id: str = ""
-    parent_workflow_name: str = ""
+    entry_workflow_id: str = ""
+    entry_workflow_name: str = ""
     subject_kind: str = ""
     subject_id: str = ""
     subject_name: str = ""

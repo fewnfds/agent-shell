@@ -135,7 +135,7 @@ async def _create_root(
     )
 
 
-def test_snapshot_scopes_and_forest_use_only_registry_parent_facts(
+def test_snapshot_scopes_and_forest_use_only_registry_caller_facts(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> tuple[dict, dict, dict, dict]:
@@ -150,8 +150,7 @@ def test_snapshot_scopes_and_forest_use_only_registry_parent_facts(
             def child(
                 run_id: str,
                 workflow_id: str,
-                parent_run_id: str,
-                depth: int,
+                caller_run_id: str,
             ) -> None:
                 lifecycle.register_run(
                     {
@@ -160,22 +159,21 @@ def test_snapshot_scopes_and_forest_use_only_registry_parent_facts(
                         "request_id": "request-root",
                         "workflow_id": workflow_id,
                         "workflow_name": workflow_id,
-                        "parent_run_id": parent_run_id,
-                        "background_task_id": f"task-{run_id}",
-                        "run_depth": depth,
+                        "caller_run_id": caller_run_id,
+                        "operation_id": f"operation-{run_id}",
                     },
                     workflow_document=runtime_workflow_document(),
                 )
 
-            child("selected", "workflow-selected", "root", 1)
-            child("descendant", "workflow-descendant", "selected", 2)
-            child("sibling", "workflow-other", "root", 1)
-            child("orphan", "workflow-orphan", "root", 1)
+            child("selected", "workflow-selected", "root")
+            child("descendant", "workflow-descendant", "selected")
+            child("sibling", "workflow-other", "root")
+            child("orphan", "workflow-orphan", "root")
             with SQLiteDatabase(
                 tmp_path / "agent-shell.sqlite3"
             ).transaction() as connection:
                 connection.execute(
-                    "UPDATE runtime_workflow_runs SET parent_run_id = NULL "
+                    "UPDATE runtime_workflow_runs SET caller_run_id = NULL "
                     "WHERE run_id = 'orphan'"
                 )
             lifecycle.mark_monitoring_partial("selected", "protocol")
@@ -213,8 +211,9 @@ def test_snapshot_scopes_and_forest_use_only_registry_parent_facts(
         "sibling",
         "orphan",
     }
-    assert all_runs["forest"]["orphan_run_ids"] == ["orphan"]
-    assert all_runs["forest"]["relationship_availability"] == "partial"
+    assert "orphan" in all_runs["forest"]["root_run_ids"]
+    assert all_runs["forest"]["orphan_run_ids"] == []
+    assert all_runs["forest"]["relationship_availability"] == "available"
     assert {item["run_id"] for item in workflow["runs"]} == {
         "selected",
         "descendant",
@@ -223,7 +222,7 @@ def test_snapshot_scopes_and_forest_use_only_registry_parent_facts(
     assert workflow["forest"]["orphan_run_ids"] == []
     assert workflow["forest"]["relationship_availability"] == "available"
     assert workflow["forest"]["relationships"] == [
-        {"parent_run_id": "selected", "child_run_id": "descendant"}
+        {"caller_run_id": "selected", "spawned_run_id": "descendant"}
     ]
     assert workflow["summary"]["partition_availability"]["protocol"] == "partial"
     assert [item["run_id"] for item in exact["runs"]] == ["selected"]

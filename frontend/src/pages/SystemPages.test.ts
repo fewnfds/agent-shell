@@ -23,6 +23,8 @@ vi.mock('vue-i18n', () => ({
 const currentSettings: SystemSettings = {
   host: '127.0.0.1',
   port: 19100,
+  n_jobs_per_worker: 10,
+  debug_port: null,
   allow_remote: false,
   langsmith_tracing_enabled: false,
   langsmith_endpoint: 'https://api.smith.langchain.com',
@@ -127,6 +129,8 @@ describe('SystemSettingsPage', () => {
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
       host: '127.0.0.1',
       port: 19100,
+      n_jobs_per_worker: 10,
+      debug_port: null,
       allow_remote: false,
       langsmith_tracing_enabled: false,
       langsmith_endpoint: 'https://api.smith.langchain.com',
@@ -162,6 +166,8 @@ describe('SystemSettingsPage', () => {
         ...currentSettings,
         host: payload.host,
         port: payload.port,
+        n_jobs_per_worker: payload.n_jobs_per_worker,
+        debug_port: payload.debug_port,
         allow_remote: payload.allow_remote,
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
@@ -176,6 +182,8 @@ describe('SystemSettingsPage', () => {
 
     await wrapper.get('input[type="text"]').setValue('0.0.0.0')
     await wrapper.get('#system-port').setValue('21000')
+    await wrapper.get('#langgraph-jobs-per-worker').setValue('14')
+    await wrapper.get('#langgraph-debug-port').setValue('21001')
     await wrapper.get('#allow-remote').setValue(true)
     await wrapper.get('#management-password').setValue('new-management-password')
     await wrapper.get('#api-server-key').setValue('new-api-key')
@@ -191,6 +199,8 @@ describe('SystemSettingsPage', () => {
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
       host: '0.0.0.0',
       port: 21000,
+      n_jobs_per_worker: 14,
+      debug_port: 21001,
       allow_remote: true,
       langsmith_tracing_enabled: true,
       langsmith_endpoint: 'https://api.smith.langchain.com',

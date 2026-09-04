@@ -47,6 +47,8 @@ class SystemSettingsUpdate(BaseModel):
 
     host: str
     port: int
+    n_jobs_per_worker: int = Field(strict=True, ge=1)
+    debug_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
     allow_remote: bool
     langsmith_tracing_enabled: bool
     langsmith_endpoint: str

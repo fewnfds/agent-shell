@@ -3,10 +3,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from agent_shell.runtime.background_tasks import (
-    ACTIVE_BACKGROUND_STATUSES,
-    BackgroundTaskManager,
-)
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
@@ -27,13 +23,11 @@ class RuntimeCleanupCoordinator:
     def __init__(
         self,
         lifecycle: WorkflowLifecycleService,
-        background_tasks: BackgroundTaskManager,
         checkpoints: WorkflowCheckpointService,
         policy: RuntimePolicyStore,
         diagnostics: RuntimeDiagnostics | None = None,
     ) -> None:
         self._lifecycle = lifecycle
-        self._background_tasks = background_tasks
         self._checkpoints = checkpoints
         self._policy = policy
         self._diagnostics = diagnostics
@@ -45,10 +39,6 @@ class RuntimeCleanupCoordinator:
 
         self._lifecycle.interrupt_active_runs()
         self._lifecycle.reconcile_terminal_monitoring()
-        for record in self._lifecycle.registry.list_all_lifecycles():
-            lifecycle_id = str(record["lifecycle_id"])
-            async with self._lifecycle.exclusive_mutation(lifecycle_id):
-                await self._background_tasks.list_for_cleanup(lifecycle_id)
         await self.enforce_retention()
 
     async def lifecycle_changed(self, lifecycle_id: str) -> None:
@@ -76,11 +66,6 @@ class RuntimeCleanupCoordinator:
             if root is None or root["status"] in {"pending", "running"}:
                 return
             if self._lifecycle.registry.has_active_runs(lifecycle_id):
-                return
-            tasks = await self._background_tasks.list_for_cleanup(lifecycle_id)
-            if any(
-                task.runtime_status in ACTIVE_BACKGROUND_STATUSES for task in tasks
-            ):
                 return
             self._lifecycle.registry.mark_fully_terminal(
                 lifecycle_id,
@@ -129,10 +114,7 @@ class RuntimeCleanupCoordinator:
             record = await self._lifecycle.record(lifecycle_id)
             if record is None:
                 return None
-            tasks = await self._background_tasks.list_for_cleanup(lifecycle_id)
-            if self._lifecycle.registry.has_active_runs(lifecycle_id) or any(
-                task.runtime_status in ACTIVE_BACKGROUND_STATUSES for task in tasks
-            ):
+            if self._lifecycle.registry.has_active_runs(lifecycle_id):
                 if automatic:
                     return None
                 raise RuntimeLifecycleActiveError(

@@ -18,18 +18,14 @@ def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     ]
 
 
-def test_response_stream_scheduling_component_is_referenced_by_parent_workflow(
+def test_response_stream_scheduling_component_is_referenced_by_any_workflow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        parent = create_workflow(client, name="Stream owner")
-        child = create_workflow(
-            client,
-            name="Silent child",
-            workflow_role="child",
-        )
-        assert parent["response_stream_scheduling_id"] is None
-        assert "response_stream_scheduling_id" not in child
+        workflow = create_workflow(client, name="Stream owner")
+        another = create_workflow(client, name="Another stream owner")
+        assert workflow["response_stream_scheduling_id"] is None
+        assert another["response_stream_scheduling_id"] is None
         component = client.post(
             "/api/blocks/response-stream-scheduling",
             json={
@@ -50,37 +46,36 @@ def test_response_stream_scheduling_component_is_referenced_by_parent_workflow(
             "send_interval_seconds": 0.1,
         }
         workflow_payload = {
-            key: parent[key]
+            key: workflow[key]
             for key in (
                 "name",
-                "workflow_role",
                 "description",
                 "checkpointer_id",
                 "workflow_event_output_id",
-                "cancel_on_upstream_termination",
+                "cancel_on_caller_termination",
                 "recursion_limit",
                 "execution_timeout_seconds",
                 "max_concurrency",
             )
         }
         workflow_payload["response_stream_scheduling_id"] = component.json()["id"]
-        saved = client.put(f"/api/workflows/{parent['id']}", json=workflow_payload)
+        saved = client.put(f"/api/workflows/{workflow['id']}", json=workflow_payload)
         assert saved.status_code == 200, saved.text
         assert saved.json()["response_stream_scheduling_id"] == component.json()["id"]
 
         copied = client.post(
-            f"/api/workflows/{parent['id']}/copy",
+            f"/api/workflows/{workflow['id']}/copy",
             json={"name": "Copied stream owner"},
         )
         assert copied.status_code == 200, copied.text
         assert copied.json()["response_stream_scheduling_id"] == component.json()["id"]
 
 
-def test_response_stream_scheduling_rejects_invalid_component_and_workflow_ownership(
+def test_response_stream_scheduling_rejects_invalid_component_and_inline_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        parent = create_workflow(client, name="Policy validation")
+        workflow = create_workflow(client, name="Policy validation")
         invalid = client.post(
             "/api/blocks/response-stream-scheduling",
             json={
@@ -90,32 +85,29 @@ def test_response_stream_scheduling_rejects_invalid_component_and_workflow_owner
         )
         configured = client.post(
             "/api/blocks/response-stream-scheduling",
-            json={"name": "Child forbidden scheduling"},
+            json={"name": "Reusable scheduling"},
         )
         assert configured.status_code == 200, configured.text
         missing_reference = client.put(
-            f"/api/workflows/{parent['id']}",
+            f"/api/workflows/{workflow['id']}",
             json={
-                "name": parent["name"],
-                "workflow_role": "parent",
+                "name": workflow["name"],
                 "response_stream_scheduling_id": (
                     "00000000-0000-4000-8000-000000000099"
                 ),
             },
         )
-        child_create = client.post(
+        configured_create = client.post(
             "/api/workflows",
             json={
-                "name": "Invalid child owner",
-                "workflow_role": "child",
+                "name": "Configured workflow",
                 "response_stream_scheduling_id": configured.json()["id"],
             },
         )
         removed_inline_owner = client.put(
-            f"/api/workflows/{parent['id']}",
+            f"/api/workflows/{workflow['id']}",
             json={
-                "name": parent["name"],
-                "workflow_role": "parent",
+                "name": workflow["name"],
                 "response_stream_policy": {"queue": {"strategy": "request"}},
             },
         )
@@ -125,8 +117,8 @@ def test_response_stream_scheduling_rejects_invalid_component_and_workflow_owner
     assert missing_reference.json()["detail"]["code"] == (
         "workflow_response_stream_scheduling_not_found"
     )
-    assert child_create.status_code == 422
-    assert child_create.json()["detail"]["code"] == "workflow_invalid"
+    assert configured_create.status_code == 200
+    assert configured_create.json()["response_stream_scheduling_id"] == configured.json()["id"]
     assert removed_inline_owner.status_code == 422
     assert removed_inline_owner.json()["detail"]["code"] == "workflow_invalid"
 
@@ -136,14 +128,13 @@ def test_workflow_runtime_boundaries_are_managed(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Managed boundaries")
-        assert workflow["cancel_on_upstream_termination"] is True
+        assert workflow["cancel_on_caller_termination"] is True
         updated = client.put(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": workflow["description"],
-                "cancel_on_upstream_termination": False,
+                "cancel_on_caller_termination": False,
                 "recursion_limit": 250,
                 "execution_timeout_seconds": 900,
                 "max_concurrency": 32,
@@ -151,43 +142,38 @@ def test_workflow_runtime_boundaries_are_managed(
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["max_concurrency"] == 32
-        assert updated.json()["cancel_on_upstream_termination"] is False
+        assert updated.json()["cancel_on_caller_termination"] is False
 
 
-def test_workflow_copy_preserves_graph_layout_and_role_as_a_draft(
+def test_workflow_copy_preserves_graph_layout_as_a_draft(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        source = create_workflow(
-            client,
-            name="Source Child",
-            workflow_role="child",
-        )
+        source = create_workflow(client, name="Source Workflow")
         document = save_linear_workflow_graph(client, source, main_agent)
         assert client.get(f"/api/workflows/{source['id']}").json()["enabled"] is True
 
         copied = client.post(
             f"/api/workflows/{source['id']}/copy",
-            json={"name": "Copied Child"},
+            json={"name": "Copied Workflow"},
         )
 
         assert copied.status_code == 200, copied.text
         copied_item = copied.json()
         assert copied_item["id"] != source["id"]
-        assert copied_item["name"] == "Copied Child"
-        assert copied_item["workflow_role"] == "child"
+        assert copied_item["name"] == "Copied Workflow"
         assert copied_item["enabled"] is False
         assert client.get(
             f"/api/workflows/{copied_item['id']}/graph"
         ).json() == document
-        assert [item["id"] for item in client.get(
-            "/api/workflows?workflow_role=child"
-        ).json()] == [copied_item["id"], source["id"]]
+        assert {item["id"] for item in client.get("/api/workflows").json()} == {
+            copied_item["id"], source["id"]
+        }
 
         conflict = client.post(
             f"/api/workflows/{source['id']}/copy",
-            json={"name": "Copied Child"},
+            json={"name": "Copied Workflow"},
         )
         missing = client.post(
             "/api/workflows/00000000-0000-4000-8000-000000000099/copy",
@@ -214,7 +200,7 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
             f"/api/workflows/{workflow['id']}",
             json={
                 **{key: workflow[key] for key in (
-                        "name", "workflow_role", "description",
+                        "name", "description",
                         "recursion_limit",
                         "execution_timeout_seconds", "max_concurrency"
                     )},
@@ -264,7 +250,6 @@ def test_workflow_checkpointer_delete_preserves_references_for_each_owner(
                     key: workflow[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
                         "recursion_limit",
@@ -293,7 +278,6 @@ def test_workflow_checkpointer_delete_preserves_references_for_each_owner(
                     key: other[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
                         "recursion_limit",
@@ -346,7 +330,6 @@ def test_workflow_publish_rejects_a_deleted_checkpointer_reference(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": workflow["description"],
                 "checkpointer_id": checkpointer["id"],
             },
@@ -403,7 +386,6 @@ def test_workflow_rejects_missing_or_wrong_type_checkpointer_reference(
                         key: workflow[key]
                         for key in (
                             "name",
-                            "workflow_role",
                             "description",
                             "workflow_event_output_id",
                             "recursion_limit",
@@ -439,7 +421,6 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
                     key: workflow[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "recursion_limit",
                         "execution_timeout_seconds",
@@ -476,7 +457,7 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
     assert published.status_code == 422
 
 
-def test_workflow_roles_filter_management_and_public_model_entries(
+def test_all_enabled_workflows_are_public_model_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -487,27 +468,16 @@ def test_workflow_roles_filter_management_and_public_model_entries(
             client,
             name="Research Workflow",
         )
-        child = create_workflow(
-            client,
-            name="Research Child",
-            workflow_role="child",
-        )
+        worker = create_workflow(client, name="Research Worker")
         assert client.get(f"/api/workflows/{created['id']}").json() == created
-        assert client.get("/api/workflows").json() == [child, created]
-        assert client.get(
-            "/api/workflows?workflow_role=parent"
-        ).json() == [created]
-        assert client.get(
-            "/api/workflows?workflow_role=child"
-        ).json() == [child]
+        assert client.get("/api/workflows").json() == [worker, created]
         assert client.get("/v1/models").json()["data"] == []
         save_linear_workflow_graph(client, created, main_agent)
-        save_linear_workflow_graph(client, child, main_agent)
+        save_linear_workflow_graph(client, worker, main_agent)
         assert [item["id"] for item in client.get("/v1/models").json()["data"]] == [
-            "Research Workflow"
+            "Research Worker",
+            "Research Workflow",
         ]
-        assert created["workflow_role"] == "parent"
-        assert child["workflow_role"] == "child"
         copied = client.post(
             f"/api/main-agents/{main_agent['id']}/copy",
             json={"name": "Unreferenced Main Agent"},
@@ -520,7 +490,7 @@ def test_workflow_roles_filter_management_and_public_model_entries(
         assert deleted_agents.status_code == 200, deleted_agents.text
         assert deleted_agents.json() == {"deleted": 2}
         assert client.get("/api/main-agents").json() == []
-        for workflow in (created, child):
+        for workflow in (created, worker):
             stored_document = client.get(
                 f"/api/workflows/{workflow['id']}/graph"
             ).json()
@@ -541,7 +511,9 @@ def test_workflow_roles_filter_management_and_public_model_entries(
             json=client.get(f"/api/workflows/{created['id']}/graph").json(),
         )
         assert disabled.status_code == 200, disabled.text
-        assert client.get("/v1/models").json()["data"] == []
+        assert [item["id"] for item in client.get("/v1/models").json()["data"]] == [
+            "Research Worker"
+        ]
 
         deleted = client.delete(f"/api/workflows/{created['id']}")
         assert deleted.json() == {"ok": True}
@@ -556,7 +528,6 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
             "/api/workflows",
             json={
                 "name": "Unique Workflow",
-                "workflow_role": "parent",
                 "description": "Duplicate.",
             },
         )
@@ -564,7 +535,6 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
             "/api/workflows",
             json={
                 "name": "Legacy Workflow",
-                "workflow_role": "parent",
                 "description": "Rejected legacy shape.",
                 "main_agent_id": "missing-agent",
             },
@@ -573,7 +543,6 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
             "/api/workflows",
             json={
                 "name": "Manual enable",
-                "workflow_role": "parent",
                 "description": "Rejected publication bypass.",
                 "enabled": True,
             },
@@ -595,7 +564,6 @@ def test_workflow_rejects_removed_filesystem_field(
             "/api/workflows",
             json={
                 "name": "Legacy Filesystem owner",
-                "workflow_role": "parent",
                 "description": "Rejected legacy shape.",
                 "filesystem_id": "00000000-0000-0000-0000-000000000000",
             },
@@ -756,7 +724,6 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": "Metadata cannot demote a published graph.",
             },
         )
@@ -1026,7 +993,6 @@ def test_workflow_graph_catalog_save_and_reload(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": "Metadata changed without touching the graph.",
             },
         )
@@ -1052,9 +1018,9 @@ def test_graph_save_rejects_background_action_as_node(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        child = create_workflow(client, name="Child", workflow_role="child")
-        save_linear_workflow_graph(client, child, main_agent)
-        graph_url = f"/api/workflows/{child['id']}/graph"
+        workflow = create_workflow(client, name="Workflow")
+        save_linear_workflow_graph(client, workflow, main_agent)
+        graph_url = f"/api/workflows/{workflow['id']}/graph"
         document = client.get(graph_url).json()
         document["definition"]["nodes"].insert(
             1,
@@ -1062,7 +1028,7 @@ def test_graph_save_rejects_background_action_as_node(
                 "id": "background-start",
                 "type": "background-workflow-start",
                 "type_version": 1,
-                "config": {"child_workflow_id": child["id"]},
+                "config": {"target_workflow_id": workflow["id"]},
             },
         )
         document["definition"]["edges"][0]["target"] = "background-start"

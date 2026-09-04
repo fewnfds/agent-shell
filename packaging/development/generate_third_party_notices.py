@@ -15,6 +15,8 @@ import re
 import tomllib
 from typing import Any
 
+from packaging.markers import Marker
+
 
 def _normalize(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).casefold()
@@ -56,14 +58,18 @@ def _runtime_packages(root: Path) -> list[tuple[str, str, str, str, str]]:
     }
     root_package = next(item for item in lock["package"] if item["name"] == "agent-shell-server")
     wanted: set[str] = set()
-    pending = [item["name"] for item in root_package.get("dependencies", [])]
+    pending = list(root_package.get("dependencies", []))
     while pending:
-        name = pending.pop()
+        dependency = pending.pop()
+        marker = dependency.get("marker")
+        if marker and not Marker(marker).evaluate():
+            continue
+        name = dependency["name"]
         if name in wanted:
             continue
         wanted.add(name)
         package = packages[name]
-        pending.extend(item["name"] for item in package.get("dependencies", []))
+        pending.extend(package.get("dependencies", []))
     rows = []
     for name in sorted(wanted, key=_normalize):
         version = packages[name]["version"]

@@ -50,7 +50,7 @@ const tableConfig: DataTableConfig<WorkflowLifecycleSummary> = {
   columns: [
     {
       key: 'workflow',
-      label: () => t('workflowLifecycles.columns.parentWorkflow'),
+      label: () => t('workflowLifecycles.columns.entryWorkflow'),
       value: (row) => row.workflow_name || row.workflow_id,
     },
     {

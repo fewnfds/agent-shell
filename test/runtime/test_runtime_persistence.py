@@ -154,21 +154,20 @@ def test_runtime_schema_and_registration_keep_one_control_record_and_frozen_grap
             )
             service.register_run(
                 {
-                    "run_id": "child-run",
+                    "run_id": "called-run",
                     "lifecycle_id": lifecycle_id,
                     "request_id": "request-root-run",
-                    "workflow_id": "child-workflow",
-                    "workflow_name": "Child Workflow",
-                    "parent_run_id": "root-run",
-                    "background_task_id": "task-1",
-                    "run_depth": 1,
+                    "workflow_id": "called-workflow",
+                    "workflow_name": "Called Workflow",
+                    "caller_run_id": "root-run",
+                    "operation_id": "call-workflow",
                 },
                 workflow_document=runtime_workflow_document(),
             )
 
             assert [run["run_id"] for run in service.runs(lifecycle_id)] == [
                 "root-run",
-                "child-run",
+                "called-run",
             ]
             root_run = service.run("root-run")
             lifecycle = await service.record(lifecycle_id)
@@ -190,14 +189,13 @@ def test_runtime_schema_and_registration_keep_one_control_record_and_frozen_grap
             try:
                 service.register_run(
                     {
-                        "run_id": "child-run",
+                        "run_id": "called-run",
                         "lifecycle_id": lifecycle_id,
                         "request_id": "request-root-run",
                         "workflow_id": "duplicate",
                         "workflow_name": "Duplicate",
-                        "parent_run_id": "root-run",
-                        "background_task_id": "duplicate-task",
-                        "run_depth": 1,
+                        "caller_run_id": "root-run",
+                        "operation_id": "duplicate-call",
                     },
                     workflow_document=runtime_workflow_document(),
                 )
@@ -423,7 +421,7 @@ def test_model_request_recorder_uses_official_start_end_error_boundary(
             identity = WorkflowRunIdentity(
                 request_id="request-model-run",
                 lifecycle_id=lifecycle_id,
-                workflow_run_id="model-run",
+                run_id="model-run",
                 workflow_id="workflow-model-run",
                 workflow_name="Model Workflow",
             )
@@ -574,7 +572,7 @@ def test_node_retry_preserves_invocation_and_records_each_official_attempt(
                 {"shared_vars": {}, "agent_invocations": {}},
                 context=WorkflowRuntimeContext(
                     lifecycle_id=lifecycle_id,
-                    workflow_run_id="retry-run",
+                    run_id="retry-run",
                     workflow_id="workflow-retry-run",
                 ),
             )

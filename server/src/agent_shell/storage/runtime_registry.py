@@ -26,9 +26,8 @@ class RuntimeRegistryStore:
             "checkpoint_thread_id": row["checkpoint_thread_id"],
             "workflow_id": str(row["workflow_id"]),
             "workflow_name": str(row["workflow_name"]),
-            "parent_run_id": row["parent_run_id"],
-            "background_task_id": row["background_task_id"],
-            "run_depth": int(row["run_depth"]),
+            "caller_run_id": row["caller_run_id"],
+            "operation_id": row["operation_id"],
             "status": str(row["status"]),
             "created_at": str(row["created_at"]),
             "started_at": row["started_at"],
@@ -75,9 +74,8 @@ class RuntimeRegistryStore:
             record.get("checkpoint_thread_id") or None,
             record["workflow_id"],
             record["workflow_name"],
-            record.get("parent_run_id") or None,
-            record.get("background_task_id") or None,
-            int(record.get("run_depth", 0)),
+            record.get("caller_run_id") or None,
+            record.get("operation_id") or None,
             record["created_at"],
         )
 
@@ -86,9 +84,9 @@ class RuntimeRegistryStore:
         connection.execute(
             "INSERT INTO runtime_workflow_runs ("
             "run_id, lifecycle_id, request_id, checkpoint_thread_id, "
-            "workflow_id, workflow_name, parent_run_id, background_task_id, "
-            "run_depth, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+            "workflow_id, workflow_name, caller_run_id, operation_id, "
+            "status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
             RuntimeRegistryStore._run_values(record),
         )
 
@@ -122,31 +120,27 @@ class RuntimeRegistryStore:
 
     def create_run(self, record: dict[str, object]) -> None:
         with self._database.transaction() as connection:
-            parent_run_id = str(record.get("parent_run_id") or "")
-            if not parent_run_id:
-                raise ValueError("a child Workflow Run must have a parent_run_id")
-            parent = connection.execute(
-                "SELECT lifecycle_id, request_id, run_depth "
+            caller_run_id = str(record.get("caller_run_id") or "")
+            if not caller_run_id:
+                raise ValueError("a spawned Workflow Run must have a caller_run_id")
+            caller = connection.execute(
+                "SELECT lifecycle_id, request_id "
                 "FROM runtime_workflow_runs WHERE run_id = ?",
-                (parent_run_id,),
+                (caller_run_id,),
             ).fetchone()
-            if parent is None:
-                raise ValueError("the parent Workflow Run does not exist")
-            if str(parent["lifecycle_id"]) != str(record["lifecycle_id"]):
+            if caller is None:
+                raise ValueError("the caller Workflow Run does not exist")
+            if str(caller["lifecycle_id"]) != str(record["lifecycle_id"]):
                 raise ValueError(
-                    "a child Workflow Run must share its parent's Lifecycle"
+                    "a spawned Workflow Run must share its caller's Lifecycle"
                 )
-            if str(parent["request_id"]) != str(record["request_id"]):
+            if str(caller["request_id"]) != str(record["request_id"]):
                 raise ValueError(
-                    "a child Workflow Run must share its parent's request"
+                    "a spawned Workflow Run must share its caller's request"
                 )
-            if int(record.get("run_depth", 0)) != int(parent["run_depth"]) + 1:
+            if not str(record.get("operation_id") or ""):
                 raise ValueError(
-                    "a child Workflow Run depth must follow its parent"
-                )
-            if not str(record.get("background_task_id") or ""):
-                raise ValueError(
-                    "a child Workflow Run must have a background_task_id"
+                    "a spawned Workflow Run must have an operation_id"
                 )
             self._insert_run(connection, record)
 

@@ -49,7 +49,7 @@ CompositeBackend 组合请求级 `StateBackend`、真实目录映射、请求开
 
 来源类型：
 
-- `mapped_directories` 把虚拟目录实时映射到宿主目录，允许的写入直接落盘。`path_origin=absolute` 要求宿主绝对路径；`path_origin=data-root-relative` 以实例 `data/` 为根解析。`lifecycle_mode=fixed` 直接使用配置目录；`lifecycle_mode=dynamic` 在配置目录下为每个 top-level Workflow Lifecycle 创建一次 `lifecycle-{uuid}` 子目录，同一 Lifecycle 的 parent Run 和 background Run 复用该路径；
+- `mapped_directories` 把虚拟目录实时映射到宿主目录，允许的写入直接落盘。`path_origin=absolute` 要求宿主绝对路径；`path_origin=data-root-relative` 以实例 `data/` 为根解析。`lifecycle_mode=fixed` 直接使用配置目录；`lifecycle_mode=dynamic` 在配置目录下为每个请求 Lifecycle 创建一次 `lifecycle-{uuid}` 子目录，同一 Lifecycle 的所有 Workflow Run 复用该路径；
 - `virtual_directories` 在每次请求开始时把现有目录复制到请求级 StateBackend，来源目录保持原样；
 - `virtual_files` 在每次请求开始时把现有普通文件复制到请求级 StateBackend，来源文件保持原样。
 
@@ -83,6 +83,6 @@ LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有�
 
 Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为 Deep Agents 0.7.7 会为 Composite + execute 无条件追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
 
-同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。独立 background Run 不复制或合并请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
+同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。跨 Workflow 调用创建的独立 Run 不复制或合并调用方的请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
 
 动态模式在配置的父目录下创建 `lifecycle-{lifecycle_id}` 子目录。它与 LocalShell workspace、fixed mapped directory 及其中的文件都属于用户产出，Lifecycle retention 和显式删除均不处理；用户通过文件管理入口或宿主文件系统自行管理。磁盘目录不进入 checkpoint，平台也不处理多个 Agent 同时写同一文件的冲突。

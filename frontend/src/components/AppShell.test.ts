@@ -80,8 +80,6 @@ async function mountShell(path = '/', api = createShellApi()) {
     routes: [
       '/',
       '/workflows',
-      '/workflows/parents',
-      '/workflows/children',
       '/system',
       '/system/config',
       '/files',
@@ -167,7 +165,7 @@ describe('AppShell', () => {
     await nextTick()
     expect(title.text()).toBe('Agent components')
 
-    await router.push('/workflows/parents')
+    await router.push('/workflows')
     await nextTick()
     expect(title.text()).toBe('Workflows')
     expect(shell.get('a[href="/workflows"]').classes()).toContain('active')

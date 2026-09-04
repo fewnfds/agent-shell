@@ -288,6 +288,59 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '    return str(getattr(payload, "text", "") or "")\n',
         encoding="utf-8",
     )
+    workflow_output_template = (
+        data_dir
+        / "templates"
+        / "workflow"
+        / "workflow_event_output"
+        / "smoke-workflow-output"
+    )
+    workflow_output_template.mkdir(parents=True, exist_ok=True)
+    (workflow_output_template / "main.py").write_text(
+        'def output(event, origin):\n'
+        '    if event.get("method") != "values":\n'
+        '        return ""\n'
+        '    params = event.get("params")\n'
+        '    data = params.get("data") if isinstance(params, dict) else None\n'
+        '    if not isinstance(data, dict) or "files" not in data:\n'
+        '        return ""\n'
+        '    return "workflow values\\n"\n'
+        'def run_output(event, origin):\n'
+        '    if event.get("type") != "agent_shell.workflow_run":\n'
+        '        return ""\n'
+        '    return f"workflow {event.get(\'status\', \'\')}\\n"\n',
+        encoding="utf-8",
+    )
+    command_template = (
+        data_dir
+        / "templates"
+        / "workflow"
+        / "command"
+        / "smoke-workflow-run"
+    )
+    command_template.mkdir(parents=True, exist_ok=True)
+    (command_template / "main.py").write_text(
+        'from pathlib import Path\n'
+        '\n'
+        'def create_command():\n'
+        '    async def command(state, runtime):\n'
+        '        runs = runtime.context.workflow_runs\n'
+        '        if runs is None:\n'
+        '            raise RuntimeError("Workflow Run commands are unavailable")\n'
+        '        target_workflow_id = Path(__file__).with_name("target.txt").read_text(encoding="utf-8").strip()\n'
+        '        handle = await runs.start_workflow(\n'
+        '            target_workflow_id,\n'
+        '            operation_id="smoke-spawn",\n'
+        '        )\n'
+        '        joined = await runs.join([handle.run_id])\n'
+        '        return {"activate": ["done"], "update": {"shared_vars": {\n'
+        '            "spawned_run_id": handle.run_id,\n'
+        '            "spawned_status": joined[0].status,\n'
+        '            "spawned_output": joined[0].output,\n'
+        '        }}}\n'
+        '    return command\n',
+        encoding="utf-8",
+    )
     instance_environment.patch(
         SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
         set_values={"AGENT_SHELL_MANAGEMENT_TOKEN": management_token},
@@ -321,6 +374,8 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     process = subprocess.Popen(
         [
             sys.executable,
+            "-X",
+            "utf8",
             "-m",
             "agent_shell",
             "--home",
@@ -376,7 +431,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(client, "GET", "/api/catalog", expected=401)
         _request(client, "GET", "/api/catalog", headers=inference, expected=403)
         _request(client, "GET", "/v1/unknown", headers=management, expected=403)
-        _request(client, "GET", "/v1/unknown", headers=inference, expected=404)
+        _request(client, "GET", "/v1/unknown", headers=inference, expected=401)
         catalog = _request(client, "GET", "/api/catalog", headers=management).json()
         assert tuple(item["type"] for item in catalog["block_types"]) == CAPABILITY_TYPES
         runtime_download_path = (
@@ -425,7 +480,18 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             "/api/python-package-templates/agent-event-output",
             headers=management,
         ).json()
-        _request(client, "GET", "/api/python-package-templates/workflow-event-output", headers=management)
+        workflow_output_templates = _request(
+            client,
+            "GET",
+            "/api/python-package-templates/workflow-event-output",
+            headers=management,
+        ).json()
+        command_templates = _request(
+            client,
+            "GET",
+            "/api/python-package-templates/command",
+            headers=management,
+        ).json()
         _request(client, "GET", "/api/skills", headers=management)
         readiness = _request(
             client, "GET", "/api/readiness", headers=management
@@ -462,6 +528,177 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "revision": output_templates["catalog"][0]["revision"],
             },
         }
+        workflow_output_template_reference = {
+            "key": workflow_output_templates["catalog"][0]["key"],
+            "revision": workflow_output_templates["catalog"][0]["revision"],
+        }
+        workflow_output = _request(
+            client,
+            "POST",
+            "/api/blocks/workflow-event-output",
+            headers=management,
+            json_body={
+                "name": f"{mode}-workflow-output",
+                "python_package": {"folder": ""},
+                "python_package_template": workflow_output_template_reference,
+            },
+        ).json()
+        target_workflow = _request(
+            client,
+            "POST",
+            "/api/workflows",
+            headers=management,
+            json_body={
+                "name": f"{mode}-spawned-workflow",
+                "description": "A normal Workflow started by another Run.",
+                "workflow_event_output_id": workflow_output["id"],
+            },
+        ).json()
+        _request(
+            client,
+            "PUT",
+            f"/api/workflows/{target_workflow['id']}/graph",
+            headers=management,
+            json_body={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "nodes": [
+                        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                    ],
+                    "edges": [
+                        {
+                            "id": "start-end",
+                            "source": "start",
+                            "source_handle": "next",
+                            "target": "end",
+                            "target_handle": "in",
+                        }
+                    ],
+                },
+                "layout": {
+                    "nodes": {"start": {"x": 0, "y": 0}, "end": {"x": 240, "y": 0}},
+                    "viewport": {"x": 0, "y": 0, "zoom": 1},
+                },
+            },
+        )
+        (command_template / "target.txt").write_text(
+            target_workflow["id"],
+            encoding="utf-8",
+        )
+        command_templates = _request(
+            client,
+            "GET",
+            "/api/python-package-templates/command",
+            headers=management,
+        ).json()
+        command_template_reference = {
+            "key": command_templates["catalog"][0]["key"],
+            "revision": command_templates["catalog"][0]["revision"],
+        }
+        workflow_command = _request(
+            client,
+            "POST",
+            "/api/blocks/command",
+            headers=management,
+            json_body={
+                "name": f"{mode}-workflow-run-command",
+                "python_package": {"folder": ""},
+                "python_package_template": command_template_reference,
+                "mcp_refs": [],
+            },
+        ).json()
+        workflow = _request(
+            client,
+            "POST",
+            "/api/workflows",
+            headers=management,
+            json_body={
+                "name": f"{mode}-official-workflow",
+                "description": "Exercise request and spawned official Runs.",
+                "workflow_event_output_id": workflow_output["id"],
+            },
+        ).json()
+        _request(
+            client,
+            "PUT",
+            f"/api/workflows/{workflow['id']}/graph",
+            headers=management,
+            json_body={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "nodes": [
+                        {
+                            "id": "start",
+                            "type": "start",
+                            "type_version": 1,
+                            "config": {},
+                        },
+                        {
+                            "id": "command",
+                            "type": "command",
+                            "type_version": 1,
+                            "config": {"command_id": workflow_command["id"]},
+                        },
+                        {
+                            "id": "end",
+                            "type": "end",
+                            "type_version": 1,
+                            "config": {},
+                        },
+                    ],
+                    "edges": [
+                        {
+                            "id": "start-command",
+                            "source": "start",
+                            "source_handle": "next",
+                            "target": "command",
+                            "target_handle": "in",
+                        },
+                        {
+                            "id": "command-end",
+                            "source": "command",
+                            "source_handle": "branch",
+                            "target": "end",
+                            "target_handle": "in",
+                            "branch_key": "done",
+                        }
+                    ],
+                },
+                "layout": {
+                    "nodes": {
+                        "start": {"x": 0, "y": 0},
+                        "command": {"x": 240, "y": 0},
+                        "end": {"x": 480, "y": 0},
+                    },
+                    "viewport": {"x": 0, "y": 0, "zoom": 1},
+                },
+            },
+        )
+        completion = _request(
+            client,
+            "POST",
+            "/v1/chat/completions",
+            headers=inference,
+            json_body={
+                "model": workflow["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        ).json()
+        completion_text = completion["choices"][0]["message"]["content"]
+        output.flush()
+        smoke_runtime_output = output_path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert completion_text.count("workflow completed\n") >= 2, (
+            completion,
+            smoke_runtime_output,
+        )
+        assert completion_text.count("workflow values\n") >= 2, completion
+        assert completion["choices"][0]["finish_reason"] == "stop"
         model_connection = _request(
             client,
             "POST",
@@ -669,6 +906,30 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         assert management_token not in event_text
         assert api_key not in event_text
 
+        _request(
+            client,
+            "DELETE",
+            f"/api/workflows/{workflow['id']}",
+            headers=management,
+        )
+        _request(
+            client,
+            "DELETE",
+            f"/api/workflows/{target_workflow['id']}",
+            headers=management,
+        )
+        _request(
+            client,
+            "DELETE",
+            f"/api/blocks/command/{workflow_command['id']}",
+            headers=management,
+        )
+        _request(
+            client,
+            "DELETE",
+            f"/api/blocks/workflow-event-output/{workflow_output['id']}",
+            headers=management,
+        )
         _request(
             client,
             "DELETE",

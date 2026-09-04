@@ -2,7 +2,7 @@
 
 Create Dispatch Edges named ``rainfall-report`` and ``rainfall-alert``. Each
 reading becomes one private Agent task. Readings at or above 50 mm use the
-alert Edge; other readings use the report Edge. The parent Workflow State
+alert Edge; other readings use the report Edge. The Workflow State
 receives total and alert counts through ``update``.
 
 The field names, threshold, and Edge keys are editable example policy. The

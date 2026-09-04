@@ -92,10 +92,6 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
             "repository_revision",
         }
 
-    parent_role_only = client.get("/api/workflows", params={"workflow_role": "parent"})
-    assert parent_role_only.status_code == 200
-    assert isinstance(parent_role_only.json(), list)
-
     deleted = client.post(
         "/api/blocks/system-prompt/delete",
         json={"q": "gamma"},
@@ -120,24 +116,23 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
         == no_match_revision
     )
 
-    parent = client.post(
+    first = client.post(
         "/api/workflows",
-        json={"name": "Shared parent", "workflow_role": "parent"},
+        json={"name": "Shared first"},
     )
-    child = client.post(
+    second = client.post(
         "/api/workflows",
-        json={"name": "Shared child", "workflow_role": "child"},
+        json={"name": "Shared second"},
     )
-    assert parent.status_code == 200
-    assert child.status_code == 200
-    deleted_parent = client.post(
+    assert first.status_code == 200
+    assert second.status_code == 200
+    deleted_workflows = client.post(
         "/api/workflows/delete",
-        json={"q": "shared", "workflow_role": "parent"},
+        json={"q": "shared"},
     )
-    assert deleted_parent.status_code == 200
-    assert deleted_parent.json() == {"deleted": 1}
-    remaining = client.get("/api/workflows").json()
-    assert [item["id"] for item in remaining] == [child.json()["id"]]
+    assert deleted_workflows.status_code == 200
+    assert deleted_workflows.json() == {"deleted": 2}
+    assert client.get("/api/workflows").json() == []
 
 
 def test_configuration_stores_read_owned_sections_without_full_snapshot(
@@ -165,11 +160,10 @@ def test_configuration_stores_read_owned_sections_without_full_snapshot(
                 {
                     "id": workflow_id,
                     "name": "Workflow",
-                    "workflow_role": "parent",
                     "description": "",
                     "checkpointer_id": None,
                     "workflow_event_output_id": None,
-                    "cancel_on_upstream_termination": True,
+                    "cancel_on_caller_termination": True,
                     "recursion_limit": 100,
                     "execution_timeout_seconds": 300,
                     "max_concurrency": 100,
@@ -198,7 +192,6 @@ def test_configuration_stores_read_owned_sections_without_full_snapshot(
         {
             "id": workflow_id,
             "name": "Workflow",
-            "workflow_role": "parent",
             "description": "",
             "enabled": False,
         }

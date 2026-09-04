@@ -164,6 +164,12 @@ def _parse_bearer(scope: Scope) -> str:
         raise SecurityFailure(
             401, "invalid_api_key", "A valid Bearer token is required."
         ) from exc
+    return parse_bearer_authorization(raw)
+
+
+def parse_bearer_authorization(raw: str) -> str:
+    """Parse one Authorization value for every HTTP execution surface."""
+
     parts = raw.split(" ")
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
         raise SecurityFailure(
@@ -177,6 +183,45 @@ def _parse_bearer(scope: Scope) -> str:
             401, "invalid_api_key", "A valid Bearer token is required."
         )
     return parts[1]
+
+
+def authenticate_bearer_token(
+    candidate: str,
+    required_scope: Literal["management", "api"],
+    *,
+    management_token: str | None,
+    api_key: str | None,
+) -> SecurityPrincipal:
+    """Apply the canonical management/API token separation contract."""
+
+    management_match = bool(
+        management_token is not None
+        and hmac.compare_digest(candidate, management_token)
+    )
+    api_match = bool(
+        api_key is not None
+        and hmac.compare_digest(candidate, api_key)
+    )
+    expected_match = management_match if required_scope == "management" else api_match
+    other_match = api_match if required_scope == "management" else management_match
+    if expected_match:
+        return SecurityPrincipal(
+            scope=required_scope,
+            authenticated=True,
+            subject=f"{required_scope}-token",
+        )
+    if other_match:
+        scope_label = "API" if required_scope == "api" else "management"
+        raise SecurityFailure(
+            403,
+            "insufficient_scope",
+            f"The {scope_label} scope is required.",
+        )
+    raise SecurityFailure(
+        401,
+        "invalid_api_key",
+        "A valid Bearer token is required.",
+    )
 
 
 class ScopeAuthenticationMiddleware:
@@ -247,33 +292,11 @@ class ScopeAuthenticationMiddleware:
         *,
         api_key: str | None,
     ) -> SecurityPrincipal:
-        management_match = bool(
-            self.management_token is not None
-            and hmac.compare_digest(candidate, self.management_token)
-        )
-        api_match = bool(
-            api_key is not None
-            and hmac.compare_digest(candidate, api_key)
-        )
-        expected_match = (
-            management_match if required_scope == "management" else api_match
-        )
-        other_match = api_match if required_scope == "management" else management_match
-        if expected_match:
-            return SecurityPrincipal(
-                scope=required_scope,
-                authenticated=True,
-                subject=f"{required_scope}-token",
-            )
-        if other_match:
-            scope_label = "API" if required_scope == "api" else "management"
-            raise SecurityFailure(
-                403,
-                "insufficient_scope",
-                f"The {scope_label} scope is required.",
-            )
-        raise SecurityFailure(
-            401, "invalid_api_key", "A valid Bearer token is required."
+        return authenticate_bearer_token(
+            candidate,
+            required_scope,
+            management_token=self.management_token,
+            api_key=api_key,
         )
 
     def _current_api_key(self) -> str | None:

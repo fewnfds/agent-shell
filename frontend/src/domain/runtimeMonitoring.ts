@@ -48,9 +48,9 @@ export function runtimeMonitoringRunForest(
   ]))
 
   for (const relationship of snapshot.forest.relationships) {
-    const parent = nodes.get(relationship.parent_run_id)
-    const child = nodes.get(relationship.child_run_id)
-    if (parent && child) parent.children.push(child)
+    const caller = nodes.get(relationship.caller_run_id)
+    const spawned = nodes.get(relationship.spawned_run_id)
+    if (caller && spawned) caller.children.push(spawned)
   }
 
   return snapshot.forest.root_run_ids.flatMap((runId) => {

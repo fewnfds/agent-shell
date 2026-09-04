@@ -10,7 +10,7 @@ Agent Additional Prompt（AAP）是 Agent Shell 推荐的 Agent 初始提示词�
 
 - current Lifecycle 的 request `messages[]`；
 - Command Dispatch 注入当前 Agent 的 `workflow_task`；
-- parent Workflow State snapshot 中因果可见的 upstream invocation reference；
+- Workflow State snapshot 中因果可见的 upstream invocation reference；
 - Runtime Context 与 Store 中 current invocation 可访问的数据；
 - current Agent Filesystem backend 中的任务文件；
 - current Agent State 与其他 Middleware 声明的 State channel。
@@ -33,8 +33,8 @@ current Agent 的 Deep Agents Filesystem backend ──┘
 
 - Main Agent：用 `runtime.context.lifecycle_id` 定位 `runtime.store` 中 `lifecycle_input_namespace(lifecycle_id)` / `LIFECYCLE_INPUT_KEY` 的冻结 OpenAI `system/user/assistant` 请求快照；
 - Subagent：读取 `state["messages"]` 中由 Deep Agents `task` delegation 产生的私有消息；Shell 按 owner 类型把 `scope` 注入为 `main_agent` 或 `subagent`；
-- parent Workflow：读取 `state["workflow_state_snapshot"]` 中的 `agent_invocations[invocation_id]` 轻量 reference，再通过 `runtime.store` 和 `result_ref` 加载完整 invocation artifact；
-- 当前 Shell scope：读取 `runtime.context.lifecycle_id`、`workflow_run_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id`；LangGraph 的当前执行信息从 `runtime.execution_info` 读取；checkpoint、parent/background Run 与 launcher 等外围信息不注入 Graph context；
+- Workflow Graph：读取 `state["workflow_state_snapshot"]` 中的 `agent_invocations[invocation_id]` 轻量 reference，再通过 `runtime.store` 和 `result_ref` 加载完整 invocation artifact；
+- 当前 Shell scope：读取 `runtime.context.request_id`、`lifecycle_id`、`run_id`、`workflow_id`、`caller_run_id`、`operation_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id`；跨 Workflow Run 命令从 `runtime.context.workflow_runs` 调用；LangGraph 的当前执行信息从 `runtime.execution_info` 读取；checkpoint、Thread ID 与 launcher 等外围信息不注入 Graph context；
 - 当前动态任务：读取 Command-dispatched Agent 的 `state["workflow_task"]`；
 - 共享文件：使用工厂收到的 current Agent Deep Agents `backend`，按虚拟绝对路径读取；
 - current Agent State：使用 hook 的 `state` 参数以及其他 Middleware 声明的 State channel。
@@ -77,7 +77,7 @@ examples/agent-components/custom-middleware/agent-additional-prompt/
 
 - `request_messages`：Main Agent 的原始请求消息；
 - `state`：current Agent private State 和 parent Graph snapshot；
-- `runtime.context` / `runtime.store`：当前 Shell scope、Lifecycle 数据和 invocation artifact；读取 artifact 时同时使用 `runtime.context.lifecycle_id` 与 `workflow_run_id` 定位 invocation namespace；
+- `runtime.context` / `runtime.store`：当前 Shell scope、Lifecycle 数据和 invocation artifact；读取 artifact 时同时使用 `runtime.context.lifecycle_id` 与 `runtime.context.run_id` 定位 invocation namespace；
 - `backend`：current Agent 的 Filesystem backend，可按虚拟路径读取文件；文件内容通过 backend 读取。
 
 示例保留 `load_invocation_artifact(runtime, record)` helper。upstream result 通过 parent Graph snapshot 中明确选择的 invocation record 加载完整 artifact。文件读取、message role、裁剪和排序由 current Agent 的职责决定。

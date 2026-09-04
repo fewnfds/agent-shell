@@ -36,7 +36,7 @@ from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
-from agent_shell.runtime.background_tasks import BackgroundTaskManager
+from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.workflow_checkpoints import WorkflowCheckpointService
 from agent_shell.runtime.workflow_lifecycle import WorkflowLifecycleService
 from agent_shell.runtime.monitoring_read_service import MonitoringReadService
@@ -268,13 +268,9 @@ def create_app(
         details=runtime_diagnostic_details,
     )
     workflow_lifecycle.set_runtime_diagnostics(runtime_diagnostics)
-    background_tasks = BackgroundTaskManager(
-        workflow_lifecycle,
-        runtime_diagnostics=runtime_diagnostics,
-    )
+    detached_tasks = DetachedTaskManager()
     runtime_cleanup = RuntimeCleanupCoordinator(
         workflow_lifecycle,
-        background_tasks,
         workflow_checkpoints,
         runtime_policy,
         runtime_diagnostics,
@@ -319,11 +315,13 @@ def create_app(
         files=file_manager,
         workflow_checkpoints=workflow_checkpoints,
         workflow_lifecycle=workflow_lifecycle,
-        background_tasks=background_tasks,
+        detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
         runtime_policy=runtime_policy,
         model_resources=model_resources,
         mcp_resources=mcp_resources,
+        agent_server_url=settings.internal_service_url(),
+        agent_server_token=settings.management_token.get_secret_value(),
     )
 
     frontend_dir = Path(__file__).resolve().parents[3] / "runtime" / "frontend_dist"
@@ -356,7 +354,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         await workflow_lifecycle.start()
-        await background_tasks.start()
+        await detached_tasks.start()
         await runtime_cleanup.startup_recover()
         try:
             event_logger.emit(
@@ -378,7 +376,7 @@ def create_app(
             yield
         finally:
             try:
-                await background_tasks.close()
+                await detached_tasks.close()
             finally:
                 try:
                     await provider_http_clients.aclose()
@@ -583,7 +581,7 @@ def create_app(
     app.state.workflow_lifecycle = workflow_lifecycle
     app.state.runtime_monitoring_reads = runtime_monitoring_reads
     app.state.runtime_monitoring_archive = runtime_monitoring_archive
-    app.state.background_tasks = background_tasks
+    app.state.detached_tasks = detached_tasks
     app.state.system_log_settings = system_log_settings
     app.state.model_resources = model_resources
     app.add_middleware(
@@ -703,7 +701,7 @@ def create_app(
             api_server_events,
             message_interception,
             runtime_policy,
-            background_tasks,
+            detached_tasks,
         )
     )
 

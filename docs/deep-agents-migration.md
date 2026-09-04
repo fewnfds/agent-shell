@@ -13,7 +13,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 ## 装配
 
-- enabled parent Workflow name 是公开 model ID；child Workflow name 不进入 `/v1`；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
+- 全部 enabled Workflow name 都是公开 model ID；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
 - Main Agent 必须有模型要求与 Agent Event Output；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
 - Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别继承或替换，不能关闭 required capability，Workflow 不保存 Filesystem ref；
@@ -58,9 +58,8 @@ Agent Filesystem 的 mapped directories 可接入 Deep Agents `FilesystemBackend
 
 Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。client `messages[]` 冻结在 application-level LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent active messages。选择 Agent Additional Prompt（AAP）Custom Middleware 时，已装配的官方 `before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取 input；Main Agent 未选择 AAP 时 initial `messages` 保持空。synchronous Subagent 默认从 delegated private `state.messages` 整理 input，不自动混入 root request。
 
-synchronous Subagent 是 Agent 内部的官方 `SubAgentMiddleware` capability，不与 outer Workflow 竞争 scheduling responsibility。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方 assembly entry，并单独处理 `graph_id`、
-Agent Protocol 地址、认证和 background task state。
+synchronous Subagent 是 Agent 内部的官方 `SubAgentMiddleware` capability，不与 outer Workflow 竞争 scheduling responsibility。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方 assembly entry，并单独处理 `graph_id`、Agent Protocol 地址、认证和官方异步任务 State。
 
-外层 background Workflow 由 Shell 应用级 Manager 管理 detached execution handle/status，child 由 Workflow runtime 构造，并为每个并发 child 新建独立 `AgentRuntime`/`AgentBuilder`。child 共享官方 Store 和惰性 Checkpointer service，但独立读取自己冻结的 Workflow `checkpointer_id`：只在引用存在时生成 checkpoint thread。Canvas Agent/Deep Agent subgraph 不覆写 saver，按 LangGraph 默认继承所在 Workflow root 的 Checkpointer。每个 child 持有 Builder 的 Middleware package runtime 和自己的 Event Output projector；已投影事件作为平等 producer 进入当前公开 response 的 Lifecycle scheduler，task 终态仍通过独立查询接口读取。
+跨 Workflow 调用通过 `runtime.context.workflow_runs` 创建独立的官方 Assistant、Thread 和 Run。每个被调用 Run 由 LangGraph Dev dynamic factory 使用自己的冻结 Workflow 配置装配 `AgentRuntime`/`AgentBuilder`，并可继续调用其他 Workflow；Server-managed 路径使用 LangGraph Dev 注入的 Store 和 checkpoint owner，不读取 Workflow `checkpointer_id`。Canvas Agent/Deep Agent subgraph 不覆写 saver，按 LangGraph 默认继承所在 Workflow root 的 Checkpointer。每个 Run 持有自己的 Middleware package runtime 和 Event Output projector；已投影事件作为平等 producer 进入当前公开 response 的 Lifecycle scheduler，Run 状态和结果通过公共 Run API 读取。
 
 更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent field、default Middleware、same-name replacement 与 `HarnessProfile.excluded_middleware`、各 Provider Prompt Caching 变体、Codex TodoList extra Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 event namespace，并只为 Shell 自有转换保留行为测试。

@@ -2,14 +2,14 @@
 
 本页说明 Agent、Workflow 与配置域中的稳定产品术语，不替代管理台全部界面文案。
 
-文档在关系修饰词会影响领域含义或检索结果时，使用可直接检索源码与官方文档的 canonical English term。例如使用 `parent Workflow`、`child Workflow`、`parent Graph`、`Agent subgraph`、`parent Run`、`child Run`、`parent State`、`target Node` 和 `background Run`。每个短章节或短段落应尽早建立所需的 canonical term，后续中文负责解释行为，无需把普通动作、状态和连接词全部翻译成英文。管理台的中文标签保留在【】中，并在第一次出现时附上 canonical term。
+文档在关系修饰词会影响领域含义或检索结果时，使用可直接检索源码与官方文档的 canonical English term。例如使用 `Workflow`、`Graph`、`Assistant`、`Thread`、`Run`、`caller Run`、`spawned Run`、`Agent subgraph`、`Workflow State` 和 `target Node`。每个短章节或短段落应尽早建立所需的 canonical term，后续中文负责解释行为，无需把普通动作、状态和连接词全部翻译成英文。管理台的中文标签保留在【】中，并在第一次出现时附上 canonical term。
 
 | 关系或范围 | canonical term | 使用边界 |
 | --- | --- | --- |
-| Workflow 角色 | `parent Workflow`、`child Workflow` | 对应 `workflow_role=parent/child` |
 | Graph 嵌套 | `parent Graph`、`Agent subgraph` | Workflow StateGraph 调用 Agent subgraph |
-| Run 层级 | `parent Run`、`child Run`、`background Run` | Lifecycle 内的运行身份和 detached execution |
-| 检查点能力与产物 | `Checkpointer`、`Checkpoint`、`Checkpoint Thread` | Checkpointer 中文为“检查点保存器”，是 Workflow 可选装配组件；Checkpoint 中文为“检查点”，是保存的 State 快照；Checkpoint Thread 只属于启用该组件的 Workflow Run |
+| 官方执行对象 | `Assistant`、`Thread`、`Run` | Assistant 是配置后的 Graph 执行入口；Thread 保存可跨 Run 延续的 State；Run 是一次 Assistant/Graph invocation |
+| 动态 Run 调用 | `caller Run`、`spawned Run`、`Run call relation` | 只描述某次运行时调用，不定义 Workflow 类型或能力层级 |
+| 检查点能力与产物 | `Checkpointer`、`Checkpoint`、`Thread State` | Server-managed Run 的 checkpoint 与 State 由 LangGraph Dev runtime 持有；当前产品不提供 Resume 流程 |
 | State 投影 | `Workflow State`、`Agent State`、`parent State`、`child State` | `Workflow State` 与 `Agent State` 表示 schema 边界；`parent State` 与 `child State` 只描述实际的状态投影关系 |
 | Graph 方向 | `source Node`、`target Node`、`upstream Node`、`downstream Node` | 与 Edge、routing 和 artifact 因果方向一致 |
 | Node 类别 | `system Node`、`executable Node`、`Agent Node`、`Command Node` | Start/End 是 system Node；实际执行 callable 的节点是 executable Node |
@@ -23,7 +23,7 @@
 
 | 界面名称 | 含义 |
 | --- | --- |
-| Workflow | 保存 UUID、唯一名称、角色、`enabled`、可选 Workflow Event Output、current Graph document/layout 与运行约束的图实体；只有启用的 parent Workflow 发布到 `/v1/models`，draft 与 child Workflow 不发布 |
+| Workflow | 保存 UUID、唯一名称、`enabled`、可选 Workflow Event Output、current Graph document/layout 与运行约束的产品实体；运行时编译为 Graph；全部 enabled Workflow 发布到 `/v1/models` 并可被其他 Run 调用 |
 | Main Agent | 完整的 Deep Agents assembly，可被 Workflow canvas 中的 Agent Node 引用 |
 | Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其 Python/Skill package；写入目标由 active Configuration Repository 决定 |
 | 配置库 | 使用通用列表查看和管理配置；系统组也列出实例私有、不可下载的模型连接 |
@@ -43,4 +43,4 @@
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
 | Command Dispatch | Command 根据 Workflow State/Context 生成动态任务，并由 LangGraph `Send` 分发到 Agent Node |
 | Agent Event Output | Main Agent 拥有的 v3 运行事件到响应文本投影规则；Workflow 按稳定 Node/Agent source identity 选择规则 |
-| Workflow Lifecycle / 运行监控 | 一次 top-level request 及其 root/background Workflow Run 的产品范围；当前持久化 Registry、冻结 Graph、实际 ProtocolEvent、Model/Command facts 和可选 Checkpoint/Store，并按完整终态数量保留；不提供 Resume |
+| Workflow Lifecycle / 运行监控 | 一次请求入口及其入口/被调用 Workflow Run 的产品范围；当前持久化 Registry、冻结 Graph、实际 ProtocolEvent、Model/Command facts 和 Store reference，并按完整终态数量保留；不提供 Resume |

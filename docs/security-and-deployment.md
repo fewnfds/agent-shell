@@ -4,10 +4,11 @@
 
 - 除 `/api/health` 外，管理密码保护 `/api/*`；`/admin` 静态应用壳可以匿名加载，但其数据和操作都通过受保护的 management API；
 - API Key 保护 `/v1/*`；
+- LangGraph Dev 的 Assistant、Thread、Run、State 与 Store 官方路由使用同一个 management Bearer；
 - 两者都必须是无空格的可打印 ASCII，均为 write-only；
 - `/api/health` 免鉴权用于存活探测，`/api/readiness` 需要 management Bearer 并返回分层就绪状态。
 
-默认监听 `127.0.0.1`，本地模式也始终要求管理密码。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
+默认监听 `127.0.0.1`，本地模式也始终要求管理密码。管理台、Management API、OpenAI-compatible API 与 LangGraph Dev 官方 API 共用一个普通服务端口；`debug_port` 留空时不创建第二个 listener。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。远程部署只需反向代理这个普通服务端口；若显式启用 DAP 调试端口，不应把它作为公共 HTTP 服务发布。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
 管理台 HTML 使用 `Content-Security-Policy: frame-ancestors 'none'` 拒绝被其他页面嵌入。反向代理不得删除或覆盖这个响应头。
 
@@ -90,6 +91,8 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 settings:
   host: 127.0.0.1
   port: 19100
+  n_jobs_per_worker: 10
+  debug_port: null
   allow_remote: false
   langsmith_tracing_enabled: false
   langsmith_endpoint: https://api.smith.langchain.com

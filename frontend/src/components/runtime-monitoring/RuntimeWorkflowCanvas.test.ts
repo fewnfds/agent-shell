@@ -61,7 +61,6 @@ const nodeCatalog = [
     config_schema: {},
     input_handles: [],
     output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
-    workflow_roles: ['parent'],
   },
   {
     type: 'end',
@@ -72,7 +71,6 @@ const nodeCatalog = [
     config_schema: {},
     input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
     output_handles: [],
-    workflow_roles: ['parent'],
   },
 ] satisfies WorkflowNodeCatalogItem[]
 

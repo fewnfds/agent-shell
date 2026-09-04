@@ -100,8 +100,7 @@ const categoryItems = computed<SectionNavItem[]>(() => [
   ...agentCategoryItems.value,
   { id: 'model-connection', label: t('capabilities.model-connection.label') },
   { id: 'mcp-connection', label: t('capabilities.mcp-connection.label') },
-  { id: 'parent-workflow', label: t('capabilities.parent-workflow.label') },
-  { id: 'child-workflow', label: t('capabilities.child-workflow.label') },
+  { id: 'workflow', label: t('capabilities.workflow.label') },
 ])
 
 const currentCategory = computed<LibraryCategoryId | null>(() => (
@@ -143,11 +142,8 @@ async function listCategory(
     const result = await api.value.listSubagentSummaries(query)
     return { rows: result.items, total: result.total }
   }
-  if (category === 'parent-workflow' || category === 'child-workflow') {
-    const result = await api.value.listWorkflowSummaries(
-      category === 'parent-workflow' ? 'parent' : 'child',
-      query,
-    )
+  if (category === 'workflow') {
+    const result = await api.value.listWorkflowSummaries(query)
     return { rows: result.items, total: result.total }
   }
   if (category === 'model-connection') {
@@ -178,7 +174,7 @@ async function getCategoryItem(
 ): Promise<LibraryDetailItem> {
   if (category === 'main-agent') return api.value.getMainAgent(id)
   if (category === 'subagent-profile') return api.value.getSubagent(id)
-  if (category === 'parent-workflow' || category === 'child-workflow') {
+  if (category === 'workflow') {
     return api.value.getWorkflow(id)
   }
   if (category === 'model-connection') return api.value.getModelConnection(id)
@@ -253,7 +249,7 @@ async function copyCurrentItem(): Promise<void> {
       await api.value.copyMainAgent(source.id, copyName.value)
     } else if (category === 'subagent-profile') {
       await api.value.copySubagent(source.id, copyName.value)
-    } else if (category === 'parent-workflow' || category === 'child-workflow') {
+    } else if (category === 'workflow') {
       await api.value.copyWorkflow(source.id, copyName.value)
     } else if (category === 'model-connection') {
       await api.value.copyModelConnection(source.id, copyName.value)
@@ -383,7 +379,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         if (!category) return
         if (category === 'main-agent') await api.value.deleteMainAgent(item.id)
         else if (category === 'subagent-profile') await api.value.deleteSubagent(item.id)
-        else if (category === 'parent-workflow' || category === 'child-workflow') await api.value.deleteWorkflow(item.id)
+        else if (category === 'workflow') await api.value.deleteWorkflow(item.id)
         else if (category === 'model-connection') await api.value.deleteModelConnection(item.id)
         else if (category === 'mcp-connection') await api.value.deleteMcpConnection(item.id)
         else await api.value.deleteBlock(category, item.id)
@@ -417,11 +413,8 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         ? await api.value.deleteMainAgentsMatching(query)
         : category === 'subagent-profile'
         ? await api.value.deleteSubagentsMatching(query)
-        : category === 'parent-workflow' || category === 'child-workflow'
-          ? await api.value.deleteWorkflowsMatching(
-            query,
-            category === 'parent-workflow' ? 'parent' : 'child',
-          )
+        : category === 'workflow'
+          ? await api.value.deleteWorkflowsMatching(query)
           : await api.value.deleteBlocksMatching(category, query)
       closeDetail()
       await refreshValidationIfOwned()

@@ -3,60 +3,113 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Mapping
 
-from agent_shell.runtime.background_commands import (
-    BackgroundRunCaller,
-    BackgroundRunCommands,
-    BackgroundRunRuntime,
+from agent_shell.runtime.workflow_run_commands import (
+    WorkflowRunCaller,
+    WorkflowRunCommands,
+    WorkflowRunRuntime,
 )
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.mcp import McpCommands
 
 
 @dataclass(frozen=True, slots=True)
-class WorkflowRuntimeContext:
-    """Shell dependencies passed to consumers inside the Workflow graph.
+class WorkflowRunContext:
+    """JSON-compatible context accepted by the public Workflow graph."""
+
+    request_id: str = ""
+    lifecycle_id: str = ""
+    caller_run_id: str = ""
+    operation_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRuntimeContext(WorkflowRunContext):
+    """Execution-only dependencies passed to consumers inside Workflow nodes.
 
     LangGraph execution identity lives in ``Runtime.execution_info``. This
     context carries only Shell product scope and capabilities that graph
     consumers need through LangGraph's dependency-injection boundary.
     """
 
-    lifecycle_id: str = ""
-    workflow_run_id: str = ""
+    run_id: str = ""
     workflow_id: str = ""
     workflow_node_id: str = ""
     agent_profile_id: str = ""
     node_invocation_id: str = ""
-    background_runs: BackgroundRunCommands | None = None
+    workflow_runs: WorkflowRunCommands | None = None
     mcp: McpCommands | None = None
     _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
+
+    def run_context(self) -> WorkflowRunContext:
+        return WorkflowRunContext(
+            request_id=self.request_id,
+            lifecycle_id=self.lifecycle_id,
+            caller_run_id=self.caller_run_id,
+            operation_id=self.operation_id,
+        )
 
     @classmethod
     def for_run(
         cls,
         *,
         identity: WorkflowRunIdentity,
-        background_runtime: BackgroundRunRuntime | None = None,
+        workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
         context = cls(
+            request_id=identity.request_id,
             lifecycle_id=identity.lifecycle_id,
-            workflow_run_id=identity.workflow_run_id,
+            run_id=identity.run_id,
             workflow_id=identity.workflow_id,
+            caller_run_id=identity.caller_run_id,
+            operation_id=identity.operation_id,
+        )
+        return context.with_runtime_bindings(
+            workflow_run_runtime=workflow_run_runtime,
+            mcp_commands_by_node=mcp_commands_by_node,
+        )
+
+    def with_runtime_bindings(
+        self,
+        *,
+        workflow_run_runtime: WorkflowRunRuntime | None = None,
+        mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
+    ) -> "WorkflowRuntimeContext":
+        """Attach execution-only capabilities without exposing them as JSON context."""
+
+        return replace(
+            self,
+            workflow_runs=(
+                WorkflowRunCommands(
+                    workflow_run_runtime,
+                    WorkflowRunCaller(
+                        request_id=self.request_id,
+                        lifecycle_id=self.lifecycle_id,
+                        run_id=self.run_id,
+                    ),
+                )
+                if workflow_run_runtime is not None
+                else None
+            ),
             _mcp_commands_by_node=mcp_commands_by_node,
         )
-        if background_runtime is None:
-            return context
+
+    def for_server_run(self, run_id: str) -> "WorkflowRuntimeContext":
+        """Bind identity-dependent capabilities to one official Server Run."""
+
         return replace(
-            context,
-            background_runs=BackgroundRunCommands(
-                background_runtime,
-                BackgroundRunCaller(
-                    request_id=identity.request_id,
-                    lifecycle_id=identity.lifecycle_id,
-                    workflow_run_id=identity.workflow_run_id,
-                    run_depth=identity.run_depth,
-                ),
+            self,
+            run_id=run_id,
+            workflow_runs=(
+                self.workflow_runs.for_caller(
+                    WorkflowRunCaller(
+                        request_id=self.request_id,
+                        lifecycle_id=self.lifecycle_id,
+                        run_id=run_id,
+                    )
+                )
+                if self.workflow_runs is not None
+                else None
             ),
         )
 
@@ -97,4 +150,4 @@ class WorkflowRuntimeContext:
             mcp=None,
         )
 
-__all__ = ["WorkflowRuntimeContext"]
+__all__ = ["WorkflowRunContext", "WorkflowRuntimeContext"]

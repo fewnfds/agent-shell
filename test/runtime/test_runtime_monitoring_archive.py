@@ -321,10 +321,9 @@ def test_archive_reads_canonical_owners_and_stops_at_frozen_high_water(
                     "lifecycle_id": lifecycle_id,
                     "request_id": "request-root",
                     "workflow_id": "workflow-child",
-                    "workflow_name": "Child Workflow",
-                    "parent_run_id": "root",
-                    "background_task_id": "task-child",
-                    "run_depth": 1,
+                    "workflow_name": "Called Workflow",
+                    "caller_run_id": "root",
+                    "operation_id": "spawn-child",
                 },
                 workflow_document=runtime_workflow_document(),
             )
@@ -539,7 +538,7 @@ def test_archive_reads_canonical_owners_and_stops_at_frozen_high_water(
                     f"{root_directory}/graph.json",
                 )["graph"]["workflow_id"] == "workflow-root"
                 assert "input.json" not in names
-                assert not any("background-task" in name for name in names)
+                assert not any("unrelated-store-record" in name for name in names)
                 assert not any("filesystem" in name for name in names)
                 assert not any("checkpoint-history" in name for name in names)
                 assert not any("diagnostic" in name for name in names)

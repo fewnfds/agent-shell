@@ -102,7 +102,7 @@ class ModelRequestRecorder(BaseCallbackHandler):
         self._failed = True
         try:
             self._lifecycle.mark_monitoring_partial(
-                self._identity.workflow_run_id,
+                self._identity.run_id,
                 "model",
             )
         except Exception:
@@ -115,7 +115,7 @@ class ModelRequestRecorder(BaseCallbackHandler):
                 context=RuntimeDiagnosticContext(
                     request_id=self._identity.request_id,
                     lifecycle_id=self._identity.lifecycle_id,
-                    workflow_run_id=self._identity.workflow_run_id,
+                    workflow_run_id=self._identity.run_id,
                     checkpoint_thread_id=self._identity.checkpoint_thread_id,
                     subject_kind="model",
                     subject_id=model_run_id,
@@ -139,7 +139,7 @@ class ModelRequestRecorder(BaseCallbackHandler):
             self._lifecycle.start_model_request(
                 {
                     "lifecycle_id": self._identity.lifecycle_id,
-                    "run_id": self._identity.workflow_run_id,
+                    "run_id": self._identity.run_id,
                     "model_run_id": str(run_id),
                     "started_at": datetime.now(timezone.utc).isoformat(
                         timespec="milliseconds"

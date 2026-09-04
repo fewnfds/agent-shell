@@ -17,9 +17,9 @@ def output(event, origin):
         return ""
     params = event.get("params")
     data = params.get("data") if isinstance(params, dict) else None
-    if not isinstance(data, (list, tuple)) or len(data) != 2:
-        return ""
-    payload = data[0]
+    payload = data if isinstance(data, dict) else (
+        data[0] if isinstance(data, (list, tuple)) and len(data) == 2 else None
+    )
     if not isinstance(payload, dict):
         text = getattr(payload, "text", None)
         return text if isinstance(text, str) else ""

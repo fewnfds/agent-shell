@@ -88,15 +88,6 @@ def merge_agent_invocations(
     }
 
 
-def merge_background_tasks(
-    current: dict[str, dict[str, JsonValue]] | None,
-    update: dict[str, dict[str, JsonValue]] | None,
-) -> dict[str, dict[str, JsonValue]]:
-    """Merge the latest explicitly checked snapshot for each background task."""
-
-    return {**(current or {}), **(update or {})}
-
-
 class WorkflowState(TypedDict):
     """Workflow-owned channels; Agent conversations are provenance records."""
 
@@ -106,9 +97,6 @@ class WorkflowState(TypedDict):
             dict[str, AgentInvocationRecord],
             merge_agent_invocations,
         ]
-    ]
-    background_tasks: NotRequired[
-        Annotated[dict[str, dict[str, JsonValue]], merge_background_tasks]
     ]
     files: FilesystemState.__annotations__["files"]
 
@@ -152,7 +140,6 @@ __all__ = [
     "WorkflowTaskContext",
     "WorkflowTaskReference",
     "merge_agent_invocations",
-    "merge_background_tasks",
     "merge_shared_vars",
     "validate_workflow_state_update",
 ]

@@ -31,12 +31,12 @@ def segment_end(event, origin):
 | key | 含义 |
 | --- | --- |
 | `lifecycle_id` | Agent Shell Lifecycle UUID |
-| `workflow_run_id` | 当前 Workflow Run UUID |
-| `parent_workflow_run_id` | 启动当前 Run 的父 Run；根 Run 为空 |
+| `run_id` | 当前官方 Workflow Run ID |
+| `thread_id` | 当前官方 Thread ID |
+| `assistant_id` | 当前官方 Assistant ID |
+| `caller_run_id` | 调用当前 Run 的 Run ID；请求入口 Run 为空 |
+| `operation_id` | caller 为本次跨 Workflow 调用指定的 operation ID；请求入口 Run 为空 |
 | `workflow_id` | 当前 Workflow 配置 UUID |
-| `workflow_role` | `parent` 或 `child` |
-| `background_task_id` | 当前后台任务 ID（无则为空） |
-| `run_depth` | Workflow Run 深度 |
 | `workflow_node_id` | 当前 canvas Node ID |
 | `node_invocation_id` | 当前 Node invocation ID |
 | `agent_profile_id` | Main Agent 配置 UUID |

@@ -148,7 +148,7 @@ def test_listen_probe_reports_an_occupied_port_without_starting_the_app(
     monkeypatch.setattr(
         launcher,
         "_run_server",
-        lambda *_args, **_kwargs: pytest.fail("a listen probe must not start uvicorn"),
+        lambda *_args, **_kwargs: pytest.fail("a listen probe must not start the server"),
     )
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))

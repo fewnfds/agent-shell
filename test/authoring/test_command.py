@@ -396,7 +396,7 @@ def test_compiler_uses_command_for_named_multi_branch_routing() -> None:
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                workflow_run_id="run-1",
+                run_id="run-1",
                 workflow_id="workflow-1",
             ),
         )
@@ -444,7 +444,7 @@ def test_compiler_commits_update_and_ends_at_command_with_zero_targets() -> None
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                workflow_run_id="run-1",
+                run_id="run-1",
                 workflow_id="workflow-1",
             ),
         )
@@ -495,7 +495,7 @@ def test_command_observation_persists_external_result(tmp_path: Path) -> None:
                 {"shared_vars": {}, "agent_invocations": {}, "files": {}},
                 context=WorkflowRuntimeContext(
                     lifecycle_id=lifecycle_id,
-                    workflow_run_id="command-success",
+                    run_id="command-success",
                     workflow_id="workflow-command-success",
                 ),
             )
@@ -560,7 +560,7 @@ def test_command_observation_persists_only_safe_error_code(tmp_path: Path) -> No
                     {"shared_vars": {}, "agent_invocations": {}, "files": {}},
                     context=WorkflowRuntimeContext(
                         lifecycle_id=lifecycle_id,
-                        workflow_run_id="command-failure",
+                        run_id="command-failure",
                         workflow_id="workflow-command-failure",
                     ),
                 )
@@ -642,7 +642,7 @@ def test_command_observation_writer_failure_is_partition_local(
                 {"shared_vars": {}, "agent_invocations": {}, "files": {}},
                 context=WorkflowRuntimeContext(
                     lifecycle_id=lifecycle_id,
-                    workflow_run_id="command-writer-failure",
+                    run_id="command-writer-failure",
                     workflow_id="workflow-command-writer-failure",
                 ),
             )
@@ -650,7 +650,7 @@ def test_command_observation_writer_failure_is_partition_local(
                 {"shared_vars": {}, "agent_invocations": {}, "files": {}},
                 context=WorkflowRuntimeContext(
                     lifecycle_id=lifecycle_id,
-                    workflow_run_id="command-writer-failure",
+                    run_id="command-writer-failure",
                     workflow_id="workflow-command-writer-failure",
                 ),
             )
@@ -860,7 +860,7 @@ def test_compiler_combines_branch_dispatch_and_update_with_deferred_collection()
             {"shared_vars": {}, "agent_invocations": {}, "files": {}},
             context=WorkflowRuntimeContext(
                 lifecycle_id="lifecycle-1",
-                workflow_run_id="run-1",
+                run_id="run-1",
                 workflow_id="workflow-1",
             ),
         )

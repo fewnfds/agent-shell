@@ -270,7 +270,6 @@ def test_repository_validation_cache_tracks_repository_and_model_revisions() -> 
             WorkflowDefinition,
             {
                 "name": "Invalid reference",
-                "workflow_role": "parent",
                 "workflow_event_output_id": "not-a-uuid",
             },
         ),

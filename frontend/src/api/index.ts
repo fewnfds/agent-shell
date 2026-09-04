@@ -51,7 +51,6 @@ import type {
   WorkflowGraphDocument,
   WorkflowNodeCatalogItem,
   WorkflowPayload,
-  WorkflowRole,
   ManagedArchivePreview,
   ManagedDirectory,
   ManagedFileUploadResult,
@@ -341,11 +340,9 @@ export const managementApi = {
   },
 
   listWorkflowSummaries(
-    workflowRole?: WorkflowRole,
     request?: { q?: string, offset?: number, limit?: number },
   ): Promise<ConfigurationCollection<WorkflowSummary>> {
     return managementRequest(`/api/workflows${buildQuery({
-      workflow_role: workflowRole,
       view: 'summary',
       q: request?.q,
       offset: request?.offset,
@@ -384,10 +381,9 @@ export const managementApi = {
     return managementRequest('/api/workflows/delete', jsonBody({ ids }))
   },
 
-  deleteWorkflowsMatching(query: string, workflowRole?: WorkflowRole): Promise<{ deleted: number }> {
+  deleteWorkflowsMatching(query: string): Promise<{ deleted: number }> {
     return managementRequest('/api/workflows/delete', jsonBody({
       q: query,
-      workflow_role: workflowRole,
     }))
   },
 

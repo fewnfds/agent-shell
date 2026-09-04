@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+
+from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
+from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
+from agent_shell.runtime.request_snapshot import (
+    LifecycleRunCoordinator,
+    _OfficialRunEventStream,
+)
+from agent_shell.runtime.workflow_run_calls import relation_key
+
+
+def _relation(
+    run_id: str,
+    *,
+    operation_id: str,
+    cancel_on_caller_termination: bool = True,
+) -> dict[str, object]:
+    return {
+        "contract_version": 1,
+        "lifecycle_id": "lifecycle-1",
+        "operation_id": operation_id,
+        "caller_run_id": "caller-run-1",
+        "workflow_id": f"workflow-{run_id}",
+        "workflow_name": f"Workflow {run_id}",
+        "assistant_id": f"assistant-{run_id}",
+        "thread_id": f"thread-{run_id}",
+        "run_id": run_id,
+        "cancel_on_caller_termination": cancel_on_caller_termination,
+    }
+
+
+class _Store:
+    def __init__(self, relations: list[dict[str, object]]) -> None:
+        self.relations = relations
+
+    async def search_items(self, _namespace, *, limit, offset):
+        items = self.relations[offset : offset + limit]
+        return {"items": [{"value": value} for value in items]}
+
+
+class _Runs:
+    def __init__(self, statuses: dict[str, str]) -> None:
+        self.statuses = statuses
+        self.cancelled: list[str] = []
+
+    async def get(self, thread_id: str, run_id: str):
+        return {
+            "thread_id": thread_id,
+            "run_id": run_id,
+            "assistant_id": f"assistant-{run_id}",
+            "status": self.statuses[run_id],
+        }
+
+    async def join(self, _thread_id: str, run_id: str):
+        self.statuses[run_id] = "success"
+        return {"shared_vars": {"joined": run_id}}
+
+    async def cancel(self, _thread_id: str, run_id: str, *, wait=False):
+        del wait
+        self.cancelled.append(run_id)
+        self.statuses[run_id] = "interrupted"
+
+
+class _Threads:
+    async def get_state(self, thread_id: str):
+        return {"values": {"shared_vars": {"thread_id": thread_id}}}
+
+
+class _Client:
+    def __init__(self, relations: list[dict[str, object]], statuses: dict[str, str]):
+        self.store = _Store(relations)
+        self.runs = _Runs(statuses)
+        self.threads = _Threads()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+
+def _coordinator(client: _Client) -> LifecycleRunCoordinator:
+    coordinator = LifecycleRunCoordinator(
+        _owner=SimpleNamespace(new_agent_server_client=lambda: client),
+        _snapshot=SimpleNamespace(),
+        _detached_tasks=SimpleNamespace(),
+    )
+    coordinator._lifecycle_id = "lifecycle-1"
+    return coordinator
+
+
+def test_run_commands_project_official_status_join_output_and_cancel() -> None:
+    async def scenario() -> None:
+        relations = [
+            _relation("run-active", operation_id="active"),
+            _relation("run-error", operation_id="error"),
+            _relation("run-join", operation_id="join"),
+        ]
+        client = _Client(
+            relations,
+            {
+                "run-active": "running",
+                "run-error": "error",
+                "run-join": "running",
+            },
+        )
+        coordinator = _coordinator(client)
+        caller = WorkflowRunCaller("request-1", "lifecycle-1", "caller-run-1")
+
+        checked = await coordinator.check_workflow_runs(
+            ["run-active", "run-error", "missing"],
+            caller=caller,
+        )
+        assert [item.status for item in checked] == ["running", "error", "not_found"]
+        assert checked[0].output is None
+        assert checked[1].output == {
+            "shared_vars": {"thread_id": "thread-run-error"}
+        }
+
+        joined = await coordinator.join_workflow_runs(["run-join"], caller=caller)
+        assert joined[0].status == "success"
+        assert joined[0].output == {"shared_vars": {"joined": "run-join"}}
+
+        cancelled = await coordinator.cancel_workflow_runs(
+            ["run-active"],
+            caller=caller,
+        )
+        assert cancelled[0].status == "interrupted"
+        assert client.runs.cancelled == ["run-active"]
+
+    asyncio.run(scenario())
+
+
+def test_caller_termination_cancels_only_selected_active_spawned_runs() -> None:
+    async def scenario() -> None:
+        relations = [
+            _relation("run-follow", operation_id="follow"),
+            _relation(
+                "run-independent",
+                operation_id="independent",
+                cancel_on_caller_termination=False,
+            ),
+            _relation("run-finished", operation_id="finished"),
+        ]
+        client = _Client(
+            relations,
+            {
+                "run-follow": "pending",
+                "run-independent": "running",
+                "run-finished": "success",
+            },
+        )
+        coordinator = _coordinator(client)
+
+        await coordinator.cancel_spawned_runs_on_caller_termination(
+            "lifecycle-1",
+            "caller-run-1",
+        )
+
+        assert client.runs.cancelled == ["run-follow"]
+
+    asyncio.run(scenario())
+
+
+def test_cancellation_propagates_one_dynamic_call_edge_at_a_time() -> None:
+    async def scenario() -> None:
+        relations = [
+            _relation("run-b", operation_id="a-to-b"),
+            {
+                **_relation("run-c", operation_id="b-to-c"),
+                "caller_run_id": "run-b",
+            },
+            {
+                **_relation(
+                    "run-independent",
+                    operation_id="b-to-independent",
+                    cancel_on_caller_termination=False,
+                ),
+                "caller_run_id": "run-b",
+            },
+        ]
+        client = _Client(
+            relations,
+            {
+                "run-b": "running",
+                "run-c": "pending",
+                "run-independent": "running",
+            },
+        )
+        coordinator = _coordinator(client)
+        original_cancel = client.runs.cancel
+
+        async def cancel_with_run_boundary(thread_id, run_id, *, wait=False):
+            await original_cancel(thread_id, run_id, wait=wait)
+            if run_id == "run-b":
+                await coordinator.cancel_spawned_runs_on_caller_termination(
+                    "lifecycle-1",
+                    "run-b",
+                )
+
+        client.runs.cancel = cancel_with_run_boundary
+
+        await coordinator.cancel_spawned_runs_on_caller_termination(
+            "lifecycle-1",
+            "caller-run-1",
+        )
+
+        assert client.runs.cancelled == ["run-b", "run-c"]
+
+    asyncio.run(scenario())
+
+
+def test_official_run_cancellation_skips_a_terminal_run() -> None:
+    async def scenario() -> None:
+        client = _Client([], {"run-finished": "error"})
+        coordinator = _coordinator(client)
+
+        await coordinator.cancel_official_run("thread-finished", "run-finished")
+
+        assert client.runs.cancelled == []
+
+    asyncio.run(scenario())
+
+
+def test_relation_key_preserves_caller_and_operation_boundaries() -> None:
+    assert relation_key("a", "b:c") != relation_key("a:b", "c")
+
+
+def test_official_run_stream_restores_safe_product_error() -> None:
+    async def events():
+        yield {
+            "method": "lifecycle",
+            "params": {
+                "namespace": [],
+                "data": {
+                    "event": "failed",
+                    "error": encode_server_run_error(
+                        AgentRuntimeError(
+                            "workflow.command_failed",
+                            "The Command Node script failed.",
+                            status_code=422,
+                        )
+                    ),
+                },
+            },
+        }
+
+    async def scenario() -> None:
+        stream = _OfficialRunEventStream(
+            events(),
+            SimpleNamespace(close_official_session=lambda _thread_id: None),
+            "thread-1",
+        )
+        with pytest.raises(AgentRuntimeError) as captured:
+            async for _event in stream:
+                pass
+        assert captured.value.code == "workflow.command_failed"
+        assert captured.value.safe_message == "The Command Node script failed."
+        assert captured.value.status_code == 422
+
+    asyncio.run(scenario())

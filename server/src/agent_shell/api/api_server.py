@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from agent_shell.api.errors import management_error
 from agent_shell.runtime.agent_runtime import RunExecution
-from agent_shell.runtime.background_tasks import BackgroundTaskManager
+from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
@@ -299,7 +299,7 @@ async def _completion_stream(
     execution: RunExecution,
     model: str,
     *,
-    background_tasks: BackgroundTaskManager,
+    detached_tasks: DetachedTaskManager,
     cancel_on_disconnect: bool,
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
@@ -340,11 +340,11 @@ async def _completion_stream(
                 await deliver("done", None)
 
     workflow_run_id = (
-        execution.identity.workflow_run_id
+        execution.identity.run_id
         if execution.identity is not None
         else "unbound"
     )
-    producer = background_tasks.create_detached_task(
+    producer = detached_tasks.create(
         consume_execution(),
         name=f"request-workflow:{workflow_run_id}",
     )
@@ -452,7 +452,7 @@ async def _completion_stream(
             pass
         if cancel_on_disconnect and not producer.done():
             if producer.cancel():
-                background_tasks.create_detached_task(
+                detached_tasks.create(
                     execution.cancel(),
                         name=f"cancel-request-workflow:{workflow_run_id}",
                 )
@@ -466,7 +466,7 @@ def build_api_server_router(
     events: ApiServerEventHub,
     message_interception: MessageInterceptionState,
     runtime_policy: RuntimePolicyStore,
-    background_tasks: BackgroundTaskManager,
+    detached_tasks: DetachedTaskManager,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -575,10 +575,7 @@ def build_api_server_router(
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
         workflow_models = [
             _model_object(item["name"])
-            for item in workflows.list_items(
-                enabled_only=True,
-                workflow_role="parent",
-            )
+            for item in workflows.list_items(enabled_only=True)
         ]
         return JSONResponse(content={"object": "list", "data": workflow_models})
 
@@ -658,7 +655,6 @@ def build_api_server_router(
         if (
             workflow is None
             or not workflow["enabled"]
-            or workflow["workflow_role"] != "parent"
         ):
             return _openai_error(
                 404,
@@ -670,7 +666,7 @@ def build_api_server_router(
             lifecycle_coordinator = runtime.create_lifecycle_coordinator(
                 request_snapshot
             )
-            execution = await lifecycle_coordinator.start_parent_workflow(
+            execution = await lifecycle_coordinator.start_workflow(
                 workflow,
                 messages,
                 request_id=getattr(request.state, "request_id", ""),
@@ -699,10 +695,8 @@ def build_api_server_router(
                 _completion_stream(
                     execution,
                     model,
-                    background_tasks=background_tasks,
-                    cancel_on_disconnect=bool(
-                        workflow["cancel_on_upstream_termination"]
-                    ),
+                    detached_tasks=detached_tasks,
+                    cancel_on_disconnect=True,
                 ),
                 media_type="text/event-stream",
                 headers={

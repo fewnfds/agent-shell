@@ -86,7 +86,6 @@ GET /api/workflows/<workflow UUID>/graph
 核对：
 
 - Workflow `id` 和 `name`；
-- `workflow_role`；
 - `enabled=true`；
 - runtime metadata；
 - Node `id`、`type`、`type_version` 和 `config`；
@@ -206,17 +205,16 @@ GET /v1/models
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-确认刚刚 publish 的 parent Workflow name 出现在 model list。
+确认刚刚 publish 的 Workflow name 出现在 model list。
 
 找不到时依次检查：
 
 1. Workflow 是否 `enabled=true`；
-2. `workflow_role` 是否为 `parent`；
-3. API Server 是否 running；
-4. 请求是否使用 `/v1` API Key；
-5. Workflow name 是否与预期 `model` 完全一致。
+2. API Server 是否 running；
+3. 请求是否使用 `/v1` API Key；
+4. Workflow name 是否与预期 `model` 完全一致。
 
-child Workflow 不出现在 `/v1/models`。
+全部 enabled Workflow 都出现在 `/v1/models`，并且都可以被其他 Workflow Run 调用。
 
 ## 10. 发起一次真实 invocation
 
@@ -250,7 +248,7 @@ Content-Type: application/json
 - Agent Workflow：确认 AAP 或其他输入 owner 把目标材料交给正确 Agent，并得到 Agent Event Output；
 - Command Workflow：确认预期 branch、State update、task 生成、worker input、routing key、downstream completion 和 termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
-- background Workflow：确认 handle 持久化、check、result handoff、业务 exit 和可选 finalizer；
+- 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败与取消传播以及 result handoff；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
 纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
@@ -259,7 +257,7 @@ Content-Type: application/json
 
 保留 HTTP status、structured error code、request ID 和非敏感 issue。按 owner 定位：
 
-1. 检查 Workflow enabled state 和 role；
+1. 检查 Workflow enabled state；
 2. 检查 Model Mapping 与 MCP Mapping；
 3. 检查 MCP secret slot、Tool discovery 和 consumer allowlist；
 4. 检查 Python dependency status；
@@ -309,7 +307,6 @@ Configuration UUID 在导入后改变。Graph-local Node ID 和 Edge ID 保持�
 Workflow
 - name: <workflow name>
 - id: <workflow UUID>
-- role: parent | child
 - enabled: true | false
 
 Created or reused

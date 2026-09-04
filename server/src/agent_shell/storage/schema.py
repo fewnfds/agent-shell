@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
     summary TEXT NOT NULL,
     component TEXT NOT NULL CHECK (
         component IN (
-            'api', 'workflow_runtime', 'background_runtime',
+            'api', 'workflow_runtime',
             'persistence', 'observability', 'security'
         )
     ),
@@ -33,12 +33,12 @@ CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
     lifecycle_id TEXT,
     run_id TEXT,
     thread_id TEXT,
-    parent_workflow_id TEXT,
-    parent_workflow_name TEXT,
+    entry_workflow_id TEXT,
+    entry_workflow_name TEXT,
     subject_kind TEXT CHECK (
         subject_kind IS NULL OR subject_kind IN (
             'workflow', 'agent', 'workflow_node', 'model', 'tool',
-            'background_task', 'api', 'persistence'
+            'api', 'persistence'
         )
     ),
     subject_id TEXT,
@@ -102,9 +102,8 @@ CREATE TABLE IF NOT EXISTS runtime_workflow_runs (
     checkpoint_thread_id TEXT UNIQUE,
     workflow_id TEXT NOT NULL,
     workflow_name TEXT NOT NULL,
-    parent_run_id TEXT,
-    background_task_id TEXT,
-    run_depth INTEGER NOT NULL CHECK (run_depth >= 0),
+    caller_run_id TEXT,
+    operation_id TEXT,
     status TEXT NOT NULL CHECK (
         status IN (
             'pending', 'running', 'completed', 'failed',
@@ -122,15 +121,15 @@ CREATE TABLE IF NOT EXISTS runtime_workflow_runs (
     UNIQUE (lifecycle_id, run_id),
     FOREIGN KEY (lifecycle_id) REFERENCES runtime_lifecycles(lifecycle_id)
         ON DELETE CASCADE,
-    FOREIGN KEY (parent_run_id) REFERENCES runtime_workflow_runs(run_id)
+    FOREIGN KEY (caller_run_id) REFERENCES runtime_workflow_runs(run_id)
         ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_runtime_workflow_runs_lifecycle
 ON runtime_workflow_runs(lifecycle_id, created_at, run_id);
 
-CREATE INDEX IF NOT EXISTS idx_runtime_workflow_runs_parent
-ON runtime_workflow_runs(parent_run_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_workflow_runs_caller
+ON runtime_workflow_runs(caller_run_id);
 
 CREATE INDEX IF NOT EXISTS idx_runtime_workflow_runs_status
 ON runtime_workflow_runs(status);

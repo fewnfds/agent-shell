@@ -97,7 +97,6 @@ export interface SubagentSummary {
 }
 
 export interface WorkflowSummary extends ConfigurationSummary {
-  workflow_role: WorkflowRole
   description: string
   enabled: boolean
 }
@@ -291,6 +290,8 @@ type OptionalSecretUpdate =
 export interface SystemSettings {
   host: string
   port: number
+  n_jobs_per_worker: number
+  debug_port: number | null
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
   langsmith_endpoint: string
@@ -307,6 +308,8 @@ export interface SystemSettings {
 export interface SystemSettingsUpdate {
   host: string
   port: number
+  n_jobs_per_worker: number
+  debug_port: number | null
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
   langsmith_endpoint: string
@@ -431,7 +434,6 @@ export interface ConfigurationBundlePreview {
     type: ManagedComponentType | null
     source_id: string
     target_id: string
-    workflow_role: WorkflowRole | null
   }
   target_ids: Record<string, string>
   records: ConfigurationBundleRecordPlan[]
@@ -533,8 +535,6 @@ export interface PythonPackageInspection {
   dependency_error_code: string
 }
 
-export type WorkflowRole = 'parent' | 'child'
-
 export type ResponseQueueStrategy = 'request' | 'node_invocation'
 
 export interface ResponseStreamPolicy {
@@ -548,12 +548,11 @@ export interface ResponseStreamPolicy {
 
 export interface WorkflowPayload {
   name: string
-  workflow_role: WorkflowRole
   description: string
   checkpointer_id: string | null
   workflow_event_output_id: string | null
   response_stream_scheduling_id?: string | null
-  cancel_on_upstream_termination: boolean
+  cancel_on_caller_termination: boolean
   recursion_limit: number
   execution_timeout_seconds: number
   max_concurrency: number
@@ -640,9 +639,8 @@ export interface RuntimeMonitoringRun {
   checkpoint_thread_id: string | null
   workflow_id: string
   workflow_name: string
-  parent_run_id: string | null
-  background_task_id: string | null
-  run_depth: number
+  caller_run_id: string | null
+  operation_id: string | null
   status: RuntimeMonitoringRunStatus
   created_at: string
   started_at: string | null
@@ -678,7 +676,7 @@ export interface RuntimeMonitoringSnapshot {
   runs: RuntimeMonitoringRun[]
   forest: {
     root_run_ids: string[]
-    relationships: Array<{ parent_run_id: string; child_run_id: string }>
+    relationships: Array<{ caller_run_id: string; spawned_run_id: string }>
     orphan_run_ids: string[]
     relationship_availability: 'available' | 'partial'
   }
@@ -880,7 +878,6 @@ export interface WorkflowNodeCatalogItem {
   config_schema: Record<string, unknown>
   input_handles: WorkflowNodeHandleSpec[]
   output_handles: WorkflowNodeHandleSpec[]
-  workflow_roles: WorkflowRole[]
 }
 
 export interface WorkflowGraphNode {
@@ -1091,8 +1088,8 @@ export interface RuntimeDiagnosticEntry {
   lifecycle_id?: string
   run_id?: string
   thread_id?: string
-  parent_workflow_id?: string
-  parent_workflow_name?: string
+  entry_workflow_id?: string
+  entry_workflow_name?: string
   subject_kind?: string
   subject_id?: string
   subject_name?: string

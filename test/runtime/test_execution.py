@@ -26,7 +26,7 @@ def test_workflow_run_has_stable_openai_completion_reason() -> None:
     assert execution.finish_reason == "stop"
 
 
-def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled() -> None:
+def test_workflow_execution_closes_v3_stream_and_cancels_spawned_runs_when_cancelled() -> None:
     async def scenario() -> tuple[bool, bool]:
         class BlockingRun:
             def __init__(self) -> None:
@@ -64,12 +64,12 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
 
         output = output_renderer({"lifecycle": "{{message}}"})
         run = BlockingRun()
-        children_cancelled = False
+        spawned_runs_cancelled = False
         projector = OutputProjector(output, run_output=run_output_renderer())
 
-        async def cancel_children() -> None:
-            nonlocal children_cancelled
-            children_cancelled = True
+        async def cancel_spawned_runs() -> None:
+            nonlocal spawned_runs_cancelled
+            spawned_runs_cancelled = True
 
         execution = RunExecution(
             graph=Graph(run),
@@ -78,7 +78,7 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
             event_output_projector=projector,
             middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
-            cancel_background_children=cancel_children,
+                cancel_spawned_runs=cancel_spawned_runs,
         )
         stream = execution.stream_text()
         assert await anext(stream) == "running"
@@ -89,12 +89,12 @@ def test_workflow_execution_closes_v3_stream_and_cancels_children_when_cancelled
             await pending
         except asyncio.CancelledError:
             pass
-        return run.exited, children_cancelled
+        return run.exited, spawned_runs_cancelled
 
     assert asyncio.run(scenario()) == (True, True)
 
 
-def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
+def test_workflow_execution_cancel_converges_before_spawned_run_cleanup(
     tmp_path,
 ) -> None:
     async def scenario() -> tuple[str, str, bool]:
@@ -114,20 +114,20 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             monitoring_capture_enabled=True,
         )
         lifecycle.start_run("cancel-run")
-        children_cancelled = False
-        child_cancel_started = asyncio.Event()
-        child_cancel_release = asyncio.Event()
+        spawned_runs_cancelled = False
+        spawned_cancel_started = asyncio.Event()
+        spawned_cancel_release = asyncio.Event()
 
-        async def cancel_children() -> None:
-            nonlocal children_cancelled
-            children_cancelled = True
-            child_cancel_started.set()
-            await child_cancel_release.wait()
+        async def cancel_spawned_runs() -> None:
+            nonlocal spawned_runs_cancelled
+            spawned_runs_cancelled = True
+            spawned_cancel_started.set()
+            await spawned_cancel_release.wait()
 
         identity = WorkflowRunIdentity(
             request_id="cancel-request",
             lifecycle_id=lifecycle_id,
-            workflow_run_id="cancel-run",
+            run_id="cancel-run",
             workflow_id="cancel-workflow",
             workflow_name="Cancel Workflow",
         )
@@ -142,26 +142,26 @@ def test_workflow_execution_cancel_converges_parent_before_child_cleanup(
             context=WorkflowRuntimeContext.for_run(identity=identity),
             lifecycle_service=lifecycle,
             owns_lifecycle=True,
-            cancel_background_children=cancel_children,
+            cancel_spawned_runs=cancel_spawned_runs,
         )
         try:
             cancellation = asyncio.create_task(execution.cancel())
-            await asyncio.wait_for(child_cancel_started.wait(), timeout=1)
+            await asyncio.wait_for(spawned_cancel_started.wait(), timeout=1)
             run = lifecycle.run("cancel-run")
-            parent = await lifecycle.record(lifecycle_id)
+            lifecycle_record = await lifecycle.record(lifecycle_id)
             assert run is not None
-            assert parent is not None
+            assert lifecycle_record is not None
             converged = (
                 str(run["status"]),
-                str(parent["root_status"]),
-                children_cancelled,
+                str(lifecycle_record["root_status"]),
+                spawned_runs_cancelled,
             )
-            child_cancel_release.set()
+            spawned_cancel_release.set()
             await cancellation
             await execution.cancel()
             return converged
         finally:
-            child_cancel_release.set()
+            spawned_cancel_release.set()
             await lifecycle.close()
 
     assert asyncio.run(scenario()) == ("cancelled", "cancelled", True)
@@ -275,7 +275,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
     )
 
 
-def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None:
+def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -> None:
     async def scenario() -> str:
         class QuietRun:
             def __init__(self) -> None:
@@ -306,51 +306,51 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
                 return self.run
 
         lifecycle_id = "shared-lifecycle"
-        parent_run_id = "parent-run"
-        parent_workflow_id = "parent-workflow"
-        child_run_id = "child-run"
-        child_workflow_id = "child-workflow"
+        entry_run_id = "entry-run"
+        entry_workflow_id = "entry-workflow"
+        spawned_run_id = "spawned-run"
+        spawned_workflow_id = "spawned-workflow"
         output = OutputProjector(output_renderer())
         scheduler = LifecycleResponseScheduler(
             ResponseStreamPolicy(),
             lifecycle_id=lifecycle_id,
-            origin_run_id=parent_run_id,
-            origin_workflow_id=parent_workflow_id,
+            origin_run_id=entry_run_id,
+            origin_workflow_id=entry_workflow_id,
         )
-        scheduler.register_origin(child_run_id, child_workflow_id)
+        scheduler.register_origin(spawned_run_id, spawned_workflow_id)
         quiet_run = QuietRun()
-        parent_identity = WorkflowRunIdentity(
+        entry_identity = WorkflowRunIdentity(
             request_id="request",
             lifecycle_id=lifecycle_id,
-            workflow_run_id=parent_run_id,
-            workflow_id=parent_workflow_id,
-            workflow_name="Parent Workflow",
+            run_id=entry_run_id,
+            workflow_id=entry_workflow_id,
+            workflow_name="Entry Workflow",
         )
-        child_identity = WorkflowRunIdentity(
+        spawned_identity = WorkflowRunIdentity(
             request_id="request",
             lifecycle_id=lifecycle_id,
-            workflow_run_id=child_run_id,
-            parent_workflow_run_id=parent_run_id,
-            workflow_id=child_workflow_id,
-            workflow_name="Child Workflow",
+            run_id=spawned_run_id,
+            caller_run_id=entry_run_id,
+            workflow_id=spawned_workflow_id,
+            workflow_name="Spawned Workflow",
         )
-        parent = RunExecution(
+        entry = RunExecution(
             graph=QuietGraph(quiet_run),
             input_state={},
             response_scheduler=scheduler,
             event_output_projector=output,
             middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
-            identity=parent_identity,
-            context=WorkflowRuntimeContext.for_run(identity=parent_identity),
+            identity=entry_identity,
+            context=WorkflowRuntimeContext.for_run(identity=entry_identity),
         )
-        child = RunExecution(
+        spawned = RunExecution(
             graph=EventGraph(
                 [
                     message_envelope(
-                        AIMessageChunk(content="child-output", id="child-message"),
-                        run_id="child-model-run",
-                        agent_name="Child Agent",
+                        AIMessageChunk(content="spawned-output", id="spawned-message"),
+                        run_id="spawned-model-run",
+                        agent_name="Spawned Agent",
                     )
                 ]
             ),
@@ -360,20 +360,20 @@ def test_lifecycle_response_consumer_wakes_for_registered_child_output() -> None
             response_consumer=False,
             middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
-            origin_resolver=event_origin_resolver("Child Agent"),
-            identity=child_identity,
-            context=WorkflowRuntimeContext.for_run(identity=child_identity),
+            origin_resolver=event_origin_resolver("Spawned Agent"),
+            identity=spawned_identity,
+            context=WorkflowRuntimeContext.for_run(identity=spawned_identity),
         )
 
-        stream = parent.stream_text()
+        stream = entry.stream_text()
         notice_task = asyncio.create_task(anext(stream))
         await asyncio.wait_for(quiet_run.pulling.wait(), timeout=1)
-        await child.execute()
+        await spawned.execute()
         notice = await asyncio.wait_for(notice_task, timeout=1)
         await stream.aclose()
         return notice
 
-    assert asyncio.run(scenario()) == "child-output"
+    assert asyncio.run(scenario()) == "spawned-output"
 
 
 def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -> None:
@@ -439,7 +439,7 @@ def test_agent_execution_times_out_and_closes_v3_stream(monkeypatch, tmp_path) -
             identity = WorkflowRunIdentity(
                 request_id="timeout-request",
                 lifecycle_id=lifecycle_id,
-                workflow_run_id="timeout-run",
+                run_id="timeout-run",
                 workflow_id="timeout-workflow",
                 workflow_name="Timeout Workflow",
                 checkpoint_thread_id="timeout-thread",

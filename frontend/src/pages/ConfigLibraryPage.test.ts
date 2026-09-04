@@ -140,8 +140,7 @@ const messages = {
     model: { label: 'Model' },
     'main-agent': { label: 'Main Agent' },
     'subagent-profile': { label: 'Subagent' },
-    'parent-workflow': { label: 'Parent Workflow' },
-    'child-workflow': { label: 'Child Workflow' },
+    workflow: { label: 'Workflow' },
     'response-stream-scheduling': { label: 'Response Stream Scheduling' },
   },
   validation: {
@@ -408,20 +407,20 @@ describe('ConfigLibraryPage', () => {
   it('lists Workflows with the common copy, download, and delete actions', async () => {
     const api = createApi()
     const workflow = {
-      id: 'workflow-uuid', name: 'Parent flow', workflow_role: 'parent' as const,
+      id: 'workflow-uuid', name: 'Workflow',
       description: '', checkpointer_id: null, workflow_event_output_id: null, recursion_limit: 100,
       execution_timeout_seconds: 120, max_concurrency: 4,
-      cancel_on_upstream_termination: true, enabled: false,
+      cancel_on_caller_termination: true, enabled: false,
     }
     vi.mocked(api.service.listWorkflowSummaries).mockResolvedValue({
       items: [workflow], total: 1, repository_id: 'repository-id', repository_revision: 1,
     })
-    const { wrapper } = await mountPage(api.service, '/library/parent-workflow')
+    const { wrapper } = await mountPage(api.service, '/library/workflow')
 
-    expect(api.service.listWorkflowSummaries).toHaveBeenCalledWith('parent', {
+    expect(api.service.listWorkflowSummaries).toHaveBeenCalledWith({
       q: undefined, offset: 0, limit: 20,
     })
-    expect(wrapper.text()).toContain('Parent flow')
+    expect(wrapper.text()).toContain('Workflow')
     expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
     expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(true)
@@ -460,14 +459,14 @@ describe('ConfigLibraryPage', () => {
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
-      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' },
       records: [{ source_id: 'source-id', target_id: 'target-id', kind: 'component', type: 'model', original_name: 'Model', suggested_name: 'Model', selected_name: 'Model', requires_confirmation: false }],
       filesystem_bindings: [], skill_packages: [], errors: [], warnings: [], ready: true,
     })
     vi.mocked(api.service.importConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64),
-      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' }, records: [], skill_packages: [], warnings: [],
     })
     const { wrapper } = await mountPage(api.service)
@@ -489,7 +488,7 @@ describe('ConfigLibraryPage', () => {
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
-      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' },
       records: [{
         source_id: 'source-id', target_id: 'target-id', kind: 'component', type: 'model',
@@ -500,7 +499,7 @@ describe('ConfigLibraryPage', () => {
     })
     vi.mocked(api.service.importConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64),
-      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' }, records: [], skill_packages: [], warnings: [],
     })
     const { wrapper, router } = await mountPage(api.service)
@@ -538,7 +537,7 @@ describe('ConfigLibraryPage', () => {
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
-      root: { kind: 'component', type: 'filesystem', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'filesystem', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' },
       records: [{ source_id: 'source-id', target_id: 'target-id', kind: 'component', type: 'filesystem', original_name: 'Files', suggested_name: 'Files', selected_name: 'Files', requires_confirmation: false }],
       filesystem_bindings: [{
@@ -581,7 +580,7 @@ describe('ConfigLibraryPage', () => {
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
-      root: { kind: 'component', type: 'filesystem', source_id: 'source-id', target_id: 'target-id', workflow_role: null },
+      root: { kind: 'component', type: 'filesystem', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' }, records: [], filesystem_bindings: [], skill_packages: [],
       errors: [{ code: 'blocked', message: 'Blocked' }], warnings: [], ready: false,
     })

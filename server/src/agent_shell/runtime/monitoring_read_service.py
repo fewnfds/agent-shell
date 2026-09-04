@@ -202,15 +202,15 @@ class MonitoringReadService:
         relationships: list[dict[str, str]] = []
         for run in runs:
             run_id = str(run["run_id"])
-            raw_parent = run.get("parent_run_id")
-            parent_id = str(raw_parent) if raw_parent else ""
-            if parent_id and parent_id in run_ids:
+            raw_caller = run.get("caller_run_id")
+            caller_id = str(raw_caller) if raw_caller else ""
+            if caller_id and caller_id in run_ids:
                 relationships.append(
-                    {"parent_run_id": parent_id, "child_run_id": run_id}
+                    {"caller_run_id": caller_id, "spawned_run_id": run_id}
                 )
             else:
                 roots.append(run_id)
-                if not parent_id and int(run.get("run_depth", 0)) > 0:
+                if caller_id and scope == "lifecycle":
                     orphans.append(run_id)
 
         run_status_counts = Counter(str(run["status"]) for run in runs)

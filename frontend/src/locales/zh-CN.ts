@@ -26,8 +26,6 @@ export const zhCN = {
       eventFeed: '日志中心',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
-      parentWorkflows: 'Parent Run Workflow',
-      childWorkflows: 'Child Run Workflow',
       workflowLifecycles: '运行监控',
       checkpointer: '检查点保存器',
       workflowEventOutput: 'Workflow 事件输出',
@@ -155,35 +153,22 @@ export const zhCN = {
   },
   workflows: {
     title: 'Workflow',
-    roles: {
-      parent: 'Parent Run Workflow',
-      child: 'Child Run Workflow',
-    },
     status: {
       draft: '草稿',
       published: '正式',
     },
     metadataTitle: '装配选项',
     termination: {
-      parent: {
-        label: '客户端断开时终止运行',
-      },
-      child: {
-        label: '父运行取消或失败时终止',
+      caller: {
+        label: '调用方 Run 取消或失败时终止',
       },
     },
     statusTitle: 'Workflow 状态',
     newStatus: '尚未保存',
-    parentTableAriaLabel: 'Parent Run Workflow 列表',
-    childTableAriaLabel: 'Child Run Workflow 列表',
-    parentEmpty: '尚未创建 Parent Run Workflow。',
-    childEmpty: '尚未创建 Child Run Workflow。',
     filteredEmpty: '没有符合当前条件的 Workflow。',
     searchPlaceholder: '搜索名称或说明',
     loadFailed: '无法载入 Workflow',
     componentLoadFailed: '无法载入工作流组件配置',
-    parentCreateTitle: '新建 Parent Run Workflow',
-    childCreateTitle: '新建 Child Run Workflow',
     editTitle: '编辑 Workflow',
     saved: 'Workflow 已保存。',
     copied: 'Workflow 已复制。',
@@ -316,7 +301,7 @@ export const zhCN = {
     downloadDisabled: '此 Lifecycle 没有采集可下载的运行监控数据',
     downloadFailed: '无法下载 Lifecycle 运行数据',
     columns: {
-      parentWorkflow: 'Parent Run Workflow',
+      entryWorkflow: '请求入口 Workflow',
       created: '创建时间',
       status: '状态',
       runs: '活动 / 全部 Run',
@@ -377,8 +362,8 @@ export const zhCN = {
       count: '{count} 个 Run',
       activeCount: '{count} 个活动 Run',
       empty: '此 Lifecycle 尚无 Run。',
-      partial: '部分父 Run 记录不可用，受影响的 Run 按根节点显示。',
-      orphan: '父 Run 不可用',
+      partial: '部分调用方 Run 记录不可用，受影响的 Run 按根节点显示。',
+      orphan: '调用方 Run 不可用',
     },
     graph: {
       title: 'Workflow 图',
@@ -548,6 +533,14 @@ export const zhCN = {
     allowRemote: '允许远程访问',
     managementPassword: '管理密码',
     validationDebounceMs: '配置报警间隔',
+    langgraphDev: {
+      title: 'LangGraph Dev 执行服务',
+      jobs: '每个 Worker 的 Run 槽位',
+      jobsHelp: '默认 10，最小 1，不设最大值。每个由 LangGraph Dev 执行的官方 Run 占用一个槽位；增加槽位会提高并行度，也会增加 CPU、内存和外部请求压力。保存后重启生效。',
+      debugPort: 'DAP 调试端口（可选）',
+      debugPortHelp: '留空时只监听上方普通服务端口。填写后会额外开放一个供调试器连接的端口；它必须与普通服务端口不同，保存后重启生效。',
+      debugPortDisabled: '关闭',
+    },
     runtimePolicy: {
       title: '限制策略',
       runtimeMonitoringRetention: '运行监控保留数量',
@@ -817,8 +810,7 @@ export const zhCN = {
       label: 'Subagent',
       description: '保存可复用的路由身份、能力设置与子级引用',
     },
-    'parent-workflow': { label: 'Parent Run Workflow', description: '可由 OpenAI API 启动 Parent Run 的 Workflow' },
-    'child-workflow': { label: 'Child Run Workflow', description: '供独立 child/background Run 使用的 Workflow' },
+    workflow: { label: 'Workflow', description: '可由任意请求或其他 Run 启动的可复用 Workflow' },
   },
   preferences: {
     theme: '主题',
@@ -1500,7 +1492,7 @@ export const zhCN = {
     workflowScopeNotFound: '当前 Lifecycle 中没有此 Workflow 的 Run。',
     workflowNodeNotFound: '此 Run 的冻结 Graph 中不存在该 Workflow Node。',
     agentInvocationNotFound: '此 Workflow Run 中不存在该 Agent invocation。',
-    workflowLifecycleActive: '父运行或后台运行仍在进行，无法删除该生命周期。',
+    workflowLifecycleActive: '此 Lifecycle 仍有活动 Workflow Run，无法删除。',
     runtimeMonitoringDisabled: '此 Lifecycle 未启用运行监控。',
     runtimeMonitoringUnavailable: '运行监控所需的 Registry 当前不可用。',
     runtimeMonitoringReadFailed: '运行监控读取失败。',
@@ -1852,7 +1844,6 @@ export const zhCN = {
         nodeCannotReachEnd: 'Workflow 节点无法到达结束节点。',
         nodeIdDuplicate: 'Workflow 节点 ID 必须唯一。',
         nodeTypeUnsupported: 'Workflow 节点类型不受支持。',
-        nodeRoleNotAllowed: '此 Workflow 角色不允许使用该节点类型。',
         nodeVersionUnsupported: 'Workflow 节点版本不受支持。',
       },
       contract: {

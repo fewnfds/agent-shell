@@ -42,12 +42,6 @@ def lifecycle_input_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "input")
 
 
-def lifecycle_tasks_namespace(lifecycle_id: str) -> tuple[str, str, str]:
-    if not lifecycle_id:
-        raise ValueError("lifecycle_id must not be empty")
-    return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "tasks")
-
-
 def lifecycle_invocations_namespace(
     lifecycle_id: str,
     run_id: str,
@@ -304,7 +298,6 @@ class WorkflowLifecycleService:
             "checkpoint_thread_id": checkpoint_thread_id,
             "workflow_id": workflow_id,
             "workflow_name": workflow_name,
-            "run_depth": 0,
             "created_at": created_at,
         }
         try:
@@ -860,5 +853,4 @@ __all__ = [
     "lifecycle_filesystem_namespace",
     "lifecycle_input_namespace",
     "lifecycle_invocations_namespace",
-    "lifecycle_tasks_namespace",
 ]

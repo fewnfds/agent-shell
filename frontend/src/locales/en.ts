@@ -28,8 +28,6 @@ export const en: MessageSchema = {
       eventFeed: 'Log center',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
-      parentWorkflows: 'Parent Run Workflows',
-      childWorkflows: 'Child Run Workflows',
       workflowLifecycles: 'Runtime monitoring',
       checkpointer: 'Checkpointer',
       workflowEventOutput: 'Workflow event output',
@@ -157,35 +155,22 @@ export const en: MessageSchema = {
   },
   workflows: {
     title: 'Workflows',
-    roles: {
-      parent: 'Parent Run Workflow',
-      child: 'Child Run Workflow',
-    },
     status: {
       draft: 'Draft',
       published: 'Published',
     },
     metadataTitle: 'Assembly options',
     termination: {
-      parent: {
-        label: 'Terminate when the client disconnects',
-      },
-      child: {
-        label: 'Terminate when the parent Run is cancelled or fails',
+      caller: {
+        label: 'Terminate when the calling Run is cancelled or fails',
       },
     },
     statusTitle: 'Workflow status',
     newStatus: 'Not saved',
-    parentTableAriaLabel: 'Parent Run Workflow list',
-    childTableAriaLabel: 'Child Run Workflow list',
-    parentEmpty: 'No Parent Run Workflow has been created.',
-    childEmpty: 'No Child Run Workflow has been created.',
     filteredEmpty: 'No Workflow matches the current query.',
     searchPlaceholder: 'Search name or description',
     loadFailed: 'Could not load Workflows',
     componentLoadFailed: 'Could not load Workflow component configurations',
-    parentCreateTitle: 'Create Parent Run Workflow',
-    childCreateTitle: 'Create Child Run Workflow',
     editTitle: 'Edit Workflow',
     saved: 'Workflow saved.',
     copied: 'Workflow copied.',
@@ -318,7 +303,7 @@ export const en: MessageSchema = {
     downloadDisabled: 'No runtime monitoring data was captured for this Lifecycle',
     downloadFailed: 'Could not download Lifecycle runtime data',
     columns: {
-      parentWorkflow: 'Parent Run Workflow',
+      entryWorkflow: 'Entry Workflow',
       created: 'Created',
       status: 'Status',
       runs: 'Active / all Runs',
@@ -379,8 +364,8 @@ export const en: MessageSchema = {
       count: '{count} Runs',
       activeCount: '{count} active',
       empty: 'This Lifecycle has no Runs.',
-      partial: 'Some parent Run records are unavailable. The affected Runs are shown as roots.',
-      orphan: 'parent unavailable',
+      partial: 'Some caller Run records are unavailable. The affected Runs are shown as roots.',
+      orphan: 'caller unavailable',
     },
     graph: {
       title: 'Workflow Graph',
@@ -550,6 +535,14 @@ export const en: MessageSchema = {
     allowRemote: 'Allow remote access',
     managementPassword: 'Management password',
     validationDebounceMs: 'Configuration alert interval',
+    langgraphDev: {
+      title: 'LangGraph Dev execution server',
+      jobs: 'Run slots per worker',
+      jobsHelp: 'Defaults to 10 with a minimum of 1 and no maximum. Each official Run executed by LangGraph Dev occupies one slot; more slots increase concurrency as well as CPU, memory, and external request pressure. Restart to apply.',
+      debugPort: 'DAP debug port (optional)',
+      debugPortHelp: 'When empty, only the normal service port above is opened. Setting this opens one additional debugger listener; it must differ from the service port. Restart to apply.',
+      debugPortDisabled: 'Disabled',
+    },
     runtimePolicy: {
       title: 'Restriction policy',
       runtimeMonitoringRetention: 'Runtime monitoring retention',
@@ -819,8 +812,7 @@ export const en: MessageSchema = {
       label: 'Subagent',
       description: 'Own a reusable routing identity, capability settings, and child references',
     },
-    'parent-workflow': { label: 'Parent Run Workflow', description: 'A Workflow that can start a Parent Run through the OpenAI API' },
-    'child-workflow': { label: 'Child Run Workflow', description: 'A Workflow used by independent child/background Runs' },
+    workflow: { label: 'Workflow', description: 'A reusable Workflow that any request or Run can start' },
   },
   preferences: {
     theme: 'Theme',
@@ -1502,7 +1494,7 @@ export const en: MessageSchema = {
     workflowScopeNotFound: 'The Workflow has no Run in this Lifecycle.',
     workflowNodeNotFound: 'The Workflow Node does not exist in this Run’s frozen Graph.',
     agentInvocationNotFound: 'The Agent invocation does not exist in this Workflow Run.',
-    workflowLifecycleActive: 'The lifecycle still has an active parent or background run and cannot be deleted.',
+    workflowLifecycleActive: 'The Lifecycle still has an active Workflow Run and cannot be deleted.',
     runtimeMonitoringDisabled: 'Runtime monitoring was disabled for this Lifecycle.',
     runtimeMonitoringUnavailable: 'The required runtime monitoring registry is unavailable.',
     runtimeMonitoringReadFailed: 'The runtime monitoring request failed.',
@@ -1854,7 +1846,6 @@ export const en: MessageSchema = {
         nodeCannotReachEnd: 'The Workflow node cannot reach an End node.',
         nodeIdDuplicate: 'Workflow node IDs must be unique.',
         nodeTypeUnsupported: 'The Workflow node type is not supported.',
-        nodeRoleNotAllowed: 'This Workflow role does not allow the node type.',
         nodeVersionUnsupported: 'The Workflow node version is not supported.',
       },
       contract: {

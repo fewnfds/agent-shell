@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { LteAlert, LteTextarea } from '@adminlte/vue'
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { managementApi, type ConfigurationSummary, type ValidationReport, type Workflow, type WorkflowPayload, type WorkflowRole, type WorkflowSummary } from '@/api'
+import { managementApi, type ConfigurationSummary, type ValidationReport, type Workflow, type WorkflowPayload, type WorkflowSummary } from '@/api'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
@@ -15,16 +15,12 @@ import ValidationChecklist from '@/components/ValidationChecklist.vue'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useConfigurationResource } from '@/composables/useConfigurationResource'
 
-const props = defineProps<{ workflowRole: WorkflowRole }>()
 const { t } = useI18n()
 const router = useRouter()
 const checkpointers = ref<ConfigurationSummary[]>([])
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
 const responseStreamSchedulingComponents = ref<ConfigurationSummary[]>([])
 
-function pagePath(): string {
-  return `/workflows/${props.workflowRole === 'parent' ? 'parents' : 'children'}`
-}
 function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: readonly T[]): T[] {
   return [...items].sort((left, right) => (
     left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
@@ -40,12 +36,11 @@ function blankWorkflow(): WorkflowResource {
   return {
     id: '',
     name: '',
-    workflow_role: props.workflowRole,
     description: '',
     checkpointer_id: null,
     workflow_event_output_id: null,
     response_stream_scheduling_id: null,
-    cancel_on_upstream_termination: true,
+    cancel_on_caller_termination: true,
     recursion_limit: 1_000_000,
     execution_timeout_seconds: 1_200,
     max_concurrency: 100,
@@ -59,14 +54,11 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
   return {
     id: workflow.id ?? '',
     name: workflow.name ?? '',
-    workflow_role: workflow.workflow_role ?? props.workflowRole,
     description: workflow.description ?? '',
     checkpointer_id: workflow.checkpointer_id ?? null,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
-    response_stream_scheduling_id: props.workflowRole === 'parent'
-      ? workflow.response_stream_scheduling_id ?? null
-      : null,
-    cancel_on_upstream_termination: workflow.cancel_on_upstream_termination ?? true,
+    response_stream_scheduling_id: workflow.response_stream_scheduling_id ?? null,
+    cancel_on_caller_termination: workflow.cancel_on_caller_termination ?? true,
     recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
     execution_timeout_seconds: workflow.execution_timeout_seconds ?? defaults.execution_timeout_seconds,
     max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
@@ -77,18 +69,15 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
 function toPayload(workflow: WorkflowResource): WorkflowPayload {
   const payload: WorkflowPayload = {
     name: workflow.name.trim(),
-    workflow_role: props.workflowRole,
     description: workflow.description.trim(),
     checkpointer_id: workflow.checkpointer_id || null,
     workflow_event_output_id: workflow.workflow_event_output_id || null,
-    cancel_on_upstream_termination: workflow.cancel_on_upstream_termination,
+    cancel_on_caller_termination: workflow.cancel_on_caller_termination,
     recursion_limit: Number(workflow.recursion_limit),
     execution_timeout_seconds: Number(workflow.execution_timeout_seconds),
     max_concurrency: Number(workflow.max_concurrency),
   }
-  if (props.workflowRole === 'parent') {
-    payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
-  }
+  payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
   return payload
 }
 
@@ -123,7 +112,7 @@ const {
   copy: (id, name) => managementApi.copyWorkflow(id, name),
   remove: (id) => managementApi.deleteWorkflow(id),
   location: (id = '') => ({
-    path: pagePath(),
+    path: '/workflows',
     ...(id ? { query: { id } } : {}),
   }),
   deleteConfirmation: (workflow) => ({
@@ -185,7 +174,7 @@ async function loadWorkspace(): Promise<void> {
     checkpointers.value = options.components.checkpointer ?? []
     workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
     responseStreamSchedulingComponents.value = options.components['response-stream-scheduling'] ?? []
-    return options.workflows.filter((item) => item.workflow_role === props.workflowRole)
+    return options.workflows
   })
 }
 
@@ -204,7 +193,6 @@ function editGraph(): void {
   }
 }
 
-watch(() => props.workflowRole, () => { void loadWorkspace() })
 onMounted(() => { void loadWorkspace() })
 </script>
 
@@ -236,26 +224,26 @@ onMounted(() => { void loadWorkspace() })
               <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
             </FormField>
             <FormField
-              control-id="workflow-cancel-on-upstream-termination"
-              field-path="cancel_on_upstream_termination"
-              :label-key="`workflows.termination.${props.workflowRole}.label`"
+              control-id="workflow-cancel-on-caller-termination"
+              field-path="cancel_on_caller_termination"
+              label-key="workflows.termination.caller.label"
             >
               <template #default>
                 <div class="form-check form-switch">
                   <input
-                    id="workflow-cancel-on-upstream-termination"
-                    v-model="form.cancel_on_upstream_termination"
+                    id="workflow-cancel-on-caller-termination"
+                    v-model="form.cancel_on_caller_termination"
                     class="form-check-input"
                     type="checkbox"
                   >
-                  <label class="form-check-label visually-hidden" for="workflow-cancel-on-upstream-termination">
-                    {{ t(`workflows.termination.${props.workflowRole}.label`) }}
+                  <label class="form-check-label visually-hidden" for="workflow-cancel-on-caller-termination">
+                    {{ t('workflows.termination.caller.label') }}
                   </label>
                 </div>
               </template>
             </FormField>
             <div class="row g-3" data-testid="workflow-component-assembly-row" data-ui-control-row>
-              <div :class="props.workflowRole === 'parent' ? 'col-lg-4' : 'col-lg-6'">
+              <div class="col-lg-4">
                 <FormField control-id="workflow-checkpointer" field-path="checkpointer_id" label-key="workflows.fields.checkpointer">
                   <select id="workflow-checkpointer" v-model="form.checkpointer_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
@@ -270,7 +258,7 @@ onMounted(() => { void loadWorkspace() })
                   </select>
                 </FormField>
               </div>
-              <div :class="props.workflowRole === 'parent' ? 'col-lg-4' : 'col-lg-6'">
+              <div class="col-lg-4">
                 <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
                   <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
@@ -285,7 +273,7 @@ onMounted(() => { void loadWorkspace() })
                   </select>
                 </FormField>
               </div>
-              <div v-if="props.workflowRole === 'parent'" class="col-lg-4">
+              <div class="col-lg-4">
                 <FormField control-id="workflow-response-stream-scheduling" field-path="response_stream_scheduling_id" label-key="workflows.fields.responseStreamScheduling">
                   <select id="workflow-response-stream-scheduling" v-model="form.response_stream_scheduling_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>

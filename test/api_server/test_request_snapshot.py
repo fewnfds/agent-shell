@@ -25,7 +25,6 @@ def test_snapshot_freezes_workflow_metadata(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": "Changed after snapshot",
             },
         )

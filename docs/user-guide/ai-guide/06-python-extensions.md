@@ -277,4 +277,4 @@ dependency collection 只覆盖 enabled Workflow 可达的 Python-backed Compone
 - requirement 变化后已 restart，并确认 dependency status；
 - Graph draft 已使用最新 Component UUID 和 key 重新保存。
 
-需要 independent child Run 时阅读[使用 background Run](07-background-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。
+需要从 current Run 启动独立 Workflow Run 时阅读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。随后阅读[验证、运行与交付](08-validate-run-deliver.md)。

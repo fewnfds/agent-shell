@@ -111,7 +111,7 @@ def create_tool() -> BaseTool:
 - `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；
 - `runtime.store`：current Lifecycle 可访问的 LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
-- `runtime.context.background_runs`：Agent Shell 的 background Run command facade。
+- `runtime.context.workflow_runs`：Agent Shell 的跨 Workflow Run command facade，提供 `start_workflow/check/list/join/cancel`。
 
 Tool 的参数名 `runtime` 与 `config` 由 LangChain 保留。Runtime access 写在 Tool callable 中；`create_tool()` 在 assembly construction stage 执行，没有某次 invocation 的 Runtime。
 

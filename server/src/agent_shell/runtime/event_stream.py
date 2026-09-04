@@ -39,6 +39,16 @@ def _message_text(message: object) -> str:
     return str(content) if content is not None else ""
 
 
+def _message_parts(data: object) -> tuple[object, Mapping[str, object]] | None:
+    if isinstance(data, Mapping):
+        metadata = data.get("metadata")
+        return data, metadata if isinstance(metadata, Mapping) else {}
+    if not isinstance(data, (list, tuple)) or len(data) != 2:
+        return None
+    metadata = data[1] if isinstance(data[1], Mapping) else {}
+    return data[0], metadata
+
+
 class RunEventStream:
     """Consume raw v3 channels into Run state and scheduler-private signals."""
 
@@ -108,10 +118,10 @@ class RunEventStream:
         raw_seq: int,
         origin: ResolvedEventOrigin,
     ) -> list[ResponseEvent | ResponseModelCallBoundary | MediaContentBlock]:
-        if not isinstance(data, (list, tuple)) or len(data) != 2:
+        parts = _message_parts(data)
+        if parts is None:
             return []
-        payload, raw_metadata = data
-        metadata = raw_metadata if isinstance(raw_metadata, Mapping) else {}
+        payload, metadata = parts
         run_id = str(metadata.get("run_id") or "")
         run_key = run_id or self._fallback_run_key(origin)
 
@@ -507,12 +517,12 @@ class RunEventStream:
         data: object,
         origin: ResolvedEventOrigin,
     ) -> bool:
-        if not isinstance(data, (list, tuple)) or len(data) != 2:
+        parts = _message_parts(data)
+        if parts is None:
             return False
-        payload, raw_metadata = data
+        payload, metadata = parts
         if isinstance(payload, Mapping) or not isinstance(payload, AIMessage):
             return False
-        metadata = raw_metadata if isinstance(raw_metadata, Mapping) else {}
         run_id = str(metadata.get("run_id") or "")
         run_key = run_id or self._fallback_run_key(origin)
         return self._messages.was_streamed(run_key)

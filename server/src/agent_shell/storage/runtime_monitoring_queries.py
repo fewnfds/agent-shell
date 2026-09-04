@@ -46,9 +46,8 @@ def _run(row: sqlite3.Row) -> dict[str, object]:
         "checkpoint_thread_id": row["checkpoint_thread_id"],
         "workflow_id": str(row["workflow_id"]),
         "workflow_name": str(row["workflow_name"]),
-        "parent_run_id": row["parent_run_id"],
-        "background_task_id": row["background_task_id"],
-        "run_depth": int(row["run_depth"]),
+        "caller_run_id": row["caller_run_id"],
+        "operation_id": row["operation_id"],
         "status": run_status,
         "created_at": str(row["created_at"]),
         "started_at": row["started_at"],
@@ -157,7 +156,7 @@ class RuntimeMonitoringQueryStore:
                 "UNION "
                 "SELECT child.run_id FROM runtime_workflow_runs AS child "
                 "JOIN selected_runs AS parent "
-                "ON child.parent_run_id = parent.run_id "
+                "ON child.caller_run_id = parent.run_id "
                 "WHERE child.lifecycle_id = ?"
                 ") ",
                 (lifecycle_id, selector_id, lifecycle_id),

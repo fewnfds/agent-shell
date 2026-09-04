@@ -73,7 +73,7 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             stream = api_server._completion_stream(
                 execution,
                 "Workflow",
-                background_tasks=client.app.state.background_tasks,
+                detached_tasks=client.app.state.detached_tasks,
                 cancel_on_disconnect=cancel_on_disconnect,
             )
             first = await anext(stream)
@@ -139,7 +139,7 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
             stream = api_server._completion_stream(
                 execution,
                 "Workflow",
-                background_tasks=client.app.state.background_tasks,
+                detached_tasks=client.app.state.detached_tasks,
                 cancel_on_disconnect=True,
             )
             await anext(stream)
@@ -169,12 +169,8 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Published Workflow")
         save_linear_workflow_graph(client, workflow, main_agent)
-        child = create_workflow(
-            client,
-            name="Internal Child Workflow",
-            workflow_role="child",
-        )
-        save_linear_workflow_graph(client, child, main_agent)
+        another = create_workflow(client, name="Another Workflow")
+        save_linear_workflow_graph(client, another, main_agent)
         create_workflow(client, name="Disabled Workflow")
 
         models = client.get("/v1/models")
@@ -185,10 +181,10 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
                 "messages": [{"role": "user", "content": "run"}],
             },
         )
-        child_reply = client.post(
+        another_reply = client.post(
             "/v1/chat/completions",
             json={
-                "model": child["name"],
+                "model": another["name"],
                 "messages": [{"role": "user", "content": "run"}],
             },
         )
@@ -208,12 +204,16 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
         )
 
     assert models.status_code == 200
-    assert [item["id"] for item in models.json()["data"]] == [workflow["name"]]
+    assert [item["id"] for item in models.json()["data"]] == [
+        another["name"],
+        workflow["name"],
+    ]
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
     assert message["content"] == "runtime reply"
-    for response in (child_reply, main_agent_name_reply, main_agent_id_reply):
+    assert another_reply.status_code == 200, another_reply.text
+    for response in (main_agent_name_reply, main_agent_id_reply):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "model_not_found"
 
@@ -262,7 +262,6 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": workflow["workflow_role"],
                 "description": workflow["description"],
                 "workflow_event_output_id": workflow[
                     "workflow_event_output_id"
@@ -296,7 +295,7 @@ def test_workflow_runtime_limits_reach_the_graph_execution(
     assert captured["identity"].checkpoint_thread_id is None
 
 
-def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapshot(
+def test_request_entry_workflow_resolves_response_stream_scheduling_from_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -332,7 +331,6 @@ def test_parent_workflow_resolves_response_stream_scheduling_from_request_snapsh
             f"/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
-                "workflow_role": "parent",
                 "response_stream_scheduling_id": scheduling.json()["id"],
             },
         )
@@ -402,7 +400,6 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
                         key: workflow[key]
                         for key in (
                             "name",
-                            "workflow_role",
                             "description",
                             "workflow_event_output_id",
                             "recursion_limit",
@@ -433,7 +430,7 @@ def test_workflow_checkpointer_durability_is_passed_mechanically(
                 "thread_id": identity.checkpoint_thread_id,
             }
             run = client.app.state.workflow_lifecycle.run(
-                context.workflow_run_id
+                context.run_id
             )
             assert run is not None
             assert run["checkpoint_thread_id"] == identity.checkpoint_thread_id
@@ -466,7 +463,6 @@ def test_checkpointer_initialization_failure_isolated_to_configured_workflow(
                     key: configured[key]
                     for key in (
                         "name",
-                        "workflow_role",
                         "description",
                         "workflow_event_output_id",
                         "recursion_limit",

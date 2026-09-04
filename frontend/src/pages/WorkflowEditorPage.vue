@@ -80,14 +80,7 @@ let validationTimer: ReturnType<typeof setTimeout> | undefined
 let validationGeneration = 0
 let loadGeneration = 0
 const workflowId = computed(() => String(route.params.id ?? ''))
-const workflowListPath = computed(() => (
-  workflow.value?.workflow_role === 'child'
-    ? '/workflows/children'
-    : '/workflows/parents'
-))
-const workflowRoleLabel = computed(() => (
-  workflow.value ? t(`workflows.roles.${workflow.value.workflow_role}`) : ''
-))
+const workflowListPath = computed(() => '/workflows')
 const agentCatalogItem = computed(() => (
   nodeCatalog.value.find((item) => item.type === 'agent') ?? null
 ))
@@ -679,7 +672,7 @@ async function loadWorkflow(id: string): Promise<void> {
     workflow.value = metadata
     mainAgents.value = options.main_agents
     commands.value = options.components.command ?? []
-    nodeCatalog.value = catalog.filter((item) => item.workflow_roles.includes(metadata.workflow_role))
+    nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
     nodes.value = canvas.nodes
@@ -725,7 +718,7 @@ onUnmounted(() => {
       <button :aria-label="t('workflows.editor.back')" :title="t('workflows.editor.back')" type="button" @click="router.push(workflowListPath)">
         <i class="bi bi-chevron-left" aria-hidden="true" />
       </button>
-      <h1>{{ workflow ? `${workflowRoleLabel} - ${workflow.name}` : t('workflows.editor.title') }}</h1>
+      <h1>{{ workflow?.name ?? t('workflows.editor.title') }}</h1>
       <div class="d-flex align-items-center gap-1">
         <span class="badge text-bg-secondary">{{ workflow?.enabled ? t('workflows.status.published') : t('workflows.status.draft') }}</span>
         <button :aria-label="t('workflows.editor.saveDraft')" :disabled="!canSaveDraft" :title="t('workflows.editor.saveDraft')" type="button" @click="saveDraft">

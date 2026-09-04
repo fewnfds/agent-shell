@@ -17,7 +17,7 @@ const snapshot = {
   ],
   forest: {
     root_run_ids: ['run-root'],
-    relationships: [{ parent_run_id: 'run-root', child_run_id: 'run-child' }],
+    relationships: [{ caller_run_id: 'run-root', spawned_run_id: 'run-child' }],
     orphan_run_ids: [],
   },
 } as RuntimeMonitoringSnapshot
@@ -80,7 +80,6 @@ describe('runtime monitoring projection', () => {
           edge_type: 'branch',
           max_connections: null,
         }],
-        workflow_roles: ['parent'],
       },
       {
         type: 'end',
@@ -97,7 +96,6 @@ describe('runtime monitoring projection', () => {
           max_connections: null,
         }],
         output_handles: [],
-        workflow_roles: ['parent'],
       },
     ] satisfies WorkflowNodeCatalogItem[]
 

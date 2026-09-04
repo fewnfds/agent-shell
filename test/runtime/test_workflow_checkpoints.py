@@ -137,7 +137,7 @@ def test_workflow_checkpointer_persists_state_without_turning_input_into_chat_st
                 identity=WorkflowRunIdentity(
                     request_id="request-1",
                     lifecycle_id=lifecycle_id,
-                    workflow_run_id=run_id,
+                    run_id=run_id,
                     workflow_id="workflow-1",
                     workflow_name="Checkpoint Workflow",
                     checkpoint_thread_id=checkpoint_thread_id,
