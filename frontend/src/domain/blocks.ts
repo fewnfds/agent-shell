@@ -48,7 +48,7 @@ export type {
 export type { ModelRequirementDraft } from './blocks/modelRequirement'
 export type { McpRequirementDraft } from './blocks/mcpRequirement'
 export type { ModelApiRecord, ModelDraft, ModelProviderSettingInput } from './blocks/model'
-export { modelAdapter } from './blocks/model'
+export { modelAdapter, providerDefaultSettings } from './blocks/model'
 export type {
   McpConfiguredValueDraft,
   McpConnectionDraft,

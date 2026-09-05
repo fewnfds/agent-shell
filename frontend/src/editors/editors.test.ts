@@ -382,7 +382,7 @@ describe('dedicated block editors', () => {
     expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ model: 'model-b' })
   })
 
-  it('lists installed Providers and resets provider-specific settings on selection', async () => {
+  it('lists installed Providers and applies supported Provider defaults on selection', async () => {
     const draft = modelAdapter.blank()
     draft.provider_settings = { max_completion_tokens: 200 }
     const editor = mountEditor(ModelEditor, {
@@ -392,6 +392,14 @@ describe('dedicated block editors', () => {
           provider: 'openai',
           package: 'langchain-openai',
           class_name: 'ChatOpenAI',
+          installed: true,
+          version: '1.4.1',
+          documentation_url: 'https://docs.langchain.com/providers',
+        },
+        {
+          provider: 'deepseek',
+          package: 'langchain-deepseek',
+          class_name: 'ChatDeepSeek',
           installed: true,
           version: '1.4.1',
           documentation_url: 'https://docs.langchain.com/providers',
@@ -411,13 +419,26 @@ describe('dedicated block editors', () => {
     expect(select.findAll('option').map((option) => option.attributes('value'))).toEqual([
       '',
       'openai',
+      'deepseek',
       'google_vertexai',
     ])
     expect(select.findAll('option').map((option) => option.text())).toEqual([
       'editors.model.providerPlaceholder',
       'langchain-openai',
+      'langchain-deepseek',
       'langchain-google-vertexai',
     ])
+
+    await select.setValue('deepseek')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      provider: 'deepseek',
+      provider_settings: {
+        temperature: 1,
+        top_p: 1,
+        presence_penalty: 0,
+        frequency_penalty: 0,
+      },
+    })
 
     await select.setValue('google_vertexai')
     expect(editor.find('[data-testid="openai-connection-type"]').exists()).toBe(false)
@@ -427,6 +448,17 @@ describe('dedicated block editors', () => {
     expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
       provider: 'google_vertexai',
       provider_settings: {},
+    })
+
+    await select.setValue('openai')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      provider: 'openai',
+      provider_settings: {
+        temperature: 1,
+        top_p: 1,
+        presence_penalty: 0,
+        frequency_penalty: 0,
+      },
     })
   })
 

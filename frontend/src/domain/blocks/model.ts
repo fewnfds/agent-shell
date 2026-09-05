@@ -88,17 +88,23 @@ function providerSettingsPayload(value: ModelProviderSettingsDraft): Record<stri
   return settings
 }
 
-const defaultOpenAIProviderSettings: ModelProviderSettingsDraft = {
+const defaultSamplingProviderSettings: ModelProviderSettingsDraft = {
   temperature: 1,
   top_p: 1,
   presence_penalty: 0,
   frequency_penalty: 0,
 }
 
+export function providerDefaultSettings(provider: string): ModelProviderSettingsDraft {
+  return provider === 'openai' || provider === 'deepseek'
+    ? { ...defaultSamplingProviderSettings }
+    : {}
+}
+
 function blankModel(): ModelDraft {
   return {
     id: '', name: '', provider: 'openai', base_url: '', credential_secret: '', credential_status: 'missing', model: '',
-    provider_settings: { ...defaultOpenAIProviderSettings },
+    provider_settings: providerDefaultSettings('openai'),
     tool_choice: '', response_format: '', model_settings: '{}',
   }
 }

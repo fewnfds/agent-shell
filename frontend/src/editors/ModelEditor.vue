@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { ModelProviderCatalogItem } from '@/api'
 import FormField from '@/components/FormField.vue'
-import type { ModelDraft, ModelProviderSettingInput } from '@/domain/blocks'
+import { providerDefaultSettings, type ModelDraft, type ModelProviderSettingInput } from '@/domain/blocks'
 
 import { useEditorModel } from './shared/useEditorModel'
 
@@ -159,7 +159,7 @@ function setProvider(event: Event): void {
   const provider = (event.target as HTMLSelectElement).value
   if (provider !== draft.provider) {
     draft.provider = provider
-    draft.provider_settings = {}
+    draft.provider_settings = providerDefaultSettings(provider)
   }
 }
 

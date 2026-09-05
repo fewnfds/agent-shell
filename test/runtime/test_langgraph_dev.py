@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from langgraph.runtime import ExecutionInfo, Runtime
 
 from agent_shell import langgraph_dev
@@ -75,6 +77,30 @@ def test_factory_uses_assistant_config_and_product_run_context() -> None:
         caller_run_id="caller-run-1",
         operation_id="operation-1",
     )
+
+
+def test_windows_curl_blockbuster_compatibility_wraps_the_runtime_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langgraph_runtime_inmem import queue as inmem_queue
+
+    calls: list[tuple[str, str]] = []
+
+    class SocketAccept:
+        def can_block_in(self, filename: str, function: str) -> None:
+            calls.append((filename, function))
+
+    blocker = SimpleNamespace(functions={"socket.socket.accept": SocketAccept()})
+    monkeypatch.setattr(inmem_queue, "_enable_blockbuster", lambda: blocker)
+    monkeypatch.setattr(langgraph_dev.sys, "platform", "win32")
+
+    langgraph_dev._configure_windows_curl_blockbuster_compatibility()
+    enabled = inmem_queue._enable_blockbuster
+    langgraph_dev._configure_windows_curl_blockbuster_compatibility()
+
+    assert inmem_queue._enable_blockbuster is enabled
+    assert enabled() is blocker
+    assert calls == [("socket.py", "_fallback_socketpair")]
 
 
 def test_server_graph_context_schema_does_not_duplicate_official_identity() -> None:

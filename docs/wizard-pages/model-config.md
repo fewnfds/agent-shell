@@ -17,7 +17,7 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。`google_vertexai` 使用无 credential 配置。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
 `name` 去除首尾空白后必须包含 1 到 120 个字符，并在实例内按大小写不敏感规则保持唯一。空白或超长名称返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
-新建连接的原生生成参数默认包含 `temperature=1` 与 `top_p=1`；支持惩罚参数的 Provider 还包含 `presence_penalty=0` 与 `frequency_penalty=0`。`stream_usage`、`streaming` 和 `logprobs` 保持 Provider 默认行为，直到用户显式设置。
+新建连接及切换到 OpenAI 或 DeepSeek 时，表单会预填原生生成参数 `temperature=1`、`top_p=1`、`presence_penalty=0` 和 `frequency_penalty=0`。切换 Provider 会清除前一个 Provider 的专用参数；其他 Provider 当前从空参数表单开始。`stream_usage`、`streaming` 和 `logprobs` 保持 Provider 默认行为，直到用户显式设置。
 
 `provider_settings.streaming`首先决定模型调用是否提供 token delta。显式设为`false`时，运行时同时设置 LangChain BaseChatModel的`disable_streaming=true`，因此 LangGraph application streaming不会通过 auto-streaming重新开启该模型。Exception Retry的`force_non_streaming=true`可以在 Agent装配时把最终设置单向覆盖为关闭。这个上游设置只改变 delta何时可用；Agent Event Output仍统一接收 additive `start / delta / end`，非流式完整正文会成为一个合成 delta。
 

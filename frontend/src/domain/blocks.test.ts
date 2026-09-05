@@ -10,6 +10,7 @@ import {
   filesystemAdapter,
   filesystemToolsAdapter,
   modelAdapter,
+  providerDefaultSettings,
   skillAdapter,
   subagentAdapter,
   systemPromptAdapter,
@@ -94,13 +95,18 @@ describe('block adapters', () => {
     })
   })
 
-  it('starts a new model with explicit OpenAI sampling defaults', () => {
-    expect(modelAdapter.blank().provider_settings).toEqual({
+  it('uses explicit sampling defaults for new and switched OpenAI or DeepSeek models', () => {
+    const samplingDefaults = {
       temperature: 1,
       top_p: 1,
       presence_penalty: 0,
       frequency_penalty: 0,
-    })
+    }
+
+    expect(modelAdapter.blank().provider_settings).toEqual(samplingDefaults)
+    expect(providerDefaultSettings('openai')).toEqual(samplingDefaults)
+    expect(providerDefaultSettings('deepseek')).toEqual(samplingDefaults)
+    expect(providerDefaultSettings('google_vertexai')).toEqual({})
   })
 
   it('maps Response Stream Scheduling as a reusable Workflow component payload', () => {

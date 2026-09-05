@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from functools import wraps
+import sys
 from typing import Any
 
 from fastapi import FastAPI
@@ -27,10 +29,50 @@ app: FastAPI | None = None
 _settings: Settings | None = None
 
 
+def _allow_windows_curl_selector_socketpair(blockbuster: Any) -> None:
+    """Permit curl-cffi's CPython socketpair fallback without disabling detection."""
+
+    if sys.platform == "win32":
+        blockbuster.functions["socket.socket.accept"].can_block_in(
+            "socket.py",
+            "_fallback_socketpair",
+        )
+
+
+def _configure_windows_curl_blockbuster_compatibility() -> None:
+    """Patch LangGraph Dev's blocker before its queue starts on Windows."""
+
+    if sys.platform != "win32":
+        return
+    from langgraph_runtime_inmem import queue as inmem_queue
+
+    enable_blockbuster = inmem_queue._enable_blockbuster
+    if getattr(
+        enable_blockbuster,
+        "_agent_shell_curl_socketpair_compatibility",
+        False,
+    ):
+        return
+
+    @wraps(enable_blockbuster)
+    def enable_with_windows_curl_compatibility() -> Any:
+        blockbuster = enable_blockbuster()
+        _allow_windows_curl_selector_socketpair(blockbuster)
+        return blockbuster
+
+    setattr(
+        enable_with_windows_curl_compatibility,
+        "_agent_shell_curl_socketpair_compatibility",
+        True,
+    )
+    inmem_queue._enable_blockbuster = enable_with_windows_curl_compatibility
+
+
 def configure_runtime(settings: Settings, *, serve_frontend: bool) -> FastAPI:
     """Create the one custom app before LangGraph resolves config exports."""
 
     global app, _settings
+    _configure_windows_curl_blockbuster_compatibility()
     _settings = settings
     app = create_app(settings=settings, serve_frontend=serve_frontend)
     return app
