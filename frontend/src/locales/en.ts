@@ -59,6 +59,7 @@ export const en: MessageSchema = {
       unbound: 'Unbound',
       empty: 'The active Configuration Repository has no model requirements.',
       loadFailed: 'Could not load model mapping',
+      confirm: 'Confirm',
     },
   },
   mcp: {
@@ -935,15 +936,11 @@ export const en: MessageSchema = {
         responses: 'OpenAI Responses API',
       },
       parametersTitle: 'Generation parameters',
-      providerParametersHint: 'Only native parameters accepted by the selected LangChain Provider are shown. Switching Provider clears this group.',
+      default: 'Default',
       selectProviderFirst: 'Select a bundled Provider to edit its native parameters.',
       stopPlaceholder: '["END", "STOP"]',
       requestSettingsTitle: 'Model request settings',
-      requestSettingsHint: 'These values enter each LangChain ModelRequest; leave them empty to use framework defaults.',
-      toolChoiceHint: 'Leave empty by default; choose auto, none, required, any, or enter a tool name.',
       toolChoicePlaceholder: 'Use the default or enter a tool name',
-      responseFormatHint: 'JSON Schema object; the top level requires title and description.',
-      modelSettingsHint: 'Model binding parameters as a JSON object; do not enter secrets or duplicate the two fields above.',
     },
     modelRequirement: {
       description: 'Model requirement description',
@@ -952,7 +949,6 @@ export const en: MessageSchema = {
     mcpRequirement: {
       namespace: 'Tool namespace',
       namespacePlaceholder: 'For example: browser',
-      namespaceHint: 'Use a stable identifier. Runtime Tool names are generated as namespace_rawToolName.',
       description: 'MCP requirement description',
       descriptionPlaceholder: 'Describe the MCP service and when an Agent or Command should use it.',
     },
@@ -985,7 +981,6 @@ export const en: MessageSchema = {
       },
       forceNonStreamingLabel: 'Force non-streaming',
       conditionsTitle: 'ModelRetryMiddleware retry conditions',
-      conditionsHint: 'Select only failures that another request can reasonably recover from. Other exceptions are raised immediately.',
       conditions: {
         transport_error: {
           label: 'Network connection or response-stream failure',
@@ -1023,7 +1018,6 @@ export const en: MessageSchema = {
       workspaceHint: 'This real directory is used directly as /. No empty execution directory, Skill package, or path permissions are attached.',
       skillPackageTitle: 'Skill package',
       noSkillPackage: 'Do not mount a Skill package',
-      skillPackageHint: 'The selected package is mounted read-only at /skills/ and inherited with the Filesystem Backend by Subagents.',
       pathOriginLabel: 'Host path type',
       pathOrigins: {
         absolute: 'Absolute path',
@@ -1059,7 +1053,6 @@ export const en: MessageSchema = {
     filesystemTools: {
       limitsTitle: 'Tool constraints',
       toolsTitle: 'Tool visibility and descriptions',
-      executeHint: 'execute is available only with LocalShellBackend. CompositeBackend automatically removes it from the tools exposed to the model.',
       toolDescriptionLabel: '{tool} description',
       tokensUnit: 'tokens',
       resultsUnit: 'results',
@@ -1105,10 +1098,8 @@ export const en: MessageSchema = {
       truncateTriggerValue: 'Argument truncation trigger value',
       truncateKeepRule: 'Context to keep after truncation',
       truncateKeepValue: 'Argument truncation keep value',
-      truncateArgsTextHint: 'When an older tool argument exceeds the limit, the omitted portion is replaced with this text before summarization.',
       generationTitle: 'Summary generation',
       restoreDefaultPrompt: 'Restore default prompt',
-      summaryPromptHint: 'This shows the Deep Agents default prompt. Edit it to override the default.',
       charactersUnit: 'characters',
       tokensUnit: 'tokens',
       thresholdTypes: {

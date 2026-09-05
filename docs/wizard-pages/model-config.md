@@ -17,6 +17,8 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。`google_vertexai` 使用无 credential 配置。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
 `name` 去除首尾空白后必须包含 1 到 120 个字符，并在实例内按大小写不敏感规则保持唯一。空白或超长名称返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
+新建连接的原生生成参数默认包含 `temperature=1` 与 `top_p=1`；支持惩罚参数的 Provider 还包含 `presence_penalty=0` 与 `frequency_penalty=0`。`stream_usage`、`streaming` 和 `logprobs` 保持 Provider 默认行为，直到用户显式设置。
+
 `provider_settings.streaming`首先决定模型调用是否提供 token delta。显式设为`false`时，运行时同时设置 LangChain BaseChatModel的`disable_streaming=true`，因此 LangGraph application streaming不会通过 auto-streaming重新开启该模型。Exception Retry的`force_non_streaming=true`可以在 Agent装配时把最终设置单向覆盖为关闭。这个上游设置只改变 delta何时可用；Agent Event Output仍统一接收 additive `start / delta / end`，非流式完整正文会成为一个合成 delta。
 
 ## Model Requirement
@@ -34,7 +36,7 @@ Main Agent 和 Subagent 通过模型要求 UUID 引用。模型要求进入 Bund
 
 ## 模型映射
 
-【模型 -> 模型映射】列表显示当前 Configuration Repository 的全部模型要求。每张卡标题为 `name`，折叠区显示 `description`，并从模型连接列表中显式选择绑定；一个连接可供多个要求复用。映射集中保存在单一实例文件 `data/config/model-bindings.yaml`，内部按 Repository UUID 分区，不随 Bundle 或整仓库下载导出。
+【模型 -> 模型映射】列表显示当前 Configuration Repository 的全部模型要求。每张卡标题为 `name`，折叠区显示 `description`，并从模型连接列表中显式选择绑定；选择保留在页面草稿中，右下角【确定】按当前选择依次写入 binding。一个连接可供多个要求复用。映射集中保存在单一实例文件 `data/config/model-bindings.yaml`，内部按 Repository UUID 分区，不随 Bundle 或整仓库下载导出。
 
 导入后模型要求默认未绑定。页面、repository validation 和 Bundle preview 显示 warning；实际运行在 Agent 装配边界返回 `model_requirement_unbound`，不会启动模型调用。删除模型连接会清除相关 binding，不会自动替换。
 请求开始装配时会捕获对应 Repository 的 binding、模型连接和 credential 视图；捕获后的模型资源修改只对后续请求生效。

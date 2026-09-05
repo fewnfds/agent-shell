@@ -103,7 +103,13 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     response = client.post("/agent-shell/api/model-connections", json=payload)
 
     assert response.status_code == 200, response.text
-    assert response.json()["provider_settings"] == provider_settings
+    expected_defaults = {"temperature": 1, "top_p": 1}
+    if provider != "anthropic":
+        expected_defaults.update(presence_penalty=0, frequency_penalty=0)
+    assert response.json()["provider_settings"] == {
+        **expected_defaults,
+        **provider_settings,
+    }
 
 
 @pytest.mark.parametrize(

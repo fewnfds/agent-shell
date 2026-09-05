@@ -88,10 +88,17 @@ function providerSettingsPayload(value: ModelProviderSettingsDraft): Record<stri
   return settings
 }
 
+const defaultOpenAIProviderSettings: ModelProviderSettingsDraft = {
+  temperature: 1,
+  top_p: 1,
+  presence_penalty: 0,
+  frequency_penalty: 0,
+}
+
 function blankModel(): ModelDraft {
   return {
     id: '', name: '', provider: 'openai', base_url: '', credential_secret: '', credential_status: 'missing', model: '',
-    provider_settings: {},
+    provider_settings: { ...defaultOpenAIProviderSettings },
     tool_choice: '', response_format: '', model_settings: '{}',
   }
 }

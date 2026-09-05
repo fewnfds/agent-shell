@@ -94,6 +94,15 @@ describe('block adapters', () => {
     })
   })
 
+  it('starts a new model with explicit OpenAI sampling defaults', () => {
+    expect(modelAdapter.blank().provider_settings).toEqual({
+      temperature: 1,
+      top_p: 1,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+    })
+  })
+
   it('maps Response Stream Scheduling as a reusable Workflow component payload', () => {
     const draft = responseStreamSchedulingAdapter.blank(responseStreamSchedulingDefaults)
     draft.name = '  Fair stream  '
@@ -273,7 +282,7 @@ describe('block adapters', () => {
       tool_token_limit_before_evict: null,
       human_message_token_limit_before_evict: null,
       grep_max_count: 1_000,
-      max_execute_timeout: 3_600,
+      max_execute_timeout: 120,
     })
   })
 

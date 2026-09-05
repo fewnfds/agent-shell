@@ -207,7 +207,6 @@ function setThresholdType(threshold: SummarizationThresholdDraft, event: Event):
           </div>
           <div class="col-12">
             <FormField
-              :hint="t('editors.summarization.truncateArgsTextHint')"
               field-path="truncate_args_text"
             >
               <LteTextarea v-model="draft.truncate_args_text" :rows="3" />
@@ -253,7 +252,7 @@ function setThresholdType(threshold: SummarizationThresholdDraft, event: Event):
             </span>
           </div>
         </FormField>
-        <FormField :hint="t('editors.summarization.summaryPromptHint')" field-path="summary_prompt_override">
+        <FormField field-path="summary_prompt_override">
           <LteTextarea v-model="draft.summary_prompt_override" :rows="14" />
         </FormField>
       </div>

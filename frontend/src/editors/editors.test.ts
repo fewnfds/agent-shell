@@ -294,6 +294,17 @@ describe('dedicated block editors', () => {
     expect(settings[2]?.find('textarea').exists()).toBe(true)
   })
 
+  it('labels the default stream settings as Default', () => {
+    const editor = mount(ModelEditor, {
+      props: { modelValue: modelAdapter.blank() },
+      global: { plugins: [localizedI18n] },
+    })
+
+    for (const key of ['stream_usage', 'streaming', 'logprobs']) {
+      expect(editor.get(`[data-provider-setting="${key}"] option`).text()).toBe('默认')
+    }
+  })
+
   it('selects OpenAI-compatible Chat Completions by default and can opt into Responses', async () => {
     const editor = mountEditor(ModelEditor, { modelValue: modelAdapter.blank() })
     const connectionType = editor.get('[data-testid="openai-connection-type"]')

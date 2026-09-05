@@ -39,7 +39,7 @@ const messages = {
     mapping: {
       warningTitle: 'Requirements need mapping', warning: '{count} unbound', description: 'Description',
       connection: 'Connection', connectionSummary: '{model} ({configuration} / {provider} provider)',
-      unbound: 'Unbound', empty: 'No requirements', loadFailed: 'Load failed',
+      unbound: 'Unbound', empty: 'No requirements', loadFailed: 'Load failed', confirm: 'Confirm',
     },
   },
 }
@@ -115,7 +115,7 @@ beforeEach(() => {
 })
 
 describe('model management pages', () => {
-  it('shows requirement description and binds or clears a local connection', async () => {
+  it('stages a model binding until the user confirms it', async () => {
     const wrapper = await mountPage(ModelMappingPage, '/models/mapping')
     expect(wrapper.get('[data-testid="model-mapping-cards"]').text()).toContain('Use a reasoning-capable local model.')
     expect(wrapper.get('option[value="11111111-1111-4111-8111-111111111111"]').text()).toBe('gpt-local (Local GPT / openai provider)')
@@ -123,24 +123,34 @@ describe('model management pages', () => {
 
     await wrapper.get('select').setValue(connection.id)
     await flushPromises()
+    expect(api.bindModelRequirement).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="model-mapping-confirm"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="model-mapping-confirm"]').trigger('click')
+    await flushPromises()
     expect(api.bindModelRequirement).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333', connection.id)
 
     await wrapper.get('select').setValue('')
+    await flushPromises()
+    expect(api.bindModelRequirement).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="model-mapping-confirm"]').trigger('click')
     await flushPromises()
     expect(api.bindModelRequirement).toHaveBeenLastCalledWith('33333333-3333-4333-8333-333333333333', null)
     wrapper.unmount()
   })
 
-  it('serializes changes for each Model Requirement while its binding is saved', async () => {
+  it('disables mapping controls while confirmation saves a binding', async () => {
     const pending = deferred<ModelRequirementBinding>()
     api.bindModelRequirement.mockReturnValueOnce(pending.promise)
     const wrapper = await mountPage(ModelMappingPage, '/models/mapping')
     const select = wrapper.get('select')
 
     await select.setValue(connection.id)
+    expect(api.bindModelRequirement).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="model-mapping-confirm"]').trigger('click')
     expect(select.attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.action-button').attributes('disabled')).toBeDefined()
-    await select.setValue('')
+    expect(wrapper.get('[data-testid="model-mapping-confirm"]').attributes('disabled')).toBeDefined()
     expect(api.bindModelRequirement).toHaveBeenCalledTimes(1)
 
     pending.resolve(requirement('33333333-3333-4333-8333-333333333333', connection.id))

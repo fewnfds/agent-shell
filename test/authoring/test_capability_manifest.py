@@ -100,7 +100,7 @@ def test_editor_defaults_are_derived_from_current_authoring_contracts() -> None:
     )
     assert filesystem_tools["human_message_token_limit_before_evict"] == 50_000
     assert filesystem_tools["grep_max_count"] == 1_000
-    assert filesystem_tools["max_execute_timeout"] == 3_600
+    assert filesystem_tools["max_execute_timeout"] == 120
     assert defaults["summarization"]["trigger"] == {
         "type": "auto",
         "value": None,

@@ -48,10 +48,10 @@ function configs(value: unknown, defaults: FilesystemToolsDefaults): Record<stri
 }
 export const filesystemToolsAdapter = {
   blank(defaults: FilesystemToolsDefaults): FilesystemToolsDraft {
-    return { id: '', name: '', tool_token_limit_before_evict: defaults.tool_token_limit_before_evict, human_message_token_limit_before_evict: defaults.human_message_token_limit_before_evict ?? 50_000, grep_max_count: defaults.grep_max_count ?? 1_000, max_execute_timeout: defaults.max_execute_timeout ?? 3_600, tool_configs: configs(undefined, defaults) }
+    return { id: '', name: '', tool_token_limit_before_evict: defaults.tool_token_limit_before_evict, human_message_token_limit_before_evict: defaults.human_message_token_limit_before_evict ?? 50_000, grep_max_count: defaults.grep_max_count ?? 1_000, max_execute_timeout: defaults.max_execute_timeout ?? 120, tool_configs: configs(undefined, defaults) }
   },
   fromApi(value: FilesystemToolsApiRecord, defaults: FilesystemToolsDefaults): FilesystemToolsDraft {
-    return { ...identity(value), tool_token_limit_before_evict: normalizeLimit(value.tool_token_limit_before_evict, defaults.tool_token_limit_before_evict), human_message_token_limit_before_evict: normalizeLimit(value.human_message_token_limit_before_evict, defaults.human_message_token_limit_before_evict ?? 50_000), grep_max_count: normalizeRequiredLimit(value.grep_max_count, defaults.grep_max_count ?? 1_000), max_execute_timeout: normalizeRequiredLimit(value.max_execute_timeout, defaults.max_execute_timeout ?? 3_600), tool_configs: configs(value.tool_configs, defaults) }
+    return { ...identity(value), tool_token_limit_before_evict: normalizeLimit(value.tool_token_limit_before_evict, defaults.tool_token_limit_before_evict), human_message_token_limit_before_evict: normalizeLimit(value.human_message_token_limit_before_evict, defaults.human_message_token_limit_before_evict ?? 50_000), grep_max_count: normalizeRequiredLimit(value.grep_max_count, defaults.grep_max_count ?? 1_000), max_execute_timeout: normalizeRequiredLimit(value.max_execute_timeout, defaults.max_execute_timeout ?? 120), tool_configs: configs(value.tool_configs, defaults) }
   },
   toPayload(value: FilesystemToolsDraft, defaults: FilesystemToolsDefaults): BlockPayloadBase & Record<string, unknown> {
     const byName = new Map(defaults.tools.map((tool) => [tool.name, tool]))
@@ -60,7 +60,7 @@ export const filesystemToolsAdapter = {
       tool_token_limit_before_evict: normalizeLimit(value.tool_token_limit_before_evict, defaults.tool_token_limit_before_evict),
       human_message_token_limit_before_evict: normalizeLimit(value.human_message_token_limit_before_evict, defaults.human_message_token_limit_before_evict ?? 50_000),
       grep_max_count: normalizeRequiredLimit(value.grep_max_count, defaults.grep_max_count ?? 1_000),
-      max_execute_timeout: normalizeRequiredLimit(value.max_execute_timeout, defaults.max_execute_timeout ?? 3_600),
+      max_execute_timeout: normalizeRequiredLimit(value.max_execute_timeout, defaults.max_execute_timeout ?? 120),
       tool_configs: Object.fromEntries(Object.entries(value.tool_configs).flatMap(([name, config]) => {
         const fallback = byName.get(name)
         return fallback ? [[name, { visible: fallback.configurable ? config.visible : fallback.visible, description_override: overrideValue(config.description_override, fallback.default_description) }]] : []

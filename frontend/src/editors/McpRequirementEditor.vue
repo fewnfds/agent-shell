@@ -26,7 +26,6 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
             class="font-monospace"
             :placeholder="t('editors.mcpRequirement.namespacePlaceholder')"
           />
-          <p class="form-text">{{ t('editors.mcpRequirement.namespaceHint') }}</p>
         </div>
         <label class="form-label" for="mcp-requirement-description">{{ t('editors.mcpRequirement.description') }}</label>
         <LteTextarea

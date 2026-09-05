@@ -57,6 +57,7 @@ export const zhCN = {
       unbound: '未绑定',
       empty: '当前配置仓库没有模型要求。',
       loadFailed: '无法载入模型映射',
+      confirm: '确定',
     },
   },
   mcp: {
@@ -933,15 +934,11 @@ export const zhCN = {
         responses: 'OpenAI Responses API',
       },
       parametersTitle: '生成参数',
-      providerParametersHint: '这里只显示所选 LangChain Provider 原生支持的参数；切换 Provider 会清空这组参数。',
+      default: '默认',
       selectProviderFirst: '请先选择内置 Provider，再编辑它的原生参数。',
       stopPlaceholder: '["END", "STOP"]',
       requestSettingsTitle: '模型请求设置',
-      requestSettingsHint: '这些值进入每次 LangChain ModelRequest；留空使用框架默认。',
-      toolChoiceHint: '默认留空；可选 auto、none、required、any，或直接填写工具名。',
       toolChoicePlaceholder: '沿用默认或填写工具名',
-      responseFormatHint: 'JSON Schema 对象；顶层需要 title 和 description。',
-      modelSettingsHint: '模型绑定参数 JSON 对象；不要填写密钥或重复上面两个字段。',
     },
     modelRequirement: {
       description: '模型要求说明',
@@ -950,7 +947,6 @@ export const zhCN = {
     mcpRequirement: {
       namespace: 'Tool 命名空间',
       namespacePlaceholder: '例如：browser',
-      namespaceHint: '使用稳定标识符。运行时 Tool 名称格式为 namespace_rawToolName。',
       description: 'MCP 要求说明',
       descriptionPlaceholder: '说明该 MCP 服务以及 Agent 或 Command 应在何时使用它。',
     },
@@ -983,7 +979,6 @@ export const zhCN = {
       },
       forceNonStreamingLabel: '强制非流式',
       conditionsTitle: 'ModelRetryMiddleware 重试条件',
-      conditionsHint: '只选择确实可能通过再次请求恢复的异常。未选择的异常立即向外抛出。',
       conditions: {
         transport_error: {
           label: '网络连接或响应流中断',
@@ -1021,7 +1016,6 @@ export const zhCN = {
       workspaceHint: '该真实目录直接作为 /；不会创建空执行目录，也不装配 Skill 独立包或路径权限。',
       skillPackageTitle: 'Skill 独立包',
       noSkillPackage: '不挂载 Skill 独立包',
-      skillPackageHint: '所选独立包以只读 /skills/ 挂载，并随文件系统后端一起被 Subagent 继承。',
       pathOriginLabel: '宿主路径类型',
       pathOrigins: {
         absolute: '绝对路径',
@@ -1057,7 +1051,6 @@ export const zhCN = {
     filesystemTools: {
       limitsTitle: '工具约束',
       toolsTitle: '工具开关与说明',
-      executeHint: 'execute 仅在 LocalShellBackend 下可用；CompositeBackend 会自动从模型可见工具中移除 execute。',
       toolDescriptionLabel: '{tool} 工具说明',
       tokensUnit: 'tokens',
       resultsUnit: '条结果',
@@ -1103,10 +1096,8 @@ export const zhCN = {
       truncateTriggerValue: '参数截断触发值',
       truncateKeepRule: '截断后保留',
       truncateKeepValue: '参数截断保留值',
-      truncateArgsTextHint: '历史工具参数超过长度阈值时，超出的部分会在摘要前被删除，并用这段文本替代。',
       generationTitle: '摘要生成',
       restoreDefaultPrompt: '恢复默认 Prompt',
-      summaryPromptHint: '这里显示 Deep Agents 默认 Prompt；修改后会覆盖默认值。',
       charactersUnit: '字符',
       tokensUnit: 'tokens',
       thresholdTypes: {

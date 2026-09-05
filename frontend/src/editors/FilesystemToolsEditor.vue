@@ -57,9 +57,6 @@ const rows = computed(() => props.defaults.tools.flatMap((tool) => {
 
     <section class="card mb-3">
       <header class="card-header"><h3 class="card-title">{{ t('editors.filesystemTools.toolsTitle') }}</h3></header>
-      <div class="card-body border-bottom">
-        <p class="small text-body-secondary mb-0">{{ t('editors.filesystemTools.executeHint') }}</p>
-      </div>
       <div class="list-group list-group-flush">
         <article v-for="row in rows" :key="row.tool.name" class="list-group-item">
           <div class="d-flex flex-wrap align-items-center gap-3 mb-3">

@@ -676,7 +676,7 @@ class FilesystemToolsBlock(StrictBlock):
     tool_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 20_000
     human_message_token_limit_before_evict: Annotated[int, Field(ge=1)] | None = 50_000
     grep_max_count: Annotated[int, Field(ge=1)] = 1_000
-    max_execute_timeout: Annotated[int, Field(ge=1)] = 3_600
+    max_execute_timeout: Annotated[int, Field(ge=1)] = 120
     tool_configs: FilesystemToolConfigs = Field(default_factory=FilesystemToolConfigs)
 
 

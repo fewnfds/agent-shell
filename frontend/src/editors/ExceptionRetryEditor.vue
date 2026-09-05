@@ -82,7 +82,6 @@ function onConditionChange(condition: ExceptionRetryCondition, event: Event): vo
 
             <fieldset v-if="strategy === 'model_retry_middleware'">
               <legend class="fw-semibold mb-3">{{ t('editors.exceptionRetry.conditionsTitle') }}</legend>
-              <p class="small text-body-secondary mb-3">{{ t('editors.exceptionRetry.conditionsHint') }}</p>
               <div v-for="condition in defaults.conditions" :key="condition" class="form-check mb-3">
                 <input
                   :id="`retry-${condition}`"

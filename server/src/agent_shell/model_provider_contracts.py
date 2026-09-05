@@ -20,12 +20,12 @@ class ProviderSettings(BaseModel):
 
 class OpenAIProviderSettings(ProviderSettings):
     use_responses_api: StrictBoolean | None = None
-    temperature: FiniteFloat | None = None
+    temperature: FiniteFloat | None = 1
     max_completion_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = None
+    top_p: FiniteFloat | None = 1
     stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = None
-    frequency_penalty: FiniteFloat | None = None
+    presence_penalty: FiniteFloat | None = 0
+    frequency_penalty: FiniteFloat | None = 0
     seed: StrictInteger | None = None
     timeout: PositiveFloat | None = None
     max_retries: NonNegativeInteger | None = None
@@ -38,12 +38,12 @@ class OpenAIProviderSettings(ProviderSettings):
 
 
 class DeepSeekProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = None
+    temperature: FiniteFloat | None = 1
     max_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = None
+    top_p: FiniteFloat | None = 1
     stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = None
-    frequency_penalty: FiniteFloat | None = None
+    presence_penalty: FiniteFloat | None = 0
+    frequency_penalty: FiniteFloat | None = 0
     seed: StrictInteger | None = None
     timeout: PositiveFloat | None = None
     max_retries: NonNegativeInteger | None = None
@@ -60,9 +60,9 @@ class XAIProviderSettings(DeepSeekProviderSettings):
 
 
 class AnthropicProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = None
+    temperature: FiniteFloat | None = 1
     max_tokens_to_sample: PositiveInteger | None = None
-    top_p: FiniteFloat | None = None
+    top_p: FiniteFloat | None = 1
     stop: StopSequences | None = None
     timeout: PositiveFloat | None = None
     max_retries: NonNegativeInteger | None = None
@@ -72,12 +72,12 @@ class AnthropicProviderSettings(ProviderSettings):
 
 
 class GoogleGenAIProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = None
+    temperature: FiniteFloat | None = 1
     max_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = None
+    top_p: FiniteFloat | None = 1
     stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = None
-    frequency_penalty: FiniteFloat | None = None
+    presence_penalty: FiniteFloat | None = 0
+    frequency_penalty: FiniteFloat | None = 0
     seed: StrictInteger | None = None
     request_timeout: PositiveFloat | None = None
     retries: NonNegativeInteger | None = None
@@ -88,12 +88,12 @@ class GoogleGenAIProviderSettings(ProviderSettings):
 
 
 class GoogleVertexAIProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = None
+    temperature: FiniteFloat | None = 1
     max_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = None
+    top_p: FiniteFloat | None = 1
     stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = None
-    frequency_penalty: FiniteFloat | None = None
+    presence_penalty: FiniteFloat | None = 0
+    frequency_penalty: FiniteFloat | None = 0
     seed: StrictInteger | None = None
     timeout: PositiveFloat | None = None
     max_retries: NonNegativeInteger | None = None

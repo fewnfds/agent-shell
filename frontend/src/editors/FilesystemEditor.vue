@@ -284,7 +284,6 @@ function hasSkillPackage(id: string): boolean {
           <FormField
             control-id="filesystem-skill-package"
             field-path="skill_package_id"
-            :hint="t('editors.filesystem.skillPackageHint')"
           >
             <select id="filesystem-skill-package" v-model="draft.skill_package_id" class="form-select">
               <option value="">{{ t('editors.filesystem.noSkillPackage') }}</option>

@@ -170,6 +170,12 @@ function booleanValue(key: string): string {
   return ''
 }
 
+function booleanDefaultLabel(key: string): string {
+  return ['stream_usage', 'streaming', 'logprobs'].includes(key)
+    ? t('editors.model.default')
+    : t('editors.common.useDefault')
+}
+
 function setProviderSetting(key: string, value: ModelProviderSettingInput): void {
   draft.provider_settings = { ...draft.provider_settings, [key]: value }
 }
@@ -337,7 +343,6 @@ function setBooleanNumber(key: string, event: Event): void {
     <section class="card mb-3">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.model.parametersTitle') }}</h3>
-        <p class="small text-body-secondary mb-0">{{ t('editors.model.providerParametersHint') }}</p>
       </header>
       <div class="card-body">
         <div v-if="parameterFields.length" class="row g-3" data-testid="provider-parameter-fields">
@@ -350,7 +355,7 @@ function setBooleanNumber(key: string, event: Event): void {
                 :value="booleanValue(field.key)"
                 @change="setBoolean(field.key, $event)"
               >
-                <option value="">{{ t('editors.common.useDefault') }}</option>
+                <option value="">{{ booleanDefaultLabel(field.key) }}</option>
                 <option value="true">{{ t('editors.common.true') }}</option>
                 <option value="false">{{ t('editors.common.false') }}</option>
               </select>
@@ -397,13 +402,11 @@ function setBooleanNumber(key: string, event: Event): void {
     <section class="card mb-3">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.model.requestSettingsTitle') }}</h3>
-        <p class="small text-body-secondary mb-0">{{ t('editors.model.requestSettingsHint') }}</p>
       </header>
       <div class="card-body">
         <FormField
           data-request-setting="tool_choice"
           field-path="tool_choice"
-          :hint="t('editors.model.toolChoiceHint')"
           technical
         >
           <input
@@ -417,7 +420,6 @@ function setBooleanNumber(key: string, event: Event): void {
         <FormField
           data-request-setting="response_format"
           field-path="response_format"
-          :hint="t('editors.model.responseFormatHint')"
           technical
         >
           <LteTextarea
@@ -429,7 +431,6 @@ function setBooleanNumber(key: string, event: Event): void {
         <FormField
           data-request-setting="model_settings"
           field-path="model_settings"
-          :hint="t('editors.model.modelSettingsHint')"
           technical
         >
           <LteTextarea

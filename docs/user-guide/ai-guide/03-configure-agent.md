@@ -64,7 +64,7 @@ description 只写真实能力要求，例如：
 
 ## 3. Model Connection 和 Model Mapping
 
-Model Connection 是当前实例私有资源。用户在【模型 / 模型连接】按 LangChain Provider contract 配置 Provider、Base URL、具体 model、请求参数和 credential。
+Model Connection 是当前实例私有资源。用户在【模型 / 模型连接】按 LangChain Provider contract 配置 Provider、Base URL、具体 model、请求参数和 credential。新建连接默认使用 `temperature=1`、`top_p=1`，并在 Provider 支持时使用 `presence_penalty=0` 与 `frequency_penalty=0`。
 
 AI 可以说明模型必须满足的能力和兼容条件。不要虚构 Provider Key，不替用户选择未知收费模型，不把 credential 写入可迁移配置。
 
@@ -83,6 +83,8 @@ PUT /agent-shell/api/model-requirements/<requirement UUID>/binding
 ```
 
 提交 `{"connection_id": null}` 会清除 binding。未绑定可以在 validation 中表现为 warning，但运行 assembly 会以 `model_requirement_unbound` 失败。
+
+管理台的 Model Mapping 选择先保留在页面草稿中，用户点击右下角【确定】后写入 binding；API 调用继续通过上述 `PUT` 直接提交。
 
 Provider-specific field 以当前 Model Connection UI、API response 和 backend validation 为准。
 
