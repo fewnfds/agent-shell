@@ -1,7 +1,7 @@
 # API Server
 
 首页使用【服务入口】和【API 端点】两张 Card 展示当前实例地址、LangGraph 官方路径族、诊断端点与认证边界。OpenAI-compatible Base URL 是 `<origin>/compat/openai/v1`；Agent Shell API Base URL 是 `<origin>/agent-shell/api`。API Server 运行状态与启动、停止按钮位于管理台 navbar，在所有页面可见；
-API Key 位于【系统 / 系统配置】的网络卡片，单次请求初始消息条数上限 `max_initial_messages` 位于请求与限制策略卡片；两者由 `PUT /agent-shell/api/api-server` 一起保存。
+API Key 位于【系统 / 系统配置】的 API Server Card，由 `PUT /agent-shell/api/api-server` 保存。
 
 ## 接口
 
@@ -26,14 +26,12 @@ Content-Type: application/json
 
 请求按 Workflow name 捕获一次配置快照，并为该 Workflow 创建或复用官方 Assistant、为请求创建专属 Thread 和 Run。LangGraph Dev 的 dynamic graph factory 从同一快照读取 current Graph 和 canvas Agent Node reference，再递归构造 Main Agent、Subagent、各自 Filesystem、权限、Middleware、组件和 Provider secret view；官方 Worker 执行 Graph。官方 ProtocolEvent 继续由已有 Agent/Workflow Event Output、Response Stream Scheduler 和 OpenAI response writer 消费。
 
-Chat 请求体、content block 和输入媒体单项/合计边界由【系统 / 系统配置】的限制策略决定；
-`GET /agent-shell/api/system/runtime-policy` 返回后端当前值、默认值、最小值和可配置字段，前端不复制隐藏上限。策略只有后端返回的正数最小值约束，没有额外产品最大值，实际仍受 Provider、
-内存、磁盘和网络能力影响。
+Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
 当前可执行 Node class 为 Start、Agent、Command 和 End，Edge class 为 normal、branch 与 dispatch；一张图可以包含多个 Agent Node，并可串联、
 fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接映射 LangGraph 官方 `START/END`，Normal Edge 映射 `StateGraph.add_edge()`；Command 脚本读取完整 Workflow State 和 Runtime Context，可同时返回 State partial update、Branch key 与具名 JSON dispatch task。runtime 把 Branch target 与每个 LangGraph `Send` 放入同一个 `Command.goto`，并把 `workflow_task` 放入 target Agent 的私有 State。Start 不注入客户端消息。规范化后的 `messages[]` 保存在本次 Lifecycle 的官方 Server Store namespace；Runtime Context 只携带定位输入所需的 lifecycle/run/invocation 身份。只有已装配的 `before_agent`/`abefore_agent` Middleware 决定如何读取、切割并写入 Agent state。
 
-每个 Workflow 显式配置 `durability`、`on_disconnect`、`recursion_limit` 和 `max_concurrency`。`durability=exit|async|sync` 原样传给官方 Run，默认 `async`；`recursion_limit` 和 `max_concurrency` 默认分别为 `1,000,000` 与 `100`，只要求正整数，没有额外产品最大值。全部 Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev 官方运行时拥有。
+每个 Workflow 显式配置 `durability` 与 `on_disconnect`。实例级 `recursion_limit`、可选 `max_concurrency` 和 `n_jobs_per_worker` 位于【系统 / 系统配置 / 限制策略】，使用 LangGraph/LangChain 官方字段；`max_concurrency` 留空时不向运行配置传值。全部 Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev 官方运行时拥有。
 
 每个 Workflow 独立保存 `on_disconnect=cancel|continue`，默认 `cancel`。客户端在 Run 完成前断开时，只读取本次请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 在后台继续。其他 Run 的成功、失败或取消不会触发隐式连锁取消，调用关系也不形成 Parent/Child 权限。
 
@@ -46,7 +44,7 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 ## 拦截消息
 
 【系统 / 拦截消息】提供一个独立于 Workflow 的 Shell 入站开关。开启后，合法 Chat Completions 请求完成鉴权、
-请求体大小限制和基础 OpenAI 字段检查（含 `max_initial_messages` 数量上限）后立即短路，不捕获 Workflow 配置快照，不装配 Agent，也不创建 Run。
+基础 OpenAI 字段检查后立即短路，不捕获 Workflow 配置快照，不装配 Agent，也不创建 Run。
 调用方按原 `stream` 模式收到 OpenAI-compatible 的“消息已拦截”回复，token usage 为零。
 
 页面通过 management-only API 显示进程内最新一条请求原文。开关持久化，正文仅保存在当前进程；开关从关闭变为开启或服务重启时清空原文。

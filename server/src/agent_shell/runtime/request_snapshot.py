@@ -46,7 +46,6 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.storage.model_connections import ModelResourceStore
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
@@ -217,10 +216,7 @@ class LifecycleRunCoordinator:
         if kwargs:
             unexpected = ", ".join(sorted(kwargs))
             raise TypeError(f"unexpected request Run arguments: {unexpected}")
-        messages = validate_client_messages(
-            raw_messages,
-            self._owner.runtime_policy_snapshot(),
-        )
+        messages = validate_client_messages(raw_messages)
         lifecycle_id = str(uuid4())
         self._lifecycle_id = lifecycle_id
         binding = self._new_binding(
@@ -629,8 +625,7 @@ class LifecycleRunCoordinator:
                 ),
             },
             config={
-                "recursion_limit": int(binding.workflow["recursion_limit"]),
-                "max_concurrency": int(binding.workflow["max_concurrency"]),
+                **self._owner.run_config(),
                 "configurable": configurable,
             },
             metadata={
@@ -777,10 +772,10 @@ class RequestSnapshotRuntime:
         workflow_data: WorkflowDataService,
         detached_tasks: DetachedTaskManager,
         runtime_diagnostics: RuntimeDiagnostics,
-        runtime_policy: RuntimePolicyStore,
         workflow_lifecycle_settings: WorkflowLifecycleSettingsStore,
         model_resources: ModelResourceStore | None = None,
         mcp_resources: McpResourceStore | None = None,
+        run_config: Mapping[str, Any],
         agent_server_url: str,
         agent_server_token: str,
     ) -> None:
@@ -793,9 +788,9 @@ class RequestSnapshotRuntime:
         self._workflow_data = workflow_data
         self._detached_tasks = detached_tasks
         self._runtime_diagnostics = runtime_diagnostics
-        self._runtime_policy = runtime_policy
         self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
         self._mcp_resources = mcp_resources or McpResourceStore(configuration.data_root)
+        self._run_config = dict(run_config)
         self._agent_server_url = agent_server_url
         self._agent_server_headers = {"Authorization": f"Bearer {agent_server_token}"}
         self._active_lifecycles: dict[str, LifecycleRunCoordinator] = {}
@@ -804,11 +799,11 @@ class RequestSnapshotRuntime:
             workflow_lifecycle_settings,
         )
 
-    def runtime_policy_snapshot(self):
-        return self._runtime_policy.snapshot()
-
     def new_agent_server_client(self):
         return get_client(url=self._agent_server_url, headers=self._agent_server_headers)
+
+    def run_config(self) -> dict[str, Any]:
+        return dict(self._run_config)
 
     @property
     def langgraph_lifecycles(self) -> LangGraphLifecycleService:
@@ -870,7 +865,6 @@ class RequestSnapshotRuntime:
                     model_resources=model_resources,
                     mcp_resources=mcp_resources,
                     repository_id=repository_id,
-                    runtime_policy=self._runtime_policy,
                 ),
                 self._files,
                 python_packages_dir=python_packages_dir,
@@ -878,7 +872,7 @@ class RequestSnapshotRuntime:
                 blocks=blocks,
                 workflow_data=self._workflow_data,
                 runtime_diagnostics=self._runtime_diagnostics,
-                runtime_policy=self._runtime_policy,
+                run_config=self._run_config,
                 graph_store=graph_store,
             )
 

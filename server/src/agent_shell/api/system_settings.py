@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
 
 
@@ -48,6 +47,8 @@ class SystemSettingsUpdate(BaseModel):
     host: str
     port: int
     n_jobs_per_worker: int = Field(strict=True, ge=1)
+    recursion_limit: int = Field(strict=True, ge=1)
+    max_concurrency: int | None = Field(default=None, strict=True, ge=1)
     debug_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
     allow_remote: bool
     langsmith_tracing_enabled: bool
@@ -58,15 +59,6 @@ class SystemSettingsUpdate(BaseModel):
     management_token: ManagementPasswordUpdate
     cors_origins: list[str]
     trusted_proxy_cidrs: list[str]
-
-
-class RuntimePolicyUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    chat_completion_body_bytes: int = Field(strict=True, ge=1)
-    content_blocks: int = Field(strict=True, ge=1)
-    decoded_block_bytes: int = Field(strict=True, ge=1)
-    decoded_total_bytes: int = Field(strict=True, ge=1)
 
 
 def _raise_settings_error(error: SystemSettingsError) -> NoReturn:
@@ -91,7 +83,6 @@ def _with_active_urls(payload: dict, request: Request) -> dict:
 
 def build_system_settings_router(
     settings: SystemSettingsService,
-    runtime_policy: RuntimePolicyStore,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -114,22 +105,5 @@ def build_system_settings_router(
         except SystemSettingsError as exc:
             _raise_settings_error(exc)
         return _with_active_urls(result, request)
-
-    @router.get("/system/runtime-policy")
-    async def get_runtime_policy() -> dict[str, object]:
-        return runtime_policy.public()
-
-    @router.put("/system/runtime-policy")
-    async def update_runtime_policy(payload: RuntimePolicyUpdate) -> dict[str, object]:
-        try:
-            result = runtime_policy.update(payload.model_dump())
-        except ValueError as exc:
-            raise management_error(
-                422,
-                code="runtime_policy_invalid",
-                message_key="errors.systemSettingsInvalid",
-                message=str(exc),
-            ) from exc
-        return result
 
     return router

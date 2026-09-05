@@ -27,7 +27,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 Start -> Agent -> End
 ```
 
-目标 Workflow 使用自己的 Graph、Agent/Component 引用、`durability`、`recursion_limit`、`max_concurrency` 和事件输出。caller 的 Workflow 配置不会覆盖它。每个 Workflow 也保存自己的 `on_disconnect`，但该字段只在它作为客户端请求入口时读取，不参与内部 Run 调用。
+目标 Workflow 使用自己的 Graph、Agent/Component 引用、`durability` 和事件输出；全部 Run 使用实例级 `recursion_limit` 与可选 `max_concurrency`。每个 Workflow 保存自己的 `on_disconnect`，但该字段只在它作为客户端请求入口时读取，不参与内部 Run 调用。
 
 ## 3. Runtime command
 

@@ -10,8 +10,8 @@ StrictInteger = Annotated[int, Field(strict=True)]
 PositiveInteger = Annotated[int, Field(strict=True, ge=1)]
 NonNegativeInteger = Annotated[int, Field(strict=True, ge=0)]
 StrictBoolean = Annotated[bool, Field(strict=True)]
-ShortText = Annotated[str, Field(min_length=1, max_length=120)]
-StopSequences = list[Annotated[str, Field(min_length=1, max_length=4096)]]
+ShortText = Annotated[str, Field(min_length=1)]
+StopSequences = list[Annotated[str, Field(min_length=1)]]
 
 
 class ProviderSettings(BaseModel):

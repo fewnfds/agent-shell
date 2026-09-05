@@ -97,8 +97,6 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
                         "description",
                         "workflow_event_output_id",
                         "on_disconnect",
-                        "recursion_limit",
-                        "max_concurrency",
                     )
                 },
                 "durability": "sync",
@@ -812,8 +810,6 @@ def test_single_root_bundle_rejects_a_dangling_reference(
                         "workflow_event_output_id",
                         "durability",
                         "on_disconnect",
-                        "recursion_limit",
-                        "max_concurrency",
                     )
                 },
                 "response_stream_scheduling_id": scheduling["id"],

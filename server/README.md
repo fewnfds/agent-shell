@@ -13,7 +13,7 @@
 - `/api/workflows`、`/api/workflow-node-catalog`：Workflow、Graph 草稿/校验/正式保存；
 - `/api/configuration-repositories/*`、`/api/configuration-bundles/*`：Repository 管理与 Bundle 导出/预检/导入；
 - `/api/model-connections`、`/api/model-requirements/{id}/binding`：模型连接与当前 Repository 的模型绑定；
-- `/api/file-manager`、`/api/system/settings`、`/api/system/runtime-policy`：数据与实例设置；文件管理只接受规范 `data/...` 路径；
+- `/api/file-manager`、`/api/system/settings`：数据与实例设置；文件管理只接受规范 `data/...` 路径；
 - `/api/message-interception`：管理入站拦截的内存 sequence/latest；启用时 `/v1/chat/completions` 返回固定拦截占位；
 - `/api/event-feed`、`/api/runtime-diagnostics`、`/api/workflow-lifecycles`：系统日志、请求级诊断、Lifecycle catalog、监控设置与运行监控读取；
 - `/v1/models`、`/v1/chat/completions`：OpenAI-compatible 推理接口。

@@ -31,8 +31,6 @@ const workflow: Workflow = {
   response_stream_scheduling_id: null,
   durability: 'async',
   on_disconnect: 'cancel',
-  recursion_limit: 1_000_000,
-  max_concurrency: 100,
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
@@ -121,9 +119,6 @@ describe('WorkflowsPage', () => {
     await wrapper.get('#workflow-response-stream-scheduling').setValue(responseStreamScheduling.id)
     await wrapper.get('#workflow-durability').setValue('sync')
     await wrapper.get('#workflow-on-disconnect').setValue('continue')
-    const runtimeLimits = wrapper.findAll('input[type="number"]')
-    await runtimeLimits[0]!.setValue(250)
-    await runtimeLimits[1]!.setValue(300)
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
 
@@ -134,8 +129,6 @@ describe('WorkflowsPage', () => {
       response_stream_scheduling_id: responseStreamScheduling.id,
       durability: 'sync',
       on_disconnect: 'continue',
-      recursion_limit: 250,
-      max_concurrency: 300,
     })
 
     wrapper.unmount()
@@ -224,8 +217,6 @@ describe('WorkflowsPage', () => {
       response_stream_scheduling_id: null,
       durability: 'exit',
       on_disconnect: 'continue',
-      recursion_limit: 1_000_000,
-      max_concurrency: 100,
     })
     wrapper.unmount()
   })

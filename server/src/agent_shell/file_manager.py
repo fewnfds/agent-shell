@@ -22,7 +22,6 @@ from agent_shell.storage.atomic_files import write_bytes_atomic
 from agent_shell.storage.owned_paths import is_reparse_point
 
 
-RELATIVE_PATH_MAX_LENGTH = 4096
 _TEMPORARY_PREFIX = ".agent-shell-write-"
 _WINDOWS_INVALID_CHARACTERS = set('<>:"/\\|?*')
 _WINDOWS_RESERVED_NAMES = {
@@ -96,7 +95,6 @@ class FileManagerService:
     def _validate_segment(segment: str) -> None:
         invalid = (
             not segment
-            or len(segment) > 255
             or segment in {".", ".."}
             or segment.startswith(_TEMPORARY_PREFIX)
             or segment.endswith((" ", "."))
@@ -143,7 +141,6 @@ class FileManagerService:
         if (
             not isinstance(value, str)
             or not value
-            or len(value) > RELATIVE_PATH_MAX_LENGTH
             or "\\" in value
             or PureWindowsPath(value).drive
         ):

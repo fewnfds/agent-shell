@@ -55,7 +55,7 @@ def test_workflow_execution_closes_v3_stream_when_cancelled() -> None:
                 self, _input, *, config: dict, version: str, transformers: tuple = ()
             ):
                 assert version == "v3"
-                assert config == {"recursion_limit": 1_000_000}
+                assert config == {}
                 assert transformers
                 return self.run
 

@@ -224,7 +224,6 @@ onMounted(() => {
     :busy-label="t('common.copying')"
     error-test-id="configuration-repository-copy-error"
     form-id="configuration-repository-copy-form"
-    :hint="t('configurationRepositories.copy.nameHint')"
     :name="copyName"
     :open="copySource !== null"
     :title="t('configurationRepositories.copy.title')"

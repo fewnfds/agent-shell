@@ -459,7 +459,6 @@ onMounted(() => {
     error-test-id="subagent-copy-error"
     field-path="component_name"
     form-id="subagent-copy-form"
-    :hint="t('agents.copy.nameHint')"
     :name="copyName"
     :open="copyOpen"
     :submit-label="t('common.copy')"

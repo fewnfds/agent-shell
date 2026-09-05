@@ -23,8 +23,6 @@ const workflow: Workflow = {
   workflow_event_output_id: null,
   durability: 'async',
   on_disconnect: 'cancel',
-  recursion_limit: 1_000_000,
-  max_concurrency: 100,
   enabled: true,
 }
 

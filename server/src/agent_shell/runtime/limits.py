@@ -10,10 +10,6 @@ from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from agent_shell.runtime.errors import AgentRuntimeError
 
 
-GRAPH_RECURSION_LIMIT = 1_000_000
-WORKFLOW_MAX_CONCURRENCY = 100
-
-
 def _provider_error(exc: Exception) -> AgentRuntimeError:
     status_code = 502
     current: BaseException | None = exc

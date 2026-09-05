@@ -410,7 +410,7 @@ describe('ConfigLibraryPage', () => {
       id: 'workflow-uuid', name: 'Workflow',
       description: '', workflow_event_output_id: null, response_stream_scheduling_id: null,
       durability: 'async' as const, on_disconnect: 'cancel' as const,
-      recursion_limit: 100, max_concurrency: 4, enabled: false,
+      enabled: false,
     }
     vi.mocked(api.service.listWorkflowSummaries).mockResolvedValue({
       items: [workflow], total: 1, repository_id: 'repository-id', repository_revision: 1,

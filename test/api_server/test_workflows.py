@@ -53,8 +53,6 @@ def test_response_stream_scheduling_component_is_referenced_by_any_workflow(
                 "workflow_event_output_id",
                 "durability",
                 "on_disconnect",
-                "recursion_limit",
-                "max_concurrency",
             )
         }
         workflow_payload["response_stream_scheduling_id"] = component.json()["id"]
@@ -122,7 +120,7 @@ def test_response_stream_scheduling_rejects_invalid_component_and_inline_policy(
     assert removed_inline_owner.json()["detail"]["code"] == "workflow_invalid"
 
 
-def test_workflow_runtime_boundaries_are_managed(
+def test_workflow_runtime_options_are_managed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -136,15 +134,11 @@ def test_workflow_runtime_boundaries_are_managed(
                 "description": workflow["description"],
                 "durability": "sync",
                 "on_disconnect": "continue",
-                "recursion_limit": 250,
-                "max_concurrency": 32,
             },
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["durability"] == "sync"
         assert updated.json()["on_disconnect"] == "continue"
-        assert updated.json()["recursion_limit"] == 250
-        assert updated.json()["max_concurrency"] == 32
 
 
 def test_workflow_copy_preserves_graph_layout_as_a_draft(
@@ -204,7 +198,6 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
                 **{key: workflow[key] for key in (
                         "name", "description",
                         "durability", "on_disconnect",
-                        "recursion_limit", "max_concurrency"
                     )},
                 "workflow_event_output_id": output.json()["id"],
             },
@@ -248,8 +241,6 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
                         "description",
                         "durability",
                         "on_disconnect",
-                        "recursion_limit",
-                        "max_concurrency",
                     )
                 },
                 "workflow_event_output_id": output.json()["id"],

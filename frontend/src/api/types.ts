@@ -290,6 +290,8 @@ export interface SystemSettings {
   host: string
   port: number
   n_jobs_per_worker: number
+  recursion_limit: number
+  max_concurrency: number | null
   debug_port: number | null
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
@@ -310,6 +312,8 @@ export interface SystemSettingsUpdate {
   host: string
   port: number
   n_jobs_per_worker: number
+  recursion_limit: number
+  max_concurrency: number | null
   debug_port: number | null
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
@@ -326,21 +330,6 @@ export interface ConfigurationValidationSettings {
   debounce_ms: number
   min_debounce_ms: number
 }
-
-export interface RuntimePolicyValues {
-  chat_completion_body_bytes: number
-  content_blocks: number
-  decoded_block_bytes: number
-  decoded_total_bytes: number
-}
-
-export interface RuntimePolicySettings extends RuntimePolicyValues {
-  defaults: RuntimePolicyValues
-  minimums: RuntimePolicyValues
-  configurable: boolean
-}
-
-export type RuntimePolicyUpdate = RuntimePolicyValues
 
 export interface SkillResource {
   name: string
@@ -548,8 +537,6 @@ export interface WorkflowPayload {
   response_stream_scheduling_id?: string | null
   durability: 'sync' | 'async' | 'exit'
   on_disconnect: 'cancel' | 'continue'
-  recursion_limit: number
-  max_concurrency: number
 }
 
 export interface Workflow extends WorkflowPayload {
@@ -816,7 +803,6 @@ export interface ApiServerSettings {
   api_key: {
     configured: boolean
   }
-  max_initial_messages: number
   message_interception_enabled: boolean
   service_entries: ServiceEntries
   api_endpoints: ApiEndpoints
@@ -830,7 +816,6 @@ type ApiKeyCommand =
 
 export interface ApiServerSettingsUpdate {
   api_key: ApiKeyCommand
-  max_initial_messages?: number
 }
 
 export interface InterceptedMessageRequest {

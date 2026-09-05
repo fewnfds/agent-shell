@@ -385,7 +385,6 @@ onMounted(() => {
     :busy-label="t('common.copying')"
     error-test-id="main-agent-copy-error"
     form-id="main-agent-copy-form"
-    :hint="t('agents.copy.nameHint')"
     :name="copyName"
     :open="copyOpen"
     :submit-label="t('common.copy')"

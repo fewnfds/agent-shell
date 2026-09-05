@@ -65,7 +65,6 @@ from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.assembly import StaticAssembly
 from agent_shell.python_requirements import parse_python_requirements
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
 from agent_shell.storage.mcp_connections import McpResourceSnapshot
 from agent_shell.runtime.mcp import McpRunRuntime
@@ -157,7 +156,6 @@ class AgentBuilder:
         model_resources: ModelResourceStore | ModelResourceSnapshot | None = None,
         mcp_resources: McpResourceSnapshot | None = None,
         repository_id: str | None = None,
-        runtime_policy: RuntimePolicyStore | None = None,
     ) -> None:
         self._secrets = secrets
         self._python_packages_dir = python_packages_dir
@@ -165,7 +163,6 @@ class AgentBuilder:
         self._skills_dir = skills_dir
         self._validation = validation
         self._provider_http_clients = provider_http_clients
-        self._runtime_policy = runtime_policy
         self._store = store
         self._model_resources = model_resources or getattr(secrets, "model_connections", None)
         self._repository_id = repository_id or getattr(secrets, "repository_id", "")
@@ -578,12 +575,7 @@ class AgentBuilder:
     ) -> BuiltAgent:
         # Validate the immutable request snapshot before any selected user module
         # can be imported or any optional capability can be materialized.
-        messages = validate_client_messages(
-            raw_messages,
-            self._runtime_policy.snapshot()
-            if self._runtime_policy is not None
-            else RUNTIME_POLICY_DEFAULTS,
-        )
+        messages = validate_client_messages(raw_messages)
         assembly = self.resolve(main_agent_id)
         return await self.build_resolved(
             assembly,

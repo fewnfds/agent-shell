@@ -13,6 +13,7 @@ from typing import Any, Callable
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import yaml
+from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 
 from agent_shell.configuration.identity import require_configuration_id
 from agent_shell.configuration.identity import new_configuration_id as generate_configuration_id
@@ -77,6 +78,8 @@ def _default_system() -> dict[str, Any]:
             "host": "127.0.0.1",
             "port": 19100,
             "n_jobs_per_worker": 10,
+            "recursion_limit": DEFAULT_RECURSION_LIMIT,
+            "max_concurrency": None,
             "debug_port": None,
             "allow_remote": False,
             "langsmith_tracing_enabled": False,
@@ -88,7 +91,6 @@ def _default_system() -> dict[str, Any]:
         },
         "api_server": {
             "enabled": True,
-            "max_initial_messages": 1000,
             "message_interception_enabled": False,
         },
         "history_retention": {

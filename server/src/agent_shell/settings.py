@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 import yaml
+from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 from pydantic import (
     Field,
     PrivateAttr,
@@ -90,6 +91,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=19100, ge=1, le=65535)
     n_jobs_per_worker: int = Field(default=10, ge=1)
+    recursion_limit: int = Field(default=DEFAULT_RECURSION_LIMIT, ge=1)
+    max_concurrency: int | None = Field(default=None, ge=1)
     debug_port: int | None = Field(default=None, ge=1, le=65535)
     allow_remote: bool = False
     langsmith_tracing_enabled: bool = False
@@ -184,8 +187,8 @@ class Settings(BaseSettings):
     @classmethod
     def validate_langsmith_project(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized or len(normalized) > 200:
-            raise ValueError("must contain 1 to 200 characters")
+        if not normalized:
+            raise ValueError("must not be empty")
         return normalized
 
     @field_validator("langsmith_workspace_id", mode="before")
@@ -196,8 +199,6 @@ class Settings(BaseSettings):
         normalized = str(value).strip()
         if not normalized:
             return None
-        if len(normalized) > 200:
-            raise ValueError("must not exceed 200 characters")
         return normalized
 
     @field_validator("cors_origins", "trusted_proxy_cidrs", mode="before")

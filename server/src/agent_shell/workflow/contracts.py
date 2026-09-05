@@ -58,15 +58,15 @@ class WorkflowGraphDefinitionV1(BaseModel):
 class WorkflowNodePositionV1(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    x: Annotated[float, Field(ge=-1_000_000, le=1_000_000)]
-    y: Annotated[float, Field(ge=-1_000_000, le=1_000_000)]
+    x: float
+    y: float
 
 
 class WorkflowViewportV1(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    x: Annotated[float, Field(ge=-1_000_000, le=1_000_000)] = 0
-    y: Annotated[float, Field(ge=-1_000_000, le=1_000_000)] = 0
+    x: float = 0
+    y: float = 0
     zoom: Annotated[float, Field(ge=0.05, le=4)] = 1
 
 

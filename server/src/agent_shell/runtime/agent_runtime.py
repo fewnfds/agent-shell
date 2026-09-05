@@ -39,10 +39,6 @@ from agent_shell.runtime.event_origin import (
 )
 from agent_shell.runtime.event_stream import RunEventStream
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
-from agent_shell.runtime.limits import (
-    GRAPH_RECURSION_LIMIT,
-    WORKFLOW_MAX_CONCURRENCY,
-)
 from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.runtime.output_projection import (
     EventOutputError,
@@ -62,7 +58,6 @@ from agent_shell.runtime.response_presentation import (
 )
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_data import WorkflowDataService
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
@@ -80,8 +75,7 @@ def _workflow_run_config(
     workflow_id: str,
     workflow_name: str,
     messages_sha: str,
-    recursion_limit: int,
-    max_concurrency: int,
+    base_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     metadata = {
         "request_id": request_id,
@@ -90,8 +84,7 @@ def _workflow_run_config(
         "messages_sha": messages_sha,
     }
     config: dict[str, Any] = {
-        "recursion_limit": recursion_limit,
-        "max_concurrency": max_concurrency,
+        **base_config,
         "run_name": f"workflow:{workflow_name}",
         "tags": ["agent-shell", "workflow"],
         "metadata": metadata,
@@ -428,10 +421,7 @@ class RunExecution:
                     "ignore",
                     message=(r"The v3 streaming protocol on Pregel is experimental\."),
                 )
-                config: dict[str, Any] = {
-                    "recursion_limit": GRAPH_RECURSION_LIMIT,
-                    **(self.run_config or {}),
-                }
+                config: dict[str, Any] = dict(self.run_config or {})
                 stream_kwargs: dict[str, Any] = {
                     "config": config,
                     "version": "v3",
@@ -711,7 +701,7 @@ class AgentRuntime:
         runtime_dir: Path | None = None,
         workflow_data: WorkflowDataService,
         runtime_diagnostics: RuntimeDiagnostics | None = None,
-        runtime_policy: RuntimePolicyStore | None = None,
+        run_config: Mapping[str, Any] | None = None,
         graph_store: BaseStore,
     ) -> None:
         self._builder = builder
@@ -721,15 +711,8 @@ class AgentRuntime:
         self._runtime_dir = runtime_dir
         self._workflow_data = workflow_data
         self._runtime_diagnostics = runtime_diagnostics
-        self._runtime_policy = runtime_policy
+        self._run_config = dict(run_config or {})
         self._graph_store = graph_store
-
-    def _input_policy(self):
-        return (
-            self._runtime_policy.snapshot()
-            if self._runtime_policy is not None
-            else RUNTIME_POLICY_DEFAULTS
-        )
 
     def build_workflow_structure(
         self,
@@ -1073,11 +1056,10 @@ class AgentRuntime:
             if node.type == "command"
         ]
         server_managed = server_context is not None
-        runtime_policy = self._input_policy()
         messages = (
             []
             if server_managed and not agent_nodes
-            else validate_client_messages(raw_messages, runtime_policy)
+            else validate_client_messages(raw_messages)
         )
         messages_sha = client_messages_sha(messages)
         assemblies: dict[str, StaticAssembly] = {}
@@ -1489,16 +1471,7 @@ class AgentRuntime:
                 workflow_id=workflow_id,
                 workflow_name=workflow_name,
                 messages_sha=messages_sha,
-                recursion_limit=int(
-                    (workflow_snapshot or {}).get(
-                        "recursion_limit", GRAPH_RECURSION_LIMIT
-                    )
-                ),
-                max_concurrency=int(
-                    (workflow_snapshot or {}).get(
-                        "max_concurrency", WORKFLOW_MAX_CONCURRENCY
-                    )
-                ),
+                base_config=getattr(self, "_run_config", {}),
             ),
             public_output=public_output,
             command_runtime=command_runtime,

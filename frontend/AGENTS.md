@@ -16,6 +16,7 @@
 - 优先使用 AdminLTE/Bootstrap component、utility 与 theme variable。跨页视觉规则放入 `src/styles/management-console.css`；只属于一个可复用组件的布局可以使用 `<style scoped>`。页面不另造主题，不硬编码颜色，不用 inline style。
 - 本地组件只承载真实产品行为或已有调用方共享的稳定组合。不要复制后端 schema、添加旧字段兼容，或用前端校验修补后端错误。
 - 管理端操作使用现有 `action-button` 或紧凑位置的 `icon-action-button`；Vue Flow 画布使用自己的紧凑工具范式。
+- 前端通常不显式设置长段的说明文字，说明应该留在用户文档中。
 
 ## 验证
 

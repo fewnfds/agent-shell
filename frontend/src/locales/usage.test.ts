@@ -74,7 +74,6 @@ describe('locale usage', () => {
     const catalog = new Set(messageKeys(zhCN))
     for (const type of blockTypes) {
       expect(catalog.has(`capabilities.${type}.label`)).toBe(true)
-      expect(catalog.has(`capabilities.${type}.description`)).toBe(true)
     }
     for (const policy of ['inherit', 'force-remove', 'top-level-only']) {
       expect(catalog.has(`agents.policy.${policy}`)).toBe(true)

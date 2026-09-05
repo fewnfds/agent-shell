@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 
 from agent_shell.app import create_app
 from agent_shell.settings import get_settings
 from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.system_log_settings import SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from agent_shell.storage.workflow_lifecycle_settings import WorkflowLifecycleSettingsStore
@@ -42,6 +42,8 @@ def _payload(**overrides) -> dict:
         "host": "127.0.0.1",
         "port": 19100,
         "n_jobs_per_worker": 10,
+        "recursion_limit": DEFAULT_RECURSION_LIMIT,
+        "max_concurrency": None,
         "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
@@ -68,6 +70,8 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "host": "127.0.0.1",
         "port": 19100,
         "n_jobs_per_worker": 10,
+        "recursion_limit": DEFAULT_RECURSION_LIMIT,
+        "max_concurrency": None,
         "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
@@ -104,6 +108,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
         json=_payload(
             port=9123,
             n_jobs_per_worker=12,
+            recursion_limit=321,
+            max_concurrency=7,
             debug_port=9124,
             langsmith_tracing_enabled=True,
             langsmith_project="workflow-debug",
@@ -119,6 +125,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     assert response.json()["restart_required"] is True
     assert response.json()["port"] == 9123
     assert response.json()["n_jobs_per_worker"] == 12
+    assert response.json()["recursion_limit"] == 321
+    assert response.json()["max_concurrency"] == 7
     assert response.json()["debug_port"] == 9124
     assert response.json()["langsmith_tracing_enabled"] is True
     assert response.json()["langsmith_api_key"] == {"configured": True}
@@ -128,6 +136,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     document = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
     assert document["settings"]["port"] == 9123
     assert document["settings"]["n_jobs_per_worker"] == 12
+    assert document["settings"]["recursion_limit"] == 321
+    assert document["settings"]["max_concurrency"] == 7
     assert document["settings"]["debug_port"] == 9124
     assert document["settings"]["langsmith_tracing_enabled"] is True
     assert document["settings"]["langsmith_project"] == "workflow-debug"
@@ -136,6 +146,8 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     restarted = get_settings(application_home=tmp_path)
     assert restarted.port == 9123
     assert restarted.n_jobs_per_worker == 12
+    assert restarted.recursion_limit == 321
+    assert restarted.max_concurrency == 7
     assert restarted.debug_port == 9124
     assert restarted.langsmith_tracing_enabled is True
     assert restarted.langsmith_api_key is not None
@@ -330,50 +342,6 @@ def test_permission_failure_leaves_existing_settings_unchanged(
     assert environment_path.read_text(encoding="utf-8") == original_environment
 
 
-def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _, client = _client(tmp_path, monkeypatch)
-
-    current = client.get("/agent-shell/api/system/runtime-policy")
-
-    assert current.status_code == 200
-    assert current.json()["chat_completion_body_bytes"] == 64 * 1024 * 1024
-    assert current.json()["defaults"]["decoded_total_bytes"] == 48 * 1024 * 1024
-    assert current.json()["minimums"]["content_blocks"] == 1
-    assert current.json()["configurable"] is True
-
-    update = {
-        key: value
-        for key, value in current.json().items()
-        if key not in {"defaults", "minimums", "configurable"}
-    }
-    update.update(
-        {
-            "chat_completion_body_bytes": 256 * 1024 * 1024,
-            "content_blocks": 100_000,
-        }
-    )
-    saved = client.put("/agent-shell/api/system/runtime-policy", json=update)
-
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
-    assert saved.json()["content_blocks"] == 100_000
-    document = yaml.safe_load(
-        (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
-    )
-    assert document["runtime_policy"]["content_blocks"] == 100_000
-
-    invalid = {**update, "content_blocks": 0}
-    rejected = client.put("/agent-shell/api/system/runtime-policy", json=invalid)
-    assert rejected.status_code == 422
-
-    boolean = {**update, "content_blocks": True}
-    rejected_boolean = client.put("/agent-shell/api/system/runtime-policy", json=boolean)
-    assert rejected_boolean.status_code == 422
-
-
-
 def test_workflow_lifecycle_settings_are_owned_by_runtime_monitoring(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -407,11 +375,6 @@ def test_workflow_lifecycle_settings_are_owned_by_runtime_monitoring(
 def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> None:
     repository = FileConfigRepository.empty(tmp_path)
     repository.update_system(
-        lambda system: system.setdefault("runtime_policy", {}).__setitem__(
-            "content_blocks", True
-        )
-    )
-    repository.update_system(
         lambda system: system["configuration_validation"].__setitem__(
             "debounce_ms", True
         )
@@ -425,8 +388,6 @@ def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> Non
         )
     )
 
-    with pytest.raises(ValueError, match="runtime policy content_blocks"):
-        RuntimePolicyStore(repository).snapshot()
     with pytest.raises(ValueError, match="validation debounce"):
         ConfigurationValidationSettingsStore(repository).snapshot()
     with pytest.raises(ValueError, match="system log maximum size"):

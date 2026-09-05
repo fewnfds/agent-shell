@@ -24,7 +24,7 @@ function debugMessageValue(path: string, key: string, prefix: string): string {
   if (path.startsWith('fields.')) {
     return key === 'label' ? (prefix.split('.').at(-1) ?? prefix) : key
   }
-  if (path.startsWith('capabilities.') && (key === 'label' || key === 'description')) {
+  if (path.startsWith('capabilities.') && key === 'label') {
     return prefix.split('.').at(-1) ?? prefix
   }
   return path

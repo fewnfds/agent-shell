@@ -5,6 +5,7 @@ import json
 from typing import ClassVar
 
 from agent_shell.api import api_server
+from agent_shell.storage.file_config import FileConfigRepository
 
 from .support import *
 
@@ -221,7 +222,7 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
         assert response.json()["error"]["code"] == "model_not_found"
 
 
-def test_workflow_graph_limits_reach_the_graph_execution(
+def test_system_graph_limits_reach_the_graph_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -238,25 +239,16 @@ def test_workflow_graph_limits_reach_the_graph_execution(
         return execution
 
     monkeypatch.setattr(AgentRuntime, "_workflow_execution", observe_execution)
+    repository = FileConfigRepository(tmp_path / "data")
+    repository.update_system(
+        lambda system: system["settings"].update(
+            {"recursion_limit": 321, "max_concurrency": 7}
+        )
+    )
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Configured limits")
         save_linear_workflow_graph(client, workflow, main_agent)
-        updated = client.put(
-            f"/agent-shell/api/workflows/{workflow['id']}",
-            json={
-                "name": workflow["name"],
-                "description": workflow["description"],
-                "workflow_event_output_id": workflow[
-                    "workflow_event_output_id"
-                ],
-                "durability": "sync",
-                "on_disconnect": "continue",
-                "recursion_limit": 321,
-                "max_concurrency": 7,
-            },
-        )
-        assert updated.status_code == 200, updated.text
         reply = client.post(
             "/compat/openai/v1/chat/completions",
             json={
@@ -636,66 +628,3 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
         for message in InspectingFakeChatModel.seen_messages[0]
         if message.type != "system"
     ] == ["frozen client input"]
-
-
-def test_chat_completion_body_limit_runs_before_workflow_resolution(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client)
-        current = client.get("/agent-shell/api/system/runtime-policy").json()
-        update = {
-            key: value
-            for key, value in current.items()
-            if key not in {"defaults", "minimums", "configurable"}
-        }
-        update["chat_completion_body_bytes"] = 128
-        saved = client.put("/agent-shell/api/system/runtime-policy", json=update)
-        assert saved.status_code == 200, saved.text
-        response = client.post(
-            "/compat/openai/v1/chat/completions",
-            json={
-                "model": workflow["name"],
-                "messages": [{"role": "user", "content": "x" * 256}],
-            },
-        )
-
-    assert response.status_code == 413
-    assert response.json()["error"]["code"] == "input_body_too_large"
-
-
-def test_bounded_body_reader_stops_when_the_next_chunk_exceeds_the_limit() -> None:
-    calls = 0
-
-    async def receive() -> dict[str, object]:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return {
-                "type": "http.request",
-                "body": b"a" * 80,
-                "more_body": True,
-            }
-        if calls == 2:
-            return {
-                "type": "http.request",
-                "body": b"b" * 80,
-                "more_body": True,
-            }
-        raise AssertionError("the oversized request body was read past the limit")
-
-    async def run() -> None:
-        request = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/compat/openai/v1/chat/completions",
-                "headers": [],
-            },
-            receive,
-        )
-        with pytest.raises(api_server._BodyTooLarge):
-            await api_server._read_bounded_body(request, 128)
-
-    asyncio.run(run())
-    assert calls == 2

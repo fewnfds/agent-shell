@@ -63,13 +63,10 @@ def _write_json_atomic(path: Path, value: dict[str, object]) -> None:
 
 
 def normalize_repository_name(value: object) -> str:
-    name = normalize_configuration_name(
+    return normalize_configuration_name(
         value,
         label="configuration repository name",
     )
-    if len(name) > 120:
-        raise ValueError("configuration repository name must not exceed 120 characters")
-    return name
 
 
 def load_configuration_repository(root: Path) -> ConfigurationRepositoryDescriptor:

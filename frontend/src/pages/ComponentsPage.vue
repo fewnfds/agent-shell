@@ -603,7 +603,6 @@ async function startNew(): Promise<void> {
   if (draft.value?.id) {
     const accepted = await confirm({
       title: t('components.new.title'),
-      description: t('components.new.description'),
       confirmLabel: t('common.new'),
       cancelLabel: t('common.cancel'),
     })
@@ -1172,7 +1171,6 @@ onMounted(() => {
     :busy-label="t('common.copying')"
     error-test-id="component-copy-error"
     form-id="component-copy-form"
-    :hint="t('components.copy.nameHint')"
     :name="copyName"
     :open="copyOpen"
     :submit-label="t('common.copy')"

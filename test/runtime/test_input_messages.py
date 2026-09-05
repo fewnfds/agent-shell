@@ -9,7 +9,6 @@ from agent_shell.runtime.input_messages import (
     client_messages_sha,
     validate_client_messages,
 )
-from agent_shell.storage.runtime_policy import RuntimePolicy
 
 
 def encoded(value: bytes) -> str:
@@ -99,7 +98,7 @@ def test_invalid_content_parts_fail_before_provider(part: dict, code: str) -> No
     assert error.value.code == code
 
 
-def test_system_media_and_configured_decoded_media_limit_are_rejected() -> None:
+def test_system_media_is_rejected() -> None:
     image_part = {
         "type": "image",
         "base64": encoded(b"abc"),
@@ -108,13 +107,6 @@ def test_system_media_and_configured_decoded_media_limit_are_rejected() -> None:
     with pytest.raises(AgentRuntimeError) as system_error:
         validate_client_messages([{"role": "system", "content": [image_part]}])
     assert system_error.value.code == "input_system_content_unsupported"
-
-    with pytest.raises(AgentRuntimeError) as size_error:
-        validate_client_messages(
-            [{"role": "user", "content": [image_part]}],
-            RuntimePolicy(decoded_block_bytes=2),
-        )
-    assert size_error.value.code == "input_content_block_too_large"
 
 
 def test_client_messages_sha_is_stable_for_normalized_mapping_order() -> None:

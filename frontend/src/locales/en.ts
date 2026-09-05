@@ -73,7 +73,6 @@ export const en: MessageSchema = {
       package: 'Package',
       version: 'Exact version',
       entrypoint: 'Entrypoint (optional)',
-      packageHint: 'Agent Shell installs the exact package into this connection’s isolated runtime. LangChain receives only the derived stdio command.',
       arguments: 'Arguments',
       addArgument: 'Add argument',
       noArguments: 'No arguments are configured.',
@@ -100,7 +99,6 @@ export const en: MessageSchema = {
         ready: 'Installed',
         failed: 'Installation failed',
       },
-      hint: 'Install downloads dependencies with Agent Shell’s internal toolchain, then starts the MCP Server once to discover its Tools.',
       install: 'Install and test',
       reinstall: 'Reinstall and test',
       saveFirst: 'Save all connection changes before installing.',
@@ -174,7 +172,6 @@ export const en: MessageSchema = {
     deleteFailed: 'Could not delete Workflow',
     copy: {
       title: 'Copy Workflow',
-      nameHint: 'Enter the name for the copied Workflow.',
       nameRequired: 'Enter a name for the copied Workflow.',
     },
     actions: {
@@ -277,8 +274,6 @@ export const en: MessageSchema = {
       responseStreamScheduling: 'Response Stream Scheduling',
       durability: 'LangGraph durability',
       onDisconnect: 'Client disconnect policy',
-      recursionLimit: 'Super-step limit',
-      maxConcurrency: 'Maximum concurrency',
       status: 'Status',
     },
     durability: {
@@ -501,7 +496,6 @@ export const en: MessageSchema = {
     },
     polling: {
       active: 'Live monitoring',
-      activeHelp: 'Refreshes persisted runtime facts about every two seconds while this page is visible.',
       terminal: 'Static result',
       failed: 'Could not refresh runtime monitoring data',
     },
@@ -534,7 +528,6 @@ export const en: MessageSchema = {
     validationDebounceMs: 'Configuration alert interval',
     langgraphDev: {
       title: 'LangGraph Dev',
-      jobs: 'Run concurrency',
       debugPort: 'DAP debug port (optional)',
       debugPortDisabled: 'Disabled',
       tools: 'Debug tools',
@@ -543,10 +536,10 @@ export const en: MessageSchema = {
     },
     runtimePolicy: {
       title: 'Restriction policy',
-      chatBody: 'Chat request body',
-      contentBlocks: 'Content block count',
-      mediaBlock: 'Single input media',
-      mediaTotal: 'Total input media',
+      jobs: 'Runs per worker',
+      recursionLimit: 'Graph super-step limit',
+      maxConcurrency: 'Graph maximum concurrency',
+      officialDefault: 'Use the official default',
     },
     langsmith: {
       title: 'LangSmith',
@@ -563,9 +556,8 @@ export const en: MessageSchema = {
     langgraphInvalid: 'Correct the invalid LangGraph Dev fields.',
     langsmithInvalid: 'Correct the invalid LangSmith fields.',
     proxyInvalid: 'Correct the invalid proxy settings fields.',
-    apiServerInvalid: 'The initial message limit must be an integer greater than or equal to 1.',
     validationInvalid: 'The configuration alert interval must be a valid integer.',
-    runtimePolicyInvalid: 'Restriction policy values must be valid integers at or above the displayed minimums.',
+    runtimePolicyInvalid: 'Restriction policy values must be positive integers; Graph maximum concurrency may be empty.',
     langgraphSaved: 'LangGraph Dev settings saved.',
     langsmithSaved: 'LangSmith settings saved.',
     proxySaved: 'Proxy settings saved.',
@@ -723,89 +715,68 @@ export const en: MessageSchema = {
   capabilities: {
     'mcp-connection': {
       label: 'MCP connection',
-      description: 'Instance-local MCP transport, endpoint, and credentials',
     },
     'mcp-requirement': {
       label: 'MCP requirement',
-      description: 'Portable MCP dependency with a stable Agent-facing namespace',
     },
     'model-connection': {
       label: 'Model connection',
-      description: 'Instance-local upstream Provider endpoint, model, and credential',
     },
     'model-requirement': {
       label: 'Model requirement',
-      description: 'Portable capability requirement resolved to a local model',
     },
     'system-prompt': {
       label: 'System prompt',
-      description: 'Base system instructions used by the Agent',
     },
     filesystem: {
       label: 'Filesystem Backend',
-      description: 'CompositeBackend or LocalShellBackend with paths, permissions, and Skill package',
     },
     'filesystem-tools': {
       label: 'Filesystem Tools',
-      description: 'Filesystem Tool visibility, descriptions, and runtime constraints',
     },
     'todo-list': {
       label: 'Todo list',
-      description: 'The write_todos planning tool and its prompt text',
     },
     'custom-tool': {
       label: 'Custom Tool',
-      description: 'One configuration-owned Python extension that exports one LangChain Tool',
     },
     skill: {
       label: 'Skill packages',
-      description: 'Build a package from Skill Templates for use by CompositeBackend',
     },
     'custom-middleware': {
       label: 'Custom Middleware',
-      description: 'LangChain Middleware constructed in a defined order',
     },
     'agent-event-output': {
       label: 'Agent event output',
-      description: 'Filter and format Agent events with a configuration-owned Python extension',
     },
     'exception-retry': {
       label: 'Exception retry',
-      description: 'Choose Provider-native or LangChain model retries',
     },
     subagent: {
       label: 'Synchronous Subagents',
-      description: 'Synchronous task delegation and prompt text',
     },
     summarization: {
       label: 'Context summarization',
-      description: 'Configure SummarizationMiddleware independently',
     },
     'prompt-caching': {
       label: 'Prompt caching',
-      description: 'Configure Anthropic prompt-caching Middleware independently',
     },
     'workflow-event-output': {
       label: 'Workflow event output',
-      description: 'Filter and format Workflow events with a configuration-owned Python extension',
     },
     'response-stream-scheduling': {
       label: 'Response Stream Scheduling',
-      description: 'Configure lifecycle response ordering, idle yielding, batching, and paced delivery',
     },
     'command': {
       label: 'Command Node',
-      description: 'Run user-authored Python, update State, activate Branch Edges, and dispatch Agent tasks',
     },
     'main-agent': {
       label: 'Main Agent',
-      description: 'Select capabilities and bind Subagents',
     },
     'subagent-profile': {
       label: 'Subagent',
-      description: 'Own a reusable routing identity, capability settings, and child references',
     },
-    workflow: { label: 'Workflow', description: 'A reusable Workflow that any request or Run can start' },
+    workflow: { label: 'Workflow' },
   },
   preferences: {
     theme: 'Theme',
@@ -957,10 +928,8 @@ export const en: MessageSchema = {
       providerCatalogLoading: 'Loading the LangChain Provider catalog…',
       providerBundled: 'Bundled',
       providerUnavailable: 'Runtime package missing',
-      providerValidationNotice: 'Development testing currently focuses on OpenAI-compatible (Chat Completions), the OpenAI Responses API, and DeepSeek. Other Providers are TBD, have not been tested broadly, and may not work.',
       vertexCredentialHint: 'Google Vertex AI uses Application Default Credentials from the runtime environment; the API key field is not used.',
       connectionTypeLabel: 'Connection type',
-      connectionTypeHint: 'Use Chat Completions for OpenAI-compatible gateways. Select Responses only for an endpoint that supports the official OpenAI Responses API.',
       connectionTypes: {
         compatible: 'OpenAI-compatible (Chat Completions)',
         responses: 'OpenAI Responses API',
@@ -1245,11 +1214,9 @@ export const en: MessageSchema = {
     },
     new: {
       title: 'Create a new configuration?',
-      description: 'Return to a blank new configuration?',
     },
     copy: {
       title: 'Copy configuration',
-      nameHint: 'Enter a name for the new configuration.',
       nameRequired: 'Enter a name for the new configuration.',
       succeeded: 'The configuration was copied.',
     },
@@ -1337,8 +1304,6 @@ export const en: MessageSchema = {
     },
     copy: {
       title: 'Copy configuration',
-      description: 'Copy {name} into an independent configuration. Enter only the new name.',
-      nameHint: 'The server checks that the new configuration name is unique.',
       nameRequired: 'Enter a new configuration name.',
       submit: 'Copy',
       succeeded: 'The configuration was copied.',
@@ -1401,7 +1366,6 @@ export const en: MessageSchema = {
     },
     copy: {
       title: 'Copy Configuration Repository',
-      nameHint: 'Enter the name for the independent repository copy.',
       nameRequired: 'Enter a name for the repository copy.',
       succeeded: 'Configuration Repository copied.',
     },
@@ -1442,13 +1406,6 @@ export const en: MessageSchema = {
     },
     configuration: {
       title: 'Configuration settings',
-    },
-    request: {
-      maxInitialMessages: 'Initial message limit',
-      invalid: 'Enter an integer greater than or equal to 1.',
-      save: 'Save request settings',
-      saved: 'The request settings were saved.',
-      saveFailed: 'Could not save the request settings',
     },
     serviceEntries: {
       title: 'Service entries',
@@ -1542,7 +1499,7 @@ export const en: MessageSchema = {
     managementScopeRequired: 'This operation requires the management scope.',
     invalidProxyHeaders: 'The forwarding headers are invalid for this deployment.',
     copyRequestInvalid: 'A copy request may contain only the new configuration name.',
-    configurationNameLength: 'The configuration name must contain {minimum} to {maximum} characters.',
+    configurationNameRequired: 'The configuration name is required.',
     mainAgentNotFound: 'The Main Agent configuration does not exist.',
     subagentNotFound: 'The Subagent entity does not exist.',
     configurationNameConflict: 'A configuration with this name already exists.',
@@ -1650,7 +1607,6 @@ export const en: MessageSchema = {
     },
     copy: {
       title: 'Copy configuration',
-      nameHint: 'Enter the name for the copied configuration.',
       nameRequired: 'Enter a name for the copied configuration.',
     },
     delete: {

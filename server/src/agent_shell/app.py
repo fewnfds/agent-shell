@@ -67,7 +67,6 @@ from agent_shell.storage.file_config import (
 from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
@@ -155,7 +154,6 @@ def create_app(
         environment=environment,
         mutations=configuration_mutations,
     )
-    runtime_policy = RuntimePolicyStore(configuration)
     workflow_lifecycle_settings = WorkflowLifecycleSettingsStore(configuration)
     system_log_settings = SystemLogSettingsStore(configuration)
     event_logger = SecurityEventLogger(
@@ -282,10 +280,17 @@ def create_app(
         workflow_data=workflow_data,
         detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
-        runtime_policy=runtime_policy,
         workflow_lifecycle_settings=workflow_lifecycle_settings,
         model_resources=model_resources,
         mcp_resources=mcp_resources,
+        run_config={
+            "recursion_limit": settings.recursion_limit,
+            **(
+                {"max_concurrency": settings.max_concurrency}
+                if settings.max_concurrency is not None
+                else {}
+            ),
+        },
         agent_server_url=settings.internal_service_url(),
         agent_server_token=settings.management_token.get_secret_value(),
     )
@@ -530,7 +535,6 @@ def create_app(
     app.state.runtime_diagnostic_details = runtime_diagnostic_details
     app.state.api_server_store = api_server_store
     app.state.message_interception = message_interception
-    app.state.runtime_policy = runtime_policy
     app.state.provider_http_clients = provider_http_clients
     app.state.event_feed = event_feed
     app.state.workflow_data = workflow_data
@@ -639,12 +643,7 @@ def create_app(
     )
     app.include_router(build_file_manager_router(file_manager))
     app.include_router(build_provider_integrations_router())
-    app.include_router(
-        build_system_settings_router(
-            system_settings,
-            runtime_policy,
-        )
-    )
+    app.include_router(build_system_settings_router(system_settings))
     app.include_router(
         build_api_server_router(
             api_server_store,
@@ -653,7 +652,6 @@ def create_app(
             settings,
             api_server_events,
             message_interception,
-            runtime_policy,
             detached_tasks,
         )
     )

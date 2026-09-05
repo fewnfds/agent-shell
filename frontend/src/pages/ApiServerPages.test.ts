@@ -148,7 +148,6 @@ const settings: ApiServerSettings = {
   enabled: false,
   status: 'stopped',
   api_key: { configured: true },
-  max_initial_messages: 1000,
   message_interception_enabled: false,
   service_entries: {
     management_console_url: 'http://localhost/admin#/',

@@ -47,19 +47,17 @@ TASK_DESCRIPTION_FIELDS = ("available_agents",)
 
 
 BlockName = ConfigurationName
-LocalPath = Annotated[str, Field(max_length=4096)]
-VirtualPath = Annotated[str, Field(min_length=1, max_length=4096)]
-DescriptionDraft = Annotated[str, Field(max_length=100_000)]
+LocalPath = str
+VirtualPath = Annotated[str, Field(min_length=1)]
+DescriptionDraft = str
 PromptOverrideText = Annotated[
     str,
     StringConstraints(strip_whitespace=False),
-    Field(max_length=100_000),
 ]
 ModelBoolean = Annotated[bool, Field(strict=True)]
 ModelText = Annotated[
     str,
     StringConstraints(strict=True, strip_whitespace=True, min_length=1),
-    Field(max_length=120),
 ]
 BlockReference = ConfigurationId | Literal[""]
 RequiredReference = ConfigurationId
@@ -190,7 +188,7 @@ class ResponseStreamSchedulingBlock(StrictBlock):
 CredentialValue = Annotated[
     str,
     StringConstraints(strip_whitespace=False),
-    Field(min_length=1, max_length=4096),
+    Field(min_length=1),
 ]
 CREDENTIAL_VALUE_ADAPTER = TypeAdapter(CredentialValue | None)
 
@@ -204,11 +202,11 @@ def _reject_masked_credential(value: str | None) -> str | None:
 class ModelConnectionBlock(StrictBlock):
     provider: Annotated[
         str,
-        Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$"),
+        Field(min_length=1, pattern=r"^[a-z0-9_-]+$"),
     ]
-    base_url: Annotated[str, Field(min_length=1, max_length=2048)]
+    base_url: Annotated[str, Field(min_length=1)]
     credential: CredentialValue | None
-    model: Annotated[str, Field(min_length=1, max_length=240)]
+    model: Annotated[str, Field(min_length=1)]
     provider_settings: dict[str, JsonValue]
     tool_choice: ModelText | ModelBoolean | dict[str, JsonValue] | None
     response_format: dict[str, JsonValue] | None
@@ -298,7 +296,6 @@ class ModelRequirementBlock(StrictBlock):
     description: Annotated[
         str,
         StringConstraints(strip_whitespace=False, min_length=1),
-        Field(max_length=100_000),
     ]
 
 
@@ -312,13 +309,11 @@ class McpRequirementBlock(StrictBlock):
     description: Annotated[
         str,
         StringConstraints(strip_whitespace=False, min_length=1),
-        Field(max_length=100_000),
     ]
     namespace: Annotated[
         str,
         Field(
             min_length=1,
-            max_length=64,
             pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
         ),
     ]
@@ -383,7 +378,7 @@ class ExceptionRetryBlock(StrictBlock):
 
 
 class SystemPromptBlock(StrictBlock):
-    system_prompt: Annotated[str, Field(min_length=1, max_length=200_000)]
+    system_prompt: Annotated[str, Field(min_length=1)]
 
 
 FilesystemPermissionValue = Literal["read-write", "read-only", "no-access"]
@@ -792,7 +787,7 @@ class SubagentReference(BaseModel):
 class CapabilityReference(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    type: Annotated[str, Field(min_length=1, max_length=120)]
+    type: Annotated[str, Field(min_length=1)]
     block_id: RequiredReference
 
     @field_validator("type")
@@ -849,7 +844,7 @@ class MainAgentProfile(StrictBlock):
 class CapabilityOverride(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    type: Annotated[str, Field(min_length=1, max_length=120)]
+    type: Annotated[str, Field(min_length=1)]
     mode: Literal["replace", "disabled"]
     block_id: BlockReference = ""
 
@@ -913,11 +908,10 @@ class SubagentProfile(BaseModel):
         str,
         Field(
             min_length=1,
-            max_length=120,
             pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$",
         ),
     ]
-    description: Annotated[str, Field(min_length=1, max_length=100_000)]
+    description: Annotated[str, Field(min_length=1)]
     settings: SubagentSettings = Field(default_factory=SubagentSettings)
 
 

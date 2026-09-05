@@ -38,7 +38,6 @@ class ApiServerStore:
         return {
             "enabled": bool(values.get("enabled", True)),
             "api_key_configured": self.api_key() is not None,
-            "max_initial_messages": int(values.get("max_initial_messages", 1000)),
             "message_interception_enabled": bool(
                 values.get("message_interception_enabled", False)
             ),
@@ -69,14 +68,7 @@ class ApiServerStore:
         *,
         api_key_operation: ApiKeyOperation,
         api_key: str | None,
-        max_initial_messages: int | None = None,
     ) -> None:
-        def mutate(system: dict) -> None:
-            if max_initial_messages is not None:
-                system.setdefault("api_server", {})[
-                    "max_initial_messages"
-                ] = max_initial_messages
-
         with self._mutations.mutation():
             original_environment = self._environment.owned_values(
                 API_SERVER_ENVIRONMENT_OWNER
@@ -92,7 +84,6 @@ class ApiServerStore:
                         API_SERVER_ENVIRONMENT_OWNER,
                         remove_keys={"AGENT_SHELL_API_KEY"},
                     )
-                self._config_repository.update_system(mutate)
             except BaseException:
                 try:
                     self._environment.replace_owned(

@@ -2,7 +2,7 @@
 
 ## Workflow
 
-【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、可选 Workflow Event Output 与 Response Stream Scheduling 组件引用、`durability`（默认 `async`）、`on_disconnect`（默认 `cancel`）、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。所有 Workflow 使用相同运行能力；数值只要求正整数，没有额外产品最大值，实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
+【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、可选 Workflow Event Output 与 Response Stream Scheduling 组件引用、`durability`（默认 `async`）、`on_disconnect`（默认 `cancel`）和一份 current Graph definition/layout。Graph 的 `recursion_limit` 与 `max_concurrency` 由实例级【系统 / 系统配置 / 限制策略】统一传入 LangGraph 官方运行配置。
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
 全部 enabled Workflow 都出现在 `/compat/openai/v1/models`，也都可以作为跨 Workflow 调用目标。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 

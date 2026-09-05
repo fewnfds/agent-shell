@@ -18,8 +18,6 @@ class WorkflowStore:
         "response_stream_scheduling_id",
         "durability",
         "on_disconnect",
-        "recursion_limit",
-        "max_concurrency",
         "enabled",
     )
 
@@ -36,8 +34,6 @@ class WorkflowStore:
             "workflow_event_output_id": record.get("workflow_event_output_id"),
             "durability": str(record.get("durability", "async")),
             "on_disconnect": str(record.get("on_disconnect", "cancel")),
-            "recursion_limit": int(record["recursion_limit"]),
-            "max_concurrency": int(record.get("max_concurrency", 100)),
             "enabled": bool(record["enabled"]),
         }
         public["response_stream_scheduling_id"] = record.get(

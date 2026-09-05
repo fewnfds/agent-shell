@@ -552,13 +552,12 @@ def build_router(
                 message="The copy request must contain only a configuration name.",
             )
         name = payload["name"].strip()
-        if not name or len(name) > 120:
+        if not name:
             raise management_error(
                 422,
-                code="invalid_configuration_name_length",
-                message_key="errors.configurationNameLength",
-                message="The configuration name must contain 1 to 120 characters.",
-                message_args={"minimum": 1, "maximum": 120},
+                code="configuration_name_required",
+                message_key="errors.configurationNameRequired",
+                message="The configuration name is required.",
             )
         copied = perform_component_mutation(
             lambda: component_mutations.copy(

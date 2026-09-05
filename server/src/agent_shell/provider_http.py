@@ -67,7 +67,6 @@ class ProviderHttpClients:
                 transport=ProviderAsyncCurlTransport(
                     impersonate="chrome",
                     default_headers=False,
-                    max_connections=100,
                 ),
                 trust_env=False,
             )

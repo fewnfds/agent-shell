@@ -27,7 +27,7 @@ def validate_package_folder(value: str) -> str:
 
 PackageFolder = Annotated[
     str,
-    Field(min_length=1, max_length=120),
+    Field(min_length=1),
     AfterValidator(validate_package_folder),
 ]
 
@@ -41,7 +41,6 @@ class PythonPackageReference(BaseModel):
 def validate_package_relative_path(value: str) -> str:
     if (
         not value
-        or len(value) > 240
         or value.startswith(("/", "\\"))
         or "\\" in value
         or ":" in value

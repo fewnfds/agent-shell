@@ -110,8 +110,6 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
                         "workflow_event_output_id",
                         "durability",
                         "on_disconnect",
-                        "recursion_limit",
-                        "max_concurrency",
                     )
                 },
                 "response_stream_scheduling_id": scheduling["id"],

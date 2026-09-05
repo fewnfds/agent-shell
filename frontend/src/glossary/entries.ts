@@ -140,7 +140,6 @@ function technologyTerm(
   })
 }
 
-// Agent foundations and execution concepts.
   term('agents', 'agent', 'Agent', '智能体', '以目标为导向，利用模型推理并可调用工具采取行动的计算系统。', 'A goal-directed computational system that uses model reasoning and may call tools to take actions.');
   term('agents', 'agent-loop', 'Agent Loop', '智能体循环', '在观察、推理、行动和反馈之间反复迭代的执行过程。', 'An execution process that iterates through observation, reasoning, action, and feedback.');
   term('agents', 'agent-run', 'Agent Run', '智能体运行', '智能体从接收输入到结束或暂停的一次完整执行实例。', 'One complete execution instance of an agent from input until completion or suspension.');
@@ -189,7 +188,6 @@ function technologyTerm(
   term('agents', 'agentic-ai', 'Agentic AI', '智能体式人工智能', '强调目标驱动、规划、工具使用和多步行动的人工智能系统范式。', 'An AI system paradigm emphasizing goal-directed planning, tool use, and multi-step action.');
   term('agents', 'agentic-workflow', 'Agentic Workflow', '智能体式工作流', '包含模型自主选择步骤或工具的工作流程。', 'A workflow in which a model autonomously selects steps or tools.');
 
-  // Models, generation, tokens, and messages.
   term('models', 'model', 'Model', '模型', '根据输入计算预测、表示或生成结果的人工智能系统。', 'An artificial-intelligence system that computes predictions, representations, or generated results from input.');
   term('llm', 'large-language-model', 'Large Language Model', '大语言模型', '在大规模文本等数据上训练、用于理解和生成语言的模型。', 'A model trained on large-scale text and related data to understand and generate language.', ['LLM']);
   term('generative', 'generative-ai', 'Generative Artificial Intelligence', '生成式人工智能', '能够根据输入生成文本、图像、音频或其他内容的人工智能。', 'Artificial intelligence capable of generating text, images, audio, or other content from input.', ['generative AI']);
@@ -274,7 +272,6 @@ function technologyTerm(
   term('streaming', 'token-streaming', 'Token Streaming', '词元流式输出', '在生成过程中逐步交付词元或文本片段。', 'The progressive delivery of tokens or text fragments during generation.');
   term('streaming', 'backpressure', 'Backpressure', '背压', '下游处理速度不足时限制上游数据产生速率的机制。', 'A mechanism that limits upstream data production when downstream processing is slower.');
 
-  // Prompting and context engineering.
   term('prompt', 'prompt', 'Prompt', '提示', '提供给生成模型、用于引导其输出的输入内容。', 'Input provided to a generative model to guide its output.');
   term('prompt', 'prompt-engineering', 'Prompt Engineering', '提示工程', '设计、测试和改进模型输入以获得期望行为的实践。', 'The practice of designing, testing, and improving model inputs to obtain desired behavior.');
   term('agents', 'system-prompt', 'System Prompt', '系统提示', '用于设定模型整体行为、角色和约束的高优先级提示。', 'A high-priority prompt that establishes a model\'s overall behavior, role, and constraints.', ['system_prompt']);
@@ -317,7 +314,6 @@ function technologyTerm(
   term('context', 'static-prompt', 'Static Prompt', '静态提示', '在运行期间内容保持固定的提示。', 'A prompt whose content remains fixed during execution.');
   term('context', 'runtime-context', 'Runtime Context', '运行时上下文', '执行时可供模型、工具或中间件读取的环境与调用信息。', 'Environment and invocation information available to models, tools, or middleware during execution.');
 
-  // Tools, schemas, and model-facing controls.
   term('tools', 'tool', 'Tool', '工具', '具有明确输入约定、可由模型请求调用以执行操作的能力。', 'A capability with a defined input contract that a model can request to execute an operation.');
   term('tools', 'custom-tool', 'Custom Tool', '自定义工具', '由应用开发者定义并暴露给模型使用的工具。', 'A tool defined by an application developer and exposed for model use.');
   term('tools', 'built-in-tool', 'Built In Tool', '内置工具', '由模型平台或智能体框架直接提供的工具能力。', 'A tool capability provided directly by a model platform or agent framework.');
@@ -370,7 +366,6 @@ function technologyTerm(
   term('middleware', 'request-interception', 'Request Interception', '请求拦截', '在请求到达模型或工具前捕获并处理它的机制。', 'A mechanism that captures and processes a request before it reaches a model or tool.');
   term('middleware', 'response-interception', 'Response Interception', '响应拦截', '在响应返回调用方前捕获并处理它的机制。', 'A mechanism that captures and processes a response before it returns to the caller.');
 
-  // Retrieval, grounding, and knowledge augmentation.
   term('retrieval', 'retrieval', 'Retrieval', '检索', '根据查询从外部信息集合中找出相关内容的过程。', 'The process of finding relevant content in an external information collection from a query.');
   term('rag', 'retrieval-augmented-generation', 'Retrieval Augmented Generation', '检索增强生成', '先检索外部信息，再将其作为上下文用于生成响应的方法。', 'A method that retrieves external information and uses it as context for response generation.', ['RAG']);
   term('rag', 'grounding', 'Grounding', '依据约束', '使模型输出以给定证据、数据或环境状态为依据的过程。', 'The process of anchoring model output in supplied evidence, data, or environment state.');
@@ -430,7 +425,6 @@ function technologyTerm(
   term('rag', 'evidence', 'Evidence', '证据', '用于支持、反驳或检验某项陈述的信息。', 'Information used to support, refute, or test a claim.');
   term('rag', 'answer-faithfulness', 'Answer Faithfulness', '回答忠实度', '生成回答中的陈述受到所给上下文支持的程度。', 'The degree to which claims in a generated answer are supported by the provided context.');
 
-  // Memory, state, orchestration, and multi-agent coordination.
   term('shortMemory', 'memory', 'Memory', '记忆', '使智能体能够在后续步骤或交互中利用先前信息的机制。', 'A mechanism enabling an agent to use prior information in later steps or interactions.');
   term('shortMemory', 'short-term-memory', 'Short Term Memory', '短期记忆', '在同一会话或线程范围内保留和使用信息的记忆。', 'Memory that retains and uses information within a session or thread.');
   term('longMemory', 'long-term-memory', 'Long Term Memory', '长期记忆', '跨会话或线程持久保存并可再次检索的信息。', 'Information persisted and retrievable across sessions or threads.');
@@ -496,7 +490,6 @@ function technologyTerm(
   term('interrupts', 'approval-gate', 'Approval Gate', '审批门', '要求获得明确批准后才允许执行后续行动的控制点。', 'A control point requiring explicit approval before a subsequent action may execute.');
   term('interrupts', 'human-feedback', 'Human Feedback', '人工反馈', '由人类对模型或智能体输出、行为或偏好提供的评价信息。', 'Evaluative information provided by people about model or agent output, behavior, or preferences.');
 
-  // Evaluation, observability, reliability, and safety.
   term('benchmark', 'evaluation', 'Evaluation', '评估', '使用标准、数据或人工判断衡量模型或智能体表现的过程。', 'The process of measuring model or agent performance using criteria, data, or human judgment.');
   term('benchmark', 'benchmark', 'Benchmark', '基准测试', '用于在统一条件下比较系统表现的任务、数据和指标集合。', 'A set of tasks, data, and metrics used to compare systems under common conditions.');
   term('benchmark', 'evaluation-dataset', 'Evaluation Dataset', '评估数据集', '用于测量模型或智能体表现的数据样本集合。', 'A collection of data samples used to measure model or agent performance.');
@@ -560,7 +553,6 @@ function technologyTerm(
   term('aiAlignment', 'reward-hacking', 'Reward Hacking', '奖励投机', '系统以非预期方式提高奖励指标而未实现真实目标的行为。', 'Behavior that increases a reward metric in unintended ways without achieving the true goal.');
   term('aiAlignment', 'specification-gaming', 'Specification Gaming', '规范投机', '系统利用目标规范漏洞获得表面成功的行为。', 'Behavior that exploits gaps in a specification to achieve superficial success.');
 
-  // Model-learning foundations and additional agent execution concepts.
   term('ml', 'artificial-intelligence', 'Artificial Intelligence', '人工智能', '使计算系统表现出感知、推理、学习或行动能力的研究与技术领域。', 'The field of study and technology concerned with computational systems that exhibit perception, reasoning, learning, or action.', ['AI']);
   term('ml', 'machine-learning', 'Machine Learning', '机器学习', '使系统从数据中学习模式并改进任务表现的方法领域。', 'The field of methods that enable systems to learn patterns from data and improve task performance.', ['ML']);
   term('nlp', 'natural-language-processing', 'Natural Language Processing', '自然语言处理', '研究计算机处理、理解和生成人类语言的方法领域。', 'The field studying methods for computers to process, understand, and generate human language.', ['NLP']);
@@ -613,7 +605,6 @@ function technologyTerm(
   term('models', 'semantic-cache', 'Semantic Cache', '语义缓存', '依据输入语义相似性复用先前模型结果的缓存机制。', 'A cache mechanism that reuses prior model results based on semantic similarity of input.');
   term('models', 'exact-match-cache', 'Exact Match Cache', '精确匹配缓存', '仅在请求键完全匹配时复用先前模型结果的缓存机制。', 'A cache mechanism that reuses a prior model result only when request keys match exactly.');
 
-  // LangChain and middleware technologies.
   technologyTerm('deepagents', 'deep-agents-framework', 'Deep Agents', 'Deep Agents 智能体框架', '基于 LangChain、提供规划、文件系统、技能和子智能体能力的智能体框架。', 'An agent framework built on LangChain with planning, filesystem, skills, and subagent capabilities.', ['DeepAgents', 'deepagents']);
   technologyTerm('openaiModels', 'model-id', 'Model ID', '模型 ID', '在 API 或模型目录中唯一标识模型的字符串。', 'A string that uniquely identifies a model in an API or model catalog.');
   technologyTerm('openaiChat', 'assistant-role-value', 'assistant', '助手角色值', '聊天消息中表示内容由模型或助手生成的角色值。', 'The chat-message role value indicating content generated by a model or assistant.');
@@ -690,7 +681,6 @@ function technologyTerm(
   technologyTerm('contextEditingMiddleware', 'context-edit-trigger', 'ClearToolUsesEdit.trigger', '上下文编辑触发阈值', '触发工具结果清理的词元数量阈值参数。', 'The token-count threshold parameter that triggers context editing.');
   technologyTerm('contextEditingMiddleware', 'tool-results-to-keep', 'ClearToolUsesEdit.keep', '保留的工具结果数', '上下文编辑时保留最近工具结果数量的参数。', 'The parameter defining how many recent tool results remain during context editing.');
 
-  // Deep Agents filesystem, skill, and subagent technologies.
   technologyTerm('deepBackends', 'filesystem-backend-interface', 'Backend', '文件后端接口', '文件工具用来读取、写入和检索数据的可插拔存储接口。', 'The pluggable storage interface used by filesystem tools to read, write, and search data.');
   technologyTerm('deepBackends', 'backend-protocol', 'BackendProtocol', '文件后端协议', 'Deep Agents 文件后端实现读取、写入、编辑和检索操作时遵循的接口协议。', 'The interface protocol implemented by Deep Agents filesystem backends for read, write, edit, and search operations.');
   technologyTerm('deepBackends', 'composite-backend', 'Composite Backend', '组合后端', '按虚拟路径把文件操作路由到不同后端，并用默认后端处理未匹配路径。', 'A backend that routes virtual paths to different backends and sends unmatched paths to a default backend.', ['CompositeBackend', 'composite_backend']);
@@ -772,7 +762,6 @@ function technologyTerm(
   technologyTerm('deepCustomization', 'available-agents-field', 'available_agents', '可用智能体字段', '承载可用子智能体名称和说明列表的字段。', 'A field carrying the names and descriptions of available subagents.');
   technologyTerm('deepSubagents', 'subagent-type', 'Subagent Type', '子智能体类型', 'task 工具中选择要调用哪一种子智能体的参数。', 'The task-tool parameter selecting which subagent type to invoke.', ['subagent_type']);
 
-  // OpenAI-compatible HTTP and wire technologies.
   technologyTerm('openaiOverview', 'openai-api', 'OpenAI API', 'OpenAI 接口', '由版本化 HTTP 端点、请求响应模式和流式行为组成的 OpenAI 接口。', 'The OpenAI versioned HTTP interface of endpoints, request-response schemas, and streaming behavior.');
   technologyTerm('openaiOverview', 'credential', 'Credential', '凭据', '用于证明 API 调用方身份的秘密、密钥或访问令牌。', 'A secret, key, or access token used to authenticate an API caller.');
   technologyTerm('openaiOverview', 'openai-rest-api', 'OpenAI REST API', 'OpenAI REST 接口', '通过 REST 风格 HTTP 端点公开的 OpenAI API。', 'The OpenAI API exposed through REST-style HTTP endpoints.');
@@ -872,7 +861,6 @@ function technologyTerm(
   technologyTerm('openaiErrors', 'http-status-code', 'HTTP Status Code', 'HTTP 状态码', '表示 API 请求成功或失败类别的三位数字响应状态。', 'A three-digit response status identifying the success or failure class of an API request.');
   technologyTerm('openaiErrors', 'http-status-field', 'http_status', 'HTTP 状态字段', '记录 API 响应 HTTP 状态码的字段。', 'A field recording the HTTP status code of an API response.');
 
-  // Additional technical names.
   technologyTerm('deepBackends', 'file-system', 'File System', '文件系统', '用于组织、读取和写入文件及目录的存储界面。', 'A storage interface for organizing, reading, and writing files and directories.');
   technologyTerm('agentShellSystemManagement', 'data-root', 'Data Root', '数据根', '集中保存一个 Agent Shell 实例配置、状态、用户文件、用户资源和日志的顶层持久目录。', 'The top-level persistent directory containing one Agent Shell instance\'s settings, state, user files, user resources, and logs.');
   technologyTerm('agentShellSystemManagement', 'file-management-scope', 'File Management Scope', '文件管理作用域', '文件管理页面可访问的一个固定用户数据分区；所有操作都限制在当前作用域内。', 'A fixed user-data partition exposed by the file manager; every operation stays inside the current scope.', ['file scope']);

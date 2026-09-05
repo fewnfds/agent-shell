@@ -83,7 +83,7 @@ def normalize_configuration_name(
 
 ConfigurationName = Annotated[
     str,
-    Field(strict=True, min_length=1, max_length=120),
+    Field(strict=True, min_length=1),
     AfterValidator(normalize_configuration_name),
 ]
 

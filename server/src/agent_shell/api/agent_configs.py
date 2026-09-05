@@ -51,13 +51,12 @@ def _copy_name(payload: dict) -> str:
             message="The copy request must contain only a configuration name.",
         )
     name = payload["name"].strip()
-    if not name or len(name) > 120:
+    if not name:
         raise management_error(
             422,
-            code="invalid_configuration_name_length",
-            message_key="errors.configurationNameLength",
-            message="The configuration name must contain 1 to 120 characters.",
-            message_args={"minimum": 1, "maximum": 120},
+            code="configuration_name_required",
+            message_key="errors.configurationNameRequired",
+            message="The configuration name is required.",
         )
     return name
 
@@ -73,13 +72,12 @@ def _copy_component_name(payload: dict) -> str:
             message="The copy request must contain only a component name.",
         )
     component_name = payload["component_name"].strip()
-    if not component_name or len(component_name) > 120:
+    if not component_name:
         raise management_error(
             422,
-            code="invalid_configuration_name_length",
-            message_key="errors.configurationNameLength",
-            message="The component name must contain 1 to 120 characters.",
-            message_args={"minimum": 1, "maximum": 120},
+            code="configuration_name_required",
+            message_key="errors.configurationNameRequired",
+            message="The component name is required.",
         )
     return component_name
 

@@ -165,8 +165,6 @@ def test_configuration_stores_read_owned_sections_without_full_snapshot(
                     "response_stream_scheduling_id": None,
                     "durability": "async",
                     "on_disconnect": "cancel",
-                    "recursion_limit": 100,
-                    "max_concurrency": 100,
                     "enabled": False,
                     "definition": {"nodes": [], "edges": []},
                     "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},

@@ -186,8 +186,6 @@ Content-Type: application/json
 - `replace` 使用新的非空、无空格 printable ASCII value；
 - `clear` 清除 key，且不接受 `value`。
 
-不需要修改 `max_initial_messages` 时省略该字段，backend 会保留当前值。当前默认值是 `1000`，只接受正整数，没有额外产品最大值。需要修改时先 GET 当前值，并向用户说明请求规模和资源代价，再一起提交。
-
 启动 API Server：
 
 ```text

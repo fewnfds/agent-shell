@@ -27,31 +27,7 @@ from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.settings import Settings, bearer_token_is_valid
 from agent_shell.storage.api_server import ApiServerStore
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.workflows import WorkflowStore
-
-
-class _BodyTooLarge(RuntimeError):
-    pass
-
-
-async def _read_bounded_body(request: Request, limit: int) -> bytes:
-    content_length = request.headers.get("content-length")
-    if content_length is not None:
-        try:
-            declared_length = int(content_length)
-        except ValueError:
-            pass
-        else:
-            if declared_length > limit:
-                raise _BodyTooLarge
-
-    body = bytearray()
-    async for chunk in request.stream():
-        if len(chunk) > limit - len(body):
-            raise _BodyTooLarge
-        body.extend(chunk)
-    return bytes(body)
 
 
 class ApiKeyCommand(BaseModel):
@@ -79,7 +55,6 @@ class ApiServerSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_key: ApiKeyCommand = Field(default_factory=ApiKeyCommand)
-    max_initial_messages: int | None = Field(default=None, ge=1)
 
 
 class MessageInterceptionUpdate(BaseModel):
@@ -522,7 +497,6 @@ def build_api_server_router(
     settings: Settings,
     events: ApiServerEventHub,
     message_interception: MessageInterceptionState,
-    runtime_policy: RuntimePolicyStore,
     detached_tasks: DetachedTaskManager,
 ) -> APIRouter:
     router = APIRouter()
@@ -535,7 +509,6 @@ def build_api_server_router(
             "enabled": current["enabled"],
             "status": "running" if current["enabled"] else "stopped",
             "api_key": {"configured": bool(current["api_key_configured"])},
-            "max_initial_messages": current["max_initial_messages"],
             "message_interception_enabled": current[
                 "message_interception_enabled"
             ],
@@ -574,7 +547,6 @@ def build_api_server_router(
         store.update_settings(
             api_key_operation=payload.api_key.operation,
             api_key=secret,
-            max_initial_messages=payload.max_initial_messages,
         )
         await events.publish({"type": "settings_changed"})
         return public_settings(request)
@@ -647,15 +619,7 @@ def build_api_server_router(
         server_settings = store.settings()
         if not server_settings["enabled"]:
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
-        try:
-            body_limit = runtime_policy.snapshot().chat_completion_body_bytes
-            body = await _read_bounded_body(request, body_limit)
-        except _BodyTooLarge:
-            return _openai_error(
-                413,
-                "input_body_too_large",
-                f"The request body may not exceed {body_limit} bytes.",
-            )
+        body = await request.body()
         try:
             raw_json = body.decode("utf-8")
             payload = json.loads(raw_json)
@@ -675,14 +639,6 @@ def build_api_server_router(
                 param="stream",
             )
         messages = payload.get("messages")
-        max_initial_messages = int(server_settings["max_initial_messages"])
-        if isinstance(messages, list) and len(messages) > max_initial_messages:
-            return _openai_error(
-                422,
-                "input_messages_too_many",
-                f"messages cannot contain more than {max_initial_messages} items.",
-                param="messages",
-            )
         if server_settings["message_interception_enabled"]:
             intercepted = message_interception.capture(
                 request_id=getattr(request.state, "request_id", ""),

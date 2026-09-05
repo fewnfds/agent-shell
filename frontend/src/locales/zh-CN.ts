@@ -71,7 +71,6 @@ export const zhCN = {
       package: '软件包',
       version: '精确版本',
       entrypoint: 'Entrypoint（可选）',
-      packageHint: 'Agent Shell 会把精确版本的软件包安装到此连接的隔离运行环境；LangChain 只接收派生出的 stdio command。',
       arguments: '命令参数',
       addArgument: '添加参数',
       noArguments: '尚未配置命令参数。',
@@ -98,7 +97,6 @@ export const zhCN = {
         ready: '已安装',
         failed: '安装失败',
       },
-      hint: '安装会使用 Agent Shell 内部工具链下载依赖，然后启动一次 MCP Server 并发现其 Tools。',
       install: '安装并测试',
       reinstall: '重新安装并测试',
       saveFirst: '请先保存当前连接的全部修改，再执行安装。',
@@ -172,7 +170,6 @@ export const zhCN = {
     deleteFailed: '无法删除 Workflow',
     copy: {
       title: '复制 Workflow',
-      nameHint: '输入复制后 Workflow 的名称。',
       nameRequired: '请输入复制后 Workflow 的名称。',
     },
     actions: {
@@ -275,8 +272,6 @@ export const zhCN = {
       responseStreamScheduling: '响应流调度',
       durability: 'LangGraph 持久化时机',
       onDisconnect: '客户端断开策略',
-      recursionLimit: 'Super-step 上限',
-      maxConcurrency: '最大并发数',
       status: '状态',
     },
     durability: {
@@ -499,7 +494,6 @@ export const zhCN = {
     },
     polling: {
       active: '实时监控中',
-      activeHelp: '此页面可见时约每两秒读取一次已持久化的运行事实。',
       terminal: '静态结果',
       failed: '无法刷新运行监控数据',
     },
@@ -532,7 +526,6 @@ export const zhCN = {
     validationDebounceMs: '配置报警间隔',
     langgraphDev: {
       title: 'LangGraph Dev',
-      jobs: 'Run 并发',
       debugPort: 'DAP 调试端口（可选）',
       debugPortDisabled: '关闭',
       tools: '调试工具',
@@ -541,10 +534,10 @@ export const zhCN = {
     },
     runtimePolicy: {
       title: '限制策略',
-      chatBody: 'Chat 请求体',
-      contentBlocks: 'Content block 数量',
-      mediaBlock: '单个输入媒体',
-      mediaTotal: '单次输入媒体总量',
+      jobs: '单 Worker Run 并发',
+      recursionLimit: 'Graph Super-step 上限',
+      maxConcurrency: 'Graph 最大并发',
+      officialDefault: '使用官方默认值',
     },
     langsmith: {
       title: 'LangSmith',
@@ -561,9 +554,8 @@ export const zhCN = {
     langgraphInvalid: '请修正 LangGraph Dev 配置中的无效字段。',
     langsmithInvalid: '请修正 LangSmith 配置中的无效字段。',
     proxyInvalid: '请修正代理设置中的无效字段。',
-    apiServerInvalid: '初始消息条数上限必须是大于等于 1 的整数。',
     validationInvalid: '配置报警间隔必须是有效整数。',
-    runtimePolicyInvalid: '限制策略必须是有效整数并满足页面显示的最小值。',
+    runtimePolicyInvalid: '限制策略必须为正整数；Graph 最大并发可以留空。',
     langgraphSaved: 'LangGraph Dev 配置已保存。',
     langsmithSaved: 'LangSmith 配置已保存。',
     proxySaved: '代理设置已保存。',
@@ -721,89 +713,68 @@ export const zhCN = {
   capabilities: {
     'mcp-connection': {
       label: 'MCP 连接',
-      description: '实例本地的 MCP 传输、端点与凭据',
     },
     'mcp-requirement': {
       label: 'MCP 要求',
-      description: '可移植的 MCP 依赖与稳定的 Agent 可见命名空间',
     },
     'model-connection': {
       label: '模型连接',
-      description: '实例本地的上游 Provider 地址、模型与凭据',
     },
     'model-requirement': {
       label: '模型要求',
-      description: '可迁移配置中的模型能力要求',
     },
     'system-prompt': {
       label: '系统提示词',
-      description: 'Agent 使用的基础系统指令',
     },
     filesystem: {
       label: '文件系统后端',
-      description: 'CompositeBackend 或 LocalShellBackend 及其路径、权限和 Skill 独立包',
     },
     'filesystem-tools': {
       label: '文件系统工具',
-      description: '文件系统 Tool 的开关、说明与运行约束',
     },
     'todo-list': {
       label: '待办计划',
-      description: 'write_todos 计划工具及其提示文本',
     },
     'custom-tool': {
       label: '自定义工具',
-      description: '由一个配置独占的 Python 扩展导出一个 LangChain Tool',
     },
     skill: {
       label: 'Skill 独立包',
-      description: '选择 Skill 模板并制作可由 CompositeBackend 引用的独立包',
     },
     'custom-middleware': {
       label: '自定义 Middleware',
-      description: '按顺序构造的 LangChain Middleware',
     },
     'agent-event-output': {
       label: 'Agent 事件输出',
-      description: '用配置独占的 Python 扩展筛选并格式化 Agent 事件',
     },
     'exception-retry': {
       label: '异常重试',
-      description: '选择 Provider 原生重试或 LangChain 模型重试',
     },
     subagent: {
       label: '同步子代理',
-      description: '同步 task 委派能力及提示文本',
     },
     summarization: {
       label: '上下文摘要',
-      description: '独立装配 SummarizationMiddleware',
     },
     'prompt-caching': {
       label: 'Prompt 缓存',
-      description: '独立装配 Anthropic Prompt caching Middleware',
     },
     'workflow-event-output': {
       label: 'Workflow 事件输出',
-      description: '用配置独占的 Python 扩展筛选并格式化 Workflow 事件',
     },
     'response-stream-scheduling': {
       label: '响应流调度',
-      description: '配置生命周期响应的排队、闲置让位、合批与节流发送',
     },
     'command': {
       label: 'Command 节点',
-      description: '运行用户编写的 Python，更新 State、激活 Branch Edge 并分发 Agent 任务',
     },
     'main-agent': {
       label: 'Main Agent',
-      description: '选择能力并绑定 Subagent',
     },
     'subagent-profile': {
       label: 'Subagent',
-      description: '保存可复用的路由身份、能力设置与子级引用',
     },
-    workflow: { label: 'Workflow', description: '可由任意请求或其他 Run 启动的可复用 Workflow' },
+    workflow: { label: 'Workflow' },
   },
   preferences: {
     theme: '主题',
@@ -955,10 +926,8 @@ export const zhCN = {
       providerCatalogLoading: '正在加载 LangChain Provider 目录…',
       providerBundled: '软件内置',
       providerUnavailable: 'runtime 缺少对应包',
-      providerValidationNotice: '当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，不保证当前可用。',
       vertexCredentialHint: 'Google Vertex AI 使用 runtime 环境中的 Application Default Credentials，不使用 API key 输入框。',
       connectionTypeLabel: '连接类型',
-      connectionTypeHint: 'OpenAI-compatible 网关使用 Chat Completions。仅当端点支持官方 OpenAI Responses API 时选择 Responses。',
       connectionTypes: {
         compatible: 'OpenAI-compatible（Chat Completions）',
         responses: 'OpenAI Responses API',
@@ -1243,11 +1212,9 @@ export const zhCN = {
     },
     new: {
       title: '新建配置？',
-      description: '返回空白的新建配置页面？',
     },
     copy: {
       title: '复制配置',
-      nameHint: '输入新配置的名称。',
       nameRequired: '请输入新配置名称。',
       succeeded: '配置已复制。',
     },
@@ -1335,8 +1302,6 @@ export const zhCN = {
     },
     copy: {
       title: '复制配置',
-      description: '复制 {name} 并创建独立配置；只需填写新名称。',
-      nameHint: '新配置名称由服务端检查唯一性。',
       nameRequired: '请输入新配置名称。',
       submit: '复制',
       succeeded: '配置已复制。',
@@ -1399,7 +1364,6 @@ export const zhCN = {
     },
     copy: {
       title: '复制 Configuration Repository',
-      nameHint: '输入独立仓库副本的名称。',
       nameRequired: '请输入仓库副本名称。',
       succeeded: 'Configuration Repository 已复制。',
     },
@@ -1440,13 +1404,6 @@ export const zhCN = {
     },
     configuration: {
       title: '配置设置',
-    },
-    request: {
-      maxInitialMessages: '初始消息条数上限',
-      invalid: '请输入大于等于 1 的整数。',
-      save: '保存请求设置',
-      saved: '请求设置已保存。',
-      saveFailed: '保存请求设置失败',
     },
     serviceEntries: {
       title: '服务入口',
@@ -1540,7 +1497,7 @@ export const zhCN = {
     managementScopeRequired: '该操作需要 management scope。',
     invalidProxyHeaders: '当前部署不接受这些转发请求头。',
     copyRequestInvalid: '复制请求只能包含新的配置名称。',
-    configurationNameLength: '配置名称长度必须为 {minimum} 到 {maximum} 个字符。',
+    configurationNameRequired: '配置名称不能为空。',
     mainAgentNotFound: 'Main Agent 配置不存在。',
     subagentNotFound: 'Subagent 实体不存在。',
     configurationNameConflict: '已经存在同名配置。',
@@ -1648,7 +1605,6 @@ export const zhCN = {
     },
     copy: {
       title: '复制配置',
-      nameHint: '输入复制后配置的名称。',
       nameRequired: '请输入复制后配置的名称。',
     },
     delete: {

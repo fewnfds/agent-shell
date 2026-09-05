@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   ApiServerSettings,
   ApiServerSettingsUpdate,
-  RuntimePolicySettings,
-  RuntimePolicyUpdate,
   SystemSettings,
   SystemSettingsUpdate,
 } from '@/api'
@@ -24,6 +22,8 @@ const currentSettings: SystemSettings = {
   host: '127.0.0.1',
   port: 19100,
   n_jobs_per_worker: 10,
+  recursion_limit: 25,
+  max_concurrency: null,
   debug_port: null,
   allow_remote: false,
   langsmith_tracing_enabled: false,
@@ -44,7 +44,6 @@ const currentApiServerSettings: ApiServerSettings = {
   enabled: false,
   status: 'stopped',
   api_key: { configured: true },
-  max_initial_messages: 1000,
   message_interception_enabled: false,
   service_entries: {
     management_console_url: 'http://127.0.0.1:19100/admin#/',
@@ -81,36 +80,10 @@ function validationSettingsApi() {
   }
 }
 
-const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  chat_completion_body_bytes: 64 * 1024 * 1024,
-  content_blocks: 4096,
-  decoded_block_bytes: 24 * 1024 * 1024,
-  decoded_total_bytes: 48 * 1024 * 1024,
-}
-
-function runtimePolicyApi() {
-  const settings: RuntimePolicySettings = {
-    ...runtimePolicyValues,
-    defaults: { ...runtimePolicyValues },
-    minimums: Object.fromEntries(
-      Object.keys(runtimePolicyValues).map((key) => [key, 1]),
-    ) as RuntimePolicySettings['minimums'],
-    configurable: true,
-  }
-  return {
-    getRuntimePolicy: vi.fn().mockResolvedValue(settings),
-    updateRuntimePolicy: vi.fn().mockImplementation(async (payload: RuntimePolicyUpdate) => ({
-      ...settings,
-      ...payload,
-    })),
-  }
-}
-
 describe('SystemSettingsPage', () => {
   it('saves each settings owner independently without filling secret values', async () => {
     const api = {
       ...validationSettingsApi(),
-      ...runtimePolicyApi(),
       getSystemSettings: vi.fn().mockResolvedValue(currentSettings),
       getApiServer: vi.fn().mockResolvedValue(currentApiServerSettings),
       updateSystemSettings: vi.fn().mockResolvedValue({
@@ -130,7 +103,7 @@ describe('SystemSettingsPage', () => {
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
     expect(saveButtons).toHaveLength(6)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-diagram-3', 'bi-cloud-arrow-up', 'bi-hdd-network', 'bi-key', 'bi-check2-square', 'bi-sliders'])
+      .toEqual(['bi-diagram-3', 'bi-sliders', 'bi-cloud-arrow-up', 'bi-hdd-network', 'bi-key', 'bi-check2-square'])
     await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
@@ -138,6 +111,8 @@ describe('SystemSettingsPage', () => {
       host: '127.0.0.1',
       port: 19100,
       n_jobs_per_worker: 10,
+      recursion_limit: 25,
+      max_concurrency: null,
       debug_port: null,
       allow_remote: false,
       langsmith_tracing_enabled: false,
@@ -151,14 +126,12 @@ describe('SystemSettingsPage', () => {
     })
     expect(api.saveApiServer).not.toHaveBeenCalled()
     expect(api.updateValidationSettings).not.toHaveBeenCalled()
-    expect(api.updateRuntimePolicy).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('systemSettings.restartRequired')
 
     await wrapper.get('[data-testid="system-card-api-server"]').trigger('submit')
     await flushPromises()
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'keep' },
-      max_initial_messages: 1000,
     })
     expect(api.updateSystemSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).not.toContain('test-management-token')
@@ -167,7 +140,6 @@ describe('SystemSettingsPage', () => {
   it('converts edited number, switch, secret and multiline fields into the backend payload', async () => {
     const api = {
       ...validationSettingsApi(),
-      ...runtimePolicyApi(),
       getSystemSettings: vi.fn().mockResolvedValue(currentSettings),
       getApiServer: vi.fn().mockResolvedValue(currentApiServerSettings),
       updateSystemSettings: vi.fn().mockImplementation(async (payload: SystemSettingsUpdate) => ({
@@ -175,27 +147,27 @@ describe('SystemSettingsPage', () => {
         host: payload.host,
         port: payload.port,
         n_jobs_per_worker: payload.n_jobs_per_worker,
+        recursion_limit: payload.recursion_limit,
+        max_concurrency: payload.max_concurrency,
         debug_port: payload.debug_port,
         allow_remote: payload.allow_remote,
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
       })),
-      saveApiServer: vi.fn().mockImplementation(async (payload: ApiServerSettingsUpdate) => ({
-        ...currentApiServerSettings,
-        max_initial_messages: payload.max_initial_messages ?? 1000,
-      })),
+      saveApiServer: vi.fn().mockImplementation(async (_payload: ApiServerSettingsUpdate) => currentApiServerSettings),
     }
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()
 
     await wrapper.get('#system-host').setValue('0.0.0.0')
     await wrapper.get('#system-port').setValue('21000')
-    await wrapper.get('#langgraph-jobs-per-worker').setValue('14')
+    await wrapper.get('#limit-jobs-per-worker').setValue('14')
+    await wrapper.get('#limit-recursion').setValue('321')
+    await wrapper.get('#limit-concurrency').setValue('7')
     await wrapper.get('#langgraph-debug-port').setValue('21001')
     await wrapper.get('#allow-remote').setValue(true)
     await wrapper.get('#management-password').setValue('new-management-password')
     await wrapper.get('#api-server-key').setValue('new-api-key')
-    await wrapper.get('#max-initial-messages').setValue('2500')
     await wrapper.get('#langsmith-tracing').setValue(true)
     await wrapper.get('#langsmith-api-key').setValue('new-langsmith-key')
     const textareas = wrapper.findAll('textarea')
@@ -208,6 +180,8 @@ describe('SystemSettingsPage', () => {
       host: '0.0.0.0',
       port: 21000,
       n_jobs_per_worker: 10,
+      recursion_limit: 25,
+      max_concurrency: null,
       debug_port: null,
       allow_remote: true,
       langsmith_tracing_enabled: false,
@@ -222,7 +196,7 @@ describe('SystemSettingsPage', () => {
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(2, expect.objectContaining({
       host: '0.0.0.0',
       port: 21000,
-      n_jobs_per_worker: 14,
+      n_jobs_per_worker: 10,
       debug_port: 21001,
       allow_remote: true,
       langsmith_tracing_enabled: false,
@@ -230,11 +204,19 @@ describe('SystemSettingsPage', () => {
       management_token: { operation: 'preserve' },
     }))
 
-    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await wrapper.get('[data-testid="system-card-runtime-policy"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(3, expect.objectContaining({
       n_jobs_per_worker: 14,
+      recursion_limit: 321,
+      max_concurrency: 7,
       debug_port: 21001,
+    }))
+
+    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      n_jobs_per_worker: 14,
       langsmith_tracing_enabled: true,
       langsmith_api_key: { operation: 'replace', value: 'new-langsmith-key' },
       management_token: { operation: 'preserve' },
@@ -245,14 +227,12 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'replace', value: 'new-api-key' },
-      max_initial_messages: 2500,
     })
   })
 
   it('reveals only newly entered credentials and clears secrets through their owning save', async () => {
     const api = {
       ...validationSettingsApi(),
-      ...runtimePolicyApi(),
       getSystemSettings: vi.fn().mockResolvedValue(currentSettings),
       getApiServer: vi.fn().mockResolvedValue(currentApiServerSettings),
       updateSystemSettings: vi.fn().mockResolvedValue(currentSettings),
@@ -287,7 +267,6 @@ describe('SystemSettingsPage', () => {
 
     expect(api.saveApiServer).toHaveBeenCalledWith({
       api_key: { operation: 'clear' },
-      max_initial_messages: 1000,
     })
     expect(api.updateSystemSettings).not.toHaveBeenCalled()
 

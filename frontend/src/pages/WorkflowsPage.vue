@@ -40,15 +40,12 @@ function blankWorkflow(): WorkflowResource {
     response_stream_scheduling_id: null,
     durability: 'async',
     on_disconnect: 'cancel',
-    recursion_limit: 1_000_000,
-    max_concurrency: 100,
     enabled: false,
   }
 }
 
 function normalizeWorkflow(value: unknown): WorkflowResource {
   const workflow = value as Partial<Workflow>
-  const defaults = blankWorkflow()
   return {
     id: workflow.id ?? '',
     name: workflow.name ?? '',
@@ -57,8 +54,6 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     response_stream_scheduling_id: workflow.response_stream_scheduling_id ?? null,
     durability: workflow.durability ?? 'async',
     on_disconnect: workflow.on_disconnect ?? 'cancel',
-    recursion_limit: workflow.recursion_limit ?? defaults.recursion_limit,
-    max_concurrency: workflow.max_concurrency ?? defaults.max_concurrency,
     enabled: workflow.enabled ?? false,
   }
 }
@@ -70,8 +65,6 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     workflow_event_output_id: workflow.workflow_event_output_id || null,
     durability: workflow.durability,
     on_disconnect: workflow.on_disconnect,
-    recursion_limit: Number(workflow.recursion_limit),
-    max_concurrency: Number(workflow.max_concurrency),
   }
   payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
   return payload
@@ -216,7 +209,7 @@ onMounted(() => { void loadWorkspace() })
           <header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header>
           <div class="card-body">
             <FormField field-path="description" label-key="workflows.fields.description">
-              <LteTextarea v-model="form.description" :rows="4" maxlength="2000" />
+              <LteTextarea v-model="form.description" :rows="4" />
             </FormField>
             <div class="row g-3" data-testid="workflow-component-assembly-row" data-ui-control-row>
               <div class="col-lg-6">
@@ -268,16 +261,6 @@ onMounted(() => { void loadWorkspace() })
                   </select>
                 </FormField>
               </div>
-              <div class="col-lg-3">
-                <FormField field-path="recursion_limit" label-key="workflows.fields.recursionLimit">
-                  <input v-model.number="form.recursion_limit" class="form-control" min="1" step="1" type="number" required>
-                </FormField>
-              </div>
-              <div class="col-lg-3">
-                <FormField field-path="max_concurrency" label-key="workflows.fields.maxConcurrency">
-                  <input v-model.number="form.max_concurrency" class="form-control" min="1" step="1" type="number" required>
-                </FormField>
-              </div>
             </div>
           </div>
         </div>
@@ -303,7 +286,6 @@ onMounted(() => { void loadWorkspace() })
     :busy-label="t('common.copying')"
     error-test-id="workflow-copy-error"
     form-id="workflow-copy-form"
-    :hint="t('workflows.copy.nameHint')"
     :name="copyName"
     :open="copyOpen"
     :submit-label="t('common.copy')"

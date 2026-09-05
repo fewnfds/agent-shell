@@ -235,9 +235,6 @@ function setBooleanNumber(key: string, event: Event): void {
             {{ provider.package }}
           </option>
         </select>
-        <p class="small text-body-secondary mb-0 mt-3" data-testid="provider-validation-notice">
-          {{ t('editors.model.providerValidationNotice') }}
-        </p>
         <div
           v-if="loadingProviders"
           class="small text-body-secondary mt-3"
@@ -277,7 +274,6 @@ function setBooleanNumber(key: string, event: Event): void {
           <div v-if="selectedProviderId === 'openai'" class="col-md-6">
             <FormField
               field-path="provider_settings.use_responses_api"
-              :hint="t('editors.model.connectionTypeHint')"
               :label-key="'editors.model.connectionTypeLabel'"
             >
               <select

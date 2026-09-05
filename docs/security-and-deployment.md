@@ -89,13 +89,15 @@ Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint
 
 ## 系统配置与变量
 
-非敏感系统字段位于 `data/config/system.yaml`。以下为与部署直接相关的节选，文件还包含 retention、validation、log 和 runtime policy 等当前系统设置：
+非敏感系统字段位于 `data/config/system.yaml`。以下为与部署直接相关的节选，文件还包含 retention、validation 和 log 等当前系统设置：
 
 ```yaml
 settings:
   host: 127.0.0.1
   port: 19100
   n_jobs_per_worker: 10
+  recursion_limit: 25
+  max_concurrency: null
   debug_port: null
   allow_remote: false
   langsmith_tracing_enabled: false
@@ -106,7 +108,6 @@ settings:
   trusted_proxy_cidrs: []
 api_server:
   enabled: true
-  max_initial_messages: 1000
   message_interception_enabled: false
 workflow_lifecycles:
   retained_lifecycles: 20

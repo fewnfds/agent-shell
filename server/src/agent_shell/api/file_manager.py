@@ -15,14 +15,14 @@ from agent_shell.file_manager import FileManagerError, FileManagerService
 class FilePathInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: str = Field(max_length=4096)
+    path: str
 
 
 class FileRenameInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: str = Field(max_length=4096)
-    name: str = Field(max_length=255)
+    path: str
+    name: str
 
 
 class FileSelectionInput(BaseModel):
@@ -34,7 +34,7 @@ class FileSelectionInput(BaseModel):
 class TextFileSaveInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: str = Field(max_length=4096)
+    path: str
     content: str
     revision: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
 
@@ -54,7 +54,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
 
     @router.get("/file-manager")
     async def list_directory(
-        path: str = Query(default="data", max_length=4096),
+        path: str = Query(default="data"),
     ) -> dict:
         try:
             return files.list_directory(path)
@@ -78,7 +78,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
     @router.put("/file-manager/upload")
     async def upload_file(
         request: Request,
-        path: str = Query(max_length=4096),
+        path: str = Query(),
         overwrite: bool = Query(default=False),
     ) -> dict:
         try:
@@ -92,7 +92,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
 
     @router.get("/file-manager/download")
     async def download_file(
-        path: str = Query(max_length=4096),
+        path: str = Query(),
     ) -> FileResponse:
         try:
             download = files.prepare_download(path)
@@ -133,7 +133,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
 
     @router.get("/file-manager/text")
     async def read_text_file(
-        path: str = Query(max_length=4096),
+        path: str = Query(),
     ) -> dict:
         try:
             return files.read_text(path)
@@ -160,7 +160,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
 
     @router.delete("/file-manager")
     async def delete_file(
-        path: str = Query(max_length=4096),
+        path: str = Query(),
     ) -> dict:
         try:
             return files.delete(path)

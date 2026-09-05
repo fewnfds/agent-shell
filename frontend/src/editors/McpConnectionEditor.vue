@@ -150,7 +150,6 @@ function updateValueSource(item: McpConfiguredValueDraft, event: Event): void {
               </datalist>
             </div>
           </div>
-          <p class="text-body-secondary">{{ t('mcp.connections.packageHint') }}</p>
           <div class="mb-3">
             <div class="d-flex align-items-center gap-2 mb-2">
               <span class="form-label mb-0">{{ t('mcp.connections.arguments') }}</span>
@@ -185,7 +184,6 @@ function updateValueSource(item: McpConfiguredValueDraft, event: Event): void {
             {{ t('mcp.installation.entrypoints', { names: installation.entrypoints.join(', ') }) }}
           </span>
         </LteAlert>
-        <p class="text-body-secondary">{{ t('mcp.installation.hint') }}</p>
         <LteButton class="action-button" :disabled="!canInstall || installing" type="button" @click="emit('install')">
           <span v-if="installing" class="spinner-border spinner-border-sm" aria-hidden="true" />
           <i v-else :class="installation?.status === 'ready' ? 'bi bi-arrow-repeat' : 'bi bi-download'" aria-hidden="true" />

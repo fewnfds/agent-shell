@@ -4,7 +4,6 @@ import base64
 import binascii
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
 import hashlib
 import json
 import re
@@ -12,11 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicy
 
-
-MAX_URL_CHARS = 8192
-MAX_FILE_ID_CHARS = 2048
 
 _MIME_PATTERN = re.compile(
     r"^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
@@ -36,59 +31,22 @@ _AUDIO_FORMAT_MIME = {
 _MEDIA_TYPES = frozenset({"image", "audio", "video", "file"})
 
 
-@dataclass(slots=True)
-class _ValidationBudget:
-    enforce_limits: bool
-    policy: RuntimePolicy
-    blocks: int = 0
-    decoded_bytes: int = 0
-
-    def add_block(self, path: str) -> None:
-        self.blocks += 1
-        if self.enforce_limits and self.blocks > self.policy.content_blocks:
-            _invalid(
-                "input_content_parts_too_many",
-                f"messages content may not exceed {self.policy.content_blocks} blocks.",
-                path,
-            )
-
-    def decode_base64(self, value: object, path: str) -> str:
-        if not isinstance(value, str) or not value:
-            _invalid(
-                "input_content_source_invalid",
-                f"{path} must be a non-empty base64 string.",
-                path,
-            )
-        if self.enforce_limits:
-            maximum_encoded = ((self.policy.decoded_block_bytes + 2) // 3) * 4
-            if len(value) > maximum_encoded:
-                _invalid(
-                    "input_content_block_too_large",
-                    f"{path} exceeds the decoded media limit.",
-                    path,
-                )
-        try:
-            decoded = base64.b64decode(value, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise AgentRuntimeError(
-                "input_content_base64_invalid",
-                f"{path} must contain canonical base64 data.",
-                status_code=422,
-            ) from exc
-        if self.enforce_limits and len(decoded) > self.policy.decoded_block_bytes:
-            _invalid(
-                "input_content_block_too_large",
-                f"{path} may not decode to more than {self.policy.decoded_block_bytes} bytes.",
-                path,
-            )
-        self.decoded_bytes += len(decoded)
-        if self.enforce_limits and self.decoded_bytes > self.policy.decoded_total_bytes:
-            _invalid(
-                "input_content_total_too_large",
-                "messages contain too much decoded base64 media.",
-                path,
-            )
-        return value
+def _decode_base64(value: object, path: str) -> str:
+    if not isinstance(value, str) or not value:
+        _invalid(
+            "input_content_source_invalid",
+            f"{path} must be a non-empty base64 string.",
+            path,
+        )
+    try:
+        base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise AgentRuntimeError(
+            "input_content_base64_invalid",
+            f"{path} must contain canonical base64 data.",
+            status_code=422,
+        ) from exc
+    return value
 
 
 def _invalid(code: str, message: str, _path: str) -> None:
@@ -127,10 +85,10 @@ def _mime(value: object, block_type: str, path: str) -> str:
 
 
 def _url(value: object, path: str) -> str:
-    if not isinstance(value, str) or not value or len(value) > MAX_URL_CHARS:
+    if not isinstance(value, str) or not value:
         _invalid(
             "input_content_url_invalid",
-            f"{path} must be a non-empty URL no longer than {MAX_URL_CHARS} characters.",
+            f"{path} must be a non-empty URL.",
             path,
         )
     parsed = urlsplit(value)
@@ -150,16 +108,16 @@ def _url(value: object, path: str) -> str:
 
 
 def _file_id(value: object, path: str) -> str:
-    if not isinstance(value, str) or not value or len(value) > MAX_FILE_ID_CHARS:
+    if not isinstance(value, str) or not value:
         _invalid(
             "input_content_file_id_invalid",
-            f"{path} must be a non-empty Provider file ID no longer than {MAX_FILE_ID_CHARS} characters.",
+            f"{path} must be a non-empty Provider file ID.",
             path,
         )
     return value
 
 
-def _data_uri(value: object, block_type: str, path: str, budget: _ValidationBudget) -> tuple[str, str]:
+def _data_uri(value: object, block_type: str, path: str) -> tuple[str, str]:
     if not isinstance(value, str) or not value.startswith("data:"):
         _invalid(
             "input_content_data_uri_invalid",
@@ -174,7 +132,7 @@ def _data_uri(value: object, block_type: str, path: str, budget: _ValidationBudg
             path,
         )
     mime_type = _mime(header[5:-7], block_type, f"{path}.mime_type")
-    return budget.decode_base64(encoded, path), mime_type
+    return _decode_base64(encoded, path), mime_type
 
 
 def _optional_metadata(
@@ -192,10 +150,10 @@ def _optional_metadata(
         result["extras"] = deepcopy(_plain_mapping(block["extras"], f"{path}.extras"))
     if allow_filename and "filename" in block:
         filename = block["filename"]
-        if not isinstance(filename, str) or not filename or len(filename) > 255:
+        if not isinstance(filename, str) or not filename:
             _invalid(
                 "input_content_filename_invalid",
-                f"{path}.filename must be a non-empty string no longer than 255 characters.",
+                f"{path}.filename must be a non-empty string.",
                 path,
             )
         result["filename"] = filename
@@ -204,7 +162,6 @@ def _optional_metadata(
 def _standard_media_block(
     block: Mapping[str, Any],
     path: str,
-    budget: _ValidationBudget,
 ) -> dict[str, Any]:
     block_type = str(block["type"])
     allowed = {"type", "url", "base64", "file_id", "mime_type", "id", "extras"}
@@ -234,9 +191,7 @@ def _standard_media_block(
         result["mime_type"] = _mime(
             block["mime_type"], block_type, f"{path}.mime_type"
         )
-        result["base64"] = budget.decode_base64(
-            block["base64"], f"{path}.base64"
-        )
+        result["base64"] = _decode_base64(block["base64"], f"{path}.base64")
     if "mime_type" in block and source != "base64":
         result["mime_type"] = _mime(
             block["mime_type"], block_type, f"{path}.mime_type"
@@ -248,7 +203,7 @@ def _standard_media_block(
 
 
 def _openai_image_block(
-    block: Mapping[str, Any], path: str, budget: _ValidationBudget
+    block: Mapping[str, Any], path: str
 ) -> dict[str, Any]:
     _only_keys(block, {"type", "image_url"}, path)
     image = _plain_mapping(block.get("image_url"), f"{path}.image_url")
@@ -256,7 +211,7 @@ def _openai_image_block(
     value = image.get("url")
     result: dict[str, Any] = {"type": "image"}
     if isinstance(value, str) and value.startswith("data:"):
-        encoded, mime_type = _data_uri(value, "image", f"{path}.image_url.url", budget)
+        encoded, mime_type = _data_uri(value, "image", f"{path}.image_url.url")
         result.update({"base64": encoded, "mime_type": mime_type})
     else:
         result["url"] = _url(value, f"{path}.image_url.url")
@@ -273,7 +228,7 @@ def _openai_image_block(
 
 
 def _openai_audio_block(
-    block: Mapping[str, Any], path: str, budget: _ValidationBudget
+    block: Mapping[str, Any], path: str
 ) -> dict[str, Any]:
     _only_keys(block, {"type", "input_audio"}, path)
     audio = _plain_mapping(block.get("input_audio"), f"{path}.input_audio")
@@ -287,13 +242,13 @@ def _openai_audio_block(
         )
     return {
         "type": "audio",
-        "base64": budget.decode_base64(audio.get("data"), f"{path}.input_audio.data"),
+        "base64": _decode_base64(audio.get("data"), f"{path}.input_audio.data"),
         "mime_type": _AUDIO_FORMAT_MIME[audio_format.lower()],
     }
 
 
 def _openai_file_block(
-    block: Mapping[str, Any], path: str, budget: _ValidationBudget
+    block: Mapping[str, Any], path: str
 ) -> dict[str, Any]:
     _only_keys(block, {"type", "file"}, path)
     file = _plain_mapping(block.get("file"), f"{path}.file")
@@ -310,24 +265,22 @@ def _openai_file_block(
         result["file_id"] = _file_id(file["file_id"], f"{path}.file.file_id")
     else:
         encoded, mime_type = _data_uri(
-            file["file_data"], "file", f"{path}.file.file_data", budget
+            file["file_data"], "file", f"{path}.file.file_data"
         )
         result.update({"base64": encoded, "mime_type": mime_type})
     if "filename" in file:
         filename = file["filename"]
-        if not isinstance(filename, str) or not filename or len(filename) > 255:
+        if not isinstance(filename, str) or not filename:
             _invalid(
                 "input_content_filename_invalid",
-                f"{path}.file.filename must be a non-empty string no longer than 255 characters.",
+                f"{path}.file.filename must be a non-empty string.",
                 path,
             )
         result["filename"] = filename
     return result
 
 
-def _content_part(
-    value: object, path: str, budget: _ValidationBudget
-) -> dict[str, Any]:
+def _content_part(value: object, path: str) -> dict[str, Any]:
     block = _plain_mapping(value, path)
     block_type = block.get("type")
     if block_type == "text":
@@ -336,13 +289,13 @@ def _content_part(
             _invalid("input_content_part_invalid", f"{path}.text must be a string.", path)
         return {"type": "text", "text": block["text"]}
     if block_type == "image_url":
-        return _openai_image_block(block, path, budget)
+        return _openai_image_block(block, path)
     if block_type == "input_audio":
-        return _openai_audio_block(block, path, budget)
+        return _openai_audio_block(block, path)
     if block_type == "file" and "file" in block:
-        return _openai_file_block(block, path, budget)
+        return _openai_file_block(block, path)
     if block_type in _MEDIA_TYPES:
-        return _standard_media_block(block, path, budget)
+        return _standard_media_block(block, path)
     _invalid(
         "input_content_part_unsupported",
         f"{path}.type is not a supported input content block.",
@@ -354,8 +307,6 @@ def _validate_messages(
     value: object,
     *,
     require_non_empty: bool,
-    enforce_limits: bool,
-    policy: RuntimePolicy,
 ) -> list[dict[str, Any]]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or (
         require_non_empty and not value
@@ -365,7 +316,6 @@ def _validate_messages(
             "messages must be a non-empty array.",
             status_code=422,
         )
-    budget = _ValidationBudget(enforce_limits=enforce_limits, policy=policy)
     messages: list[dict[str, Any]] = []
     for index, raw_item in enumerate(value):
         if not isinstance(raw_item, Mapping):
@@ -389,11 +339,9 @@ def _validate_messages(
         elif isinstance(content, Sequence) and not isinstance(content, (str, bytes)):
             normalized_content = []
             for block_index, part in enumerate(content):
-                budget.add_block(f"messages[{index}].content[{block_index}]")
                 normalized = _content_part(
                     part,
                     f"messages[{index}].content[{block_index}]",
-                    budget,
                 )
                 if role == "system" and normalized["type"] != "text":
                     _invalid(
@@ -422,15 +370,10 @@ def _validate_messages(
     return messages
 
 
-def validate_client_messages(
-    value: object,
-    policy: RuntimePolicy = RUNTIME_POLICY_DEFAULTS,
-) -> list[dict[str, Any]]:
+def validate_client_messages(value: object) -> list[dict[str, Any]]:
     return _validate_messages(
         value,
         require_non_empty=True,
-        enforce_limits=True,
-        policy=policy,
     )
 
 
@@ -438,8 +381,6 @@ def validate_prepared_messages(value: object) -> list[dict[str, Any]]:
     return _validate_messages(
         value,
         require_non_empty=False,
-        enforce_limits=False,
-        policy=RUNTIME_POLICY_DEFAULTS,
     )
 
 

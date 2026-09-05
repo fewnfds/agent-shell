@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   ApiServerSettings,
   ConfigurationValidationSettings,
-  RuntimePolicySettings,
-  RuntimePolicyUpdate,
   SystemSettings,
 } from '@/api'
 import { i18n } from '@/locales'
@@ -15,6 +13,10 @@ import SystemSettingsPage from './SystemSettingsPage.vue'
 const systemSettings: SystemSettings = {
   host: '127.0.0.1',
   port: 19100,
+  n_jobs_per_worker: 10,
+  recursion_limit: 25,
+  max_concurrency: null,
+  debug_port: null,
   allow_remote: false,
   langsmith_tracing_enabled: false,
   langsmith_endpoint: 'https://api.smith.langchain.com',
@@ -34,7 +36,6 @@ const apiServerSettings: ApiServerSettings = {
   enabled: true,
   status: 'running',
   api_key: { configured: true },
-  max_initial_messages: 1000,
   message_interception_enabled: false,
   service_entries: {
     management_console_url: 'http://127.0.0.1:19100/admin#/',
@@ -58,21 +59,6 @@ const apiServerSettings: ApiServerSettings = {
   runtime: 'model_streaming',
 }
 
-const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  chat_completion_body_bytes: 64 * 1024 * 1024,
-  content_blocks: 4096,
-  decoded_block_bytes: 24 * 1024 * 1024,
-  decoded_total_bytes: 48 * 1024 * 1024,
-}
-const runtimePolicySettings: RuntimePolicySettings = {
-  ...runtimePolicyValues,
-  defaults: { ...runtimePolicyValues },
-  minimums: Object.fromEntries(
-    Object.keys(runtimePolicyValues).map((key) => [key, 1]),
-  ) as RuntimePolicySettings['minimums'],
-  configurable: true,
-}
-
 function validationSettings(debounceMs: number): ConfigurationValidationSettings {
   return {
     debounce_ms: debounceMs,
@@ -90,8 +76,6 @@ describe('SystemSettingsPage', () => {
       saveApiServer: vi.fn(async () => apiServerSettings),
       getValidationSettings: vi.fn(async () => validationSettings(1000)),
       updateValidationSettings: vi.fn(async (value: number) => validationSettings(value)),
-      getRuntimePolicy: vi.fn(async () => runtimePolicySettings),
-      updateRuntimePolicy: vi.fn(async (payload: RuntimePolicyUpdate) => ({ ...runtimePolicySettings, ...payload })),
     }
     const wrapper = mount(SystemSettingsPage, {
       props: { api },
@@ -110,18 +94,19 @@ describe('SystemSettingsPage', () => {
       .toBe(systemSettings.active_studio_url)
 
     await interval.setValue('500')
-    await wrapper.get('#runtime-policy-chat_completion_body_bytes').setValue('32')
+    await wrapper.get('#limit-recursion').setValue('32')
     await wrapper.get('[data-testid="system-card-validation"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateValidationSettings).toHaveBeenCalledWith(500)
-    expect(api.updateRuntimePolicy).not.toHaveBeenCalled()
+    expect(api.updateSystemSettings).not.toHaveBeenCalled()
 
     await wrapper.get('[data-testid="system-card-runtime-policy"]').trigger('submit')
     await flushPromises()
-    expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
-      chat_completion_body_bytes: 32 * 1024 * 1024,
-      content_blocks: 4096,
+    expect(api.updateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
+      n_jobs_per_worker: 10,
+      recursion_limit: 32,
+      max_concurrency: null,
     }))
     wrapper.unmount()
   })
@@ -135,8 +120,6 @@ describe('SystemSettingsPage', () => {
       saveApiServer: vi.fn(async () => apiServerSettings),
       getValidationSettings: vi.fn(async () => validationSettings(1000)),
       updateValidationSettings: vi.fn(async (value: number) => validationSettings(value)),
-      getRuntimePolicy: vi.fn(async () => runtimePolicySettings),
-      updateRuntimePolicy: vi.fn(async (payload: RuntimePolicyUpdate) => ({ ...runtimePolicySettings, ...payload })),
     }
     const wrapper = mount(SystemSettingsPage, {
       props: { api },
@@ -147,6 +130,10 @@ describe('SystemSettingsPage', () => {
     for (const wireField of [
       'host',
       'port',
+      'n_jobs_per_worker',
+      'recursion_limit',
+      'max_concurrency',
+      'debug_port',
       'allow_remote',
       'langsmith_tracing_enabled',
       'langsmith_endpoint',
@@ -155,9 +142,7 @@ describe('SystemSettingsPage', () => {
       'langsmith_api_key',
       'management_token',
       'api_key',
-      'max_initial_messages',
       'debounce_ms',
-      'chat_completion_body_bytes',
       'cors_origins',
       'trusted_proxy_cidrs',
     ]) {

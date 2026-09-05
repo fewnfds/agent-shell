@@ -227,7 +227,6 @@ class SQLiteDatabase(SQLiteFile):
                 connection.row_factory = sqlite3.Row
                 connection.execute("PRAGMA foreign_keys = ON")
                 connection.execute("PRAGMA secure_delete = ON")
-                connection.execute("PRAGMA busy_timeout = 5000")
                 with connection:
                     yield connection
             finally:

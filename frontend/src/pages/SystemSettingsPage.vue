@@ -5,7 +5,7 @@ import {
   LteInput,
   LteTextarea,
 } from '@adminlte/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -13,8 +13,6 @@ import {
   type ApiServerSettings,
   type ApiServerSettingsUpdate,
   type ConfigurationValidationSettings,
-  type RuntimePolicySettings,
-  type RuntimePolicyUpdate,
   type SystemSettings,
   type SystemSettingsUpdate,
 } from '@/api'
@@ -31,8 +29,6 @@ interface SystemSettingsApi {
   saveApiServer(payload: ApiServerSettingsUpdate): Promise<ApiServerSettings>
   getValidationSettings(): Promise<ConfigurationValidationSettings>
   updateValidationSettings(debounceMs: number): Promise<ConfigurationValidationSettings>
-  getRuntimePolicy(): Promise<RuntimePolicySettings>
-  updateRuntimePolicy(payload: RuntimePolicyUpdate): Promise<RuntimePolicySettings>
 }
 
 const props = defineProps<{ api?: SystemSettingsApi }>()
@@ -44,24 +40,25 @@ const validationSettingsController = useConfigurationValidationSettings()
 
 const settings = ref<SystemSettings | null>(null)
 const apiServerSettings = ref<ApiServerSettings | null>(null)
-const runtimePolicy = ref<RuntimePolicySettings | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const langgraphSaving = ref(false)
+const limitsSaving = ref(false)
 const langsmithSaving = ref(false)
 const proxySaving = ref(false)
 const apiServerSaving = ref(false)
 const validationSaving = ref(false)
-const runtimePolicySaving = ref(false)
 const langgraphError = ref('')
+const limitsError = ref('')
 const langsmithError = ref('')
 const proxyError = ref('')
 const apiServerError = ref('')
 const validationError = ref('')
-const runtimePolicyError = ref('')
 const host = ref('127.0.0.1')
 const port = ref(19100)
 const nJobsPerWorker = ref(10)
+const recursionLimit = ref(25)
+const maxConcurrency = ref<number | ''>('')
 const debugPort = ref<number | ''>('')
 const allowRemote = ref(false)
 const langsmithTracingEnabled = ref(false)
@@ -76,31 +73,10 @@ const showManagementPassword = ref(false)
 const apiKey = ref('')
 const apiKeyDirty = ref(false)
 const showApiKey = ref(false)
-const maxInitialMessages = ref(1000)
 const validationDebounceMs = ref(1000)
 const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
-const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
-  chat_completion_body_bytes: 64 * 1024 * 1024,
-  content_blocks: 4096,
-  decoded_block_bytes: 24 * 1024 * 1024,
-  decoded_total_bytes: 48 * 1024 * 1024,
-})
-type RuntimePolicyNumberKey = keyof RuntimePolicyUpdate
-const runtimePolicyFields: Array<{
-  key: RuntimePolicyNumberKey
-  labelKey: string
-  unit: string
-  step: number
-  mib?: boolean
-}> = [
-  { key: 'chat_completion_body_bytes', labelKey: 'systemSettings.runtimePolicy.chatBody', unit: 'MiB', step: 1, mib: true },
-  { key: 'content_blocks', labelKey: 'systemSettings.runtimePolicy.contentBlocks', unit: '', step: 1 },
-  { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'MiB', step: 1, mib: true },
-  { key: 'decoded_total_bytes', labelKey: 'systemSettings.runtimePolicy.mediaTotal', unit: 'MiB', step: 1, mib: true },
-]
-const MIB_BYTES = 1024 * 1024
 
 const apiKeyPlaceholder = computed(() => apiServerSettings.value?.api_key.configured
   ? t('common.configuredSecretPlaceholder')
@@ -115,16 +91,24 @@ function fieldLabel(messageKey: string, wireField: string): string {
 
 const langgraphSettingsValid = computed(() => {
   const normalizedPort = Number(port.value)
-  const normalizedJobs = Number(nJobsPerWorker.value)
   const normalizedDebugPort = debugPort.value === '' ? null : Number(debugPort.value)
   const savedPort = settings.value?.port ?? normalizedPort
+  return normalizedDebugPort === null
+    || (Number.isInteger(normalizedDebugPort)
+      && normalizedDebugPort >= 1
+      && normalizedDebugPort <= 65_535
+      && normalizedDebugPort !== savedPort)
+})
+const limitsSettingsValid = computed(() => {
+  const normalizedJobs = Number(nJobsPerWorker.value)
+  const normalizedRecursion = Number(recursionLimit.value)
+  const normalizedConcurrency = maxConcurrency.value === '' ? null : Number(maxConcurrency.value)
   return Number.isInteger(normalizedJobs)
     && normalizedJobs >= 1
-    && (normalizedDebugPort === null
-      || (Number.isInteger(normalizedDebugPort)
-        && normalizedDebugPort >= 1
-        && normalizedDebugPort <= 65_535
-        && normalizedDebugPort !== savedPort))
+    && Number.isInteger(normalizedRecursion)
+    && normalizedRecursion >= 1
+    && (normalizedConcurrency === null
+      || (Number.isInteger(normalizedConcurrency) && normalizedConcurrency >= 1))
 })
 const langsmithSettingsValid = computed(() => {
   const endpointValid = (() => {
@@ -154,25 +138,16 @@ const proxySettingsValid = computed(() => {
     && normalizedPort <= 65_535
     && (savedDebugPort === null || savedDebugPort !== normalizedPort)
 })
-const apiServerSettingsValid = computed(() => {
-  const value = Number(maxInitialMessages.value)
-  return Number.isInteger(value) && value >= 1
-})
 const validationSettingsValid = computed(() => {
   const value = Number(validationDebounceMs.value)
   return Number.isInteger(value) && value >= validationDebounceMin.value
 })
-const runtimePolicyValid = computed(() => runtimePolicy.value !== null
-  && runtimePolicyFields.every(({ key }) => {
-    const value = Number(runtimePolicyDraft[key])
-    return Number.isInteger(value) && value >= runtimePolicy.value!.minimums[key]
-  }))
 const anySaving = computed(() => langgraphSaving.value
+  || limitsSaving.value
   || langsmithSaving.value
   || proxySaving.value
   || apiServerSaving.value
-  || validationSaving.value
-  || runtimePolicySaving.value)
+  || validationSaving.value)
 
 function lines(value: string): string[] {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
@@ -183,6 +158,8 @@ function applySystemSettings(value: SystemSettings): void {
   host.value = value.host
   port.value = value.port
   nJobsPerWorker.value = value.n_jobs_per_worker
+  recursionLimit.value = value.recursion_limit
+  maxConcurrency.value = value.max_concurrency ?? ''
   debugPort.value = value.debug_port ?? ''
   allowRemote.value = value.allow_remote
   langsmithTracingEnabled.value = value.langsmith_tracing_enabled
@@ -203,7 +180,6 @@ function applyApiServerSettings(value: ApiServerSettings): void {
   apiKey.value = ''
   apiKeyDirty.value = false
   showApiKey.value = false
-  maxInitialMessages.value = value.max_initial_messages
 }
 
 function applyValidationSettings(value: ConfigurationValidationSettings): void {
@@ -212,24 +188,7 @@ function applyValidationSettings(value: ConfigurationValidationSettings): void {
   validationSettingsController.apply(value)
 }
 
-function applyRuntimePolicy(value: RuntimePolicySettings): void {
-  runtimePolicy.value = value
-  for (const { key } of runtimePolicyFields) {
-    runtimePolicyDraft[key] = value[key]
-  }
-}
-
-function runtimePolicyDisplayValue(field: (typeof runtimePolicyFields)[number]): number {
-  const value = Number(runtimePolicyDraft[field.key])
-  return field.mib ? value / MIB_BYTES : value
-}
-
-function updateRuntimePolicyValue(field: (typeof runtimePolicyFields)[number], event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value)
-  runtimePolicyDraft[field.key] = field.mib ? Math.round(value * MIB_BYTES) : value
-}
-
-type SystemSettingsSection = 'langgraph' | 'langsmith' | 'proxy'
+type SystemSettingsSection = 'langgraph' | 'limits' | 'langsmith' | 'proxy'
 
 function applySystemSettingsSection(
   value: SystemSettings,
@@ -237,8 +196,13 @@ function applySystemSettingsSection(
 ): void {
   settings.value = value
   if (section === 'langgraph') {
-    nJobsPerWorker.value = value.n_jobs_per_worker
     debugPort.value = value.debug_port ?? ''
+    return
+  }
+  if (section === 'limits') {
+    nJobsPerWorker.value = value.n_jobs_per_worker
+    recursionLimit.value = value.recursion_limit
+    maxConcurrency.value = value.max_concurrency ?? ''
     return
   }
   if (section === 'langsmith') {
@@ -280,7 +244,11 @@ function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUp
   return {
     host: section === 'proxy' ? host.value.trim() : saved.host,
     port: section === 'proxy' ? Number(port.value) : saved.port,
-    n_jobs_per_worker: section === 'langgraph' ? Number(nJobsPerWorker.value) : saved.n_jobs_per_worker,
+    n_jobs_per_worker: section === 'limits' ? Number(nJobsPerWorker.value) : saved.n_jobs_per_worker,
+    recursion_limit: section === 'limits' ? Number(recursionLimit.value) : saved.recursion_limit,
+    max_concurrency: section === 'limits'
+      ? (maxConcurrency.value === '' ? null : Number(maxConcurrency.value))
+      : saved.max_concurrency,
     debug_port: section === 'langgraph'
       ? (debugPort.value === '' ? null : Number(debugPort.value))
       : saved.debug_port,
@@ -303,29 +271,39 @@ function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUp
 async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
   const valid = section === 'langgraph'
     ? langgraphSettingsValid.value
-    : section === 'langsmith'
-      ? langsmithSettingsValid.value
-      : proxySettingsValid.value
+    : section === 'limits'
+      ? limitsSettingsValid.value
+      : section === 'langsmith'
+        ? langsmithSettingsValid.value
+        : proxySettingsValid.value
   const saving = section === 'langgraph'
     ? langgraphSaving
-    : section === 'langsmith'
-      ? langsmithSaving
-      : proxySaving
+    : section === 'limits'
+      ? limitsSaving
+      : section === 'langsmith'
+        ? langsmithSaving
+        : proxySaving
   const error = section === 'langgraph'
     ? langgraphError
-    : section === 'langsmith'
-      ? langsmithError
-      : proxyError
+    : section === 'limits'
+      ? limitsError
+      : section === 'langsmith'
+        ? langsmithError
+        : proxyError
   const invalidMessage = section === 'langgraph'
     ? 'systemSettings.langgraphInvalid'
-    : section === 'langsmith'
-      ? 'systemSettings.langsmithInvalid'
-      : 'systemSettings.proxyInvalid'
+    : section === 'limits'
+      ? 'systemSettings.runtimePolicyInvalid'
+      : section === 'langsmith'
+        ? 'systemSettings.langsmithInvalid'
+        : 'systemSettings.proxyInvalid'
   const savedMessage = section === 'langgraph'
     ? 'systemSettings.langgraphSaved'
-    : section === 'langsmith'
-      ? 'systemSettings.langsmithSaved'
-      : 'systemSettings.proxySaved'
+    : section === 'limits'
+      ? 'systemSettings.runtimePolicySaved'
+      : section === 'langsmith'
+        ? 'systemSettings.langsmithSaved'
+        : 'systemSettings.proxySaved'
   if (!valid) {
     error.value = t(invalidMessage)
     return
@@ -351,17 +329,14 @@ async function load(): Promise<void> {
       loadedSystemSettings,
       loadedApiServerSettings,
       loadedValidationSettings,
-      loadedRuntimePolicy,
     ] = await Promise.all([
       api.getSystemSettings(),
       api.getApiServer(),
       api.getValidationSettings(),
-      api.getRuntimePolicy(),
     ])
     applySystemSettings(loadedSystemSettings)
     applyApiServerSettings(loadedApiServerSettings)
     applyValidationSettings(loadedValidationSettings)
-    applyRuntimePolicy(loadedRuntimePolicy)
   } catch (error) {
     loadError.value = managementError.describe(error).display
   } finally {
@@ -370,10 +345,6 @@ async function load(): Promise<void> {
 }
 
 async function saveApiServerSettings(): Promise<void> {
-  if (!apiServerSettingsValid.value) {
-    apiServerError.value = t('systemSettings.apiServerInvalid')
-    return
-  }
   apiServerSaving.value = true
   apiServerError.value = ''
   try {
@@ -384,7 +355,6 @@ async function saveApiServerSettings(): Promise<void> {
         : { operation: 'keep' }
     const saved = await api.saveApiServer({
       api_key: apiKeyUpdate,
-      max_initial_messages: Number(maxInitialMessages.value),
     })
     applyApiServerSettings(saved)
     notify({ tone: 'success', title: t('systemSettings.apiServerSaved') })
@@ -410,24 +380,6 @@ async function saveValidationSettings(): Promise<void> {
     validationError.value = managementError.describe(error).display
   } finally {
     validationSaving.value = false
-  }
-}
-
-async function saveRuntimePolicy(): Promise<void> {
-  if (!runtimePolicyValid.value) {
-    runtimePolicyError.value = t('systemSettings.runtimePolicyInvalid')
-    return
-  }
-  runtimePolicySaving.value = true
-  runtimePolicyError.value = ''
-  try {
-    const saved = await api.updateRuntimePolicy({ ...runtimePolicyDraft })
-    applyRuntimePolicy(saved)
-    notify({ tone: 'success', title: t('systemSettings.runtimePolicySaved') })
-  } catch (error) {
-    runtimePolicyError.value = managementError.describe(error).display
-  } finally {
-    runtimePolicySaving.value = false
   }
 }
 
@@ -463,7 +415,7 @@ onMounted(() => { void load() })
     </div>
 
     <div
-      v-else-if="settings && apiServerSettings && runtimePolicy"
+      v-else-if="settings && apiServerSettings"
       data-testid="system-settings-form"
       class="row g-3"
     >
@@ -490,27 +442,7 @@ onMounted(() => { void load() })
               {{ langgraphError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-lg-6 col-md-6">
-                <FormField
-                  control-id="langgraph-jobs-per-worker"
-                  field-path="n_jobs_per_worker"
-                  label-key="systemSettings.langgraphDev.jobs"
-                >
-                  <template #default="{ describedBy }">
-                    <input
-                      id="langgraph-jobs-per-worker"
-                      v-model.number="nJobsPerWorker"
-                      :aria-describedby="describedBy"
-                      class="form-control"
-                      min="1"
-                      required
-                      step="1"
-                      type="number"
-                    >
-                  </template>
-                </FormField>
-              </div>
-              <div class="col-lg-6 col-md-6">
+              <div class="col-lg-3 col-md-6">
                 <FormField
                   control-id="langgraph-debug-port"
                   field-path="debug_port"
@@ -560,6 +492,55 @@ onMounted(() => { void load() })
       </div>
 
       <div class="col-12">
+        <form class="card" data-testid="system-card-runtime-policy" @submit.prevent="saveSystemCard('limits')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-sliders me-2" aria-hidden="true" />
+              {{ t('systemSettings.runtimePolicy.title') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-runtime-policy"
+              :disabled="limitsSaving || !limitsSettingsValid"
+              type="submit"
+            >
+              <span v-if="limitsSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="limitsSaving">
+            <LteAlert v-if="limitsError" theme="danger" :title="t('systemSettings.runtimePolicySaveFailed')">
+              {{ limitsError }}
+            </LteAlert>
+            <div class="row g-3">
+              <div class="col-lg-3 col-md-6">
+                <FormField control-id="limit-jobs-per-worker" field-path="n_jobs_per_worker" label-key="systemSettings.runtimePolicy.jobs">
+                  <template #default="{ describedBy }">
+                    <input id="limit-jobs-per-worker" v-model.number="nJobsPerWorker" :aria-describedby="describedBy" class="form-control" min="1" required step="1" type="number">
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <FormField control-id="limit-recursion" field-path="recursion_limit" label-key="systemSettings.runtimePolicy.recursionLimit">
+                  <template #default="{ describedBy }">
+                    <input id="limit-recursion" v-model.number="recursionLimit" :aria-describedby="describedBy" class="form-control" min="1" required step="1" type="number">
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <FormField control-id="limit-concurrency" field-path="max_concurrency" label-key="systemSettings.runtimePolicy.maxConcurrency">
+                  <template #default="{ describedBy }">
+                    <input id="limit-concurrency" v-model.number="maxConcurrency" :aria-describedby="describedBy" class="form-control" min="1" :placeholder="t('systemSettings.runtimePolicy.officialDefault')" step="1" type="number">
+                  </template>
+                </FormField>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-12">
         <form class="card" data-testid="system-card-langsmith" @submit.prevent="saveSystemCard('langsmith')">
           <header class="card-header d-flex align-items-center gap-2">
             <h2 class="card-title">
@@ -597,13 +578,13 @@ onMounted(() => { void load() })
                 <label class="form-label" for="langsmith-project">
                   {{ fieldLabel('systemSettings.langsmith.project', 'langsmith_project') }}
                 </label>
-                <input id="langsmith-project" v-model="langsmithProject" class="form-control" maxlength="200" required spellcheck="false" type="text">
+                <input id="langsmith-project" v-model="langsmithProject" class="form-control" required spellcheck="false" type="text">
               </div>
               <div class="col-lg-3 col-md-6">
                 <label class="form-label" for="langsmith-workspace-id">
                   {{ fieldLabel('systemSettings.langsmith.workspaceId', 'langsmith_workspace_id') }}
                 </label>
-                <input id="langsmith-workspace-id" v-model="langsmithWorkspaceId" class="form-control" maxlength="200" spellcheck="false" type="text">
+                <input id="langsmith-workspace-id" v-model="langsmithWorkspaceId" class="form-control" spellcheck="false" type="text">
               </div>
               <div class="col-lg-3 col-md-6">
                 <label class="form-label" for="langsmith-api-key">
@@ -741,7 +722,7 @@ onMounted(() => { void load() })
             <LteButton
               class="action-button ms-auto"
               data-testid="save-api-server-settings"
-              :disabled="apiServerSaving || !apiServerSettingsValid"
+              :disabled="apiServerSaving"
               type="submit"
             >
               <span v-if="apiServerSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
@@ -778,12 +759,6 @@ onMounted(() => { void load() })
                     <i v-else class="bi bi-eye" aria-hidden="true" />
                   </LteButton>
                 </div>
-              </div>
-              <div class="col-lg-6">
-                <label class="form-label" for="max-initial-messages">
-                  {{ fieldLabel('apiServer.request.maxInitialMessages', 'max_initial_messages') }}
-                </label>
-                <input id="max-initial-messages" v-model.number="maxInitialMessages" class="form-control" min="1" required step="1" type="number">
               </div>
             </div>
           </div>
@@ -835,51 +810,6 @@ onMounted(() => { void load() })
         </form>
       </div>
 
-      <div class="col-12">
-        <form class="card" data-testid="system-card-runtime-policy" @submit.prevent="saveRuntimePolicy">
-          <header class="card-header d-flex align-items-center gap-2">
-            <h2 class="card-title">
-              <i class="bi bi-sliders me-2" aria-hidden="true" />
-              {{ t('systemSettings.runtimePolicy.title') }}
-            </h2>
-            <LteButton
-              class="action-button ms-auto"
-              data-testid="save-runtime-policy"
-              :disabled="runtimePolicySaving || !runtimePolicyValid"
-              type="submit"
-            >
-              <span v-if="runtimePolicySaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-              <i v-else class="bi bi-floppy" aria-hidden="true" />
-              {{ t('common.save') }}
-            </LteButton>
-          </header>
-          <div class="card-body" :aria-busy="runtimePolicySaving">
-            <LteAlert v-if="runtimePolicyError" theme="danger" :title="t('systemSettings.runtimePolicySaveFailed')">
-              {{ runtimePolicyError }}
-            </LteAlert>
-            <div class="row g-3">
-              <div v-for="field in runtimePolicyFields" :key="field.key" class="col-lg-3 col-md-6">
-                <label class="form-label" :for="`runtime-policy-${field.key}`">
-                  {{ fieldLabel(field.labelKey, field.key) }}
-                </label>
-                <div class="input-group">
-                  <input
-                    :id="`runtime-policy-${field.key}`"
-                    :value="runtimePolicyDisplayValue(field)"
-                    class="form-control"
-                    :min="field.mib ? runtimePolicy.minimums[field.key] / MIB_BYTES : runtimePolicy.minimums[field.key]"
-                    required
-                    :step="field.step"
-                    type="number"
-                    @input="updateRuntimePolicyValue(field, $event)"
-                  >
-                  <span v-if="field.unit" class="input-group-text">{{ field.unit }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
     </div>
   </PageShell>
 </template>

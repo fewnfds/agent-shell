@@ -55,7 +55,6 @@ def test_provider_http_clients_are_shared_and_closed_by_their_single_owner(
             {
                 "impersonate": "chrome",
                 "default_headers": False,
-                "max_connections": 100,
             },
         ),
     ]
