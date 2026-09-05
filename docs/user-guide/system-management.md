@@ -73,24 +73,24 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面按六个界面区域展示和保存：LangGraph Dev、限制策略、LangSmith、代理设置使用 `PUT /agent-shell/api/system/settings`；API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。LangGraph Dev Card 还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、限制策略、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`debug_port` 默认留空；填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。
 
-限制策略包含三个官方运行字段：`n_jobs_per_worker` 默认 `10`，控制单 worker 同时处理的 Run 槽位；`recursion_limit` 默认取当前锁定 `langchain-core` 的 `DEFAULT_RECURSION_LIMIT`，达到后由 LangGraph 抛出 `GraphRecursionError`；`max_concurrency` 控制 Graph 内并行任务，留空时不向 `RunnableConfig` 传值。三者只接受正整数且没有产品最大值，增大会提高 CPU、内存和外部请求压力。它们与其他系统启动设置在服务重启后生效。
+限制策略包含三个官方运行字段：`n_jobs_per_worker` 默认 `20`，控制单 worker 同时处理的 Run 槽位；`recursion_limit` 默认 `100000`，达到后由 LangGraph 抛出 `GraphRecursionError`；`max_concurrency` 默认 `20`，控制 Graph 内并行任务，留空时不向 `RunnableConfig` 传值。三者只接受正整数且没有产品最大值，增大会提高 CPU、内存和外部请求压力。它们与其他系统启动设置在服务重启后生效。
 
-API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。
+Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-LangGraph Dev、限制策略、LangSmith 和代理设置分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
+Agent Shell API Server、代理设置、限制策略、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
 
-当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；系统设置只提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
+当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；首页服务入口 Card 提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
 
 
 LangSmith 配置项含义如下：
 
-- 启用：控制是否向 LangSmith 发送 trace；
+- 启用 LangSmith：控制是否向 LangSmith 发送 trace；
 - 服务地址：LangSmith API Endpoint，按账号区域或自托管部署填写；
 - 项目：接收 trace 的 LangSmith Project；
 - Workspace ID：API Key 可访问多个 Workspace 时填写，否则留空；

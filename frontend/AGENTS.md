@@ -13,6 +13,7 @@
 
 - 唯一视觉栈是 Vue 3、AdminLTE 4.1、Bootstrap 5.3、Bootstrap Icons，以及 Workflow editor 使用的 Vue Flow。`ui-policy.json` 只守依赖版本、第二 UI 栈、壳层 import 与共享样式入口，不是 class、图标或组件批准目录。
 - 普通配置装配页复用 typed resource definition、`useConfigurationResource` 与现有 layout/action 组件；页面只保留字段、adapter、editor 和领域特有 action。Component/Model editor 的 package inspection、resource catalog、overwrite 与 credential lifecycle 由其专用 controller 承担，同时复用相同 layout/action 范式。没有第二个真实调用方时不提炼通用框架。
+- 布尔字段夹在多个 `label + input/select` 字段之间、需要进入同一字段网格时，使用上下两行的 `label + select` 与本地化 Yes/No；独立配置开关继续使用 Bootstrap `form-switch`。
 - 优先使用 AdminLTE/Bootstrap component、utility 与 theme variable。跨页视觉规则放入 `src/styles/management-console.css`；只属于一个可复用组件的布局可以使用 `<style scoped>`。页面不另造主题，不硬编码颜色，不用 inline style。
 - 本地组件只承载真实产品行为或已有调用方共享的稳定组合。不要复制后端 schema、添加旧字段兼容，或用前端校验修补后端错误。
 - 管理端操作使用现有 `action-button` 或紧凑位置的 `icon-action-button`；Vue Flow 画布使用自己的紧凑工具范式。

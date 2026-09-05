@@ -420,71 +420,139 @@ onMounted(() => { void load() })
       class="row g-3"
     >
       <div class="col-12">
-        <form class="card" data-testid="system-card-langgraph-dev" @submit.prevent="saveSystemCard('langgraph')">
+        <form class="card" data-testid="system-card-api-server" @submit.prevent="saveApiServerSettings">
           <header class="card-header d-flex align-items-center gap-2">
             <h2 class="card-title">
-              <i class="bi bi-diagram-3 me-2" aria-hidden="true" />
-              {{ t('systemSettings.langgraphDev.title') }}
+              <i class="bi bi-key me-2" aria-hidden="true" />
+              {{ t('systemSettings.apiServer') }}
             </h2>
             <LteButton
               class="action-button ms-auto"
-              data-testid="save-langgraph-settings"
-              :disabled="langgraphSaving || !langgraphSettingsValid"
+              data-testid="save-api-server-settings"
+              :disabled="apiServerSaving"
               type="submit"
             >
-              <span v-if="langgraphSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span v-if="apiServerSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
               <i v-else class="bi bi-floppy" aria-hidden="true" />
               {{ t('common.save') }}
             </LteButton>
           </header>
-          <div class="card-body" :aria-busy="langgraphSaving">
-            <LteAlert v-if="langgraphError" theme="danger" :title="t('systemSettings.langgraphSaveFailed')">
-              {{ langgraphError }}
+          <div class="card-body" :aria-busy="apiServerSaving">
+            <LteAlert v-if="apiServerError" theme="danger" :title="t('systemSettings.apiServerSaveFailed')">
+              {{ apiServerError }}
+            </LteAlert>
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <label class="form-label" for="api-server-key">{{ fieldLabel('apiServer.key.title', 'api_key') }}</label>
+                <div class="input-group">
+                  <input
+                    id="api-server-key"
+                    v-model="apiKey"
+                    autocomplete="off"
+                    class="form-control"
+                    :placeholder="apiKeyPlaceholder"
+                    spellcheck="false"
+                    :type="showApiKey ? 'text' : 'password'"
+                    @input="apiKeyDirty = true"
+                  >
+                  <LteButton
+                    class="icon-action-button"
+                    :aria-label="showApiKey ? t('common.hide') : t('common.show')"
+                    :aria-pressed="showApiKey"
+                    type="button"
+                    @click="showApiKey = !showApiKey"
+                  >
+                    <i v-if="showApiKey" class="bi bi-eye-slash" aria-hidden="true" />
+                    <i v-else class="bi bi-eye" aria-hidden="true" />
+                  </LteButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-12">
+        <form class="card" data-testid="system-card-proxy" @submit.prevent="saveSystemCard('proxy')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-hdd-network me-2" aria-hidden="true" />
+              {{ t('systemSettings.proxyAndDiagnostics') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-proxy-settings"
+              :disabled="proxySaving || !proxySettingsValid"
+              type="submit"
+            >
+              <span v-if="proxySaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="proxySaving">
+            <LteAlert v-if="proxyError" theme="danger" :title="t('systemSettings.proxySaveFailed')">
+              {{ proxyError }}
             </LteAlert>
             <div class="row g-3">
               <div class="col-lg-3 col-md-6">
-                <FormField
-                  control-id="langgraph-debug-port"
-                  field-path="debug_port"
-                  label-key="systemSettings.langgraphDev.debugPort"
-                >
-                  <template #default="{ describedBy }">
-                    <input
-                      id="langgraph-debug-port"
-                      v-model.number="debugPort"
-                      :aria-describedby="describedBy"
-                      class="form-control"
-                      max="65535"
-                      min="1"
-                      :placeholder="t('systemSettings.langgraphDev.debugPortDisabled')"
-                      step="1"
-                      type="number"
-                    >
-                  </template>
-                </FormField>
+                <LteInput id="system-host" v-model="host" :label="fieldLabel('systemSettings.host', 'host')" spellcheck="false" />
               </div>
-              <div class="col-12">
-                <h3 class="h6 mb-2">{{ t('systemSettings.langgraphDev.tools') }}</h3>
-                <div class="d-flex flex-wrap gap-2">
-                  <a
-                    class="btn btn-outline-primary"
-                    data-testid="langgraph-api-docs-link"
-                    :href="settings.active_api_docs_url"
-                    rel="noopener noreferrer"
-                    target="_blank"
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="system-port">
+                  {{ fieldLabel('systemSettings.port', 'port') }}
+                </label>
+                <input
+                  id="system-port"
+                  v-model.number="port"
+                  class="form-control"
+                  max="65535"
+                  min="1"
+                  required
+                  step="1"
+                  type="number"
+                >
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="management-password">
+                  {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
+                </label>
+                <div class="input-group">
+                  <input
+                    id="management-password"
+                    v-model="managementPassword"
+                    autocomplete="new-password"
+                    class="form-control"
+                    :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
+                    spellcheck="false"
+                    :type="showManagementPassword ? 'text' : 'password'"
                   >
-                    {{ t('systemSettings.langgraphDev.apiDocs') }}
-                  </a>
-                  <a
-                    class="btn btn-outline-primary"
-                    data-testid="langgraph-studio-link"
-                    :href="settings.active_studio_url"
-                    rel="noopener noreferrer"
-                    target="_blank"
+                  <LteButton
+                    class="icon-action-button"
+                    :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
+                    :aria-pressed="showManagementPassword"
+                    type="button"
+                    @click="showManagementPassword = !showManagementPassword"
                   >
-                    {{ t('systemSettings.langgraphDev.studio') }}
-                  </a>
+                    <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
+                    <i v-else class="bi bi-eye" aria-hidden="true" />
+                  </LteButton>
                 </div>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="allow-remote">
+                  {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
+                </label>
+                <select id="allow-remote" v-model="allowRemote" class="form-select">
+                  <option :value="true">{{ t('common.yes') }}</option>
+                  <option :value="false">{{ t('common.no') }}</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
+              </div>
+              <div class="col-md-6">
+                <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
               </div>
             </div>
           </div>
@@ -532,6 +600,55 @@ onMounted(() => { void load() })
                 <FormField control-id="limit-concurrency" field-path="max_concurrency" label-key="systemSettings.runtimePolicy.maxConcurrency">
                   <template #default="{ describedBy }">
                     <input id="limit-concurrency" v-model.number="maxConcurrency" :aria-describedby="describedBy" class="form-control" min="1" :placeholder="t('systemSettings.runtimePolicy.officialDefault')" step="1" type="number">
+                  </template>
+                </FormField>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-12">
+        <form class="card" data-testid="system-card-langgraph-dev" @submit.prevent="saveSystemCard('langgraph')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-diagram-3 me-2" aria-hidden="true" />
+              {{ t('systemSettings.langgraphDev.title') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-langgraph-settings"
+              :disabled="langgraphSaving || !langgraphSettingsValid"
+              type="submit"
+            >
+              <span v-if="langgraphSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="langgraphSaving">
+            <LteAlert v-if="langgraphError" theme="danger" :title="t('systemSettings.langgraphSaveFailed')">
+              {{ langgraphError }}
+            </LteAlert>
+            <div class="row g-3">
+              <div class="col-lg-3 col-md-6">
+                <FormField
+                  control-id="langgraph-debug-port"
+                  field-path="debug_port"
+                  label-key="systemSettings.langgraphDev.debugPort"
+                >
+                  <template #default="{ describedBy }">
+                    <input
+                      id="langgraph-debug-port"
+                      v-model.number="debugPort"
+                      :aria-describedby="describedBy"
+                      class="form-control"
+                      max="65535"
+                      min="1"
+                      :placeholder="t('systemSettings.langgraphDev.debugPortDisabled')"
+                      step="1"
+                      type="number"
+                    >
                   </template>
                 </FormField>
               </div>
@@ -613,152 +730,14 @@ onMounted(() => { void load() })
                   </LteButton>
                 </div>
               </div>
-              <div class="col-12">
-                <div class="form-check form-switch">
-                  <input id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-check-input" role="switch" type="checkbox">
-                  <label class="form-check-label" for="langsmith-tracing">
-                    {{ fieldLabel('systemSettings.langsmith.tracing', 'langsmith_tracing_enabled') }}
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <div class="col-12">
-        <form class="card" data-testid="system-card-proxy" @submit.prevent="saveSystemCard('proxy')">
-          <header class="card-header d-flex align-items-center gap-2">
-            <h2 class="card-title">
-              <i class="bi bi-hdd-network me-2" aria-hidden="true" />
-              {{ t('systemSettings.proxyAndDiagnostics') }}
-            </h2>
-            <LteButton
-              class="action-button ms-auto"
-              data-testid="save-proxy-settings"
-              :disabled="proxySaving || !proxySettingsValid"
-              type="submit"
-            >
-              <span v-if="proxySaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-              <i v-else class="bi bi-floppy" aria-hidden="true" />
-              {{ t('common.save') }}
-            </LteButton>
-          </header>
-          <div class="card-body" :aria-busy="proxySaving">
-            <LteAlert v-if="proxyError" theme="danger" :title="t('systemSettings.proxySaveFailed')">
-              {{ proxyError }}
-            </LteAlert>
-            <div class="row g-3">
               <div class="col-lg-3 col-md-6">
-                <LteInput id="system-host" v-model="host" :label="fieldLabel('systemSettings.host', 'host')" spellcheck="false" />
-              </div>
-              <div class="col-lg-3 col-md-6">
-                <label class="form-label" for="system-port">
-                  {{ fieldLabel('systemSettings.port', 'port') }}
+                <label class="form-label" for="langsmith-tracing">
+                  {{ fieldLabel('systemSettings.langsmith.tracing', 'langsmith_tracing_enabled') }}
                 </label>
-                <input
-                  id="system-port"
-                  v-model.number="port"
-                  class="form-control"
-                  max="65535"
-                  min="1"
-                  required
-                  step="1"
-                  type="number"
-                >
-              </div>
-              <div class="col-lg-3 col-md-6">
-                <label class="form-label" for="management-password">
-                  {{ fieldLabel('systemSettings.managementPassword', 'management_token') }}
-                </label>
-                <div class="input-group">
-                  <input
-                    id="management-password"
-                    v-model="managementPassword"
-                    autocomplete="new-password"
-                    class="form-control"
-                    :placeholder="settings.management_token.configured ? t('common.configuredSecretPlaceholder') : ''"
-                    spellcheck="false"
-                    :type="showManagementPassword ? 'text' : 'password'"
-                  >
-                  <LteButton
-                    class="icon-action-button"
-                    :aria-label="showManagementPassword ? t('common.hide') : t('common.show')"
-                    :aria-pressed="showManagementPassword"
-                    type="button"
-                    @click="showManagementPassword = !showManagementPassword"
-                  >
-                    <i v-if="showManagementPassword" class="bi bi-eye-slash" aria-hidden="true" />
-                    <i v-else class="bi bi-eye" aria-hidden="true" />
-                  </LteButton>
-                </div>
-              </div>
-              <div class="col-12">
-                <div class="form-check form-switch">
-                  <input id="allow-remote" v-model="allowRemote" class="form-check-input" role="switch" type="checkbox">
-                  <label class="form-check-label" for="allow-remote">
-                    {{ fieldLabel('systemSettings.allowRemote', 'allow_remote') }}
-                  </label>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
-              </div>
-              <div class="col-md-6">
-                <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <div class="col-12">
-        <form class="card" data-testid="system-card-api-server" @submit.prevent="saveApiServerSettings">
-          <header class="card-header d-flex align-items-center gap-2">
-            <h2 class="card-title">
-              <i class="bi bi-key me-2" aria-hidden="true" />
-              {{ t('systemSettings.apiServer') }}
-            </h2>
-            <LteButton
-              class="action-button ms-auto"
-              data-testid="save-api-server-settings"
-              :disabled="apiServerSaving"
-              type="submit"
-            >
-              <span v-if="apiServerSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
-              <i v-else class="bi bi-floppy" aria-hidden="true" />
-              {{ t('common.save') }}
-            </LteButton>
-          </header>
-          <div class="card-body" :aria-busy="apiServerSaving">
-            <LteAlert v-if="apiServerError" theme="danger" :title="t('systemSettings.apiServerSaveFailed')">
-              {{ apiServerError }}
-            </LteAlert>
-            <div class="row g-3">
-              <div class="col-lg-6">
-                <label class="form-label" for="api-server-key">{{ fieldLabel('apiServer.key.title', 'api_key') }}</label>
-                <div class="input-group">
-                  <input
-                    id="api-server-key"
-                    v-model="apiKey"
-                    autocomplete="off"
-                    class="form-control"
-                    :placeholder="apiKeyPlaceholder"
-                    spellcheck="false"
-                    :type="showApiKey ? 'text' : 'password'"
-                    @input="apiKeyDirty = true"
-                  >
-                  <LteButton
-                    class="icon-action-button"
-                    :aria-label="showApiKey ? t('common.hide') : t('common.show')"
-                    :aria-pressed="showApiKey"
-                    type="button"
-                    @click="showApiKey = !showApiKey"
-                  >
-                    <i v-if="showApiKey" class="bi bi-eye-slash" aria-hidden="true" />
-                    <i v-else class="bi bi-eye" aria-hidden="true" />
-                  </LteButton>
-                </div>
+                <select id="langsmith-tracing" v-model="langsmithTracingEnabled" class="form-select">
+                  <option :value="true">{{ t('common.yes') }}</option>
+                  <option :value="false">{{ t('common.no') }}</option>
+                </select>
               </div>
             </div>
           </div>

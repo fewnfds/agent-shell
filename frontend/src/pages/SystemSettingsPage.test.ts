@@ -13,9 +13,9 @@ import SystemSettingsPage from './SystemSettingsPage.vue'
 const systemSettings: SystemSettings = {
   host: '127.0.0.1',
   port: 19100,
-  n_jobs_per_worker: 10,
-  recursion_limit: 25,
-  max_concurrency: null,
+  n_jobs_per_worker: 20,
+  recursion_limit: 100000,
+  max_concurrency: 20,
   debug_port: null,
   allow_remote: false,
   langsmith_tracing_enabled: false,
@@ -88,10 +88,10 @@ describe('SystemSettingsPage', () => {
     expect(wrapper.get('label[for="configuration-validation-debounce"]').text()).toBe('配置报警间隔')
     expect(interval.attributes('aria-describedby')).toBe('configuration-validation-debounce-unit')
     expect(wrapper.get('#configuration-validation-debounce-unit').text()).toBe('ms')
-    expect(wrapper.get('[data-testid="langgraph-api-docs-link"]').attributes('href'))
-      .toBe(systemSettings.active_api_docs_url)
-    expect(wrapper.get('[data-testid="langgraph-studio-link"]').attributes('href'))
-      .toBe(systemSettings.active_studio_url)
+    expect(wrapper.find('[data-testid="langgraph-api-docs-link"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="langgraph-studio-link"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="system-card-api-server"] .card-title').text())
+      .toContain('Agent Shell API Server')
 
     await interval.setValue('500')
     await wrapper.get('#limit-recursion').setValue('32')
@@ -104,9 +104,9 @@ describe('SystemSettingsPage', () => {
     await wrapper.get('[data-testid="system-card-runtime-policy"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
-      n_jobs_per_worker: 10,
+      n_jobs_per_worker: 20,
       recursion_limit: 32,
-      max_concurrency: null,
+      max_concurrency: 20,
     }))
     wrapper.unmount()
   })

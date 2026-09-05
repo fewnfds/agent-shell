@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LteAlert, LteTextarea } from '@adminlte/vue'
+import { LteAlert } from '@adminlte/vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -8,7 +8,6 @@ import { managementApi, type ConfigurationSummary, type ValidationReport, type W
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
-import FormField from '@/components/FormField.vue'
 import PageShell from '@/components/PageShell.vue'
 import RecordPicker from '@/components/RecordPicker.vue'
 import ValidationChecklist from '@/components/ValidationChecklist.vue'
@@ -208,15 +207,28 @@ onMounted(() => { void loadWorkspace() })
     <ConfigurationEditorLayout v-if="!loading" :loading="saving">
       <template #editor>
         <RecordPicker :disabled="saving" :model-value="selectedId" :name="form.name" :records="records" @select="selectRecord" @update:name="updateName" />
-        <div class="card mt-3">
-          <header class="card-header"><h2 class="card-title">{{ t('workflows.metadataTitle') }}</h2></header>
-          <div class="card-body">
-            <FormField field-path="description" label-key="workflows.fields.description">
-              <LteTextarea v-model="form.description" :rows="4" />
-            </FormField>
-            <div class="row g-3" data-testid="workflow-component-assembly-row" data-ui-control-row>
-              <div class="col-lg-6">
-                <FormField control-id="workflow-event-output" field-path="workflow_event_output_id" label-key="workflows.fields.eventOutput">
+        <section class="mt-3">
+          <div class="row g-3">
+            <div class="col-12">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-description">{{ t('workflows.fields.description') }}</label>
+                </header>
+                <div class="card-body">
+                  <textarea id="workflow-description" v-model="form.description" class="form-control" rows="4" />
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+        <section class="mt-3" :aria-label="t('workflows.metadataTitle')">
+          <div class="row g-3" data-testid="workflow-component-assembly-row">
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-event-output">{{ t('workflows.fields.eventOutput') }}</label>
+                </header>
+                <div class="card-body">
                   <select id="workflow-event-output" v-model="form.workflow_event_output_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
                     <option
@@ -228,10 +240,15 @@ onMounted(() => { void loadWorkspace() })
                     </option>
                     <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
                   </select>
-                </FormField>
-              </div>
-              <div class="col-lg-6">
-                <FormField control-id="workflow-response-stream-scheduling" field-path="response_stream_scheduling_id" label-key="workflows.fields.responseStreamScheduling">
+                </div>
+              </section>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-response-stream-scheduling">{{ t('workflows.fields.responseStreamScheduling') }}</label>
+                </header>
+                <div class="card-body">
                   <select id="workflow-response-stream-scheduling" v-model="form.response_stream_scheduling_id" class="form-select">
                     <option :value="null">{{ t('common.none') }}</option>
                     <option
@@ -243,36 +260,51 @@ onMounted(() => { void loadWorkspace() })
                     </option>
                     <option v-for="scheduling in responseStreamSchedulingComponents" :key="scheduling.id" :value="scheduling.id">{{ scheduling.name }}</option>
                   </select>
-                </FormField>
-              </div>
-            </div>
-            <div class="row g-3" data-ui-control-row>
-              <div class="col-12">
-                <div class="form-check form-switch">
-                  <input id="workflow-model-entry" v-model="form.is_model_entry" class="form-check-input" type="checkbox">
-                  <label class="form-check-label" for="workflow-model-entry">{{ t('workflows.fields.modelEntry') }}</label>
                 </div>
-              </div>
-              <div class="col-lg-3">
-                <FormField control-id="workflow-durability" field-path="durability" label-key="workflows.fields.durability">
+              </section>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-model-entry">{{ t('workflows.fields.modelEntry') }}</label>
+                </header>
+                <div class="card-body">
+                  <select id="workflow-model-entry" v-model="form.is_model_entry" class="form-select">
+                    <option :value="true">{{ t('common.yes') }}</option>
+                    <option :value="false">{{ t('common.no') }}</option>
+                  </select>
+                </div>
+              </section>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-durability">{{ t('workflows.fields.durability') }}</label>
+                </header>
+                <div class="card-body">
                   <select id="workflow-durability" v-model="form.durability" class="form-select">
                     <option value="sync">{{ t('workflows.durability.sync') }}</option>
                     <option value="async">{{ t('workflows.durability.async') }}</option>
                     <option value="exit">{{ t('workflows.durability.exit') }}</option>
                   </select>
-                </FormField>
-              </div>
-              <div class="col-lg-3">
-                <FormField control-id="workflow-on-disconnect" field-path="on_disconnect" label-key="workflows.fields.onDisconnect">
+                </div>
+              </section>
+            </div>
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-on-disconnect">{{ t('workflows.fields.onDisconnect') }}</label>
+                </header>
+                <div class="card-body">
                   <select id="workflow-on-disconnect" v-model="form.on_disconnect" class="form-select">
                     <option value="cancel">{{ t('workflows.onDisconnect.cancel') }}</option>
                     <option value="continue">{{ t('workflows.onDisconnect.continue') }}</option>
                   </select>
-                </FormField>
-              </div>
+                </div>
+              </section>
             </div>
           </div>
-        </div>
+        </section>
       </template>
       <template #aside>
         <ValidationChecklist

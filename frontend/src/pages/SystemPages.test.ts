@@ -20,9 +20,9 @@ vi.mock('vue-i18n', () => ({
 const currentSettings: SystemSettings = {
   host: '127.0.0.1',
   port: 19100,
-  n_jobs_per_worker: 10,
-  recursion_limit: 25,
-  max_concurrency: null,
+  n_jobs_per_worker: 20,
+  recursion_limit: 100000,
+  max_concurrency: 20,
   debug_port: null,
   allow_remote: false,
   langsmith_tracing_enabled: false,
@@ -98,20 +98,28 @@ describe('SystemSettingsPage', () => {
     expect(cards).toHaveLength(6)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
+    expect(cards.map((card) => card.attributes('data-testid'))).toEqual([
+      'system-card-api-server',
+      'system-card-proxy',
+      'system-card-runtime-policy',
+      'system-card-langgraph-dev',
+      'system-card-langsmith',
+      'system-card-validation',
+    ])
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
     expect(saveButtons).toHaveLength(6)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-diagram-3', 'bi-sliders', 'bi-cloud-arrow-up', 'bi-hdd-network', 'bi-key', 'bi-check2-square'])
+      .toEqual(['bi-key', 'bi-hdd-network', 'bi-sliders', 'bi-diagram-3', 'bi-cloud-arrow-up', 'bi-check2-square'])
     await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
     expect(api.updateSystemSettings).toHaveBeenCalledWith({
       host: '127.0.0.1',
       port: 19100,
-      n_jobs_per_worker: 10,
-      recursion_limit: 25,
-      max_concurrency: null,
+      n_jobs_per_worker: 20,
+      recursion_limit: 100000,
+      max_concurrency: 20,
       debug_port: null,
       allow_remote: false,
       langsmith_tracing_enabled: false,
@@ -136,7 +144,7 @@ describe('SystemSettingsPage', () => {
     expect(wrapper.text()).not.toContain('test-management-token')
   })
 
-  it('converts edited number, switch, secret and multiline fields into the backend payload', async () => {
+  it('converts edited number, boolean select, secret and multiline fields into the backend payload', async () => {
     const api = {
       ...validationSettingsApi(),
       getSystemSettings: vi.fn().mockResolvedValue(currentSettings),
@@ -158,6 +166,8 @@ describe('SystemSettingsPage', () => {
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()
 
+    expect(wrapper.get('#allow-remote').element.tagName).toBe('SELECT')
+    expect(wrapper.get('#langsmith-tracing').element.tagName).toBe('SELECT')
     await wrapper.get('#system-host').setValue('0.0.0.0')
     await wrapper.get('#system-port').setValue('21000')
     await wrapper.get('#limit-jobs-per-worker').setValue('14')
@@ -178,9 +188,9 @@ describe('SystemSettingsPage', () => {
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(1, expect.objectContaining({
       host: '0.0.0.0',
       port: 21000,
-      n_jobs_per_worker: 10,
-      recursion_limit: 25,
-      max_concurrency: null,
+      n_jobs_per_worker: 20,
+      recursion_limit: 100000,
+      max_concurrency: 20,
       debug_port: null,
       allow_remote: true,
       langsmith_tracing_enabled: false,
@@ -195,7 +205,7 @@ describe('SystemSettingsPage', () => {
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(2, expect.objectContaining({
       host: '0.0.0.0',
       port: 21000,
-      n_jobs_per_worker: 10,
+      n_jobs_per_worker: 20,
       debug_port: 21001,
       allow_remote: true,
       langsmith_tracing_enabled: false,

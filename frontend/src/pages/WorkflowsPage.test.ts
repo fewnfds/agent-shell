@@ -109,8 +109,11 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Response Stream Scheduling')
     expect(wrapper.find('[data-editor="response-stream-scheduling"]').exists()).toBe(false)
     const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
-    expect(assemblyColumns).toHaveLength(2)
-    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-6'))).toBe(true)
+    expect(assemblyColumns).toHaveLength(5)
+    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-4'))).toBe(true)
+    expect(assemblyColumns.every((column) => column.find('.card').exists())).toBe(true)
+    expect(wrapper.get('#workflow-description').element.tagName).toBe('TEXTAREA')
+    expect(wrapper.get('#workflow-model-entry').element.tagName).toBe('SELECT')
     await wrapper.findAll('button').find((button) => button.text() === 'New')!.trigger('click')
     await flushPromises()
 

@@ -29,6 +29,42 @@ const settings = ref<ApiServerSettings | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 let loadSequence = 0
+const serviceEntryFields = computed(() => {
+  const entries = settings.value?.service_entries
+  if (!entries) return []
+  return [
+    {
+      key: 'management-console',
+      labelKey: 'apiServer.serviceEntries.managementConsole',
+      url: entries.management_console_url,
+      href: entries.management_console_url,
+    },
+    {
+      key: 'agent-server-base',
+      labelKey: 'apiServer.serviceEntries.agentServerBase',
+      url: entries.agent_server_base_url,
+      href: null,
+    },
+    {
+      key: 'api-docs',
+      labelKey: 'apiServer.serviceEntries.apiDocs',
+      url: entries.api_docs_url,
+      href: entries.api_docs_url,
+    },
+    {
+      key: 'openapi-schema',
+      labelKey: 'apiServer.serviceEntries.openapiSchema',
+      url: entries.openapi_schema_url,
+      href: entries.openapi_schema_url,
+    },
+    {
+      key: 'langgraph-studio',
+      labelKey: 'apiServer.serviceEntries.langgraphStudio',
+      url: entries.langgraph_studio_url,
+      href: entries.langgraph_studio_url,
+    },
+  ]
+})
 const diagnosticEndpoints = computed(() => {
   const endpoints = settings.value?.api_endpoints
   if (!endpoints) return []
@@ -117,158 +153,155 @@ onMounted(() => {
             data-testid="service-entry-card"
             :title="t('apiServer.serviceEntries.title')"
           >
-            <div class="vstack gap-3">
-              <div>
-                <div class="form-label">{{ t('apiServer.serviceEntries.managementConsole') }}</div>
-                <a
-                  class="font-monospace text-break"
-                  data-testid="management-console-link"
-                  :href="settings.service_entries.management_console_url"
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  {{ settings.service_entries.management_console_url }}
-                </a>
-              </div>
-              <div>
-                <label class="form-label" for="agent-server-base-url">
-                  {{ t('apiServer.serviceEntries.agentServerBase') }}
+            <div class="row g-3">
+              <div
+                v-for="item in serviceEntryFields"
+                :key="item.key"
+                class="col-lg-6"
+              >
+                <label class="form-label" :for="`service-entry-${item.key}`">
+                  {{ t(item.labelKey) }}
                 </label>
+                <div v-if="item.href" class="input-group">
+                  <input
+                    :id="`service-entry-${item.key}`"
+                    class="form-control font-monospace"
+                    readonly
+                    :value="item.url"
+                  >
+                  <a
+                    class="btn btn-outline-secondary"
+                    :data-testid="`service-entry-${item.key}-link`"
+                    :href="item.href"
+                    :aria-label="t('apiServer.serviceEntries.enter', { entry: t(item.labelKey) })"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    {{ t('common.enter') }}
+                  </a>
+                </div>
                 <input
-                  id="agent-server-base-url"
+                  v-else
+                  :id="`service-entry-${item.key}`"
                   class="form-control font-monospace"
                   readonly
-                  :value="settings.service_entries.agent_server_base_url"
+                  :value="item.url"
                 >
-              </div>
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <div class="form-label">{{ t('apiServer.serviceEntries.apiDocs') }}</div>
-                  <a
-                    class="font-monospace text-break"
-                    data-testid="api-docs-link"
-                    :href="settings.service_entries.api_docs_url"
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    {{ settings.service_entries.api_docs_url }}
-                  </a>
-                </div>
-                <div class="col-md-6">
-                  <div class="form-label">{{ t('apiServer.serviceEntries.openapiSchema') }}</div>
-                  <a
-                    class="font-monospace text-break"
-                    data-testid="openapi-schema-link"
-                    :href="settings.service_entries.openapi_schema_url"
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    {{ settings.service_entries.openapi_schema_url }}
-                  </a>
-                </div>
-              </div>
-              <div>
-                <div class="form-label">{{ t('apiServer.serviceEntries.langgraphStudio') }}</div>
-                <a
-                  class="font-monospace text-break"
-                  data-testid="langgraph-studio-link"
-                  :href="settings.service_entries.langgraph_studio_url"
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  {{ settings.service_entries.langgraph_studio_url }}
-                </a>
               </div>
             </div>
           </LteCard>
 
-          <LteCard class="mb-3" data-testid="endpoint-card" :title="t('apiServer.endpoints.title')">
-            <div class="mb-3">
-              <label class="form-label" for="agent-shell-base-url">
-                {{ t('apiServer.endpoints.agentShellBase') }}
-              </label>
-              <input
-                id="agent-shell-base-url"
-                class="form-control font-monospace"
-                readonly
-                :value="settings.api_endpoints.agent_shell_base_url"
-              >
-            </div>
-            <div class="mb-3">
-              <label class="form-label" for="openai-base-url">
-                {{ t('apiServer.endpoints.openaiBase') }}
-              </label>
-              <input
-                id="openai-base-url"
-                class="form-control font-monospace"
-                readonly
-                :value="settings.api_endpoints.openai_base_url"
-              >
-            </div>
-            <div class="row g-3 mb-3">
-              <div class="col-xl-6">
-                <label class="form-label" for="models-endpoint">{{ t('apiServer.endpoints.models') }}</label>
-                <div class="input-group">
-                  <span class="input-group-text font-monospace">{{ t('apiServer.endpoints.getMethod') }}</span>
-                  <input
-                    id="models-endpoint"
-                    class="form-control font-monospace"
-                    readonly
-                    :value="settings.api_endpoints.models_endpoint"
-                  >
-                </div>
+          <LteCard
+            class="mb-3"
+            data-testid="langgraph-dev-api-card"
+            :title="t('apiServer.endpoints.langgraphDevTitle')"
+          >
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <label class="form-label" for="agent-shell-base-url">
+                  {{ t('apiServer.endpoints.agentShellBase') }}
+                </label>
+                <input
+                  id="agent-shell-base-url"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="settings.api_endpoints.agent_shell_base_url"
+                >
               </div>
-              <div class="col-xl-6">
+              <div
+                v-for="(route, index) in settings.api_endpoints.langgraph_route_families"
+                :key="route"
+                class="col-lg-6"
+              >
+                <label class="form-label" :for="`langgraph-route-${index}`">
+                  {{ t('apiServer.endpoints.langgraphRoute', { index: index + 1 }) }}
+                </label>
+                <input
+                  :id="`langgraph-route-${index}`"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="route"
+                >
+              </div>
+              <div
+                v-for="item in diagnosticEndpoints"
+                :key="item.key"
+                class="col-lg-6"
+              >
+                <label class="form-label" :for="`diagnostic-${item.key}`">
+                  {{ t(item.labelKey) }}
+                </label>
+                <input
+                  :id="`diagnostic-${item.key}`"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="item.url"
+                >
+              </div>
+              <div class="col-lg-6">
+                <label class="form-label" for="management-authentication">
+                  {{ t('apiServer.endpoints.managementAuth') }}
+                </label>
+                <input
+                  id="management-authentication"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="t('apiServer.endpoints.managementAuthScope')"
+                >
+              </div>
+            </div>
+          </LteCard>
+
+          <LteCard
+            class="mb-3"
+            data-testid="openai-api-card"
+            :title="t('apiServer.endpoints.openaiTitle')"
+          >
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <label class="form-label" for="openai-base-url">
+                  {{ t('apiServer.endpoints.openaiBase') }}
+                </label>
+                <input
+                  id="openai-base-url"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="settings.api_endpoints.openai_base_url"
+                >
+              </div>
+              <div class="col-lg-6">
+                <label class="form-label" for="models-endpoint">
+                  {{ t('apiServer.endpoints.models') }}
+                </label>
+                <input
+                  id="models-endpoint"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="settings.api_endpoints.models_endpoint"
+                >
+              </div>
+              <div class="col-lg-6">
                 <label class="form-label" for="chat-completions-endpoint">
                   {{ t('apiServer.endpoints.chatCompletions') }}
                 </label>
-                <div class="input-group">
-                  <span class="input-group-text font-monospace">{{ t('apiServer.endpoints.postMethod') }}</span>
-                  <input
-                    id="chat-completions-endpoint"
-                    class="form-control font-monospace"
-                    readonly
-                    :value="settings.api_endpoints.chat_completions_endpoint"
-                  >
-                </div>
-              </div>
-            </div>
-            <div class="mb-3">
-              <h3 class="h6">{{ t('apiServer.endpoints.langgraphRoutes') }}</h3>
-              <div class="d-flex flex-wrap gap-2">
-                <code
-                  v-for="route in settings.api_endpoints.langgraph_route_families"
-                  :key="route"
-                  class="bg-body-tertiary border rounded px-2 py-1"
-                >{{ route }}</code>
-              </div>
-            </div>
-            <div class="mb-3">
-              <h3 class="h6">{{ t('apiServer.endpoints.diagnostics') }}</h3>
-              <div class="row g-2">
-                <div
-                  v-for="item in diagnosticEndpoints"
-                  :key="item.key"
-                  class="col-12"
+                <input
+                  id="chat-completions-endpoint"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="settings.api_endpoints.chat_completions_endpoint"
                 >
-                  <label class="form-label small mb-1" :for="`diagnostic-${item.key}`">
-                    {{ t(item.labelKey) }}
-                  </label>
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text font-monospace">{{ t('apiServer.endpoints.getMethod') }}</span>
-                    <input
-                      :id="`diagnostic-${item.key}`"
-                      class="form-control font-monospace"
-                      readonly
-                      :value="item.url"
-                    >
-                  </div>
-                </div>
               </div>
-            </div>
-            <div class="border-top pt-3 small text-body-secondary">
-              <p class="mb-1">{{ t('apiServer.endpoints.managementAuth') }}</p>
-              <p class="mb-0">{{ t('apiServer.endpoints.apiKeyAuth') }}</p>
+              <div class="col-lg-6">
+                <label class="form-label" for="api-key-authentication">
+                  {{ t('apiServer.endpoints.apiKeyAuth') }}
+                </label>
+                <input
+                  id="api-key-authentication"
+                  class="form-control font-monospace"
+                  readonly
+                  :value="t('apiServer.endpoints.apiKeyAuthScope')"
+                >
+              </div>
             </div>
           </LteCard>
         </div>

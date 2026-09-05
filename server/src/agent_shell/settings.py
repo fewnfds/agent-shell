@@ -7,7 +7,6 @@ from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 import yaml
-from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 from pydantic import (
     Field,
     PrivateAttr,
@@ -28,6 +27,9 @@ from agent_shell.storage.environment import (
 
 ENV_PREFIX = "AGENT_SHELL_"
 DEFAULT_LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
+DEFAULT_N_JOBS_PER_WORKER = 20
+DEFAULT_GRAPH_RECURSION_LIMIT = 100_000
+DEFAULT_GRAPH_MAX_CONCURRENCY = 20
 
 
 def bearer_token_is_valid(value: str) -> bool:
@@ -90,9 +92,9 @@ class Settings(BaseSettings):
     app_name: str = "agent-shell"
     host: str = "127.0.0.1"
     port: int = Field(default=19100, ge=1, le=65535)
-    n_jobs_per_worker: int = Field(default=10, ge=1)
-    recursion_limit: int = Field(default=DEFAULT_RECURSION_LIMIT, ge=1)
-    max_concurrency: int | None = Field(default=None, ge=1)
+    n_jobs_per_worker: int = Field(default=DEFAULT_N_JOBS_PER_WORKER, ge=1)
+    recursion_limit: int = Field(default=DEFAULT_GRAPH_RECURSION_LIMIT, ge=1)
+    max_concurrency: int | None = Field(default=DEFAULT_GRAPH_MAX_CONCURRENCY, ge=1)
     debug_port: int | None = Field(default=None, ge=1, le=65535)
     allow_remote: bool = False
     langsmith_tracing_enabled: bool = False

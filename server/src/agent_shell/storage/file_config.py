@@ -13,7 +13,6 @@ from typing import Any, Callable
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import yaml
-from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 
 from agent_shell.configuration.identity import require_configuration_id
 from agent_shell.configuration.identity import new_configuration_id as generate_configuration_id
@@ -48,6 +47,11 @@ from agent_shell.storage.environment import (
     InstanceEnvironmentStore,
     environment_owner_for_name,
 )
+from agent_shell.settings import (
+    DEFAULT_GRAPH_MAX_CONCURRENCY,
+    DEFAULT_GRAPH_RECURSION_LIMIT,
+    DEFAULT_N_JOBS_PER_WORKER,
+)
 
 
 CONFIG_VERSION = 2
@@ -77,9 +81,9 @@ def _default_system() -> dict[str, Any]:
         "settings": {
             "host": "127.0.0.1",
             "port": 19100,
-            "n_jobs_per_worker": 10,
-            "recursion_limit": DEFAULT_RECURSION_LIMIT,
-            "max_concurrency": None,
+            "n_jobs_per_worker": DEFAULT_N_JOBS_PER_WORKER,
+            "recursion_limit": DEFAULT_GRAPH_RECURSION_LIMIT,
+            "max_concurrency": DEFAULT_GRAPH_MAX_CONCURRENCY,
             "debug_port": None,
             "allow_remote": False,
             "langsmith_tracing_enabled": False,

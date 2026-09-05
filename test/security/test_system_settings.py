@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from langchain_core.runnables.config import DEFAULT_RECURSION_LIMIT
 
 from agent_shell.app import create_app
 from agent_shell.settings import get_settings
@@ -41,9 +40,9 @@ def _payload(**overrides) -> dict:
     payload = {
         "host": "127.0.0.1",
         "port": 19100,
-        "n_jobs_per_worker": 10,
-        "recursion_limit": DEFAULT_RECURSION_LIMIT,
-        "max_concurrency": None,
+        "n_jobs_per_worker": 20,
+        "recursion_limit": 100_000,
+        "max_concurrency": 20,
         "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
@@ -69,9 +68,9 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
     assert response.json() == {
         "host": "127.0.0.1",
         "port": 19100,
-        "n_jobs_per_worker": 10,
-        "recursion_limit": DEFAULT_RECURSION_LIMIT,
-        "max_concurrency": None,
+        "n_jobs_per_worker": 20,
+        "recursion_limit": 100_000,
+        "max_concurrency": 20,
         "debug_port": None,
         "allow_remote": False,
         "langsmith_tracing_enabled": False,

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
+from agent_shell.settings import DEFAULT_GRAPH_MAX_CONCURRENCY
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
 
 
@@ -48,7 +49,11 @@ class SystemSettingsUpdate(BaseModel):
     port: int
     n_jobs_per_worker: int = Field(strict=True, ge=1)
     recursion_limit: int = Field(strict=True, ge=1)
-    max_concurrency: int | None = Field(default=None, strict=True, ge=1)
+    max_concurrency: int | None = Field(
+        default=DEFAULT_GRAPH_MAX_CONCURRENCY,
+        strict=True,
+        ge=1,
+    )
     debug_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
     allow_remote: bool
     langsmith_tracing_enabled: bool

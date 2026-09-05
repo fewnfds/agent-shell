@@ -36,7 +36,7 @@
 
 ## API Docs、Studio 与 LangSmith
 
-系统配置页提供当前服务的 API Docs 和 LangGraph Studio 入口。二者使用同一个普通服务端口；API Docs 的 Authorize 和 Studio 连接都填写 management Bearer Token，链接本身不携带 Token。Studio 托管在 `smith.langchain.com`，浏览器必须能访问 Agent Shell 地址。
+首页的服务入口 Card 提供当前服务的 API Docs 和 LangGraph Studio 入口。二者使用同一个普通服务端口；API Docs 的 Authorize 和 Studio 连接都填写 management Bearer Token，链接本身不携带 Token。Studio 托管在 `smith.langchain.com`，浏览器必须能访问 Agent Shell 地址。
 
 远程部署应只公开反向代理后的 TLS 地址，并在 `cors_origins` 中明确允许 Studio 或管理前端需要的 origin。浏览器对公网 HTTPS 页面访问 loopback、HTTP 或私网地址可能应用 Private Network Access/混合内容限制；这属于浏览器与部署网络边界，不通过增加 Agent Shell 端口解决。
 

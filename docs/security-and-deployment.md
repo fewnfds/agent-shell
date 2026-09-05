@@ -10,7 +10,7 @@
 
 默认监听 `127.0.0.1`，本地模式也始终要求管理密码。管理台、Management API、OpenAI-compatible API 与 LangGraph Dev 官方 API 共用一个普通服务端口；`debug_port` 留空时不创建第二个 listener。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。远程部署只需反向代理这个普通服务端口；若显式启用 DAP 调试端口，不应把它作为公共 HTTP 服务发布。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
-系统配置页提供同一服务端口上的 API Docs 与 LangGraph Studio 入口。`/docs` 和 `/openapi.json` 公开 API schema，便于加载文档和 Authorize UI；Assistant、Thread、Run、Store 与 Management 操作仍要求 management Bearer。链接不携带 credential；API Docs 的 Authorize 与 Studio 的连接配置需要显式填写 management Bearer Token。Studio 页面托管在 `smith.langchain.com`，远程部署需让浏览器可以访问反向代理后的 Agent Shell HTTPS 地址，并在 `cors_origins` 中允许实际使用的 origin。不要公开 DAP listener。
+首页的服务入口 Card 提供同一服务端口上的 API Docs 与 LangGraph Studio 入口。`/docs` 和 `/openapi.json` 公开 API schema，便于加载文档和 Authorize UI；Assistant、Thread、Run、Store 与 Management 操作仍要求 management Bearer。链接不携带 credential；API Docs 的 Authorize 与 Studio 的连接配置需要显式填写 management Bearer Token。Studio 页面托管在 `smith.langchain.com`，远程部署需让浏览器可以访问反向代理后的 Agent Shell HTTPS 地址，并在 `cors_origins` 中允许实际使用的 origin。不要公开 DAP listener。
 
 同一 listener 的路径 owner 固定为：`/admin` 属于 Agent Shell 管理台，`/agent-shell/api/*` 属于 Agent Shell API，`/compat/openai/v1/*` 属于 OpenAI-compatible API；`/assistants/*`、`/threads/*`、`/runs/*`、`/store/*`、`/mcp/` 与 `/a2a/{assistant_id}` 保持 LangGraph Agent Server 官方 contract。反向代理不得只转发其中一部分后假设首页、Studio 或 SDK 仍能使用完整服务。
 
@@ -95,9 +95,9 @@ Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint
 settings:
   host: 127.0.0.1
   port: 19100
-  n_jobs_per_worker: 10
-  recursion_limit: 25
-  max_concurrency: null
+  n_jobs_per_worker: 20
+  recursion_limit: 100000
+  max_concurrency: 20
   debug_port: null
   allow_remote: false
   langsmith_tracing_enabled: false

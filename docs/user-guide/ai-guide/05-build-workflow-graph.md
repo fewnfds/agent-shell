@@ -50,9 +50,9 @@ Workflow metadata 还可以保存：
 
 如果用户需要调整 Graph 运行限制，使用【系统 / 系统配置 / 限制策略】：
 
-- `recursion_limit` 限制 Graph 执行步数，正常循环仍需业务退出条件；
-- `max_concurrency` 控制 Graph 内并发，留空时使用官方默认行为；
-- `n_jobs_per_worker` 控制单 worker 并行 Run 槽位；
+- `recursion_limit` 默认 `100000`，限制 Graph 执行步数，正常循环仍需业务退出条件；
+- `max_concurrency` 默认 `20`，控制 Graph 内并发；留空时使用官方默认行为；
+- `n_jobs_per_worker` 默认 `20`，控制单 worker 并行 Run 槽位；
 - 三个字段只要求正整数，没有额外产品最大值，真实资源代价取决于 Workflow、Provider、Tool、进程和宿主机。
 
 修改现有 Workflow 时先 GET，保留未修改的 metadata。metadata PUT 不改变当前 `enabled`。
