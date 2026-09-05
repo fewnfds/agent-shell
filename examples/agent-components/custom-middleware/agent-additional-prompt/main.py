@@ -29,7 +29,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Overwrite
 
 from agent_shell.middleware_packages.messages import mutable_request_messages
-from agent_shell.runtime.workflow_lifecycle import (
+from agent_shell.runtime.workflow_data import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
     lifecycle_invocations_namespace,
