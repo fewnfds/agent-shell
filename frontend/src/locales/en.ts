@@ -1134,6 +1134,8 @@ export const en: MessageSchema = {
     missingConfiguration: 'Missing configuration · {id}',
     itemSeparator: '; ',
     detailSeparator: ': ',
+    numberedItem: '{index}.',
+    requiredMarker: '*',
     refresh: 'Refresh',
     none: 'None',
     refreshing: 'Refreshing…',

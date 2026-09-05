@@ -86,7 +86,7 @@ function optionFor(referenceId: string): ReferenceCardOption | undefined {
         >
           <div class="border rounded p-3 h-100">
             <div class="d-flex align-items-center gap-2 mb-2">
-              <span class="font-monospace text-body-secondary">{{ index + 1 }}.</span>
+              <span class="font-monospace text-body-secondary">{{ t('common.numberedItem', { index: index + 1 }) }}</span>
               <div class="d-flex gap-1 ms-auto" role="group">
                 <LteButton
                   class="icon-action-button"

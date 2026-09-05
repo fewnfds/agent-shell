@@ -96,7 +96,7 @@ function requirementDisabled(id: string, index: number): boolean {
         <div v-for="(reference, index) in references" :key="index" class="col-lg-6" data-testid="mcp-reference-row">
           <div class="border rounded p-3 h-100">
             <div class="d-flex align-items-center gap-2 mb-3">
-              <span class="font-monospace text-body-secondary">{{ index + 1 }}.</span>
+              <span class="font-monospace text-body-secondary">{{ t('common.numberedItem', { index: index + 1 }) }}</span>
               <div class="d-flex gap-1 ms-auto" role="group">
                 <LteButton class="icon-action-button" :disabled="index === 0" :aria-label="t('common.moveUp')" :title="t('common.moveUp')" size="sm" type="button" @click="moveReference(index, -1)"><i class="bi bi-arrow-up" aria-hidden="true" /></LteButton>
                 <LteButton class="icon-action-button" :disabled="index === references.length - 1" :aria-label="t('common.moveDown')" :title="t('common.moveDown')" size="sm" type="button" @click="moveReference(index, 1)"><i class="bi bi-arrow-down" aria-hidden="true" /></LteButton>

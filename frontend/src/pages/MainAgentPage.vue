@@ -241,14 +241,14 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem">
                     {{ t('capabilities.filesystem.label') }}
-                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
                     <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
-                    aria-required="true"
                     id="main-agent-capability-filesystem"
+                    aria-required="true"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem"
                     :value="referenceId(form, 'filesystem')"
@@ -272,14 +272,14 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem-tools">
                     {{ t('capabilities.filesystem-tools.label') }}
-                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
                     <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
-                    aria-required="true"
                     id="main-agent-capability-filesystem-tools"
+                    aria-required="true"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem-tools"
                     :value="referenceId(form, 'filesystem-tools')"
@@ -317,15 +317,15 @@ onMounted(() => {
                   >
                     {{ t(`capabilities.${capability.type}.label`) }}
                     <template v-if="capability.required">
-                      <span class="text-danger" aria-hidden="true">*</span>
+                      <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
                       <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                     </template>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
-                    :aria-required="capability.required"
                     :id="`main-agent-capability-${capability.type}`"
+                    :aria-required="capability.required"
                     class="form-select"
                     :value="referenceId(form, capability.type)"
                     @change="updateReference(capability.type, ($event.target as HTMLSelectElement).value)"

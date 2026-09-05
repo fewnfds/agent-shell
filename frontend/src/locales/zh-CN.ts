@@ -1132,6 +1132,8 @@ export const zhCN = {
     missingConfiguration: '配置已缺失 · {id}',
     itemSeparator: '；',
     detailSeparator: '：',
+    numberedItem: '{index}.',
+    requiredMarker: '*',
     refresh: '刷新',
     none: '无',
     refreshing: '正在刷新…',
