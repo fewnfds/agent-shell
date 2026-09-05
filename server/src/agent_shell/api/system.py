@@ -10,11 +10,11 @@ def build_system_router(readiness: ReadinessService) -> APIRouter:
     router = management_api_router()
 
     @router.get("/health", openapi_extra={"security": []})
-    async def health() -> dict[str, str]:
+    def health() -> dict[str, str]:
         return {"status": "ok", "runtime": "model_streaming"}
 
     @router.get("/readiness")
-    async def readiness_report() -> dict[str, object]:
+    def readiness_report() -> dict[str, object]:
         return readiness.snapshot()
 
     return router

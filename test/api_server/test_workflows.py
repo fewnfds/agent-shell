@@ -146,7 +146,11 @@ def test_workflow_copy_preserves_graph_layout_as_a_draft(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        source = create_workflow(client, name="Source Workflow")
+        source = create_workflow(
+            client,
+            name="Source Workflow",
+            is_model_entry=True,
+        )
         document = save_linear_workflow_graph(client, source, main_agent)
         assert client.get(f"/agent-shell/api/workflows/{source['id']}").json()["enabled"] is True
 
@@ -159,6 +163,7 @@ def test_workflow_copy_preserves_graph_layout_as_a_draft(
         copied_item = copied.json()
         assert copied_item["id"] != source["id"]
         assert copied_item["name"] == "Copied Workflow"
+        assert copied_item["is_model_entry"] is True
         assert copied_item["enabled"] is False
         assert client.get(
             f"/agent-shell/api/workflows/{copied_item['id']}/graph"
@@ -273,7 +278,7 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
     assert published.status_code == 422
 
 
-def test_all_enabled_workflows_are_public_model_entries(
+def test_workflow_model_entry_is_persisted_and_required_for_public_model_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
@@ -283,17 +288,39 @@ def test_all_enabled_workflows_are_public_model_entries(
         created = create_workflow(
             client,
             name="Research Workflow",
+            is_model_entry=True,
         )
         worker = create_workflow(client, name="Research Worker")
+        assert created["is_model_entry"] is True
+        assert worker["is_model_entry"] is False
         assert client.get(f"/agent-shell/api/workflows/{created['id']}").json() == created
         assert client.get("/agent-shell/api/workflows").json() == [worker, created]
         assert client.get("/compat/openai/v1/models").json()["data"] == []
         save_linear_workflow_graph(client, created, main_agent)
         save_linear_workflow_graph(client, worker, main_agent)
         assert [item["id"] for item in client.get("/compat/openai/v1/models").json()["data"]] == [
-            "Research Worker",
             "Research Workflow",
         ]
+        exposed_worker = client.put(
+            f"/agent-shell/api/workflows/{worker['id']}",
+            json={"name": worker["name"], "is_model_entry": True},
+        )
+        assert exposed_worker.status_code == 200, exposed_worker.text
+        assert exposed_worker.json()["enabled"] is True
+        assert [
+            item["id"]
+            for item in client.get("/compat/openai/v1/models").json()["data"]
+        ] == ["Research Worker", "Research Workflow"]
+        hidden_worker = client.put(
+            f"/agent-shell/api/workflows/{worker['id']}",
+            json={"name": worker["name"], "is_model_entry": False},
+        )
+        assert hidden_worker.status_code == 200, hidden_worker.text
+        assert hidden_worker.json()["enabled"] is True
+        assert [
+            item["id"]
+            for item in client.get("/compat/openai/v1/models").json()["data"]
+        ] == ["Research Workflow"]
         copied = client.post(
             f"/agent-shell/api/main-agents/{main_agent['id']}/copy",
             json={"name": "Unreferenced Main Agent"},
@@ -327,9 +354,7 @@ def test_all_enabled_workflows_are_public_model_entries(
             json=client.get(f"/agent-shell/api/workflows/{created['id']}/graph").json(),
         )
         assert disabled.status_code == 200, disabled.text
-        assert [item["id"] for item in client.get("/compat/openai/v1/models").json()["data"]] == [
-            "Research Worker"
-        ]
+        assert client.get("/compat/openai/v1/models").json()["data"] == []
 
         deleted = client.delete(f"/agent-shell/api/workflows/{created['id']}")
         assert deleted.json() == {"ok": True}

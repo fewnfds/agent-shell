@@ -200,7 +200,7 @@ def test_unguarded_event_field_failure_keeps_the_original_diagnostic() -> None:
         class RecordingDiagnostics:
             detail_exception: BaseException | None = None
 
-            def runtime_error(
+            async def aruntime_error(
                 self,
                 _exc,
                 *,

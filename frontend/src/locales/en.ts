@@ -2,7 +2,6 @@ import type { MessageSchema } from './zh-CN'
 
 export const en: MessageSchema = {
   app: {
-    mark: 'a',
     name: 'Agent Shell',
   },
   navigation: {
@@ -269,6 +268,7 @@ export const en: MessageSchema = {
     fields: {
       name: 'Name',
       description: 'Description',
+      modelEntry: 'Expose as model entry',
       filesystem: 'Shared filesystem',
       eventOutput: 'Workflow event output',
       responseStreamScheduling: 'Response Stream Scheduling',
@@ -1615,7 +1615,6 @@ export const en: MessageSchema = {
     },
     capability: {
       required: 'Required',
-      optional: 'Optional',
       selection: 'Current selection',
       notAttached: 'Not attached',
       minimal: 'Minimum features',

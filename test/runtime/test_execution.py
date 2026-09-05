@@ -297,10 +297,12 @@ def test_successful_execution_does_not_add_a_runtime_diagnostic() -> None:
             def __init__(self) -> None:
                 self.codes: list[str] = []
 
-            def observation_error(self, _exc, *, code: str, **_kwargs) -> None:
+            async def aobservation_error(
+                self, _exc, *, code: str, **_kwargs
+            ) -> None:
                 self.codes.append(code)
 
-            def runtime_error(self, _exc, *, code: str, **_kwargs) -> None:
+            async def aruntime_error(self, _exc, *, code: str, **_kwargs) -> None:
                 self.codes.append(code)
 
         diagnostics = RecordingDiagnostics()
@@ -466,7 +468,7 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
         class RecordingDiagnostics:
             detail_exception: BaseException | None = None
 
-            def runtime_error(
+            async def aruntime_error(
                 self,
                 _exc,
                 *,

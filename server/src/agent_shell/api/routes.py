@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
@@ -104,12 +105,12 @@ def build_router(
 
     def configuration_mutation(endpoint):
         @wraps(endpoint)
-        async def guarded(*args, **kwargs):
+        def guarded(*args, **kwargs):
             expected_repository_id = configuration.repository_id
             with configuration.exclusive_config_mutation(
                 expected_repository_id=expected_repository_id
             ):
-                return await endpoint(*args, **kwargs)
+                return endpoint(*args, **kwargs)
 
         return guarded
 
@@ -136,7 +137,7 @@ def build_router(
         )
 
     @router.get("/configuration-options")
-    async def get_configuration_options() -> dict[str, object]:
+    def get_configuration_options() -> dict[str, object]:
         repository_id, repository_revision = configuration.repository_context()
         return {
             "repository_id": repository_id,
@@ -213,7 +214,7 @@ def build_router(
         return block
 
     @router.get("/catalog")
-    async def catalog() -> dict:
+    def catalog() -> dict:
         return {
             "block_types": BLOCK_CATALOG,
             "resource_component_types": RESOURCE_COMPONENT_CATALOG,
@@ -263,7 +264,8 @@ def build_router(
             )
         try:
             credential = validate_provider_credential(body["credential"])
-            api_key = secret_resolver.resolve_request(
+            api_key = await asyncio.to_thread(
+                secret_resolver.resolve_request,
                 credential,
                 provider=provider,
                 block_id=block_id,
@@ -362,11 +364,11 @@ def build_router(
         return model_ids
 
     @router.get("/skills")
-    async def skills() -> dict:
+    def skills() -> dict:
         return scan_skills(skills_dir)
 
     @router.get("/blocks/skill/{block_id}/skills")
-    async def private_skills(block_id: str) -> dict:
+    def private_skills(block_id: str) -> dict:
         block = block_store.get_block_internal("skill", block_id)
         if block is None:
             raise management_error(
@@ -381,7 +383,7 @@ def build_router(
         )
 
     @router.post("/blocks/skill/{block_id}/skills")
-    async def add_private_skill(block_id: str, payload: dict) -> dict:
+    def add_private_skill(block_id: str, payload: dict) -> dict:
         if set(payload) != {"template_path"}:
             raise management_error(
                 422,
@@ -394,13 +396,13 @@ def build_router(
         )
 
     @router.delete("/blocks/skill/{block_id}/skills/{folder_name}")
-    async def delete_private_skill(block_id: str, folder_name: str) -> dict:
+    def delete_private_skill(block_id: str, folder_name: str) -> dict:
         return perform_component_mutation(
             lambda: component_mutations.remove_skill(block_id, folder_name)
         )
 
     @router.get("/blocks/{block_type}")
-    async def list_blocks(
+    def list_blocks(
         request: Request,
         block_type: str,
         view: Literal["full", "summary"] = "full",
@@ -427,7 +429,7 @@ def build_router(
 
     @router.delete("/unsupported-blocks/{block_id}")
     @configuration_mutation
-    async def delete_unsupported_block(block_id: str) -> dict[str, bool]:
+    def delete_unsupported_block(block_id: str) -> dict[str, bool]:
         mutation_repository_id = block_store.repository_id()
         block = block_store.get_block_header(block_id)
         if block is None or block["block_type"] in MANAGED_COMPONENT_MODELS:
@@ -452,7 +454,7 @@ def build_router(
         return {"ok": True}
 
     @router.post("/blocks/{block_type}/delete")
-    async def delete_blocks(
+    def delete_blocks(
         block_type: str,
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
@@ -482,7 +484,7 @@ def build_router(
         return {"deleted": deleted}
 
     @router.get("/blocks/{block_type}/{block_id}")
-    async def get_block(block_type: str, block_id: str) -> dict:
+    def get_block(block_type: str, block_id: str) -> dict:
         check_type(block_type)
         block = block_store.get_block(block_type, block_id)
         if block is None:
@@ -496,7 +498,7 @@ def build_router(
 
     @router.get("/blocks/{block_type}/{block_id}/python-package")
     @configuration_mutation
-    async def inspect_python_package(
+    def inspect_python_package(
         block_type: str,
         block_id: str,
     ) -> dict:
@@ -530,7 +532,7 @@ def build_router(
             raise authoring_error(exc) from exc
 
     @router.post("/blocks/{block_type}")
-    async def create_block(block_type: str, payload: dict) -> dict:
+    def create_block(block_type: str, payload: dict) -> dict:
         check_type(block_type)
         created = perform_component_mutation(
             lambda: component_mutations.create(block_type, payload)
@@ -542,7 +544,7 @@ def build_router(
         )
 
     @router.post("/blocks/{block_type}/{block_id}/copy")
-    async def copy_block(block_type: str, block_id: str, payload: dict) -> dict:
+    def copy_block(block_type: str, block_id: str, payload: dict) -> dict:
         check_type(block_type)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str):
             raise management_error(
@@ -569,7 +571,7 @@ def build_router(
         return project_block(block_type, copied, include_package_details=True)
 
     @router.put("/blocks/{block_type}/{block_id}")
-    async def update_block(block_type: str, block_id: str, payload: dict) -> dict:
+    def update_block(block_type: str, block_id: str, payload: dict) -> dict:
         check_type(block_type)
         updated = perform_component_mutation(
             lambda: component_mutations.update(block_type, block_id, payload)
@@ -581,7 +583,7 @@ def build_router(
         )
 
     @router.delete("/blocks/{block_type}/{block_id}")
-    async def delete_block(block_type: str, block_id: str) -> dict[str, bool]:
+    def delete_block(block_type: str, block_id: str) -> dict[str, bool]:
         check_type(block_type)
         perform_component_mutation(
             lambda: component_mutations.delete(block_type, block_id)

@@ -203,16 +203,17 @@ GET /compat/openai/v1/models
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-确认刚刚 publish 的 Workflow name 出现在 model list。
+确认刚刚 publish 且选择作为模型入口的 Workflow name 出现在 model list。
 
 找不到时依次检查：
 
 1. Workflow 是否 `enabled=true`；
-2. API Server 是否 running；
-3. 请求是否使用 `/compat/openai/v1` API Key；
-4. Workflow name 是否与预期 `model` 完全一致。
+2. Workflow 是否 `is_model_entry=true`；
+3. API Server 是否 running；
+4. 请求是否使用 `/compat/openai/v1` API Key；
+5. Workflow name 是否与预期 `model` 完全一致。
 
-全部 enabled Workflow 都出现在 `/compat/openai/v1/models`，并且都可以被其他 Workflow Run 调用。
+`enabled=true` 且 `is_model_entry=true` 的 Workflow 出现在 `/compat/openai/v1/models`；全部 enabled Workflow 都可以被其他 Workflow Run 调用。
 
 ## 10. 发起一次真实 invocation
 

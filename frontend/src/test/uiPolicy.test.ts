@@ -9,7 +9,7 @@ const checkerPath = join(process.cwd(), 'scripts', 'check-ui-policy.mjs')
 const temporaryRoots: string[] = []
 
 const basePolicy = {
-  version: 2,
+  version: 3,
   dependencies: {
     requiredExact: { '@adminlte/vue': '0.3.0', vue: '3.5.40' },
     forbidden: ['@adminlte/vue/plugins', 'element-plus'],
@@ -24,6 +24,7 @@ const basePolicy = {
     allowScopedSfcStyles: true,
     inlineStylePaths: [],
     hardcodedColorsAllowed: false,
+    forbiddenClassNameFragments: ['badge', 'pill'],
   },
 }
 
@@ -148,5 +149,23 @@ describe('ui-policy checker', () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('global project CSS must use the shared policy-owned entry')
+  })
+
+  it('rejects badge and pill class names', () => {
+    const result = runFixture({
+      'src/pages/ExamplePage.vue': `
+        <script setup lang="ts">
+        const active = true
+        </script>
+        <template>
+          <span class="badge text-bg-success">Active</span>
+          <span :class="{ 'status-pill': active }">Ready</span>
+        </template>
+      `,
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('class names containing "badge" are forbidden')
+    expect(result.stderr).toContain('class names containing "pill" are forbidden')
   })
 })

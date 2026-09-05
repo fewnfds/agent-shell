@@ -720,7 +720,10 @@ onUnmounted(() => {
       </button>
       <h1>{{ workflow?.name ?? t('workflows.editor.title') }}</h1>
       <div class="d-flex align-items-center gap-1">
-        <span class="badge text-bg-secondary">{{ workflow?.enabled ? t('workflows.status.published') : t('workflows.status.draft') }}</span>
+        <span class="d-inline-flex align-items-center gap-1 small text-body-secondary">
+          <i :class="workflow?.enabled ? 'bi bi-check-circle' : 'bi bi-file-earmark'" aria-hidden="true" />
+          {{ workflow?.enabled ? t('workflows.status.published') : t('workflows.status.draft') }}
+        </span>
         <button :aria-label="t('workflows.editor.saveDraft')" :disabled="!canSaveDraft" :title="t('workflows.editor.saveDraft')" type="button" @click="saveDraft">
           <i class="bi bi-file-earmark" aria-hidden="true" />
         </button>
@@ -770,7 +773,7 @@ onUnmounted(() => {
             <i class="bi bi-exclamation-triangle" aria-hidden="true" />
             <span
               v-if="problems.length > 0"
-              class="workflow-tool-badge"
+              class="workflow-tool-count"
               aria-hidden="true"
             >{{ problems.length > 99 ? '99+' : problems.length }}</span>
           </button>

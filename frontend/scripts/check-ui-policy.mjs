@@ -49,6 +49,8 @@ function checkWorkspace(root, policyPath) {
   const forbiddenDependencies = new Set(policy.dependencies.forbidden ?? [])
   const controlledImports = policy.adminLteVue.controlledImports ?? {}
   const globalCssPaths = new Set(policy.styles.globalCssPaths ?? [])
+  const forbiddenClassNameFragments = (policy.styles.forbiddenClassNameFragments ?? [])
+    .map((value) => String(value).toLowerCase())
   const requiredCssOwners = new Map([
     ['@adminlte/vue/css', new Set(policy.adminLteVue.cssImportPaths ?? [])],
     ['bootstrap-icons/font/bootstrap-icons.css', new Set(policy.icons.cssImportPaths ?? [])],
@@ -58,6 +60,19 @@ function checkWorkspace(root, policyPath) {
   const relative = (file) => normalizePath(path.relative(root, file))
   const addError = (file, message, line) => {
     errors.push(`${file}${line ? `:${line}` : ''} ${message}`)
+  }
+  const checkClassText = (value, file, line) => {
+    const normalized = value.toLowerCase()
+    for (const fragment of forbiddenClassNameFragments) {
+      if (normalized.includes(fragment)) {
+        addError(file, `class names containing "${fragment}" are forbidden`, line)
+      }
+    }
+  }
+  const checkStylesheetClasses = (source, file) => {
+    for (const match of source.matchAll(/\.([_a-zA-Z]+[\w-]*)/g)) {
+      checkClassText(match[1], file, sourceLine(source, match.index ?? 0))
+    }
   }
 
   for (const [name, expected] of Object.entries(policy.dependencies.requiredExact ?? {})) {
@@ -145,6 +160,18 @@ function checkWorkspace(root, policyPath) {
           if (!inlineAllowed && (staticStyle || boundStyle)) {
             addError(file, 'inline styles are forbidden; use shared CSS or a scoped component style', prop.loc.start.line)
           }
+          if (prop.type === NodeTypes.ATTRIBUTE && prop.name === 'class' && prop.value) {
+            for (const className of prop.value.content.split(/\s+/).filter(Boolean)) {
+              checkClassText(className, file, prop.loc.start.line)
+            }
+          }
+          const boundClass = prop.type === NodeTypes.DIRECTIVE
+            && prop.name === 'bind'
+            && prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION
+            && prop.arg.content === 'class'
+          if (boundClass && prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION) {
+            checkClassText(prop.exp.content, file, prop.loc.start.line)
+          }
         }
       }
       for (const child of node.children ?? []) visit(child)
@@ -177,6 +204,7 @@ function checkWorkspace(root, policyPath) {
       if (policy.styles.hardcodedColorsAllowed === false && hasHardcodedColor(style.content)) {
         addError(file, 'hardcoded colors are forbidden; use Bootstrap/AdminLTE theme variables')
       }
+      checkStylesheetClasses(style.content, file)
     }
   }
 
@@ -206,6 +234,7 @@ function checkWorkspace(root, policyPath) {
     if (policy.styles.hardcodedColorsAllowed === false && hasHardcodedColor(source)) {
       addError(file, 'hardcoded colors are forbidden; use Bootstrap/AdminLTE theme variables')
     }
+    checkStylesheetClasses(source, file)
   }
 
   return { errors, vueCount, scriptCount: sourceFiles.length - vueCount }

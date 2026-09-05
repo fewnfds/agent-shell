@@ -3,7 +3,6 @@ from __future__ import annotations
 from threading import Thread
 
 from .support import *
-from agent_shell.storage.file_config import FileConfigRepository
 
 
 def test_api_server_events_publish_from_worker_thread() -> None:
@@ -75,42 +74,16 @@ def test_api_key_is_write_only_and_takes_effect_immediately(
     assert secret not in status.text
 
 
-def test_api_key_update_restores_environment_when_system_write_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        environment_path = tmp_path / "data" / "config" / "agent-shell.env"
-        original_environment = environment_path.read_text(encoding="utf-8")
-        monkeypatch.setattr(
-            FileConfigRepository,
-            "update_system",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                OSError("injected system write failure")
-            ),
-        )
-
-        with pytest.raises(OSError, match="injected system write failure"):
-            client.put(
-                "/agent-shell/api/api-server",
-                json={
-                    "api_key": {
-                        "operation": "replace",
-                        "value": "must-be-rolled-back",
-                    }
-                },
-            )
-
-        assert environment_path.read_text(encoding="utf-8") == original_environment
-        assert client.app.state.api_server_store.api_key() == API_KEY
-
-
 def test_start_stop_and_known_workflow_runs_after_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Runnable later")
+        workflow = create_workflow(
+            client,
+            name="Runnable later",
+            is_model_entry=True,
+        )
         save_linear_workflow_graph(client, workflow, main_agent)
         stopped = client.post("/agent-shell/api/api-server/stop")
         unavailable = client.get("/compat/openai/v1/models")

@@ -533,6 +533,7 @@ export interface ResponseStreamPolicy {
 export interface WorkflowPayload {
   name: string
   description: string
+  is_model_entry: boolean
   workflow_event_output_id: string | null
   response_stream_scheduling_id?: string | null
   durability: 'sync' | 'async' | 'exit'

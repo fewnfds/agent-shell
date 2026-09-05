@@ -241,13 +241,13 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem">
                     {{ t('capabilities.filesystem.label') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
-                  <span class="badge text-bg-primary ms-auto">
-                    {{ t('agents.capability.required') }}
-                  </span>
                 </header>
                 <div class="card-body">
                   <select
+                    aria-required="true"
                     id="main-agent-capability-filesystem"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem"
@@ -272,13 +272,13 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem-tools">
                     {{ t('capabilities.filesystem-tools.label') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
-                  <span class="badge text-bg-primary ms-auto">
-                    {{ t('agents.capability.required') }}
-                  </span>
                 </header>
                 <div class="card-body">
                   <select
+                    aria-required="true"
                     id="main-agent-capability-filesystem-tools"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem-tools"
@@ -316,14 +316,15 @@ onMounted(() => {
                     :for="`main-agent-capability-${capability.type}`"
                   >
                     {{ t(`capabilities.${capability.type}.label`) }}
+                    <template v-if="capability.required">
+                      <span class="text-danger" aria-hidden="true">*</span>
+                      <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                    </template>
                   </label>
-                  <span v-if="capability.required" class="badge text-bg-primary ms-auto">
-                    {{ t('agents.capability.required') }}
-                  </span>
-                  <span v-else class="badge text-bg-info ms-auto">{{ t('agents.capability.optional') }}</span>
                 </header>
                 <div class="card-body">
                   <select
+                    :aria-required="capability.required"
                     :id="`main-agent-capability-${capability.type}`"
                     class="form-select"
                     :value="referenceId(form, capability.type)"

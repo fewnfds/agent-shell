@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import json
 
@@ -285,14 +286,19 @@ def test_mcp_connection_api_imports_atomically_and_maps_requirement(
             return [FakeTool()]
 
     monkeypatch.setattr(resources, "install_connection", lambda value: {"status": "ready"})
-    monkeypatch.setattr(
-        resources,
-        "resolve_connection",
-        lambda value: {
+    def resolve_connection_outside_event_loop(value: str) -> dict:
+        with pytest.raises(RuntimeError):
+            asyncio.get_running_loop()
+        return {
             "transport": "stdio",
             "command": "internal-node.exe",
             "args": ["server.js"],
-        },
+        }
+
+    monkeypatch.setattr(
+        resources,
+        "resolve_connection",
+        resolve_connection_outside_event_loop,
     )
     monkeypatch.setattr(
         "agent_shell.api.mcp_connections.MultiServerMCPClient",

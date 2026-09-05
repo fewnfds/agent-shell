@@ -128,8 +128,8 @@ function updateValueSource(item: McpConfiguredValueDraft, event: Event): void {
             <div class="col-lg-4">
               <label class="form-label" for="mcp-package-source">{{ t('mcp.connections.packageSource') }}</label>
               <select id="mcp-package-source" v-model="draft.package_source" class="form-select">
-                <option value="npm">npm</option>
-                <option value="pypi">PyPI</option>
+                <option value="npm">{{ 'npm' }}</option>
+                <option value="pypi">{{ 'PyPI' }}</option>
               </select>
             </div>
             <div class="col-lg-8">

@@ -240,11 +240,15 @@ onMounted(() => {
             <div class="col-md-6">
               <section class="card h-100">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="subagent-role-name">{{ t('agents.subagent.roleName') }}</label>
-                  <span class="badge text-bg-primary ms-auto">{{ t('agents.capability.required') }}</span>
+                  <label class="card-title mb-0" for="subagent-role-name">
+                    {{ t('agents.subagent.roleName') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                  </label>
                 </header>
                 <div class="card-body">
                   <input
+                    aria-required="true"
                     id="subagent-role-name"
                     v-model="form.name"
                     autocomplete="off"
@@ -256,11 +260,14 @@ onMounted(() => {
             <div class="col-md-6">
               <section class="card h-100">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="subagent-description">{{ t('fields.description') }}</label>
-                  <span class="badge text-bg-primary ms-auto">{{ t('agents.capability.required') }}</span>
+                  <label class="card-title mb-0" for="subagent-description">
+                    {{ t('fields.description') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                  </label>
                 </header>
                 <div class="card-body">
-                  <textarea id="subagent-description" v-model="form.description" class="form-control" rows="1" />
+                  <textarea id="subagent-description" v-model="form.description" aria-required="true" class="form-control" rows="1" />
                 </div>
               </section>
             </div>
@@ -309,11 +316,15 @@ onMounted(() => {
             <div class="col-md-6">
               <section class="card h-100" data-testid="subagent-filesystem-card">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="subagent-capability-filesystem">{{ t('capabilities.filesystem.label') }}</label>
-                  <span class="badge text-bg-primary ms-auto">{{ t('agents.capability.required') }}</span>
+                  <label class="card-title mb-0" for="subagent-capability-filesystem">
+                    {{ t('capabilities.filesystem.label') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                  </label>
                 </header>
                 <div class="card-body">
                   <select
+                    aria-required="true"
                     id="subagent-capability-filesystem"
                     class="form-select"
                     data-testid="subagent-capability-filesystem"
@@ -336,11 +347,15 @@ onMounted(() => {
             <div class="col-md-6">
               <section class="card h-100" data-testid="subagent-filesystem-tools-card">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="subagent-capability-filesystem-tools">{{ t('capabilities.filesystem-tools.label') }}</label>
-                  <span class="badge text-bg-primary ms-auto">{{ t('agents.capability.required') }}</span>
+                  <label class="card-title mb-0" for="subagent-capability-filesystem-tools">
+                    {{ t('capabilities.filesystem-tools.label') }}
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                  </label>
                 </header>
                 <div class="card-body">
                   <select
+                    aria-required="true"
                     id="subagent-capability-filesystem-tools"
                     class="form-select"
                     data-testid="subagent-capability-filesystem-tools"
@@ -378,16 +393,15 @@ onMounted(() => {
                     :for="`subagent-capability-${capability.type}`"
                   >
                     {{ t(`capabilities.${capability.type}.label`) }}
+                    <template v-if="capability.subagent_overrideable && capability.required">
+                      <span class="text-danger" aria-hidden="true">*</span>
+                      <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
+                    </template>
                   </label>
-                  <span v-if="capability.subagent_overrideable && capability.required" class="badge text-bg-primary ms-auto">
-                    {{ t('agents.capability.required') }}
-                  </span>
-                  <span v-else-if="capability.subagent_overrideable" class="badge text-bg-info ms-auto">
-                    {{ t('agents.capability.optional') }}
-                  </span>
                 </header>
                 <div class="card-body">
                   <select
+                    :aria-required="capability.subagent_overrideable && capability.required"
                     :id="`subagent-capability-${capability.type}`"
                     class="form-select"
                     :data-testid="`subagent-capability-${capability.type}`"

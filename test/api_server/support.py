@@ -231,6 +231,7 @@ def create_workflow(
     client: TestClient,
     *,
     name: str | None = None,
+    is_model_entry: bool = False,
 ) -> dict:
     workflow_name = name or "Test Workflow"
     response = client.post(
@@ -238,6 +239,7 @@ def create_workflow(
         json={
             "name": workflow_name,
             "description": "Test Workflow.",
+            "is_model_entry": is_model_entry,
         },
     )
     assert response.status_code == 200, response.text

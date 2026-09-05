@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
@@ -160,7 +161,7 @@ async def workflow_graph(
         yield graph
         return
 
-    snapshot = application.state.agent_runtime.capture()
+    snapshot = await application.state.agent_runtime.capture()
     workflow = snapshot.workflow_by_id(workflow_id)
     document = snapshot.workflow_document(workflow_id)
     if workflow is None or not workflow.get("enabled") or document is None:
@@ -168,11 +169,13 @@ async def workflow_graph(
 
     graph_runtime = snapshot.new_runtime(store=runtime.store)
     if runtime.execution_runtime is None:
-        yield graph_runtime.build_workflow_structure(
+        graph = await asyncio.to_thread(
+            graph_runtime.build_workflow_structure,
             document,
             workflow_snapshot=workflow,
             server_context=context,
         )
+        yield graph
         return
 
     execution = await graph_runtime.start_workflow(

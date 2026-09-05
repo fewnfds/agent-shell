@@ -113,6 +113,18 @@ Runtime callable 在 Node、Tool 或 Agent hook 真正执行时运行，才拥�
 
 需要 `runtime.context`、`runtime.store`、`ToolRuntime` 或 `get_stream_writer()` 的代码必须放在对应 runtime callable 或 Middleware hook 中。
 
+### Async 与阻塞 I/O
+
+函数是否声明为 `async def` 取决于调用 contract；不需要把所有 extension 函数改成 async。运行边界按代码实际所在的执行位置判断：
+
+- `command(state, runtime)` 和 Middleware async hook 位于共享事件循环。网络、数据库、文件和子进程操作使用对应 async API；同步库没有 async API 时，只把具体阻塞调用放入 `await asyncio.to_thread(...)`。
+- 同步 LangChain Tool 可以保留同步 callable；Agent Shell 使用官方 `BaseTool.ainvoke()` 路径，LangChain 在线程执行默认同步 `_run()`。Tool 自己提供 async coroutine 时，该 coroutine 同样不得直接阻塞。
+- `output(event, origin)`、`segment_end(event, origin)` 和 `run_output(event, origin)` 是逐事件调用的同步内存 projection。它们应只做短小解析和字符串生成，不读取文件、不访问网络或数据库，也不启动子进程。
+- 同步 factory 和 module import 由平台在 construction stage 隔离，但 factory 仍只负责对象装配，不承载 invocation 工作。
+- CPU 密集任务使用独立进程或外部执行器；线程隔离只解决无法异步化的阻塞 I/O。
+
+开发启动启用 LangGraph Dev 的阻塞检测。检测到 async 执行边界中的同步阻塞调用时，当前 Run 会失败并产生诊断；不要用全局放行参数隐藏问题。
+
 ## 6. Command contract
 
 Command Component 的 factory 是同步函数：

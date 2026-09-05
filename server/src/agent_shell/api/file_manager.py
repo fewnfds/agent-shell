@@ -53,7 +53,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
     router = management_api_router()
 
     @router.get("/file-manager")
-    async def list_directory(
+    def list_directory(
         path: str = Query(default="data"),
     ) -> dict:
         try:
@@ -62,14 +62,14 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             _raise_file_error(exc)
 
     @router.post("/file-manager/directories")
-    async def create_directory(payload: FilePathInput) -> dict:
+    def create_directory(payload: FilePathInput) -> dict:
         try:
             return files.create_directory(payload.path)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
     @router.post("/file-manager/text-files")
-    async def create_text_file(payload: FilePathInput) -> dict:
+    def create_text_file(payload: FilePathInput) -> dict:
         try:
             return files.create_text_file(payload.path)
         except FileManagerError as exc:
@@ -91,7 +91,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             _raise_file_error(exc)
 
     @router.get("/file-manager/download")
-    async def download_file(
+    def download_file(
         path: str = Query(),
     ) -> FileResponse:
         try:
@@ -110,14 +110,14 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         )
 
     @router.post("/file-manager/archive/preview")
-    async def preview_archive(payload: FileSelectionInput) -> dict:
+    def preview_archive(payload: FileSelectionInput) -> dict:
         try:
             return files.preview_archive(payload.paths)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
     @router.post("/file-manager/archive")
-    async def download_archive(
+    def download_archive(
         payload: FileSelectionInput,
     ) -> FileResponse:
         try:
@@ -132,7 +132,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         )
 
     @router.get("/file-manager/text")
-    async def read_text_file(
+    def read_text_file(
         path: str = Query(),
     ) -> dict:
         try:
@@ -141,7 +141,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             _raise_file_error(exc)
 
     @router.put("/file-manager/text")
-    async def save_text_file(payload: TextFileSaveInput) -> dict:
+    def save_text_file(payload: TextFileSaveInput) -> dict:
         try:
             return files.save_text(
                 payload.path,
@@ -152,14 +152,14 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             _raise_file_error(exc)
 
     @router.patch("/file-manager")
-    async def rename_file(payload: FileRenameInput) -> dict:
+    def rename_file(payload: FileRenameInput) -> dict:
         try:
             return files.rename(payload.path, payload.name)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
     @router.delete("/file-manager")
-    async def delete_file(
+    def delete_file(
         path: str = Query(),
     ) -> dict:
         try:

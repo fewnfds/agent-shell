@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -237,6 +238,11 @@ class AgentBuilder:
             )
         assert assembly is not None
         return assembly
+
+    async def aresolve(self, main_agent_id: str) -> StaticAssembly:
+        """Resolve package-backed configuration outside the server event loop."""
+
+        return await asyncio.to_thread(self.resolve, main_agent_id)
 
     def _materialize_profile(
         self,
@@ -576,7 +582,7 @@ class AgentBuilder:
         # Validate the immutable request snapshot before any selected user module
         # can be imported or any optional capability can be materialized.
         messages = validate_client_messages(raw_messages)
-        assembly = self.resolve(main_agent_id)
+        assembly = await self.aresolve(main_agent_id)
         return await self.build_resolved(
             assembly,
             messages,
@@ -589,6 +595,30 @@ class AgentBuilder:
         )
 
     async def build_resolved(
+        self,
+        assembly: StaticAssembly,
+        _messages: list[dict[str, Any]],
+        *,
+        request_id: str = "",
+        workflow_node_id: str | None = None,
+        workspace: DeepAgentsWorkspace | None = None,
+        mapped_directory_paths_by_filesystem: Mapping[
+            str, Mapping[str, Path]
+        ] | None = None,
+    ) -> BuiltAgent:
+        return await asyncio.to_thread(
+            self._build_resolved,
+            assembly,
+            _messages,
+            request_id=request_id,
+            workflow_node_id=workflow_node_id,
+            workspace=workspace,
+            mapped_directory_paths_by_filesystem=(
+                mapped_directory_paths_by_filesystem
+            ),
+        )
+
+    def _build_resolved(
         self,
         assembly: StaticAssembly,
         _messages: list[dict[str, Any]],

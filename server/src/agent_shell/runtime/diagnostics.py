@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -140,6 +141,24 @@ class RuntimeDiagnostics:
             detail_exception=exc if detail_exception is None else detail_exception,
         )
 
+    async def aruntime_error(
+        self,
+        exc: BaseException,
+        *,
+        code: str,
+        component: str,
+        context: RuntimeDiagnosticContext | None = None,
+        detail_exception: BaseException | None = None,
+    ) -> None:
+        await asyncio.to_thread(
+            self.runtime_error,
+            exc,
+            code=code,
+            component=component,
+            context=context,
+            detail_exception=detail_exception,
+        )
+
     def observation_error(
         self,
         exc: BaseException,
@@ -155,6 +174,22 @@ class RuntimeDiagnostics:
             summary="Observation data could not be recorded.",
             context=context,
             detail_exception=exc,
+        )
+
+    async def aobservation_error(
+        self,
+        exc: BaseException,
+        *,
+        code: str,
+        component: str,
+        context: RuntimeDiagnosticContext | None = None,
+    ) -> None:
+        await asyncio.to_thread(
+            self.observation_error,
+            exc,
+            code=code,
+            component=component,
+            context=context,
         )
 
     def _emit_exception(

@@ -61,24 +61,24 @@ def build_model_connection_router(
         }
 
     @router.get("/model-connections")
-    async def list_model_connections() -> list[dict[str, Any]]:
+    def list_model_connections() -> list[dict[str, Any]]:
         return resources.list_connections()
 
     @router.get("/model-connections/{connection_id}")
-    async def get_model_connection(connection_id: str) -> dict[str, Any]:
+    def get_model_connection(connection_id: str) -> dict[str, Any]:
         return connection_or_404(connection_id)
 
     @router.post("/model-connections")
-    async def create_model_connection(payload: dict[str, Any]) -> dict[str, Any]:
+    def create_model_connection(payload: dict[str, Any]) -> dict[str, Any]:
         return save_connection(new_configuration_id(), payload)
 
     @router.put("/model-connections/{connection_id}")
-    async def update_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def update_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         return save_connection(connection_id, payload)
 
     @router.post("/model-connections/{connection_id}/copy")
-    async def copy_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def copy_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str) or not payload["name"].strip():
             raise management_error(422, code="invalid_copy_request", message_key="errors.copyRequestInvalid", message="The copy request must contain a name.")
@@ -101,7 +101,7 @@ def build_model_connection_router(
             ) from exc
 
     @router.delete("/model-connections/{connection_id}")
-    async def delete_model_connection(connection_id: str) -> dict[str, bool]:
+    def delete_model_connection(connection_id: str) -> dict[str, bool]:
         if not resources.delete_connection(connection_id):
             raise management_error(
                 404,
@@ -112,12 +112,12 @@ def build_model_connection_router(
         return {"ok": True}
 
     @router.get("/model-requirements")
-    async def list_model_requirements() -> list[dict[str, Any]]:
+    def list_model_requirements() -> list[dict[str, Any]]:
         requirements = block_store.list_blocks("model-requirement")
         return [requirement_projection(item) for item in requirements]
 
     @router.put("/model-requirements/{requirement_id}/binding")
-    async def bind_model_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def bind_model_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requirement = block_store.get_block("model-requirement", requirement_id)
         if requirement is None:
             raise management_error(

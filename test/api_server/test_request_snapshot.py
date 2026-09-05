@@ -12,7 +12,7 @@ def test_snapshot_freezes_workflow_metadata(
             name="Frozen Workflow",
         )
 
-        snapshot = client.app.state.agent_runtime.capture()
+        snapshot = asyncio.run(client.app.state.agent_runtime.capture())
         snapshot_fields = snapshot.__dataclass_fields__
         assert "_response_scheduler" not in snapshot_fields
         assert "_workflow_lifecycle" not in snapshot_fields
@@ -33,7 +33,7 @@ def test_snapshot_freezes_workflow_metadata(
         frozen_workflow = snapshot.workflow_by_name(workflow["name"])
         assert frozen_workflow is not None
         assert frozen_workflow["description"] == workflow["description"]
-        next_snapshot = client.app.state.agent_runtime.capture()
+        next_snapshot = asyncio.run(client.app.state.agent_runtime.capture())
         current_workflow = next_snapshot.workflow_by_name(workflow["name"])
         assert current_workflow is not None
         assert current_workflow["description"] == "Changed after snapshot"

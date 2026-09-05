@@ -1402,21 +1402,26 @@ def test_runtime_builds_repeated_main_agent_references_per_workflow_node() -> No
             async def discover_mcp(_references):
                 return None
 
+            def resolve(main_agent_id, **_kwargs):
+                return StaticAssembly(
+                    main_agent={"id": main_agent_id, "name": "Repeated Agent"},
+                    references={},
+                    blocks={},
+                    filesystem_mode="composite",
+                    disabled_capabilities=frozenset(),
+                    subagents=(),
+                    subagent_nodes={},
+                )
+
+            async def aresolve(main_agent_id, **_kwargs):
+                return resolve(main_agent_id, **_kwargs)
+
             self._builder = type(
                 "Builder",
                 (),
                 {
-                    "resolve": staticmethod(
-                        lambda main_agent_id, **_kwargs: StaticAssembly(
-                            main_agent={"id": main_agent_id, "name": "Repeated Agent"},
-                            references={},
-                            blocks={},
-                            filesystem_mode="composite",
-                            disabled_capabilities=frozenset(),
-                            subagents=(),
-                            subagent_nodes={},
-                        )
-                    ),
+                    "resolve": staticmethod(resolve),
+                    "aresolve": staticmethod(aresolve),
                     "discover_mcp": staticmethod(discover_mcp),
                     "bind_mcp_runtime": staticmethod(lambda runtime: None),
                 },

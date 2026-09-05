@@ -27,6 +27,7 @@ const workflow: Workflow = {
   id: 'workflow-1',
   name: 'Research Workflow',
   description: 'Runs the research agent.',
+  is_model_entry: true,
   workflow_event_output_id: null,
   response_stream_scheduling_id: null,
   durability: 'async',
@@ -115,6 +116,7 @@ describe('WorkflowsPage', () => {
 
     await wrapper.get('[data-field="record-name"]').setValue('New Workflow')
     await wrapper.get('textarea').setValue('New description')
+    await wrapper.get('#workflow-model-entry').setValue(true)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
     await wrapper.get('#workflow-response-stream-scheduling').setValue(responseStreamScheduling.id)
     await wrapper.get('#workflow-durability').setValue('sync')
@@ -125,6 +127,7 @@ describe('WorkflowsPage', () => {
     expect(create).toHaveBeenCalledWith({
       name: 'New Workflow',
       description: 'New description',
+      is_model_entry: true,
       workflow_event_output_id: eventOutput.id,
       response_stream_scheduling_id: responseStreamScheduling.id,
       durability: 'sync',
@@ -213,6 +216,7 @@ describe('WorkflowsPage', () => {
     expect(update).toHaveBeenCalledWith(workflow.id, {
       name: workflow.name,
       description: workflow.description,
+      is_model_entry: true,
       workflow_event_output_id: null,
       response_stream_scheduling_id: null,
       durability: 'exit',

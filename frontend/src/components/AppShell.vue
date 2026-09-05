@@ -272,7 +272,6 @@ onBeforeUnmount(() => {
     <aside class="app-sidebar bg-body-secondary shadow">
       <div class="sidebar-brand">
         <RouterLink class="brand-link" to="/">
-          <span class="badge text-bg-primary">{{ t('app.mark') }}</span>
           <strong class="brand-text">{{ t('app.name') }}</strong>
         </RouterLink>
       </div>

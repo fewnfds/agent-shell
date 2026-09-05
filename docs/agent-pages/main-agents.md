@@ -1,6 +1,6 @@
 # Main Agent
 
-Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中的 Agent Node 通过 `main_agent_id` 引用完整 Main Agent assembly，同一 Main Agent 可以被多个 Node 重复引用；OpenAI `model` 对应 enabled Workflow name。
+Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中的 Agent Node 通过 `main_agent_id` 引用完整 Main Agent assembly，同一 Main Agent 可以被多个 Node 重复引用；OpenAI `model` 对应 `enabled=true` 且 `is_model_entry=true` 的 Workflow name。
 
 每条 Main Agent 记录保存：
 

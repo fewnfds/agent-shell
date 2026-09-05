@@ -89,7 +89,10 @@ class McpRunRuntime:
                     status_code=409,
                 )
             try:
-                connection = resources.resolve_connection(connection_id)
+                connection = await asyncio.to_thread(
+                    resources.resolve_connection,
+                    connection_id,
+                )
             except KeyError as exc:
                 raise AgentRuntimeError(
                     "mcp_requirement_unbound",

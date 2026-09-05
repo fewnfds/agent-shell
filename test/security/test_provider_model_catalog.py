@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import httpx
 import pytest
 
@@ -36,6 +37,18 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
 ) -> None:
     client, _ = make_client(tmp_path, monkeypatch)
     connection = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
+    original_resolve_connection = client.app.state.model_resources.resolve_connection
+
+    def resolve_connection_outside_event_loop(connection_id: str) -> dict:
+        with pytest.raises(RuntimeError):
+            asyncio.get_running_loop()
+        return original_resolve_connection(connection_id)
+
+    monkeypatch.setattr(
+        client.app.state.model_resources,
+        "resolve_connection",
+        resolve_connection_outside_event_loop,
+    )
     observed: list[tuple[str, str]] = []
     observed_timeouts: list[object] = []
 

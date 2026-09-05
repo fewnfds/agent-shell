@@ -74,11 +74,11 @@ def build_mcp_connection_router(
         }
 
     @router.get("/mcp-connections")
-    async def list_mcp_connections() -> list[dict[str, Any]]:
+    def list_mcp_connections() -> list[dict[str, Any]]:
         return resources.list_connections()
 
     @router.post("/mcp-connections/import/preview")
-    async def preview_mcp_connections_import(payload: dict[str, Any]) -> dict[str, Any]:
+    def preview_mcp_connections_import(payload: dict[str, Any]) -> dict[str, Any]:
         if set(payload) != {"document"}:
             raise management_error(
                 422,
@@ -97,7 +97,7 @@ def build_mcp_connection_router(
             ) from exc
 
     @router.post("/mcp-connections/import")
-    async def import_mcp_connections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def import_mcp_connections(payload: dict[str, Any]) -> list[dict[str, Any]]:
         if set(payload).difference({"document", "value_sources"}) or "document" not in payload:
             raise management_error(
                 422,
@@ -129,12 +129,12 @@ def build_mcp_connection_router(
             ) from exc
 
     @router.get("/mcp-connections/{connection_id}")
-    async def get_mcp_connection(connection_id: str) -> dict[str, Any]:
+    def get_mcp_connection(connection_id: str) -> dict[str, Any]:
         return connection_or_404(connection_id)
 
     @router.post("/mcp-connections/{connection_id}/install")
     async def install_mcp_connection(connection_id: str) -> dict[str, Any]:
-        connection = connection_or_404(connection_id)
+        connection = await run_in_threadpool(connection_or_404, connection_id)
         if connection.get("transport") != "stdio":
             raise management_error(
                 422,
@@ -147,7 +147,10 @@ def build_mcp_connection_router(
                 resources.install_connection,
                 connection_id,
             )
-            resolved = resources.resolve_connection(connection_id)
+            resolved = await run_in_threadpool(
+                resources.resolve_connection,
+                connection_id,
+            )
             client = MultiServerMCPClient({"installation_test": resolved})
             tools = await client.get_tools(server_name="installation_test")
         except McpInstallationError as exc:
@@ -164,22 +167,26 @@ def build_mcp_connection_router(
                 message_key="errors.mcpConnectionTestFailed",
                 message="The installed MCP Server could not complete Tool discovery.",
             ) from exc
+        public_connection = await run_in_threadpool(
+            resources.get_connection,
+            connection_id,
+        )
         return {
-            "connection": resources.get_connection(connection_id),
+            "connection": public_connection,
             "tools": [str(tool.name) for tool in tools],
         }
 
     @router.post("/mcp-connections")
-    async def create_mcp_connection(payload: dict[str, Any]) -> dict[str, Any]:
+    def create_mcp_connection(payload: dict[str, Any]) -> dict[str, Any]:
         return save_connection(new_configuration_id(), payload)
 
     @router.put("/mcp-connections/{connection_id}")
-    async def update_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def update_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         return save_connection(connection_id, payload)
 
     @router.post("/mcp-connections/{connection_id}/copy")
-    async def copy_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def copy_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str) or not payload["name"].strip():
             raise management_error(
@@ -201,7 +208,7 @@ def build_mcp_connection_router(
             raise invalid_connection(exc) from exc
 
     @router.delete("/mcp-connections/{connection_id}")
-    async def delete_mcp_connection(connection_id: str) -> dict[str, bool]:
+    def delete_mcp_connection(connection_id: str) -> dict[str, bool]:
         if not resources.delete_connection(connection_id):
             raise management_error(
                 404,
@@ -212,14 +219,14 @@ def build_mcp_connection_router(
         return {"ok": True}
 
     @router.get("/mcp-requirements")
-    async def list_mcp_requirements() -> list[dict[str, Any]]:
+    def list_mcp_requirements() -> list[dict[str, Any]]:
         return [
             requirement_projection(item)
             for item in block_store.list_blocks("mcp-requirement")
         ]
 
     @router.put("/mcp-requirements/{requirement_id}/binding")
-    async def bind_mcp_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def bind_mcp_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requirement = block_store.get_block("mcp-requirement", requirement_id)
         if requirement is None:
             raise management_error(

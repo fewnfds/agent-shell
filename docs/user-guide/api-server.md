@@ -10,7 +10,7 @@ GET /compat/openai/v1/models
 Authorization: Bearer <API Key>
 ```
 
-返回 OpenAI-compatible list；`data[].id` 使用当前启用的 Workflow name。
+返回 OpenAI-compatible list；`data[].id` 使用当前 `enabled=true` 且 `is_model_entry=true` 的 Workflow name。
 
 ```http
 POST /compat/openai/v1/chat/completions
@@ -52,7 +52,7 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 ## 运行边界
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
-- 全部 enabled Workflow 都可由 `/compat/openai/v1` 启动，也可被其他 Run 调用；
+- `enabled=true` 且 `is_model_entry=true` 的 Workflow 可由 `/compat/openai/v1` 启动；任何 enabled Workflow 都可被其他 Run 调用；
 - 每次请求执行一次完整官方 Run；Assistant ID 使用 Workflow UUID，Thread 和 Run ID 使用官方身份，Node 从 `Runtime.execution_info.run_id` 读取同一个 Run ID；
 - 跨 Workflow 调用通过 `Runtime.context.workflow_runs` 的 `start_workflow/check/list/join/cancel` 使用公共 Agent Server SDK；每次调用创建独立 Thread 和普通 Run。Command Dispatch 在 current Run 内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
 - 每个被调用 Run 使用自己的 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 只按 Run identity 隔离输出，不建立静态运行角色；

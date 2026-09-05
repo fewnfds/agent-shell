@@ -27,18 +27,20 @@ POST /agent-shell/api/workflows
 ```json
 {
   "name": "ai-workflow",
-  "description": "Runs the configured workflow nodes."
+  "description": "Runs the configured workflow nodes.",
+  "is_model_entry": true
 }
 ```
 
 新 Workflow 固定从 `enabled=false` 开始。创建 payload 不能直接启用 Workflow；只有完整 Graph publish 成功后才会设置 `enabled=true`。
 
-保存 response 中的 Workflow UUID 和精确 name。全部 enabled Workflow name 都是 `/compat/openai/v1/chat/completions` 可用的 `model` 值，也都可以作为跨 Workflow 调用目标。Main Agent name 和 UUID 不直接出现在 `/compat/openai/v1/models`。
+保存 response 中的 Workflow UUID 和精确 name。`enabled=true` 且 `is_model_entry=true` 的 Workflow name 是 `/compat/openai/v1/chat/completions` 可用的 `model` 值；全部 enabled Workflow 都可以作为跨 Workflow 调用目标。Main Agent name 和 UUID 不直接出现在 `/compat/openai/v1/models`。
 
 ## 3. Runtime metadata
 
 Workflow metadata 还可以保存：
 
+- `is_model_entry`：是否映射为 OpenAI-compatible model 入口，默认 `false`；只有与 `enabled=true` 同时满足时才可从公开入口启动；
 - `workflow_event_output_id`：可空 Workflow Event Output reference；
 - `response_stream_scheduling_id`：可空 Response Stream Scheduling Component reference；当前 Workflow 作为请求入口时选择本次 response 调度策略；
 - `durability`：`sync|async|exit`，默认 `async`，原样传给官方 Run；
@@ -345,7 +347,7 @@ Content-Type: application/json
 
 draft save 不执行完整 Node Catalog、topology、reference、Python package 或 Agent assembly validation。基础字段类型、ID、extra field 和 layout 数值不合法时仍返回 422。
 
-保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/compat/openai/v1/models` 和跨 Workflow 调用的 enabled target 集合移除。
+保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/compat/openai/v1/models` 和跨 Workflow 调用的 enabled target 集合移除。`is_model_entry` 保留用户选择，但 disabled Workflow 不发布为 model。
 
 保存后 GET 回读：
 

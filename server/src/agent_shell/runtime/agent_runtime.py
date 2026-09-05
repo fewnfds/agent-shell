@@ -69,6 +69,15 @@ from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import ToolCallTransformer
 from langgraph.store.base import BaseStore
 
+
+def _workflow_construction_dependencies() -> tuple[Any, Any, Any, Any]:
+    from agent_shell.command import CommandBlock
+    from agent_shell.workflow.catalog import AgentNodeConfig, CommandNodeConfig
+    from agent_shell.workflow.compiler import compile_workflow
+
+    return AgentNodeConfig, CommandNodeConfig, CommandBlock, compile_workflow
+
+
 def _workflow_run_config(
     *,
     request_id: str,
@@ -168,7 +177,7 @@ class RunExecution:
                 await self.cancel_run()
             except Exception as exc:
                 if self.runtime_diagnostics is not None:
-                    self.runtime_diagnostics.observation_error(
+                    await self.runtime_diagnostics.aobservation_error(
                         exc,
                         code="official_run_cancellation_failed",
                         component="observability",
@@ -202,12 +211,12 @@ class RunExecution:
     async def _stream_text_inner(self) -> AsyncIterator[str]:
         loop = asyncio.get_running_loop()
 
-        def observation_error(
+        async def observation_error(
             exc: BaseException,
             code: str,
         ) -> None:
             if self.runtime_diagnostics is not None:
-                self.runtime_diagnostics.observation_error(
+                await self.runtime_diagnostics.aobservation_error(
                     exc,
                     code=code,
                     component="observability",
@@ -220,16 +229,16 @@ class RunExecution:
             try:
                 await self.cancel_run()
             except Exception as exc:
-                observation_error(exc, "official_run_cancellation_failed")
+                await observation_error(exc, "official_run_cancellation_failed")
 
-        def record_runtime_error(
+        async def record_runtime_error(
             exc: BaseException,
             code: str,
             *,
             detail_exception: BaseException | None = None,
         ) -> None:
             if self.runtime_diagnostics is not None:
-                self.runtime_diagnostics.runtime_error(
+                await self.runtime_diagnostics.aruntime_error(
                     exc,
                     code=code,
                     component="workflow_runtime",
@@ -651,7 +660,7 @@ class RunExecution:
         except AgentRuntimeError as exc:
             for rendered in failure_output(exc.code):
                 yield rendered
-            record_runtime_error(
+            await record_runtime_error(
                 exc,
                 exc.code,
                 detail_exception=(
@@ -675,7 +684,7 @@ class RunExecution:
                 )
             for rendered in failure_output(error.code):
                 yield rendered
-            record_runtime_error(error, error.code, detail_exception=exc)
+            await record_runtime_error(error, error.code, detail_exception=exc)
             await cancel_official_run()
             raise error from exc
 
@@ -1041,11 +1050,12 @@ class AgentRuntime:
         response_consumer: bool = True,
         server_context: WorkflowRuntimeContext | None = None,
     ) -> RunExecution:
-        from agent_shell.workflow.catalog import (
+        (
             AgentNodeConfig,
             CommandNodeConfig,
-        )
-        from agent_shell.workflow.compiler import compile_workflow
+            CommandBlock,
+            compile_workflow,
+        ) = await asyncio.to_thread(_workflow_construction_dependencies)
 
         agent_nodes = [
             node for node in document.definition.nodes if node.type == "agent"
@@ -1063,19 +1073,32 @@ class AgentRuntime:
         )
         messages_sha = client_messages_sha(messages)
         assemblies: dict[str, StaticAssembly] = {}
+        assembly_reports: dict[str, ValidationReport] = {}
+
+        for agent_node in agent_nodes:
+            main_agent_id = agent_node.config.get("main_agent_id")
+            if (
+                not isinstance(main_agent_id, str)
+                or main_agent_id in assemblies
+                or main_agent_id in assembly_reports
+            ):
+                continue
+            try:
+                assemblies[main_agent_id] = await self._builder.aresolve(
+                    main_agent_id
+                )
+            except AgentRuntimeError as exc:
+                if exc.validation_report is None:
+                    raise
+                assembly_reports[main_agent_id] = exc.validation_report
 
         def validate_main_agent(main_agent_id: str) -> ValidationReport:
-            if main_agent_id in assemblies:
-                return ValidationReport(stage="workflow_publish")
-            try:
-                assemblies[main_agent_id] = self._builder.resolve(main_agent_id)
-            except AgentRuntimeError as exc:
-                if exc.validation_report is not None:
-                    return exc.validation_report
-                raise
+            report = assembly_reports.get(main_agent_id)
+            if report is not None:
+                return report
+            if main_agent_id not in assemblies:
+                raise RuntimeError("the Workflow Agent configuration was not resolved")
             return ValidationReport(stage="workflow_publish")
-
-        from agent_shell.command import CommandBlock
 
         command_blocks: dict[str, tuple[str, CommandBlock]] = {}
         for command_node in command_nodes:
@@ -1291,14 +1314,19 @@ class AgentRuntime:
                     packages_dir=self._python_packages_dir,
                     runtime_root=self._runtime_dir,
                 )
-                commands = {
-                    node_id: command_runtime.command_for(
-                        node_id,
-                        command_id,
-                        block.model_dump(mode="python")["python_package"],
-                    )
-                    for node_id, (command_id, block) in command_blocks.items()
-                }
+
+                def materialize_commands() -> dict[str, Any]:
+                    assert command_runtime is not None
+                    return {
+                        node_id: command_runtime.command_for(
+                            node_id,
+                            command_id,
+                            block.model_dump(mode="python")["python_package"],
+                        )
+                        for node_id, (command_id, block) in command_blocks.items()
+                    }
+
+                commands = await asyncio.to_thread(materialize_commands)
             if public_output and output_id is not None:
                 stored_output = (
                     self._blocks.get_block_internal(
@@ -1335,25 +1363,34 @@ class AgentRuntime:
                     packages_dir=self._python_packages_dir,
                     runtime_root=self._runtime_dir,
                 )
-                workflow_event_output = workflow_event_output_runtime.output_for(
-                    str(workflow_identity.get("id", "")) or "workflow",
-                    str(output_id),
-                    output_block.python_package.model_dump(mode="json"),
-                )
-                workflow_event_segment_end = (
-                    workflow_event_output_runtime.segment_end_for(
-                        str(workflow_identity.get("id", "")) or "workflow",
-                        str(output_id),
-                        output_block.python_package.model_dump(mode="json"),
+
+                def materialize_workflow_event_output() -> tuple[Any, Any, Any]:
+                    assert workflow_event_output_runtime is not None
+                    binding_id = str(workflow_identity.get("id", "")) or "workflow"
+                    reference = output_block.python_package.model_dump(mode="json")
+                    return (
+                        workflow_event_output_runtime.output_for(
+                            binding_id,
+                            str(output_id),
+                            reference,
+                        ),
+                        workflow_event_output_runtime.segment_end_for(
+                            binding_id,
+                            str(output_id),
+                            reference,
+                        ),
+                        workflow_event_output_runtime.workflow_run_output_for(
+                            binding_id,
+                            str(output_id),
+                            reference,
+                        ),
                     )
-                )
-                workflow_run_output = (
-                    workflow_event_output_runtime.workflow_run_output_for(
-                        str(workflow_identity.get("id", "")) or "workflow",
-                        str(output_id),
-                        output_block.python_package.model_dump(mode="json"),
-                    )
-                )
+
+                (
+                    workflow_event_output,
+                    workflow_event_segment_end,
+                    workflow_run_output,
+                ) = await asyncio.to_thread(materialize_workflow_event_output)
 
             for agent_node, assembly in resolved_agents:
                 mapped_directory_paths_by_filesystem = (
@@ -1374,18 +1411,25 @@ class AgentRuntime:
                 )
                 built_agents.append((agent_node.id, built))
                 if agent_event_output_runtime is not None:
-                    agent_event_outputs[agent_node.id] = (
-                        agent_event_output_runtime.output_for(
-                            agent_node.id,
-                            built.event_output_id,
-                            built.event_output_reference,
+                    def materialize_agent_event_output() -> tuple[Any, Any]:
+                        assert agent_event_output_runtime is not None
+                        return (
+                            agent_event_output_runtime.output_for(
+                                agent_node.id,
+                                built.event_output_id,
+                                built.event_output_reference,
+                            ),
+                            agent_event_output_runtime.segment_end_for(
+                                agent_node.id,
+                                built.event_output_id,
+                                built.event_output_reference,
+                            ),
                         )
+
+                    output, segment_end = await asyncio.to_thread(
+                        materialize_agent_event_output
                     )
-                    segment_end = agent_event_output_runtime.segment_end_for(
-                        agent_node.id,
-                        built.event_output_id,
-                        built.event_output_reference,
-                    )
+                    agent_event_outputs[agent_node.id] = output
                     if segment_end is not None:
                         agent_event_segment_ends[agent_node.id] = segment_end
                 if workspace is None:
@@ -1399,7 +1443,8 @@ class AgentRuntime:
                             status_code=422,
                         )
                     workflow_initial_files[path] = value
-            graph = compile_workflow(
+            graph = await asyncio.to_thread(
+                compile_workflow,
                 document,
                 node_agents=dict(built_agents),
                 commands=commands,
@@ -1424,7 +1469,7 @@ class AgentRuntime:
                 else "workflow_assembly_failed"
             )
             if runtime_diagnostics is not None:
-                runtime_diagnostics.runtime_error(
+                await runtime_diagnostics.aruntime_error(
                     exc,
                     code=error_code,
                     component="workflow_runtime",

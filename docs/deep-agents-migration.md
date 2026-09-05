@@ -13,7 +13,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 ## 装配
 
-- 全部 enabled Workflow name 都是公开 model ID；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
+- `enabled=true` 且 `is_model_entry=true` 的 Workflow name 是公开 model ID；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
 - Main Agent 必须有模型要求与 Agent Event Output；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
 - Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别继承或替换，不能关闭 required capability，Workflow 不保存 Filesystem ref；

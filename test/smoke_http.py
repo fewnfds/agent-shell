@@ -282,11 +282,11 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         'from pathlib import Path\n'
         '\n'
         'def create_command():\n'
+        '    target_workflow_id = Path(__file__).with_name("target.txt").read_text(encoding="utf-8").strip()\n'
         '    async def command(state, runtime):\n'
         '        runs = runtime.context.workflow_runs\n'
         '        if runs is None:\n'
         '            raise RuntimeError("Workflow Run commands are unavailable")\n'
-        '        target_workflow_id = Path(__file__).with_name("target.txt").read_text(encoding="utf-8").strip()\n'
         '        handle = await runs.start_workflow(\n'
         '            target_workflow_id,\n'
         '            operation_id="smoke-spawn",\n'
@@ -577,6 +577,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             json_body={
                 "name": f"{mode}-official-workflow",
                 "description": "Exercise request and spawned official Runs.",
+                "is_model_entry": True,
                 "workflow_event_output_id": workflow_output["id"],
             },
         ).json()
@@ -981,6 +982,10 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             for sentinel in (management_token, api_key, provider_secret):
                 if sentinel in output_text:
                     raise AssertionError("server output contained a secret sentinel")
+            if "You've set --allow-blocking" in output_text:
+                raise AssertionError("server enabled the global blocking-I/O override")
+            if "identified a synchronous blocking call" in output_text:
+                raise AssertionError("normal smoke path blocked the server event loop")
         # Windows can briefly retain a delete-denying handle after the child
         # process exits even though wait() has completed. Give the OS a small
         # release window before TemporaryDirectory removes the isolated run.

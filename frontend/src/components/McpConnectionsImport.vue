@@ -148,7 +148,7 @@ function closeAfterBusy(): void {
               <tr v-for="value in connection.values" :key="`${connection.name}:${value.target}:${value.name}`">
                 <td>{{ connection.name }}</td>
                 <td>{{ transportSummary(connection) }}</td>
-                <td><span class="badge text-bg-secondary me-2">{{ value.target }}</span><code>{{ value.name }}</code></td>
+                <td><span class="font-monospace text-body-secondary me-2">{{ value.target }}:</span><code>{{ value.name }}</code></td>
                 <td>
                   <select class="form-select" data-testid="mcp-import-value-source" :value="selectedSource(connection.name, value.target, value.name)" @change="setSource(connection.name, value.target, value.name, ($event.target as HTMLSelectElement).value as 'literal' | 'secret')">
                     <option value="secret">{{ t('mcp.connections.secret') }}</option>

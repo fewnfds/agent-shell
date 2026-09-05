@@ -52,7 +52,9 @@ function close(): void {
         size="sm"
         type="button"
         @click="close"
-      ><i class="bi bi-x-lg" aria-hidden="true" /></LteButton>
+      >
+        <i class="bi bi-x-lg" aria-hidden="true" />
+      </LteButton>
     </template>
     <p v-if="description" class="mb-3 text-body-secondary">
       {{ description }}

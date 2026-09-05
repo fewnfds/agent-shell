@@ -140,11 +140,11 @@ def build_workflow_router(
     router = management_api_router()
 
     @router.get("/workflow-node-catalog")
-    async def get_workflow_node_catalog() -> list[dict[str, object]]:
+    def get_workflow_node_catalog() -> list[dict[str, object]]:
         return node_catalog_payload()
 
     @router.get("/workflows")
-    async def list_workflows(
+    def list_workflows(
         request: Request,
         view: Literal["full", "summary"] = "full",
         q: str | None = None,
@@ -168,7 +168,7 @@ def build_workflow_router(
         )
 
     @router.post("/workflows")
-    async def create_workflow(payload: dict) -> dict:
+    def create_workflow(payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         return _save(
             store,
@@ -179,7 +179,7 @@ def build_workflow_router(
         )
 
     @router.post("/workflows/{item_id}/copy")
-    async def copy_workflow(item_id: str, payload: WorkflowCopy) -> dict:
+    def copy_workflow(item_id: str, payload: WorkflowCopy) -> dict:
         mutation_repository_id = store.repository_id()
         source = store.get_item(item_id)
         if source is None:
@@ -221,7 +221,7 @@ def build_workflow_router(
         return copied_item
 
     @router.post("/workflows/delete")
-    async def delete_workflows(payload: WorkflowBulkDelete) -> dict[str, int]:
+    def delete_workflows(payload: WorkflowBulkDelete) -> dict[str, int]:
         mutation_repository_id = store.repository_id()
         ids = (
             list(dict.fromkeys(payload.ids))
@@ -248,7 +248,7 @@ def build_workflow_router(
         }
 
     @router.get("/workflows/{item_id}")
-    async def get_workflow(item_id: str) -> dict:
+    def get_workflow(item_id: str) -> dict:
         item = store.get_item(item_id)
         if item is None:
             raise management_error(
@@ -260,7 +260,7 @@ def build_workflow_router(
         return item
 
     @router.put("/workflows/{item_id}")
-    async def update_workflow(item_id: str, payload: dict) -> dict:
+    def update_workflow(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         if store.get_item(item_id) is None:
             raise management_error(
@@ -278,7 +278,7 @@ def build_workflow_router(
         )
 
     @router.get("/workflows/{item_id}/graph")
-    async def get_workflow_graph(item_id: str) -> dict:
+    def get_workflow_graph(item_id: str) -> dict:
         document = store.get_graph(item_id)
         if document is None:
             raise management_error(
@@ -290,7 +290,7 @@ def build_workflow_router(
         return document.model_dump(mode="json")
 
     @router.put("/workflows/{item_id}/graph")
-    async def update_workflow_graph(item_id: str, payload: dict) -> dict:
+    def update_workflow_graph(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         workflow = store.get_item(item_id)
         if workflow is None:
@@ -332,7 +332,7 @@ def build_workflow_router(
         return document.model_dump(mode="json")
 
     @router.put("/workflows/{item_id}/draft")
-    async def update_workflow_draft(item_id: str, payload: dict) -> dict:
+    def update_workflow_draft(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         if store.get_item(item_id) is None:
             raise management_error(
@@ -362,7 +362,7 @@ def build_workflow_router(
         return document.model_dump(mode="json")
 
     @router.post("/workflows/{item_id}/validate")
-    async def validate_workflow(item_id: str, payload: dict) -> dict:
+    def validate_workflow(item_id: str, payload: dict) -> dict:
         workflow = store.get_item(item_id)
         if workflow is None:
             raise management_error(
@@ -382,7 +382,7 @@ def build_workflow_router(
         ).as_dict()
 
     @router.delete("/workflows/{item_id}")
-    async def delete_workflow(item_id: str) -> dict[str, bool]:
+    def delete_workflow(item_id: str) -> dict[str, bool]:
         mutation_repository_id = store.repository_id()
         if not store.delete_item(
             item_id, expected_repository_id=mutation_repository_id

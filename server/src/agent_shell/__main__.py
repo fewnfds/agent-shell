@@ -63,7 +63,6 @@ def _run_server(*, settings: Settings, config_path: Path) -> None:
         str(settings.port),
         "--no-reload",
         "--no-browser",
-        "--allow-blocking",
         "--n-jobs-per-worker",
         str(settings.n_jobs_per_worker),
     ]

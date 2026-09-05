@@ -35,14 +35,14 @@ def build_configuration_repository_router(
     router = management_api_router()
 
     @router.get("/configuration-repositories")
-    async def list_repositories() -> dict[str, object]:
+    def list_repositories() -> dict[str, object]:
         return {
             "active_id": repository.repository_id,
             "repositories": repository.list_repositories(),
         }
 
     @router.post("/configuration-repositories")
-    async def create_repository(payload: RepositoryCreate) -> dict[str, object]:
+    def create_repository(payload: RepositoryCreate) -> dict[str, object]:
         try:
             return repository.create_repository(payload.name)
         except ValueError as exc:
@@ -54,7 +54,7 @@ def build_configuration_repository_router(
             ) from exc
 
     @router.post("/configuration-repositories/{repository_id}/activate")
-    async def activate_repository(repository_id: str) -> dict[str, object]:
+    def activate_repository(repository_id: str) -> dict[str, object]:
         try:
             active = repository.switch_repository(repository_id)
         except ValueError as exc:
@@ -72,7 +72,7 @@ def build_configuration_repository_router(
         }
 
     @router.post("/configuration-repositories/{repository_id}/copy")
-    async def copy_repository(
+    def copy_repository(
         repository_id: str,
         payload: RepositoryCopy,
     ) -> dict[str, object]:
@@ -87,7 +87,7 @@ def build_configuration_repository_router(
             ) from exc
 
     @router.get("/configuration-repositories/{repository_id}/download")
-    async def download_repository(repository_id: str) -> Response:
+    def download_repository(repository_id: str) -> Response:
         try:
             content, filename = management.export(repository_id)
         except ValueError as exc:
@@ -106,7 +106,7 @@ def build_configuration_repository_router(
         )
 
     @router.delete("/configuration-repositories/{repository_id}")
-    async def delete_repository(repository_id: str) -> dict[str, bool]:
+    def delete_repository(repository_id: str) -> dict[str, bool]:
         try:
             management.delete(repository_id)
         except ActiveRepositoryDeleteError as exc:

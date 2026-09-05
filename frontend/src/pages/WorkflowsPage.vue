@@ -36,6 +36,7 @@ function blankWorkflow(): WorkflowResource {
     id: '',
     name: '',
     description: '',
+    is_model_entry: false,
     workflow_event_output_id: null,
     response_stream_scheduling_id: null,
     durability: 'async',
@@ -50,6 +51,7 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     id: workflow.id ?? '',
     name: workflow.name ?? '',
     description: workflow.description ?? '',
+    is_model_entry: workflow.is_model_entry ?? false,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
     response_stream_scheduling_id: workflow.response_stream_scheduling_id ?? null,
     durability: workflow.durability ?? 'async',
@@ -62,6 +64,7 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
   const payload: WorkflowPayload = {
     name: workflow.name.trim(),
     description: workflow.description.trim(),
+    is_model_entry: workflow.is_model_entry,
     workflow_event_output_id: workflow.workflow_event_output_id || null,
     durability: workflow.durability,
     on_disconnect: workflow.on_disconnect,
@@ -244,6 +247,12 @@ onMounted(() => { void loadWorkspace() })
               </div>
             </div>
             <div class="row g-3" data-ui-control-row>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input id="workflow-model-entry" v-model="form.is_model_entry" class="form-check-input" type="checkbox">
+                  <label class="form-check-label" for="workflow-model-entry">{{ t('workflows.fields.modelEntry') }}</label>
+                </div>
+              </div>
               <div class="col-lg-3">
                 <FormField control-id="workflow-durability" field-path="durability" label-key="workflows.fields.durability">
                   <select id="workflow-durability" v-model="form.durability" class="form-select">

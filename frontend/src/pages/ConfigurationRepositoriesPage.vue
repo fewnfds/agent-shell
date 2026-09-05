@@ -202,10 +202,14 @@ onMounted(() => {
       </LteAlert>
       <DataTableWorkbench ref="table" :config="tableConfig">
         <template #cell-active="{ row, value }">
-          <span v-if="row.active" class="badge text-bg-success">
-            {{ value }}
-          </span>
-          <span v-else class="badge text-bg-secondary">
+          <span
+            class="d-inline-flex align-items-center gap-1"
+            :class="row.active ? 'text-success-emphasis' : 'text-body-secondary'"
+          >
+            <i
+              :class="row.active ? 'bi bi-check-circle' : 'bi bi-circle'"
+              aria-hidden="true"
+            />
             {{ value }}
           </span>
         </template>

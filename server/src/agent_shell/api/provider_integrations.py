@@ -10,7 +10,7 @@ def build_provider_integrations_router() -> APIRouter:
     router = management_api_router()
 
     @router.get("/model-providers")
-    async def list_model_providers() -> dict[str, object]:
+    def list_model_providers() -> dict[str, object]:
         return provider_catalog()
 
     return router

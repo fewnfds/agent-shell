@@ -25,13 +25,13 @@ Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭
 
 Management API 使用 `/agent-shell/api/*`，负责发现、创建、修改、校验和发布配置。
 
-OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行全部 enabled Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
+OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `enabled=true` 且 `is_model_entry=true` 的 Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
 一次外部请求按以下路径运行：
 
 ```text
 OpenAI-compatible messages[]
-  -> 按 model 选择 enabled Workflow name
+  -> 按 model 选择 enabled + is_model_entry Workflow name
   -> 捕获当前配置与 Model/MCP 资源快照
   -> 创建或复用官方 Assistant，并创建本次请求的 Thread 与 Run
   -> 把不可变 request messages[] 写入官方 Server Store
@@ -55,7 +55,7 @@ Component
   -> Main Agent
   -> Workflow metadata
   -> Workflow Graph
-  -> enabled Workflow
+  -> enabled Workflow + is_model_entry
   -> /compat/openai/v1/chat/completions
 ```
 

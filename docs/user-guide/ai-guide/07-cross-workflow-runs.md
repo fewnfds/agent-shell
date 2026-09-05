@@ -19,7 +19,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 ## 2. 准备目标 Workflow
 
-目标必须存在于本次请求已经冻结的 Configuration Repository 快照中，并且 `enabled=true`。所有 enabled Workflow 同时具备两种能力：作为请求入口出现在 `/compat/openai/v1/models`，以及被另一个 Run 调用。
+目标必须存在于本次请求已经冻结的 Configuration Repository 快照中，并且 `enabled=true`。内部调用不要求 `is_model_entry=true`；该字段只决定 Workflow 是否出现在 `/compat/openai/v1/models` 并可由 OpenAI-compatible 请求启动。
 
 需要运行单个 Main Agent 时，可以创建：
 

@@ -1,6 +1,5 @@
 export const zhCN = {
   app: {
-    mark: 'a',
     name: 'Agent Shell',
   },
   navigation: {
@@ -267,6 +266,7 @@ export const zhCN = {
     fields: {
       name: '名称',
       description: '说明',
+      modelEntry: '作为模型入口',
       filesystem: '共享文件系统',
       eventOutput: 'Workflow 事件输出',
       responseStreamScheduling: '响应流调度',
@@ -1613,7 +1613,6 @@ export const zhCN = {
     },
     capability: {
       required: '必选',
-      optional: '可选',
       selection: '当前选择',
       notAttached: '不装配',
       minimal: '最小功能',

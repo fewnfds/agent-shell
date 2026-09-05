@@ -110,7 +110,7 @@ onMounted(() => { void loadSnapshot() })
         <div class="card-body d-flex flex-wrap gap-4">
           <div><strong>{{ t('runtimeMonitoring.lifecycleId') }}:</strong> {{ snapshot.lifecycle_id }}</div>
           <div><strong>{{ t('workflowLifecycles.columns.status') }}:</strong> {{ t(`workflowLifecycles.runStatuses.${snapshot.status}`) }}</div>
-          <div><strong>{{ t('workflowLifecycles.columns.runs') }}:</strong> {{ snapshot.active_run_count }} / {{ snapshot.run_count }}</div>
+          <div><strong>{{ t('workflowLifecycles.columns.runs') }}:</strong> {{ snapshot.active_run_count }} {{ '/' }} {{ snapshot.run_count }}</div>
         </div>
       </div>
 
@@ -131,7 +131,9 @@ onMounted(() => { void loadSnapshot() })
               >
                 <span class="d-block fw-semibold">{{ runName(run) }}</span>
                 <span class="d-block small text-break">{{ run.run_id }}</span>
-                <span class="badge text-bg-secondary mt-1">{{ run.status }}</span>
+                <span class="d-block small text-body-secondary mt-1">
+                  <i class="bi bi-activity me-1" aria-hidden="true" />{{ run.status }}
+                </span>
               </button>
             </div>
           </div>

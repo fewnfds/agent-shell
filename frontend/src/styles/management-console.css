@@ -639,23 +639,15 @@ pre code {
   background: var(--bs-primary-bg-subtle);
 }
 
-.workflow-tool-badge {
+.workflow-tool-count {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  display: inline-grid;
-  min-width: 16px;
-  height: 16px;
-  place-items: center;
-  padding: 0 4px;
-  border: 2px solid var(--bs-body-bg);
-  border-radius: 999px;
-  color: var(--bs-white);
-  background: var(--bs-danger);
-  font-size: 9px;
+  top: 2px;
+  right: 3px;
+  color: var(--bs-danger-text-emphasis);
+  font-size: 0.625rem;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .workflow-tool-panel {

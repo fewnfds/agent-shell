@@ -88,7 +88,7 @@ def build_agent_config_router(
     router = management_api_router()
 
     @router.get("/main-agents")
-    async def list_main_agents(
+    def list_main_agents(
         request: Request,
         view: Literal["full", "summary"] = "full",
         q: str | None = None,
@@ -112,7 +112,7 @@ def build_agent_config_router(
         )
 
     @router.post("/main-agents/delete")
-    async def delete_main_agents(
+    def delete_main_agents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
         mutation_repository_id = config_store.repository_id()
@@ -141,7 +141,7 @@ def build_agent_config_router(
         }
 
     @router.get("/main-agents/{item_id}")
-    async def get_main_agent(item_id: str) -> dict:
+    def get_main_agent(item_id: str) -> dict:
         item = config_store.get_item(MAIN_AGENT_TABLE, item_id)
         if item is None:
             raise management_error(
@@ -153,7 +153,7 @@ def build_agent_config_router(
         return item
 
     @router.post("/main-agents")
-    async def create_main_agent(payload: dict) -> dict:
+    def create_main_agent(payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         report, validated, _ = validation.validate_main_agent(
             payload,
@@ -179,7 +179,7 @@ def build_agent_config_router(
         return config_store.get_item(MAIN_AGENT_TABLE, item_id)
 
     @router.post("/main-agents/{item_id}/copy")
-    async def copy_main_agent(item_id: str, payload: dict) -> dict:
+    def copy_main_agent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         name = _copy_name(payload)
         source = config_store.get_item(MAIN_AGENT_TABLE, item_id)
@@ -218,7 +218,7 @@ def build_agent_config_router(
         return config_store.get_item(MAIN_AGENT_TABLE, copy_id)
 
     @router.put("/main-agents/{item_id}")
-    async def update_main_agent(item_id: str, payload: dict) -> dict:
+    def update_main_agent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(MAIN_AGENT_TABLE, item_id) is None:
             raise management_error(
@@ -251,7 +251,7 @@ def build_agent_config_router(
         return config_store.get_item(MAIN_AGENT_TABLE, item_id)
 
     @router.delete("/main-agents/{item_id}")
-    async def delete_main_agent(item_id: str) -> dict[str, bool]:
+    def delete_main_agent(item_id: str) -> dict[str, bool]:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(MAIN_AGENT_TABLE, item_id) is None:
             raise management_error(
@@ -268,7 +268,7 @@ def build_agent_config_router(
         return {"ok": True}
 
     @router.get("/subagents")
-    async def list_subagents(
+    def list_subagents(
         request: Request,
         view: Literal["full", "summary"] = "full",
         q: str | None = None,
@@ -292,7 +292,7 @@ def build_agent_config_router(
         )
 
     @router.post("/subagents/delete")
-    async def delete_subagents(
+    def delete_subagents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
         mutation_repository_id = config_store.repository_id()
@@ -326,7 +326,7 @@ def build_agent_config_router(
         }
 
     @router.get("/subagents/{item_id}")
-    async def get_subagent(item_id: str) -> dict:
+    def get_subagent(item_id: str) -> dict:
         item = config_store.get_item(SUBAGENT_TABLE, item_id)
         if item is None:
             raise management_error(
@@ -338,7 +338,7 @@ def build_agent_config_router(
         return item
 
     @router.post("/subagents")
-    async def create_subagent(payload: dict) -> dict:
+    def create_subagent(payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         report, validated = validation.validate_subagent(
             payload,
@@ -364,7 +364,7 @@ def build_agent_config_router(
         return config_store.get_item(SUBAGENT_TABLE, item_id)
 
     @router.post("/subagents/{item_id}/copy")
-    async def copy_subagent(item_id: str, payload: dict) -> dict:
+    def copy_subagent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         component_name = _copy_component_name(payload)
         source = config_store.get_item(SUBAGENT_TABLE, item_id)
@@ -402,7 +402,7 @@ def build_agent_config_router(
         return config_store.get_item(SUBAGENT_TABLE, copy_id)
 
     @router.put("/subagents/{item_id}")
-    async def update_subagent(item_id: str, payload: dict) -> dict:
+    def update_subagent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(SUBAGENT_TABLE, item_id) is None:
             raise management_error(
@@ -435,7 +435,7 @@ def build_agent_config_router(
         return config_store.get_item(SUBAGENT_TABLE, item_id)
 
     @router.delete("/subagents/{item_id}")
-    async def delete_subagent(item_id: str) -> dict[str, bool]:
+    def delete_subagent(item_id: str) -> dict[str, bool]:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(SUBAGENT_TABLE, item_id) is None:
             raise management_error(

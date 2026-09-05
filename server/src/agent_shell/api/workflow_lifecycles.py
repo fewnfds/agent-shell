@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,14 +38,17 @@ def build_workflow_lifecycle_router(
     router = management_api_router()
 
     @router.get("/workflow-lifecycles/settings")
-    async def get_workflow_lifecycle_settings() -> dict[str, object]:
+    def get_workflow_lifecycle_settings() -> dict[str, object]:
         return settings.public()
 
     @router.put("/workflow-lifecycles/settings")
     async def update_workflow_lifecycle_settings(
         payload: WorkflowLifecycleSettingsUpdate,
     ) -> dict[str, object]:
-        result = settings.update(payload.retained_lifecycles)
+        result = await asyncio.to_thread(
+            settings.update,
+            payload.retained_lifecycles,
+        )
         await service.enforce_retention()
         return result
 

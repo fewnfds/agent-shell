@@ -87,11 +87,11 @@ def build_system_settings_router(
     router = management_api_router()
 
     @router.get("/system/settings")
-    async def get_system_settings(request: Request) -> dict:
+    def get_system_settings(request: Request) -> dict:
         return _with_active_urls(settings.get(), request)
 
     @router.put("/system/settings")
-    async def update_system_settings(
+    def update_system_settings(
         payload: SystemSettingsUpdate,
         request: Request,
     ) -> dict:

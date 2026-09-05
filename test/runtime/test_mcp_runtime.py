@@ -109,7 +109,9 @@ async def discover_and_call(resources: McpResourceStore) -> None:
     assert [message.content for message in messages] == ["Calculate 2 + 3"]
 
 
-def test_uninstalled_local_mcp_fails_before_tool_discovery(tmp_path: Path) -> None:
+def test_uninstalled_local_mcp_is_resolved_outside_the_event_loop(
+    tmp_path: Path,
+) -> None:
     resources = managed_resources(tmp_path)
     resources.save_connection(
         CONNECTION_ID,
@@ -125,10 +127,21 @@ def test_uninstalled_local_mcp_fails_before_tool_discovery(tmp_path: Path) -> No
     )
     resources.set_binding(REPOSITORY_ID, REQUIREMENT_ID, CONNECTION_ID)
 
+    snapshot = resources.snapshot()
+
+    class LoopCheckingSnapshot:
+        def get_binding(self, repository_id: str, requirement_id: str) -> str | None:
+            return snapshot.get_binding(repository_id, requirement_id)
+
+        def resolve_connection(self, connection_id: str) -> dict:
+            with pytest.raises(RuntimeError):
+                asyncio.get_running_loop()
+            return snapshot.resolve_connection(connection_id)
+
     with pytest.raises(AgentRuntimeError) as raised:
         asyncio.run(
             McpRunRuntime.discover(
-                resources.snapshot(),
+                LoopCheckingSnapshot(),  # type: ignore[arg-type]
                 REPOSITORY_ID,
                 (resolved_reference(),),
             )

@@ -30,4 +30,4 @@ Filesystem Backend 在 CompositeBackend 与 LocalShellBackend 中二选一。Com
 
 其余 Agent capability 按需通过 `capability_refs` 引用；Custom Tool、Custom Middleware 与 MCP Requirement 分别使用独立有序的 `tool_refs`、`middleware_refs` 与 `mcp_refs`，不参与 capability 的 inherit/replace/disabled。Command 也拥有自己的 ordered `mcp_refs`。Workflow Event Output 与 Response Stream Scheduling 分别通过 Workflow metadata 的 `workflow_event_output_id` 与 `response_stream_scheduling_id` 绑定；`durability` 直接保存在 Workflow metadata。Command Node 由 canvas Node 的 `command_id` 引用，Branch key 与 Dispatch key 由对应 Edge 声明。
 
-Component、Main Agent、Subagent 与 Workflow 共用全局 UUID4 identity，跨类型不得复用；名称按各自作用域校验，Workflow name 保留大小写敏感语义并作为公开 model ID。组件编辑页提供草稿校验、新建、保存、复制和删除；Model/MCP Connection 分别在【模型】与【MCP】页面独立维护并通过各自映射绑定，配置库提供通用列表与 Repository 操作。
+Component、Main Agent、Subagent 与 Workflow 共用全局 UUID4 identity，跨类型不得复用；名称按各自作用域校验，Workflow name 保留大小写敏感语义，并在 Workflow 同时启用且选择作为模型入口时成为公开 model ID。组件编辑页提供草稿校验、新建、保存、复制和删除；Model/MCP Connection 分别在【模型】与【MCP】页面独立维护并通过各自映射绑定，配置库提供通用列表与 Repository 操作。

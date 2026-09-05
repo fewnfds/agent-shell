@@ -19,11 +19,11 @@ def build_runtime_diagnostics_router(
     router = management_api_router()
 
     @router.get("/runtime-diagnostics")
-    async def get_runtime_diagnostics() -> dict[str, object]:
+    def get_runtime_diagnostics() -> dict[str, object]:
         return diagnostics.settings()
 
     @router.put("/runtime-diagnostics/retention")
-    async def update_runtime_diagnostics_retention(
+    def update_runtime_diagnostics_retention(
         payload: RuntimeDiagnosticsRetentionUpdate,
     ) -> dict[str, object]:
         return diagnostics.set_retention_limit(payload.retention_limit)

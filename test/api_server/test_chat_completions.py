@@ -166,16 +166,24 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
     assert response_closed is True
     assert cancellation_recorded is True
 
-def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
+def test_models_and_chat_require_published_model_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Published Workflow")
+        workflow = create_workflow(
+            client,
+            name="Published Workflow",
+            is_model_entry=True,
+        )
         save_linear_workflow_graph(client, workflow, main_agent)
         another = create_workflow(client, name="Another Workflow")
         save_linear_workflow_graph(client, another, main_agent)
-        create_workflow(client, name="Disabled Workflow")
+        disabled = create_workflow(
+            client,
+            name="Disabled Workflow",
+            is_model_entry=True,
+        )
 
         models = client.get("/compat/openai/v1/models")
         workflow_reply = client.post(
@@ -189,6 +197,13 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
             "/compat/openai/v1/chat/completions",
             json={
                 "model": another["name"],
+                "messages": [{"role": "user", "content": "run"}],
+            },
+        )
+        disabled_reply = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": disabled["name"],
                 "messages": [{"role": "user", "content": "run"}],
             },
         )
@@ -209,15 +224,18 @@ def test_models_publish_only_enabled_workflows_and_chat_runs_current_graph(
 
     assert models.status_code == 200
     assert [item["id"] for item in models.json()["data"]] == [
-        another["name"],
         workflow["name"],
     ]
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
     assert message["content"] == "runtime reply"
-    assert another_reply.status_code == 200, another_reply.text
-    for response in (main_agent_name_reply, main_agent_id_reply):
+    for response in (
+        another_reply,
+        disabled_reply,
+        main_agent_name_reply,
+        main_agent_id_reply,
+    ):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "model_not_found"
 
@@ -247,7 +265,11 @@ def test_system_graph_limits_reach_the_graph_execution(
     )
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Configured limits")
+        workflow = create_workflow(
+            client,
+            name="Configured limits",
+            is_model_entry=True,
+        )
         save_linear_workflow_graph(client, workflow, main_agent)
         reply = client.post(
             "/compat/openai/v1/chat/completions",
@@ -294,11 +316,16 @@ def test_request_entry_workflow_resolves_response_stream_scheduling_from_snapsho
         )
         assert scheduling.status_code == 200, scheduling.text
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Scheduled response")
+        workflow = create_workflow(
+            client,
+            name="Scheduled response",
+            is_model_entry=True,
+        )
         configured = client.put(
             f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
+                "is_model_entry": workflow["is_model_entry"],
                 "response_stream_scheduling_id": scheduling.json()["id"],
             },
         )
@@ -330,7 +357,11 @@ def test_incomplete_saved_workflow_draft_is_not_a_public_model(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Incomplete Workflow")
+        workflow = create_workflow(
+            client,
+            name="Incomplete Workflow",
+            is_model_entry=True,
+        )
         saved = client.put(
             f"/agent-shell/api/workflows/{workflow['id']}/draft",
             json={
@@ -401,7 +432,11 @@ def test_chat_materializes_command_package_before_compiling_workflow(
             },
         )
         assert router.status_code == 200, router.text
-        workflow = create_workflow(client, name="Routed Workflow")
+        workflow = create_workflow(
+            client,
+            name="Routed Workflow",
+            is_model_entry=True,
+        )
         graph = client.put(
             f"/agent-shell/api/workflows/{workflow['id']}/graph",
             json={
@@ -452,7 +487,11 @@ def test_chat_completion_stream_runs_current_graph(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        workflow = create_workflow(client, name="Streaming Workflow")
+        workflow = create_workflow(
+            client,
+            name="Streaming Workflow",
+            is_model_entry=True,
+        )
         save_linear_workflow_graph(client, workflow, main_agent)
         with client.stream(
             "POST",
@@ -611,7 +650,11 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
             },
         )
         assert updated.status_code == 200, updated.text
-        workflow = create_workflow(client, name="Middleware Workflow")
+        workflow = create_workflow(
+            client,
+            name="Middleware Workflow",
+            is_model_entry=True,
+        )
         save_linear_workflow_graph(client, workflow, updated.json())
         response = client.post(
             "/compat/openai/v1/chat/completions",

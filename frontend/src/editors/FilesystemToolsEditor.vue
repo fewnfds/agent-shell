@@ -67,7 +67,6 @@ const rows = computed(() => props.defaults.tools.flatMap((tool) => {
               <input :id="`filesystem-tool-${row.tool.name}`" v-model="row.config.visible" class="form-check-input" type="checkbox" :disabled="!row.tool.configurable">
               <label class="form-check-label font-monospace" :for="`filesystem-tool-${row.tool.name}`">{{ row.tool.name }}</label>
             </div>
-            <span v-if="row.tool.kind" class="badge text-bg-secondary">{{ row.tool.kind }}</span>
             <LteButton class="action-button ms-auto" data-action="restore-default" type="button" @click="row.config.description_override = row.tool.default_description">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('editors.common.restoreDefault') }}

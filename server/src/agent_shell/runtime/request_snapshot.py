@@ -830,7 +830,12 @@ class RequestSnapshotRuntime:
                 name="langgraph-lifecycle-retention",
             )
 
-    def capture(self) -> RequestRuntimeSnapshot:
+    async def capture(self) -> RequestRuntimeSnapshot:
+        """Freeze one request configuration without blocking the server loop."""
+
+        return await asyncio.to_thread(self._capture)
+
+    def _capture(self) -> RequestRuntimeSnapshot:
         with self._configuration.request_snapshot_context() as context:
             repository, python_packages_dir, skills_dir, repository_id = context
         blocks = BlockStore(repository)

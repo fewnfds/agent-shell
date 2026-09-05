@@ -11,7 +11,7 @@
 Agent Shell 使用两类 credential：
 
 - `/agent-shell/api/*` 使用 management token，负责配置、validation、API Server 控制和 Lifecycle 管理；
-- `/compat/openai/v1/*` 使用独立 API Key，负责列出和运行全部 enabled Workflow。
+- `/compat/openai/v1/*` 使用独立 API Key，负责列出和运行 `enabled=true` 且 `is_model_entry=true` 的 Workflow。
 
 Management API 没有提交密码后再换取 token 的登录接口。首次启动设置的管理密码就是 `/agent-shell/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
 

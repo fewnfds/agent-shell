@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from curl_cffi.const import CurlECode
@@ -32,6 +33,15 @@ class _ProviderAsyncByteStream(CurlAsyncByteStream):
 
 class ProviderAsyncCurlTransport(AsyncCurlTransport):
     _stream_wrap_cls = _ProviderAsyncByteStream
+
+    def _create_request_params(self, req: httpx.Request) -> dict[str, Any]:
+        params = super()._create_request_params(req)
+        # httpx expands timeout=None into four disabled timeout fields, while
+        # httpx-curl-cffi 0.1.5 forwards the relevant pair as (None, None).
+        # curl-cffi represents the same disabled timeout as a single None.
+        if params.get("timeout") == (None, None):
+            params["timeout"] = None
+        return params
 
 
 class ProviderHttpClients:

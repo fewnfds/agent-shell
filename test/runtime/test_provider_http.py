@@ -10,6 +10,32 @@ from curl_cffi.requests.exceptions import RequestException
 from agent_shell import provider_http
 
 
+def test_async_provider_transport_preserves_disabled_httpx_timeout() -> None:
+    loop = asyncio.SelectorEventLoop()
+    transport = provider_http.ProviderAsyncCurlTransport(
+        loop=loop,
+        impersonate="chrome",
+        default_headers=False,
+    )
+    request = httpx.Request(
+        "GET",
+        "https://provider.example/v1/models",
+        extensions={
+            "timeout": {
+                "connect": None,
+                "read": None,
+                "write": None,
+                "pool": None,
+            }
+        },
+    )
+    try:
+        assert transport._create_request_params(request)["timeout"] is None
+    finally:
+        loop.run_until_complete(transport.aclose())
+        loop.close()
+
+
 def test_provider_http_clients_are_shared_and_closed_by_their_single_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

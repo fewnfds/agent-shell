@@ -66,7 +66,7 @@ def build_event_feed_router(
     router = management_api_router()
 
     @router.get("/event-feed")
-    async def list_event_feed(
+    def list_event_feed(
         started_at: datetime = Query(),
         ended_at: datetime = Query(),
         page: int = Query(default=1, ge=1),
@@ -87,7 +87,7 @@ def build_event_feed_router(
         )
 
     @router.post("/event-feed/delete")
-    async def delete_matching_events(
+    def delete_matching_events(
         payload: EventFeedDeleteMatching,
     ) -> dict[str, int]:
         started_at, ended_at = _time_window(payload.started_at, payload.ended_at)
@@ -98,11 +98,11 @@ def build_event_feed_router(
             levels=set(payload.level),
             query=payload.query.strip(),
         )
-        await events.publish({"type": "history_changed"})
+        events.publish_nowait({"type": "history_changed"})
         return result
 
     @router.get("/event-feed/{source}/{item_id}/download")
-    async def download_event(
+    def download_event(
         source: EventSource,
         item_id: str,
     ) -> Response:
@@ -128,15 +128,15 @@ def build_event_feed_router(
         )
 
     @router.get("/event-feed/system/settings")
-    async def get_system_log_settings() -> dict[str, int]:
+    def get_system_log_settings() -> dict[str, int]:
         return service.system_log_settings()
 
     @router.put("/event-feed/system/settings")
-    async def update_system_log_settings(
+    def update_system_log_settings(
         payload: SystemLogSettingsUpdate,
     ) -> dict[str, int]:
         result = service.set_system_log_max_size_mib(payload.max_size_mib)
-        await events.publish({"type": "settings_changed"})
+        events.publish_nowait({"type": "settings_changed"})
         return result
 
     return router

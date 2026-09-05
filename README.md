@@ -1,6 +1,6 @@
 # Agent Shell
 
-Agent Shell Workflow 与 Deep Agents 管理台。启用的 Workflow 作为 OpenAI-compatible model。
+Agent Shell Workflow 与 Deep Agents 管理台。已正式保存且选择作为模型入口的 Workflow 作为 OpenAI-compatible model。
 
 ## 开始
 

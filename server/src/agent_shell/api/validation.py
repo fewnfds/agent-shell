@@ -50,21 +50,21 @@ def build_validation_router(
     router = management_api_router()
 
     @router.get("/validation/repository")
-    async def validate_repository() -> dict[str, object]:
+    def validate_repository() -> dict[str, object]:
         return repository_validation.validate_repository().as_dict()
 
     @router.get("/validation/settings")
-    async def get_validation_settings() -> dict[str, int]:
+    def get_validation_settings() -> dict[str, int]:
         return settings.snapshot()
 
     @router.put("/validation/settings")
-    async def update_validation_settings(
+    def update_validation_settings(
         payload: ConfigurationValidationSettingsUpdate,
     ) -> dict[str, int]:
         return settings.update(payload.debounce_ms)
 
     @router.post("/validation/draft")
-    async def validate_draft(request: DraftValidationRequest) -> dict[str, object]:
+    def validate_draft(request: DraftValidationRequest) -> dict[str, object]:
         target = request.target
         if target.kind == "block":
             if target.type not in MANAGED_COMPONENT_MODELS:

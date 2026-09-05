@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -324,22 +325,26 @@ def create_app(
     async def lifespan(_: FastAPI):
         await detached_tasks.start()
         try:
-            event_logger.emit(
-                "security_configuration_loaded",
-                {
-                    "deployment_mode": settings.deployment_mode,
-                    "management_scope": "configured",
-                    "api_scope": (
-                        "configured"
-                        if api_server_store.api_key() is not None
-                        else "unavailable"
-                    ),
-                    "trusted_proxy": bool(settings.trusted_proxy_cidrs),
-                },
-            )
-            event_logger.emit(
-                "service_started", {"deployment_mode": settings.deployment_mode}
-            )
+            def record_startup() -> None:
+                event_logger.emit(
+                    "security_configuration_loaded",
+                    {
+                        "deployment_mode": settings.deployment_mode,
+                        "management_scope": "configured",
+                        "api_scope": (
+                            "configured"
+                            if api_server_store.api_key() is not None
+                            else "unavailable"
+                        ),
+                        "trusted_proxy": bool(settings.trusted_proxy_cidrs),
+                    },
+                )
+                event_logger.emit(
+                    "service_started",
+                    {"deployment_mode": settings.deployment_mode},
+                )
+
+            await asyncio.to_thread(record_startup)
             yield
         finally:
             try:
@@ -351,13 +356,16 @@ def create_app(
                     try:
                         await application_database.close()
                     finally:
-                        event_logger.emit(
-                            "service_stopped",
-                            {"reason": "application_shutdown"},
-                        )
-                        runtime_diagnostics.close()
-                        if langsmith_client is not None:
-                            langsmith_client.close(timeout=5.0)
+                        def close_sync_resources() -> None:
+                            event_logger.emit(
+                                "service_stopped",
+                                {"reason": "application_shutdown"},
+                            )
+                            runtime_diagnostics.close()
+                            if langsmith_client is not None:
+                                langsmith_client.close(timeout=5.0)
+
+                        await asyncio.to_thread(close_sync_resources)
 
     app = FastAPI(
         title=settings.app_name,
@@ -368,7 +376,7 @@ def create_app(
         redoc_url=None,
     )
 
-    def record_management_failure(
+    async def record_management_failure(
         request: Request,
         *,
         status_code: int,
@@ -387,7 +395,8 @@ def create_app(
                 else detail.get("issues", [])
             )
             issue_count = len(issues) if isinstance(issues, list) else 0
-        event_logger.emit(
+        await asyncio.to_thread(
+            event_logger.emit,
             "management_request_failed",
             {
                 "method": request.method,
@@ -418,7 +427,7 @@ def create_app(
                     message_key="errors.requestFailed",
                     message="The management request failed.",
                 )
-        record_management_failure(
+        await record_management_failure(
             request,
             status_code=exc.status_code,
             detail=detail,
@@ -472,7 +481,7 @@ def create_app(
             }
         else:
             detail = safe_errors
-        record_management_failure(request, status_code=422, detail=detail)
+        await record_management_failure(request, status_code=422, detail=detail)
         return JSONResponse(
             status_code=422,
             headers={"X-Request-ID": getattr(request.state, "request_id", "")},
@@ -486,7 +495,7 @@ def create_app(
 
     @app.exception_handler(Exception)
     async def safe_internal_error(request: Request, exc: Exception) -> JSONResponse:
-        runtime_diagnostics.runtime_error(
+        await runtime_diagnostics.aruntime_error(
             exc,
             code="internal_error",
             component="api",
@@ -516,7 +525,7 @@ def create_app(
                 },
                 "request_id": request_id,
             }
-        record_management_failure(
+        await record_management_failure(
             request,
             status_code=500,
             detail=content.get("detail") or content.get("error") or {},
@@ -658,7 +667,7 @@ def create_app(
 
     if serve_frontend:
         @app.get("/", include_in_schema=False)
-        async def root() -> RedirectResponse:
+        def root() -> RedirectResponse:
             return RedirectResponse(url=ADMIN_PATH, status_code=307)
 
         assets_dir = frontend_dir / "assets"
@@ -669,14 +678,14 @@ def create_app(
         )
 
         @app.get(ADMIN_PATH, include_in_schema=False)
-        async def admin_page() -> FileResponse:
+        def admin_page() -> FileResponse:
             return FileResponse(
                 frontend_dir / "index.html",
                 headers={"Content-Security-Policy": "frame-ancestors 'none'"},
             )
 
         @app.get(f"{ADMIN_PATH}/favicon.ico", include_in_schema=False)
-        async def admin_favicon() -> FileResponse:
+        def admin_favicon() -> FileResponse:
             return FileResponse(frontend_dir / "favicon.ico", media_type="image/x-icon")
 
     return app

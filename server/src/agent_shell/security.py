@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import ipaddress
 import re
@@ -259,7 +260,7 @@ class ScopeAuthenticationMiddleware:
             await self._call_with_request_id(scope, receive, send, request_id)
             return
 
-        api_key = self._current_api_key()
+        api_key = await asyncio.to_thread(self._current_api_key)
         try:
             candidate = _parse_bearer(scope)
             principal = self._authenticate(
@@ -267,7 +268,8 @@ class ScopeAuthenticationMiddleware:
             )
         except SecurityFailure as exc:
             if self.event_logger is not None:
-                self.event_logger.emit(
+                await asyncio.to_thread(
+                    self.event_logger.emit,
                     "authentication_failed",
                     {
                         "required_scope": required_scope,

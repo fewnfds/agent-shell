@@ -517,11 +517,11 @@ def build_api_server_router(
         }
 
     @management_router.get("/api-server")
-    async def get_api_server_settings(request: Request) -> dict[str, object]:
+    def get_api_server_settings(request: Request) -> dict[str, object]:
         return public_settings(request)
 
     @management_router.put("/api-server", response_model=None)
-    async def update_api_server_settings(
+    def update_api_server_settings(
         payload: ApiServerSettingsUpdate, request: Request
     ) -> dict[str, object] | JSONResponse:
         secret = (
@@ -548,13 +548,13 @@ def build_api_server_router(
             api_key_operation=payload.api_key.operation,
             api_key=secret,
         )
-        await events.publish({"type": "settings_changed"})
+        events.publish_nowait({"type": "settings_changed"})
         return public_settings(request)
 
     @management_router.post("/api-server/start")
-    async def start_api_server(request: Request) -> dict[str, object]:
+    def start_api_server(request: Request) -> dict[str, object]:
         store.set_enabled(True)
-        await events.publish({"type": "settings_changed"})
+        events.publish_nowait({"type": "settings_changed"})
         return public_settings(request)
 
     def interception_snapshot() -> dict[str, object]:
@@ -564,11 +564,11 @@ def build_api_server_router(
         }
 
     @management_router.get("/message-interception")
-    async def get_message_interception() -> dict[str, object]:
+    def get_message_interception() -> dict[str, object]:
         return interception_snapshot()
 
     @management_router.put("/message-interception")
-    async def update_message_interception(
+    def update_message_interception(
         payload: MessageInterceptionUpdate,
     ) -> dict[str, object]:
         currently_enabled = bool(
@@ -577,17 +577,17 @@ def build_api_server_router(
         if payload.enabled and not currently_enabled:
             message_interception.clear()
         store.set_message_interception_enabled(payload.enabled)
-        await events.publish({"type": "message_interception_changed"})
+        events.publish_nowait({"type": "message_interception_changed"})
         return interception_snapshot()
 
     @management_router.post("/api-server/stop")
-    async def stop_api_server(request: Request) -> dict[str, object]:
+    def stop_api_server(request: Request) -> dict[str, object]:
         store.set_enabled(False)
-        await events.publish({"type": "settings_changed"})
+        events.publish_nowait({"type": "settings_changed"})
         return public_settings(request)
 
     @management_router.get("/api-server/events")
-    async def api_server_events() -> StreamingResponse:
+    def api_server_events() -> StreamingResponse:
         return StreamingResponse(
             events.stream(),
             media_type="text/event-stream",
@@ -601,12 +601,13 @@ def build_api_server_router(
         "/models",
         openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
     )
-    async def models() -> JSONResponse:
+    def models() -> JSONResponse:
         if not store.is_enabled():
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
         workflow_models = [
             _model_object(item["name"])
             for item in workflows.list_items(enabled_only=True)
+            if item["is_model_entry"]
         ]
         return JSONResponse(content={"object": "list", "data": workflow_models})
 
@@ -616,7 +617,7 @@ def build_api_server_router(
         openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
     )
     async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
-        server_settings = store.settings()
+        server_settings = await asyncio.to_thread(store.settings)
         if not server_settings["enabled"]:
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
         body = await request.body()
@@ -663,7 +664,7 @@ def build_api_server_router(
                 content=_intercepted_completion_payload(model=model)
             )
         try:
-            request_snapshot = runtime.capture()
+            request_snapshot = await runtime.capture()
         except Exception:
             return _openai_error(
                 500,
@@ -674,6 +675,7 @@ def build_api_server_router(
         if (
             workflow is None
             or not workflow["enabled"]
+            or not workflow["is_model_entry"]
         ):
             return _openai_error(
                 404,

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "status": "adminlte-single-stack",
   "dependencies": {
     "requiredExact": {
@@ -47,6 +47,7 @@
     "globalCssPaths": ["src/styles/management-console.css"],
     "allowScopedSfcStyles": true,
     "inlineStylePaths": [],
-    "hardcodedColorsAllowed": false
+    "hardcodedColorsAllowed": false,
+    "forbiddenClassNameFragments": ["badge", "pill"]
   }
 }

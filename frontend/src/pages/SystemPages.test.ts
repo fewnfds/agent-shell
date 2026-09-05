@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type {
   ApiServerSettings,
-  ApiServerSettingsUpdate,
   SystemSettings,
   SystemSettingsUpdate,
 } from '@/api'
@@ -154,7 +153,7 @@ describe('SystemSettingsPage', () => {
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
       })),
-      saveApiServer: vi.fn().mockImplementation(async (_payload: ApiServerSettingsUpdate) => currentApiServerSettings),
+      saveApiServer: vi.fn().mockImplementation(async () => currentApiServerSettings),
     }
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()

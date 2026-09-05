@@ -20,6 +20,7 @@ const workflow: Workflow = {
   id: 'workflow-1',
   name: 'Research Workflow',
   description: 'Runs the research agent.',
+  is_model_entry: true,
   workflow_event_output_id: null,
   durability: 'async',
   on_disconnect: 'cancel',
@@ -329,7 +330,7 @@ describe('WorkflowEditorPage', () => {
     expect(leftDock.find('.workflow-tool-rail').exists()).toBe(true)
     expect(rightDock.find('.workflow-tool-rail').exists()).toBe(true)
     expect(leftDock.findAll('.workflow-tool-button')).toHaveLength(3)
-    expect(leftDock.find('.workflow-tool-badge').exists()).toBe(false)
+    expect(leftDock.find('.workflow-tool-count').exists()).toBe(false)
     expect(leftDock.find('.workflow-node-library-list').exists()).toBe(true)
     expect(rightDock.find('.workflow-inspector-row').exists()).toBe(true)
     expect(document.documentElement.classList.contains('workflow-editor-active')).toBe(true)
@@ -383,7 +384,7 @@ describe('WorkflowEditorPage', () => {
     expect(wrapper.get('.workflow-editor-toolbar button:last-child').attributes('disabled'))
       .toBeDefined()
     const leftDock = wrapper.get('.workflow-tool-dock--left')
-    expect(leftDock.get('.workflow-tool-badge').text()).toBe('1')
+    expect(leftDock.get('.workflow-tool-count').text()).toBe('1')
     expect(wrapper.find('.workflow-editor-canvas .workflow-problems-list').exists()).toBe(false)
 
     await leftDock.findAll('.workflow-tool-button')[2]!.trigger('click')
@@ -439,7 +440,7 @@ describe('WorkflowEditorPage', () => {
     const publish = toolbar.get('button[aria-label="Publish Workflow"]')
     expect(saveDraft.attributes('disabled')).toBeUndefined()
     expect(publish.attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.workflow-tool-badge').text()).toBe('2')
+    expect(wrapper.get('.workflow-tool-count').text()).toBe('2')
 
     await wrapper.get('.workflow-tool-dock--left .workflow-tool-button:nth-child(3)').trigger('click')
     expect(wrapper.findAll('.workflow-problems-item')).toHaveLength(2)

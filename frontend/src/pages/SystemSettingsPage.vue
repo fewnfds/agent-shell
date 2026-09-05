@@ -809,7 +809,6 @@ onMounted(() => { void load() })
           </div>
         </form>
       </div>
-
     </div>
   </PageShell>
 </template>

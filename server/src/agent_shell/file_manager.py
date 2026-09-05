@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterable, Iterator
+import asyncio
+from collections.abc import AsyncIterable, Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -10,6 +11,7 @@ import shutil
 import stat
 import tempfile
 from typing import Any, Literal
+from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from agent_shell.configuration.repositories import (
@@ -32,6 +34,43 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
+
+
+async def _blocking_file_call(
+    call: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Finish an in-flight file operation before propagating cancellation."""
+
+    task = asyncio.create_task(asyncio.to_thread(call, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        try:
+            await task
+        except Exception:
+            pass
+        raise
+
+
+def _create_upload_file(path: Path) -> None:
+    with path.open("xb"):
+        pass
+
+
+def _append_upload_chunk(path: Path, chunk: bytes) -> None:
+    with path.open("ab") as output:
+        output.write(chunk)
+
+
+def _commit_upload_file(temporary: Path, target: Path) -> None:
+    with temporary.open("ab") as output:
+        output.flush()
+        os.fsync(output.fileno())
+    os.replace(temporary, target)
+
+
 _DATA_CHILDREN = (
     "files",
     "skills-template",
@@ -456,48 +495,45 @@ class FileManagerService:
         *,
         overwrite: bool,
     ) -> dict[str, Any]:
-        target, normalized, _, _ = self._creation_target(path, "upload")
-        if os.path.lexists(target) and is_reparse_point(target):
-            raise FileManagerError(
-                422,
-                "file_link_unsupported",
-                "errors.fileLinkUnsupported",
-                "Symbolic links and reparse points are not supported.",
-            )
-        if target.exists() and not overwrite:
-            raise FileManagerError(
-                409,
-                "file_already_exists",
-                "errors.fileAlreadyExists",
-                "A file or directory already exists at the destination.",
-            )
-        if target.exists() and not target.is_file():
-            raise FileManagerError(
-                409,
-                "file_not_regular",
-                "errors.fileNotRegular",
-                "The selected path is not a regular file.",
-            )
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=_TEMPORARY_PREFIX,
-            suffix=".tmp",
-            dir=target.parent,
-        )
-        temporary = Path(temporary_name)
+        def prepare() -> tuple[Path, str]:
+            target, normalized, _, _ = self._creation_target(path, "upload")
+            if os.path.lexists(target) and is_reparse_point(target):
+                raise FileManagerError(
+                    422,
+                    "file_link_unsupported",
+                    "errors.fileLinkUnsupported",
+                    "Symbolic links and reparse points are not supported.",
+                )
+            if target.exists() and not overwrite:
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                )
+            if target.exists() and not target.is_file():
+                raise FileManagerError(
+                    409,
+                    "file_not_regular",
+                    "errors.fileNotRegular",
+                    "The selected path is not a regular file.",
+                )
+            return target, normalized
+
+        target, normalized = await _blocking_file_call(prepare)
+        temporary = target.parent / f"{_TEMPORARY_PREFIX}{uuid4().hex}.tmp"
         size = 0
         try:
-            with os.fdopen(descriptor, "wb") as output:
-                async for chunk in chunks:
-                    output.write(chunk)
-                    size += len(chunk)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, target)
+            await _blocking_file_call(_create_upload_file, temporary)
+            async for chunk in chunks:
+                await _blocking_file_call(_append_upload_chunk, temporary, chunk)
+                size += len(chunk)
+            await _blocking_file_call(_commit_upload_file, temporary, target)
         except OSError as exc:
-            temporary.unlink(missing_ok=True)
+            await _blocking_file_call(temporary.unlink, missing_ok=True)
             raise self._operation_failed() from exc
         except BaseException:
-            temporary.unlink(missing_ok=True)
+            await _blocking_file_call(temporary.unlink, missing_ok=True)
             raise
         return {"path": normalized, "kind": "file", "size": size}
 

@@ -177,7 +177,6 @@ def test_langgraph_dev_cli_receives_only_the_configured_listener_and_worker_opti
                 "9123",
                 "--no-reload",
                 "--no-browser",
-                "--allow-blocking",
                 "--n-jobs-per-worker",
                 "17",
                 "--debug-port",

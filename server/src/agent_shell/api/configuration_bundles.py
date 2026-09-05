@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -40,7 +41,7 @@ def build_configuration_bundle_router(
     router = management_api_router()
 
     @router.post("/configuration-bundles/export")
-    async def export_configuration_bundle(root: BundleRoot) -> Response:
+    def export_configuration_bundle(root: BundleRoot) -> Response:
         try:
             exported = bundles.export(root)
         except (BundleExportError, ValueError) as exc:
@@ -58,7 +59,8 @@ def build_configuration_bundle_router(
         bundle: Annotated[UploadFile, File()],
     ) -> dict[str, object]:
         try:
-            return bundles.preview(await bundle.read())
+            content = await bundle.read()
+            return await asyncio.to_thread(bundles.preview, content)
         except (BundleArchiveError, BundleImportError, ValueError) as exc:
             raise _bundle_error(exc) from exc
 
@@ -69,8 +71,10 @@ def build_configuration_bundle_router(
     ) -> dict[str, object]:
         try:
             parsed_request = _ImportRequest.model_validate_json(request)
-            return bundles.commit(
-                await bundle.read(),
+            content = await bundle.read()
+            return await asyncio.to_thread(
+                bundles.commit,
+                content,
                 bundle_sha256=parsed_request.bundle_sha256,
                 plan_token=parsed_request.plan_token,
                 resolutions=parsed_request.resolutions,

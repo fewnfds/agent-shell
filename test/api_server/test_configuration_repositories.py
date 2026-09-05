@@ -26,7 +26,7 @@ def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot
         initial = client.get("/agent-shell/api/configuration-repositories").json()
         initial_id = initial["active_id"]
         old_workflow = create_workflow(client, name="First repository Workflow")
-        frozen = client.app.state.agent_runtime.capture()
+        frozen = asyncio.run(client.app.state.agent_runtime.capture())
 
         created = client.post(
             "/agent-shell/api/configuration-repositories",
@@ -43,7 +43,7 @@ def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot
         assert client.get("/agent-shell/api/workflows").json() == []
 
         new_workflow = create_workflow(client, name="Alternate repository Workflow")
-        current = client.app.state.agent_runtime.capture()
+        current = asyncio.run(client.app.state.agent_runtime.capture())
         assert frozen.workflow_by_name(old_workflow["name"])["id"] == old_workflow["id"]
         assert frozen.workflow_by_name(new_workflow["name"]) is None
         assert current.workflow_by_name(old_workflow["name"]) is None
