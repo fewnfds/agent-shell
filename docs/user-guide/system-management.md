@@ -77,9 +77,9 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`n_jobs_per_worker` 默认 `10`、最小 `1`、没有产品最大值；每个经官方队列执行的 Run 占一个槽位，增大该值会同时提高并行度、CPU、内存和外部请求压力。`debug_port` 默认留空；留空时没有第二个调试 listener，填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。这三个字段均在服务重启后生效。
 
-API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Chat 请求体、content block 数量、单个/合计输入媒体以及共享 OpenAI-compatible Provider HTTP client 的总超时和连接超时。后端通过 `/agent-shell/api/system/runtime-policy` 返回这 6 项 runtime policy 的当前值、默认值与最小值。
+API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Chat 请求体、content block 数量和单个/合计输入媒体。后端通过 `/agent-shell/api/system/runtime-policy` 返回这 4 项 runtime policy 的当前值、默认值与最小值。
 
-这 6 项只有正数约束，没有额外产品最大值。默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`。模型目录读取不拥有独立 timeout 设置，使用共享 Provider HTTP client。生成媒体落盘和 File Manager 在线文本编辑不设置 Agent Shell 项目级字节上限，实际能力由内存、磁盘和操作系统决定。
+这 4 项只有正数约束，没有额外产品最大值。默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`。OpenAI-compatible 模型请求的 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑不设置 Agent Shell 项目级字节上限，实际能力由内存、磁盘和操作系统决定。
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 

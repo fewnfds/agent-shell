@@ -63,8 +63,6 @@ const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
   decoded_total_bytes: 48 * 1024 * 1024,
-  provider_timeout_seconds: 600,
-  provider_connect_timeout_seconds: 5,
 }
 const runtimePolicySettings: RuntimePolicySettings = {
   ...runtimePolicyValues,
@@ -123,7 +121,7 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
     expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
       chat_completion_body_bytes: 32 * 1024 * 1024,
-      provider_timeout_seconds: 600,
+      content_blocks: 4096,
     }))
     wrapper.unmount()
   })
@@ -160,7 +158,6 @@ describe('SystemSettingsPage', () => {
       'max_initial_messages',
       'debounce_ms',
       'chat_completion_body_bytes',
-      'provider_timeout_seconds',
       'cors_origins',
       'trusted_proxy_cidrs',
     ]) {

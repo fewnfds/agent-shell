@@ -339,7 +339,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
 
     assert current.status_code == 200
     assert current.json()["chat_completion_body_bytes"] == 64 * 1024 * 1024
-    assert current.json()["defaults"]["provider_timeout_seconds"] == 600
+    assert current.json()["defaults"]["decoded_total_bytes"] == 48 * 1024 * 1024
     assert current.json()["minimums"]["content_blocks"] == 1
     assert current.json()["configurable"] is True
 
@@ -352,7 +352,6 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
         {
             "chat_completion_body_bytes": 256 * 1024 * 1024,
             "content_blocks": 100_000,
-            "provider_timeout_seconds": 3600,
         }
     )
     saved = client.put("/agent-shell/api/system/runtime-policy", json=update)
@@ -360,11 +359,10 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     assert saved.status_code == 200, saved.text
     assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
     assert saved.json()["content_blocks"] == 100_000
-    assert saved.json()["provider_timeout_seconds"] == 3600
     document = yaml.safe_load(
         (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
     )
-    assert document["runtime_policy"]["provider_timeout_seconds"] == 3600
+    assert document["runtime_policy"]["content_blocks"] == 100_000
 
     invalid = {**update, "content_blocks": 0}
     rejected = client.put("/agent-shell/api/system/runtime-policy", json=invalid)

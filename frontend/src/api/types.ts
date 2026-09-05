@@ -332,8 +332,6 @@ export interface RuntimePolicyValues {
   content_blocks: number
   decoded_block_bytes: number
   decoded_total_bytes: number
-  provider_timeout_seconds: number
-  provider_connect_timeout_seconds: number
 }
 
 export interface RuntimePolicySettings extends RuntimePolicyValues {

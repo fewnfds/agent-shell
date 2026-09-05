@@ -37,8 +37,10 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
     client, _ = make_client(tmp_path, monkeypatch)
     connection = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     observed: list[tuple[str, str]] = []
+    observed_timeouts: list[object] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        observed_timeouts.append(request.extensions.get("timeout"))
         observed.append(
             (
                 request.headers.get("Authorization", ""),
@@ -80,6 +82,10 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
     assert observed == [
         (f"Bearer {LOCAL_SECRET}", f"Agent-Shell/{__version__}"),
         ("", f"Agent-Shell/{__version__}"),
+    ]
+    assert observed_timeouts == [
+        {"connect": None, "read": None, "write": None, "pool": None},
+        {"connect": None, "read": None, "write": None, "pool": None},
     ]
     assert LOCAL_SECRET not in response.text
     assert "provider-private" not in response.text

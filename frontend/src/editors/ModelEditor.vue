@@ -235,6 +235,9 @@ function setBooleanNumber(key: string, event: Event): void {
             {{ provider.package }}
           </option>
         </select>
+        <p class="small text-body-secondary mb-0 mt-3" data-testid="provider-validation-notice">
+          {{ t('editors.model.providerValidationNotice') }}
+        </p>
         <div
           v-if="loadingProviders"
           class="small text-body-secondary mt-3"

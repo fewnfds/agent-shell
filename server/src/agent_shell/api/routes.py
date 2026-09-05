@@ -298,6 +298,7 @@ def build_router(
             response = await provider_http_clients.async_client.get(
                 f"{base_url}/models",
                 headers=headers,
+                timeout=None,
             )
             if (
                 response.status_code == 403

@@ -2,23 +2,18 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from pathlib import Path
 
 from .support import *
 from .support import _build_chat_model
 from langchain_core.messages import AIMessageChunk
 from agent_shell.model_provider_contracts import _SETTINGS_BY_PROVIDER
-from agent_shell.provider_http import provider_http_timeout
 from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
-from agent_shell.provider_http import ProviderHttpClients
-from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 
 
-def test_model_builder_uses_the_configured_provider_timeout(
-    tmp_path: Path,
+def test_model_builder_does_not_inject_an_agent_shell_provider_timeout(
     monkeypatch,
+    provider_http_clients,
 ) -> None:
     captured = {}
     monkeypatch.setattr(
@@ -26,21 +21,6 @@ def test_model_builder_uses_the_configured_provider_timeout(
         "init_chat_model",
         lambda **kwargs: captured.update(kwargs) or kwargs,
     )
-    policy = RuntimePolicyStore(FileConfigRepository(tmp_path / "data"))
-    update = {
-        key: value
-        for key, value in policy.public().items()
-        if key not in {"defaults", "minimums", "configurable"}
-    }
-    update.update(
-        {
-            "provider_timeout_seconds": 123,
-            "provider_connect_timeout_seconds": 7,
-        }
-    )
-    policy.update(update)
-
-    clients = ProviderHttpClients(policy)
     _build_chat_model(
         {
             "provider": "openai",
@@ -49,11 +29,10 @@ def test_model_builder_uses_the_configured_provider_timeout(
             "provider_settings": {},
         },
         None,
-        clients,
+        provider_http_clients,
     )
 
-    assert captured["timeout"].read == 123
-    assert captured["timeout"].connect == 7
+    assert "timeout" not in captured
     assert captured["use_responses_api"] is False
 def test_model_builder_never_reads_an_unrelated_environment_key(
     monkeypatch, provider_http_clients
@@ -209,7 +188,10 @@ def test_model_builder_passes_native_provider_fields_unchanged(
         assert captured["http_client"] is provider_http_clients.sync_client
         assert captured["http_async_client"] is provider_http_clients.async_client
         assert captured["default_headers"] == {"User-Agent": "Agent-Shell/0.2.0"}
-        assert captured["timeout"] == settings.get("timeout", provider_http_timeout())
+        if "timeout" in settings:
+            assert captured["timeout"] == settings["timeout"]
+        else:
+            assert "timeout" not in captured
     else:
         assert "http_client" not in captured
         assert "http_async_client" not in captured

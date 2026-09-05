@@ -547,8 +547,6 @@ export const en: MessageSchema = {
       contentBlocks: 'Content block count',
       mediaBlock: 'Single input media',
       mediaTotal: 'Total input media',
-      providerTimeout: 'Provider total timeout',
-      providerConnectTimeout: 'Provider connect timeout',
     },
     langsmith: {
       title: 'LangSmith',
@@ -959,6 +957,7 @@ export const en: MessageSchema = {
       providerCatalogLoading: 'Loading the LangChain Provider catalog…',
       providerBundled: 'Bundled',
       providerUnavailable: 'Runtime package missing',
+      providerValidationNotice: 'Development testing currently focuses on OpenAI-compatible (Chat Completions), the OpenAI Responses API, and DeepSeek. Other Providers are TBD, have not been tested broadly, and may not work.',
       vertexCredentialHint: 'Google Vertex AI uses Application Default Credentials from the runtime environment; the API key field is not used.',
       connectionTypeLabel: 'Connection type',
       connectionTypeHint: 'Use Chat Completions for OpenAI-compatible gateways. Select Responses only for an endpoint that supports the official OpenAI Responses API.',

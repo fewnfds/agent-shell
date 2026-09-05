@@ -545,8 +545,6 @@ export const zhCN = {
       contentBlocks: 'Content block 数量',
       mediaBlock: '单个输入媒体',
       mediaTotal: '单次输入媒体总量',
-      providerTimeout: 'Provider 总超时',
-      providerConnectTimeout: 'Provider 连接超时',
     },
     langsmith: {
       title: 'LangSmith',
@@ -957,6 +955,7 @@ export const zhCN = {
       providerCatalogLoading: '正在加载 LangChain Provider 目录…',
       providerBundled: '软件内置',
       providerUnavailable: 'runtime 缺少对应包',
+      providerValidationNotice: '当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，不保证当前可用。',
       vertexCredentialHint: 'Google Vertex AI 使用 runtime 环境中的 Application Default Credentials，不使用 API key 输入框。',
       connectionTypeLabel: '连接类型',
       connectionTypeHint: 'OpenAI-compatible 网关使用 Chat Completions。仅当端点支持官方 OpenAI Responses API 时选择 Responses。',

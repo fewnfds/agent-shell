@@ -86,8 +86,6 @@ const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
   decoded_total_bytes: 48 * 1024 * 1024,
-  provider_timeout_seconds: 600,
-  provider_connect_timeout_seconds: 5,
 })
 type RuntimePolicyNumberKey = keyof RuntimePolicyUpdate
 const runtimePolicyFields: Array<{
@@ -101,8 +99,6 @@ const runtimePolicyFields: Array<{
   { key: 'content_blocks', labelKey: 'systemSettings.runtimePolicy.contentBlocks', unit: '', step: 1 },
   { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'MiB', step: 1, mib: true },
   { key: 'decoded_total_bytes', labelKey: 'systemSettings.runtimePolicy.mediaTotal', unit: 'MiB', step: 1, mib: true },
-  { key: 'provider_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerTimeout', unit: 's', step: 1 },
-  { key: 'provider_connect_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerConnectTimeout', unit: 's', step: 1 },
 ]
 const MIB_BYTES = 1024 * 1024
 

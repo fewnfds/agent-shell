@@ -4,6 +4,8 @@
 
 Model Connection 是实例私有资源（instance-level Model Connection），在【模型 -> 模型连接】创建和维护；【配置库 / 全局 / 模型连接】复用同一个列表，编辑页仍位于【模型 / 模型连接】。它保存 LangChain Provider、`base_url`、具体 `model`、`provider_settings`、`model_settings`、`tool_choice`、`response_format` 以及 write-only `credential`。连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，凭据值只位于 `data/config/agent-shell.env`；API response 只返回 `masked` 或 `missing` 状态。
 
+当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，实际可用性取决于 Provider integration、模型和上游端点。
+
 模型连接不属于 Configuration Repository，不进入配置 Bundle，也不提供下载。接口为：
 
 - `GET/POST /agent-shell/api/model-connections`

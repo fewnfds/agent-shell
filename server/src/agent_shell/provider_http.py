@@ -8,22 +8,6 @@ from curl_cffi.requests.exceptions import RequestException
 from httpx_curl_cffi import AsyncCurlTransport, CurlTransport
 from httpx_curl_cffi.transport import CurlAsyncByteStream
 
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
-
-
-def provider_http_timeout(
-    runtime_policy: RuntimePolicyStore | None = None,
-) -> httpx.Timeout:
-    policy = (
-        runtime_policy.snapshot()
-        if runtime_policy is not None
-        else RUNTIME_POLICY_DEFAULTS
-    )
-    return httpx.Timeout(
-        float(policy.provider_timeout_seconds),
-        connect=float(policy.provider_connect_timeout_seconds),
-    )
-
 
 class ProviderStreamError(RuntimeError):
     """Safe evidence for a curl failure after a response stream has started."""
@@ -53,8 +37,7 @@ class ProviderAsyncCurlTransport(AsyncCurlTransport):
 class ProviderHttpClients:
     """Process-owned curl-backed clients shared by Provider integrations."""
 
-    def __init__(self, runtime_policy: RuntimePolicyStore | None = None) -> None:
-        self._runtime_policy = runtime_policy
+    def __init__(self) -> None:
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._closed = False
@@ -62,9 +45,6 @@ class ProviderHttpClients:
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("Provider HTTP clients are closed")
-
-    def timeout(self) -> httpx.Timeout:
-        return provider_http_timeout(self._runtime_policy)
 
     @property
     def sync_client(self) -> httpx.Client:
@@ -75,7 +55,6 @@ class ProviderHttpClients:
                     impersonate="chrome",
                     default_headers=False,
                 ),
-                timeout=self.timeout(),
                 trust_env=False,
             )
         return self._sync_client
@@ -90,7 +69,6 @@ class ProviderHttpClients:
                     default_headers=False,
                     max_connections=100,
                 ),
-                timeout=self.timeout(),
                 trust_env=False,
             )
         return self._async_client

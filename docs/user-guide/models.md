@@ -8,6 +8,8 @@
 
 模型连接保存 `provider`、`base_url`（服务地址）、`model`、`credential`、`provider_settings`、`model_settings`、`tool_choice` 和 `response_format`，按当前 `ModelConnectionBlock` 校验；`provider` 限本版本内置 Provider，`base_url` 必须是 http/https 且不含 query、fragment 或 userinfo。凭据实际值只保存于实例 env，列表和编辑响应不会回显明文。它是系统私有资源，不进入 Configuration Repository，也不会被配置 Bundle 或整仓库下载导出。
 
+当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，实际可用性取决于 Provider integration、模型和上游端点。
+
 连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，实际 secret 位于 `data/config/agent-shell.env` 的 `AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY`；API response 返回 `credential.status` 为 `masked` 或 `missing`。编辑时 `credential: null` 在 Provider 与 `base_url` 保持不变时保留原 Key；`google_vertexai` 使用无 credential 配置。名称去除首尾空白后须为 1-120 个字符且在实例内大小写不敏感唯一；格式错误返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
 ## Model Mapping

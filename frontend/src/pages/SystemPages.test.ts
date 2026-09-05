@@ -86,8 +86,6 @@ const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
   decoded_total_bytes: 48 * 1024 * 1024,
-  provider_timeout_seconds: 600,
-  provider_connect_timeout_seconds: 5,
 }
 
 function runtimePolicyApi() {

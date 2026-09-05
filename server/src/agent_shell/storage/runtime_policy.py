@@ -12,8 +12,6 @@ class RuntimePolicy:
     content_blocks: int = 4096
     decoded_block_bytes: int = 24 * 1024 * 1024
     decoded_total_bytes: int = 48 * 1024 * 1024
-    provider_timeout_seconds: int = 600
-    provider_connect_timeout_seconds: int = 5
 
 
 RUNTIME_POLICY_DEFAULTS = RuntimePolicy()
@@ -22,13 +20,11 @@ RUNTIME_POLICY_MINIMUMS = RuntimePolicy(
     content_blocks=1,
     decoded_block_bytes=1,
     decoded_total_bytes=1,
-    provider_timeout_seconds=1,
-    provider_connect_timeout_seconds=1,
 )
 
 
 class RuntimePolicyStore:
-    """Persist user-controlled resource and transport policy in one owner."""
+    """Persist user-controlled runtime resource policy in one owner."""
 
     _section = "runtime_policy"
 

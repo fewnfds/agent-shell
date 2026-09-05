@@ -18,7 +18,7 @@ from agent_shell.contracts import (
     FilesystemToolsBlock,
     SkillBlock,
 )
-from agent_shell.provider_http import ProviderHttpClients, provider_http_timeout
+from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderCredentialError, ProviderSecretResolver
 from agent_shell.runtime.capabilities import (
     DeepAgentsCapabilityError,
@@ -99,13 +99,6 @@ def _build_chat_model(
                 credential or "agent-shell-no-credential"
             )
         if provider in _OPENAI_COMPATIBLE_PROVIDERS:
-            timeout_factory = getattr(provider_http_clients, "timeout", None)
-            kwargs.setdefault(
-                "timeout",
-                timeout_factory()
-                if callable(timeout_factory)
-                else provider_http_timeout(),
-            )
             kwargs.update(
                 {
                     "default_headers": {
