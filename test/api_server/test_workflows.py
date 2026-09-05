@@ -12,7 +12,7 @@ from .support import *
 def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     return [
         issue
-        for issue in client.get("/api/validation/repository").json()["issues"]
+        for issue in client.get("/agent-shell/api/validation/repository").json()["issues"]
         if issue["owner_id"] == owner_id
         and issue["code"].startswith("configuration.reference_")
     ]
@@ -27,7 +27,7 @@ def test_response_stream_scheduling_component_is_referenced_by_any_workflow(
         assert workflow["response_stream_scheduling_id"] is None
         assert another["response_stream_scheduling_id"] is None
         component = client.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={
                 "name": "Fair lifecycle stream",
                 "queue": {
@@ -58,12 +58,12 @@ def test_response_stream_scheduling_component_is_referenced_by_any_workflow(
             )
         }
         workflow_payload["response_stream_scheduling_id"] = component.json()["id"]
-        saved = client.put(f"/api/workflows/{workflow['id']}", json=workflow_payload)
+        saved = client.put(f"/agent-shell/api/workflows/{workflow['id']}", json=workflow_payload)
         assert saved.status_code == 200, saved.text
         assert saved.json()["response_stream_scheduling_id"] == component.json()["id"]
 
         copied = client.post(
-            f"/api/workflows/{workflow['id']}/copy",
+            f"/agent-shell/api/workflows/{workflow['id']}/copy",
             json={"name": "Copied stream owner"},
         )
         assert copied.status_code == 200, copied.text
@@ -76,19 +76,19 @@ def test_response_stream_scheduling_rejects_invalid_component_and_inline_policy(
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Policy validation")
         invalid = client.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={
                 "name": "Invalid scheduling",
                 "queue": {"idle_timeout_seconds": -1},
             },
         )
         configured = client.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={"name": "Reusable scheduling"},
         )
         assert configured.status_code == 200, configured.text
         missing_reference = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "response_stream_scheduling_id": (
@@ -97,14 +97,14 @@ def test_response_stream_scheduling_rejects_invalid_component_and_inline_policy(
             },
         )
         configured_create = client.post(
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             json={
                 "name": "Configured workflow",
                 "response_stream_scheduling_id": configured.json()["id"],
             },
         )
         removed_inline_owner = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "response_stream_policy": {"queue": {"strategy": "request"}},
@@ -130,7 +130,7 @@ def test_workflow_runtime_boundaries_are_managed(
         assert workflow["durability"] == "async"
         assert workflow["on_disconnect"] == "cancel"
         updated = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": workflow["description"],
@@ -154,10 +154,10 @@ def test_workflow_copy_preserves_graph_layout_as_a_draft(
         main_agent = create_main_agent(client)
         source = create_workflow(client, name="Source Workflow")
         document = save_linear_workflow_graph(client, source, main_agent)
-        assert client.get(f"/api/workflows/{source['id']}").json()["enabled"] is True
+        assert client.get(f"/agent-shell/api/workflows/{source['id']}").json()["enabled"] is True
 
         copied = client.post(
-            f"/api/workflows/{source['id']}/copy",
+            f"/agent-shell/api/workflows/{source['id']}/copy",
             json={"name": "Copied Workflow"},
         )
 
@@ -167,18 +167,18 @@ def test_workflow_copy_preserves_graph_layout_as_a_draft(
         assert copied_item["name"] == "Copied Workflow"
         assert copied_item["enabled"] is False
         assert client.get(
-            f"/api/workflows/{copied_item['id']}/graph"
+            f"/agent-shell/api/workflows/{copied_item['id']}/graph"
         ).json() == document
-        assert {item["id"] for item in client.get("/api/workflows").json()} == {
+        assert {item["id"] for item in client.get("/agent-shell/api/workflows").json()} == {
             copied_item["id"], source["id"]
         }
 
         conflict = client.post(
-            f"/api/workflows/{source['id']}/copy",
+            f"/agent-shell/api/workflows/{source['id']}/copy",
             json={"name": "Copied Workflow"},
         )
         missing = client.post(
-            "/api/workflows/00000000-0000-4000-8000-000000000099/copy",
+            "/agent-shell/api/workflows/00000000-0000-4000-8000-000000000099/copy",
             json={"name": "Missing copy"},
         )
 
@@ -193,13 +193,13 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         output = client.post(
-            "/api/blocks/workflow-event-output",
+            "/agent-shell/api/blocks/workflow-event-output",
             json=workflow_event_output_payload(client, "Public workflow events"),
         )
         assert output.status_code == 200, output.text
         workflow = create_workflow(client, name="Event Workflow")
         updated = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 **{key: workflow[key] for key in (
                         "name", "description",
@@ -212,10 +212,10 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
         assert updated.status_code == 200, updated.text
         assert updated.json()["workflow_event_output_id"] == output.json()["id"]
         deleted = client.delete(
-            f"/api/blocks/workflow-event-output/{output.json()['id']}"
+            f"/agent-shell/api/blocks/workflow-event-output/{output.json()['id']}"
         )
         assert deleted.status_code == 200, deleted.text
-        saved = client.get(f"/api/workflows/{workflow['id']}").json()
+        saved = client.get(f"/agent-shell/api/workflows/{workflow['id']}").json()
         assert saved["workflow_event_output_id"] == output.json()["id"]
         issues = repository_reference_issues(client, owner_id=workflow["id"])
         assert len(issues) == 1
@@ -223,7 +223,7 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
         assert issues[0]["message_args"]["reference_id"] == output.json()["id"]
 
     with make_client(tmp_path, monkeypatch) as client:
-        saved = client.get(f"/api/workflows/{workflow['id']}").json()
+        saved = client.get(f"/agent-shell/api/workflows/{workflow['id']}").json()
         assert saved["workflow_event_output_id"] == output.json()["id"]
 
 
@@ -233,13 +233,13 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         output = client.post(
-            "/api/blocks/workflow-event-output",
+            "/agent-shell/api/blocks/workflow-event-output",
             json=workflow_event_output_payload(client, "Missing during validation"),
         )
         assert output.status_code == 200, output.text
         workflow = create_workflow(client, name="Missing event output")
         updated = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 **{
                     key: workflow[key]
@@ -259,14 +259,14 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
         document = save_linear_workflow_graph(client, workflow, main_agent)
 
         deleted = client.delete(
-            f"/api/blocks/workflow-event-output/{output.json()['id']}"
+            f"/agent-shell/api/blocks/workflow-event-output/{output.json()['id']}"
         )
         assert deleted.status_code == 200, deleted.text
         report = client.post(
-            f"/api/workflows/{workflow['id']}/validate", json=document
+            f"/agent-shell/api/workflows/{workflow['id']}/validate", json=document
         )
         published = client.put(
-            f"/api/workflows/{workflow['id']}/graph", json=document
+            f"/agent-shell/api/workflows/{workflow['id']}/graph", json=document
         )
 
     assert report.status_code == 200, report.text
@@ -287,37 +287,37 @@ def test_all_enabled_workflows_are_public_model_entries(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
-        assert client.get("/v1/models").json()["data"] == []
+        assert client.get("/compat/openai/v1/models").json()["data"] == []
 
         created = create_workflow(
             client,
             name="Research Workflow",
         )
         worker = create_workflow(client, name="Research Worker")
-        assert client.get(f"/api/workflows/{created['id']}").json() == created
-        assert client.get("/api/workflows").json() == [worker, created]
-        assert client.get("/v1/models").json()["data"] == []
+        assert client.get(f"/agent-shell/api/workflows/{created['id']}").json() == created
+        assert client.get("/agent-shell/api/workflows").json() == [worker, created]
+        assert client.get("/compat/openai/v1/models").json()["data"] == []
         save_linear_workflow_graph(client, created, main_agent)
         save_linear_workflow_graph(client, worker, main_agent)
-        assert [item["id"] for item in client.get("/v1/models").json()["data"]] == [
+        assert [item["id"] for item in client.get("/compat/openai/v1/models").json()["data"]] == [
             "Research Worker",
             "Research Workflow",
         ]
         copied = client.post(
-            f"/api/main-agents/{main_agent['id']}/copy",
+            f"/agent-shell/api/main-agents/{main_agent['id']}/copy",
             json={"name": "Unreferenced Main Agent"},
         )
         assert copied.status_code == 200, copied.text
         deleted_agents = client.post(
-            "/api/main-agents/delete",
+            "/agent-shell/api/main-agents/delete",
             json={"ids": [copied.json()["id"], main_agent["id"]]},
         )
         assert deleted_agents.status_code == 200, deleted_agents.text
         assert deleted_agents.json() == {"deleted": 2}
-        assert client.get("/api/main-agents").json() == []
+        assert client.get("/agent-shell/api/main-agents").json() == []
         for workflow in (created, worker):
             stored_document = client.get(
-                f"/api/workflows/{workflow['id']}/graph"
+                f"/agent-shell/api/workflows/{workflow['id']}/graph"
             ).json()
             agent_node = next(
                 node
@@ -332,15 +332,15 @@ def test_all_enabled_workflows_are_public_model_entries(
             )
 
         disabled = client.put(
-            f"/api/workflows/{created['id']}/draft",
-            json=client.get(f"/api/workflows/{created['id']}/graph").json(),
+            f"/agent-shell/api/workflows/{created['id']}/draft",
+            json=client.get(f"/agent-shell/api/workflows/{created['id']}/graph").json(),
         )
         assert disabled.status_code == 200, disabled.text
-        assert [item["id"] for item in client.get("/v1/models").json()["data"]] == [
+        assert [item["id"] for item in client.get("/compat/openai/v1/models").json()["data"]] == [
             "Research Worker"
         ]
 
-        deleted = client.delete(f"/api/workflows/{created['id']}")
+        deleted = client.delete(f"/agent-shell/api/workflows/{created['id']}")
         assert deleted.json() == {"ok": True}
 
 
@@ -350,14 +350,14 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
     with make_client(tmp_path, monkeypatch) as client:
         existing = create_workflow(client, name="Unique Workflow")
         duplicate = client.post(
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             json={
                 "name": "Unique Workflow",
                 "description": "Duplicate.",
             },
         )
         removed_field = client.post(
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             json={
                 "name": "Legacy Workflow",
                 "description": "Rejected legacy shape.",
@@ -365,7 +365,7 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
             },
         )
         enabled_field = client.post(
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             json={
                 "name": "Manual enable",
                 "description": "Rejected publication bypass.",
@@ -386,7 +386,7 @@ def test_workflow_rejects_removed_filesystem_field(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         legacy = client.post(
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             json={
                 "name": "Legacy Filesystem owner",
                 "description": "Rejected legacy shape.",
@@ -430,10 +430,10 @@ def test_repository_validation_includes_disabled_workflow_references(
             "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
         }
         saved = client.put(
-            f"/api/workflows/{workflow['id']}/draft",
+            f"/agent-shell/api/workflows/{workflow['id']}/draft",
             json=document,
         )
-        report = client.get("/api/validation/repository")
+        report = client.get("/agent-shell/api/validation/repository")
 
     assert saved.status_code == 200, saved.text
     assert report.status_code == 200, report.text
@@ -481,7 +481,7 @@ def test_repository_validation_includes_workflow_graph_admission(
     repository.update_config(add_unsupported_node)
 
     with make_client(tmp_path, monkeypatch) as client:
-        report = client.get("/api/validation/repository")
+        report = client.get("/agent-shell/api/validation/repository")
 
     assert report.status_code == 200, report.text
     assert any(
@@ -517,7 +517,7 @@ def test_workflow_validation_reports_a_workflow_uuid_as_the_wrong_agent_type(
         }
 
         report = client.post(
-            f"/api/workflows/{workflow['id']}/validate",
+            f"/agent-shell/api/workflows/{workflow['id']}/validate",
             json=document,
         )
 
@@ -544,9 +544,9 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
         assert workflow["enabled"] is False
 
         published = save_linear_workflow_graph(client, workflow, main_agent)
-        assert client.get(f"/api/workflows/{workflow['id']}").json()["enabled"] is True
+        assert client.get(f"/agent-shell/api/workflows/{workflow['id']}").json()["enabled"] is True
         metadata = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": "Metadata cannot demote a published graph.",
@@ -567,21 +567,21 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
         )
         invalid["definition"]["edges"] = []
         rejected = client.put(
-            f"/api/workflows/{workflow['id']}/graph",
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
             json=invalid,
         )
-        after_rejection = client.get(f"/api/workflows/{workflow['id']}/graph").json()
-        still_published = client.get(f"/api/workflows/{workflow['id']}").json()
+        after_rejection = client.get(f"/agent-shell/api/workflows/{workflow['id']}/graph").json()
+        still_published = client.get(f"/agent-shell/api/workflows/{workflow['id']}").json()
 
         report = client.post(
-            f"/api/workflows/{workflow['id']}/validate",
+            f"/agent-shell/api/workflows/{workflow['id']}/validate",
             json=invalid,
         )
         draft = client.put(
-            f"/api/workflows/{workflow['id']}/draft",
+            f"/agent-shell/api/workflows/{workflow['id']}/draft",
             json=invalid,
         )
-        saved_draft = client.get(f"/api/workflows/{workflow['id']}").json()
+        saved_draft = client.get(f"/agent-shell/api/workflows/{workflow['id']}").json()
 
     assert rejected.status_code == 422
     assert after_rejection == published
@@ -642,7 +642,7 @@ def test_workflow_draft_accepts_graphs_beyond_removed_size_limits(
         assert len(json.dumps(document).encode("utf-8")) > 1_000_000
 
         saved = client.put(
-            f"/api/workflows/{workflow['id']}/draft",
+            f"/agent-shell/api/workflows/{workflow['id']}/draft",
             json=document,
         )
 
@@ -672,10 +672,10 @@ def test_workflow_publish_reports_broken_router_package_without_missing_referenc
     )
     with make_client(tmp_path, monkeypatch) as client:
         selected = client.get(
-            "/api/python-package-templates/command"
+            "/agent-shell/api/python-package-templates/command"
         ).json()["catalog"][0]
         router = client.post(
-            "/api/blocks/command",
+            "/agent-shell/api/blocks/command",
             json={
                 "name": "Broken router package",
                 "python_package": {"folder": ""},
@@ -715,9 +715,9 @@ def test_workflow_publish_reports_broken_router_package_without_missing_referenc
             "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
         }
 
-        draft = client.put(f"/api/workflows/{workflow['id']}/draft", json=document)
-        report = client.post(f"/api/workflows/{workflow['id']}/validate", json=document)
-        published = client.put(f"/api/workflows/{workflow['id']}/graph", json=document)
+        draft = client.put(f"/agent-shell/api/workflows/{workflow['id']}/draft", json=document)
+        report = client.post(f"/agent-shell/api/workflows/{workflow['id']}/validate", json=document)
+        published = client.put(f"/agent-shell/api/workflows/{workflow['id']}/graph", json=document)
 
     assert draft.status_code == 200, draft.text
     assert report.status_code == 200, report.text
@@ -742,11 +742,11 @@ def test_workflow_save_failure_returns_controlled_not_found(
         )
 
         published = client.put(
-            f"/api/workflows/{workflow['id']}/graph",
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
             json=document,
         )
         draft = client.put(
-            f"/api/workflows/{workflow['id']}/draft",
+            f"/agent-shell/api/workflows/{workflow['id']}/draft",
             json=document,
         )
 
@@ -762,10 +762,10 @@ def test_workflow_graph_catalog_save_and_reload(
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Canvas Workflow")
-        graph_url = f"/api/workflows/{workflow['id']}/graph"
+        graph_url = f"/agent-shell/api/workflows/{workflow['id']}/graph"
 
         empty = client.get(graph_url)
-        catalog = client.get("/api/workflow-node-catalog")
+        catalog = client.get("/agent-shell/api/workflow-node-catalog")
         document = {
             "definition": {
                 "schema_version": 1,
@@ -815,7 +815,7 @@ def test_workflow_graph_catalog_save_and_reload(
         }
         saved = client.put(graph_url, json=document)
         metadata = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": "Metadata changed without touching the graph.",
@@ -845,7 +845,7 @@ def test_graph_save_rejects_background_action_as_node(
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Workflow")
         save_linear_workflow_graph(client, workflow, main_agent)
-        graph_url = f"/api/workflows/{workflow['id']}/graph"
+        graph_url = f"/agent-shell/api/workflows/{workflow['id']}/graph"
         document = client.get(graph_url).json()
         document["definition"]["nodes"].insert(
             1,

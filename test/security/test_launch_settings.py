@@ -63,7 +63,7 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
 
     with TestClient(create_app()) as client:
         allowed = client.options(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={
                 "Origin": "https://console.example",
                 "Access-Control-Request-Method": "GET",
@@ -71,7 +71,7 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
             },
         )
         patch_allowed = client.options(
-            "/api/files/%2Frenamed.txt",
+            "/agent-shell/api/files/%2Frenamed.txt",
             headers={
                 "Origin": "https://console.example",
                 "Access-Control-Request-Method": "PATCH",
@@ -79,7 +79,7 @@ def test_create_app_installs_minimal_cors_and_runtime_directories(
             },
         )
         rejected = client.options(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={
                 "Origin": "https://other.example",
                 "Access-Control-Request-Method": "GET",
@@ -449,7 +449,7 @@ def test_windows_launcher_initializes_missing_local_management_password(
     assert "# AGENT_SHELL_MANAGEMENT_TOKEN=" not in env_text
     assert get_settings().management_token.get_secret_value() == sentinel
     captured = capsys.readouterr()
-    assert "不会改变 /v1 OpenAI API 使用的 Key" in captured.out
+    assert "不会改变 /compat/openai/v1 使用的 API Key" in captured.out
     assert sentinel not in captured.out
     assert captured.err == ""
 

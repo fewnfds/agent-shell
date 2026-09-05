@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.api.configuration_collections import (
     configuration_collection,
@@ -86,9 +87,9 @@ def build_agent_config_router(
     config_store: AgentConfigStore,
     validation: ConfigurationValidationService,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/main-agents")
+    @router.get("/main-agents")
     async def list_main_agents(
         request: Request,
         view: Literal["full", "summary"] = "full",
@@ -112,7 +113,7 @@ def build_agent_config_router(
             limit=limit,
         )
 
-    @router.post("/api/main-agents/delete")
+    @router.post("/main-agents/delete")
     async def delete_main_agents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
@@ -141,7 +142,7 @@ def build_agent_config_router(
             )
         }
 
-    @router.get("/api/main-agents/{item_id}")
+    @router.get("/main-agents/{item_id}")
     async def get_main_agent(item_id: str) -> dict:
         item = config_store.get_item(MAIN_AGENT_TABLE, item_id)
         if item is None:
@@ -153,7 +154,7 @@ def build_agent_config_router(
             )
         return item
 
-    @router.post("/api/main-agents")
+    @router.post("/main-agents")
     async def create_main_agent(payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         report, validated, _ = validation.validate_main_agent(
@@ -179,7 +180,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(MAIN_AGENT_TABLE, item_id)
 
-    @router.post("/api/main-agents/{item_id}/copy")
+    @router.post("/main-agents/{item_id}/copy")
     async def copy_main_agent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         name = _copy_name(payload)
@@ -218,7 +219,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(MAIN_AGENT_TABLE, copy_id)
 
-    @router.put("/api/main-agents/{item_id}")
+    @router.put("/main-agents/{item_id}")
     async def update_main_agent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(MAIN_AGENT_TABLE, item_id) is None:
@@ -251,7 +252,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(MAIN_AGENT_TABLE, item_id)
 
-    @router.delete("/api/main-agents/{item_id}")
+    @router.delete("/main-agents/{item_id}")
     async def delete_main_agent(item_id: str) -> dict[str, bool]:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(MAIN_AGENT_TABLE, item_id) is None:
@@ -268,7 +269,7 @@ def build_agent_config_router(
         )
         return {"ok": True}
 
-    @router.get("/api/subagents")
+    @router.get("/subagents")
     async def list_subagents(
         request: Request,
         view: Literal["full", "summary"] = "full",
@@ -292,7 +293,7 @@ def build_agent_config_router(
             limit=limit,
         )
 
-    @router.post("/api/subagents/delete")
+    @router.post("/subagents/delete")
     async def delete_subagents(
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
@@ -326,7 +327,7 @@ def build_agent_config_router(
             )
         }
 
-    @router.get("/api/subagents/{item_id}")
+    @router.get("/subagents/{item_id}")
     async def get_subagent(item_id: str) -> dict:
         item = config_store.get_item(SUBAGENT_TABLE, item_id)
         if item is None:
@@ -338,7 +339,7 @@ def build_agent_config_router(
             )
         return item
 
-    @router.post("/api/subagents")
+    @router.post("/subagents")
     async def create_subagent(payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         report, validated = validation.validate_subagent(
@@ -364,7 +365,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(SUBAGENT_TABLE, item_id)
 
-    @router.post("/api/subagents/{item_id}/copy")
+    @router.post("/subagents/{item_id}/copy")
     async def copy_subagent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         component_name = _copy_component_name(payload)
@@ -402,7 +403,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(SUBAGENT_TABLE, copy_id)
 
-    @router.put("/api/subagents/{item_id}")
+    @router.put("/subagents/{item_id}")
     async def update_subagent(item_id: str, payload: dict) -> dict:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(SUBAGENT_TABLE, item_id) is None:
@@ -435,7 +436,7 @@ def build_agent_config_router(
             ) from exc
         return config_store.get_item(SUBAGENT_TABLE, item_id)
 
-    @router.delete("/api/subagents/{item_id}")
+    @router.delete("/subagents/{item_id}")
     async def delete_subagent(item_id: str) -> dict[str, bool]:
         mutation_repository_id = config_store.repository_id()
         if config_store.get_item(SUBAGENT_TABLE, item_id) is None:

@@ -33,6 +33,7 @@ from agent_shell.api.workflows import build_workflow_router
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
 from agent_shell.api.runtime_monitoring import build_runtime_monitoring_router
 from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.http_surface import ADMIN_PATH, is_agent_shell_api_path
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
@@ -364,7 +365,7 @@ def create_app(
         status_code: int,
         detail: object,
     ) -> None:
-        if request.url.path != "/api" and not request.url.path.startswith("/api/"):
+        if not is_agent_shell_api_path(request.url.path):
             return
         code = "request_failed"
         issue_count = 0
@@ -395,7 +396,7 @@ def create_app(
         if request_id:
             headers["X-Request-ID"] = request_id
         detail = redact_for_boundary("http-error", exc.detail)
-        if request.url.path == "/api" or request.url.path.startswith("/api/"):
+        if is_agent_shell_api_path(request.url.path):
             if not isinstance(detail, dict) or not isinstance(
                 detail.get("message_key"), str
             ):
@@ -450,7 +451,7 @@ def create_app(
             }
             for error in exc.errors()
         ]
-        if request.url.path == "/api" or request.url.path.startswith("/api/"):
+        if is_agent_shell_api_path(request.url.path):
             detail: object = {
                 **localized_error_detail(
                     code="request_validation_failed",
@@ -487,7 +488,7 @@ def create_app(
             ),
         )
         request_id = getattr(request.state, "request_id", "")
-        if request.url.path == "/api" or request.url.path.startswith("/api/"):
+        if is_agent_shell_api_path(request.url.path):
             content: dict[str, object] = {
                 "detail": localized_error_detail(
                     code="internal_error",
@@ -655,19 +656,23 @@ def create_app(
     if serve_frontend:
         @app.get("/", include_in_schema=False)
         async def root() -> RedirectResponse:
-            return RedirectResponse(url="/admin", status_code=307)
+            return RedirectResponse(url=ADMIN_PATH, status_code=307)
 
         assets_dir = frontend_dir / "assets"
-        app.mount("/admin/assets", StaticFiles(directory=assets_dir), name="admin-assets")
+        app.mount(
+            f"{ADMIN_PATH}/assets",
+            StaticFiles(directory=assets_dir),
+            name="admin-assets",
+        )
 
-        @app.get("/admin", include_in_schema=False)
+        @app.get(ADMIN_PATH, include_in_schema=False)
         async def admin_page() -> FileResponse:
             return FileResponse(
                 frontend_dir / "index.html",
                 headers={"Content-Security-Policy": "frame-ancestors 'none'"},
             )
 
-        @app.get("/admin/favicon.ico", include_in_schema=False)
+        @app.get(f"{ADMIN_PATH}/favicon.ico", include_in_schema=False)
         async def admin_favicon() -> FileResponse:
             return FileResponse(frontend_dir / "favicon.ico", media_type="image/x-icon")
 

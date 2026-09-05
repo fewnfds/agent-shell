@@ -34,14 +34,14 @@ def test_local_secret_is_write_only_and_separated_from_block_json(
 ) -> None:
     client, data_root = make_client(tmp_path, monkeypatch)
 
-    created = client.post("/api/model-connections", json=model_payload())
+    created = client.post("/agent-shell/api/model-connections", json=model_payload())
     assert created.status_code == 200, created.text
     block = created.json()
     block_id = block["id"]
     responses = [
         created,
-        client.get("/api/model-connections"),
-        client.get(f"/api/model-connections/{block_id}"),
+        client.get("/agent-shell/api/model-connections"),
+        client.get(f"/agent-shell/api/model-connections/{block_id}"),
     ]
 
     assert block["credential"] == {"status": "masked"}
@@ -59,13 +59,13 @@ def test_keep_rename_replace_and_masked_round_trip_are_atomic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, data_root = make_client(tmp_path, monkeypatch)
-    block = client.post("/api/model-connections", json=model_payload()).json()
+    block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     block_id = block["id"]
     original_payload, _ = connection_storage_payload(data_root, block_id)
     original_reference = original_payload["credential"]["reference"]
 
     kept_payload = model_payload("Renamed model", None)
-    kept = client.put(f"/api/model-connections/{block_id}", json=kept_payload)
+    kept = client.put(f"/agent-shell/api/model-connections/{block_id}", json=kept_payload)
     assert kept.status_code == 200, kept.text
     kept_internal, kept_secrets = connection_storage_payload(data_root, block_id)
     assert kept.json()["id"] == block_id
@@ -77,14 +77,14 @@ def test_keep_rename_replace_and_masked_round_trip_are_atomic(
         "Masked overwrite",
         "••••••••",
     )
-    rejected = client.put(f"/api/model-connections/{block_id}", json=masked)
+    rejected = client.put(f"/agent-shell/api/model-connections/{block_id}", json=masked)
     assert rejected.status_code == 422
     assert resolver_for(data_root).resolve_model(
         block_id
     ) == LOCAL_SECRET
 
     replacement = model_payload("Rotated model", REPLACEMENT_SECRET)
-    rotated = client.put(f"/api/model-connections/{block_id}", json=replacement)
+    rotated = client.put(f"/agent-shell/api/model-connections/{block_id}", json=replacement)
     assert rotated.status_code == 200, rotated.text
     rotated_internal, rotated_secrets = connection_storage_payload(data_root, block_id)
     assert rotated_internal["credential"]["reference"] == original_reference
@@ -97,11 +97,11 @@ def test_endpoint_change_without_replacement_clears_saved_secret(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, data_root = make_client(tmp_path, monkeypatch)
-    block = client.post("/api/model-connections", json=model_payload()).json()
+    block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     changed = model_payload("Changed endpoint", None)
     changed["base_url"] = "https://other-provider.example/v1"
 
-    response = client.put(f"/api/model-connections/{block['id']}", json=changed)
+    response = client.put(f"/agent-shell/api/model-connections/{block['id']}", json=changed)
 
     assert response.status_code == 200, response.text
     assert response.json()["credential"] == {"status": "missing"}
@@ -117,12 +117,12 @@ def test_provider_change_without_replacement_clears_saved_secret(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, data_root = make_client(tmp_path, monkeypatch)
-    block = client.post("/api/model-connections", json=model_payload()).json()
+    block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     changed = model_payload("Changed Provider", None)
     changed["provider"] = "anthropic"
     changed["provider_settings"] = {"max_tokens_to_sample": 1024}
 
-    response = client.put(f"/api/model-connections/{block['id']}", json=changed)
+    response = client.put(f"/agent-shell/api/model-connections/{block['id']}", json=changed)
 
     assert response.status_code == 200, response.text
     assert response.json()["credential"] == {"status": "missing"}
@@ -135,10 +135,10 @@ def test_copy_uses_independent_reference_and_each_delete_removes_owned_secret(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, data_root = make_client(tmp_path, monkeypatch)
-    source = client.post("/api/model-connections", json=model_payload()).json()
+    source = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
 
     copied = client.post(
-        f"/api/model-connections/{source['id']}/copy", json={"name": "Copied model"}
+        f"/agent-shell/api/model-connections/{source['id']}/copy", json={"name": "Copied model"}
     )
     assert copied.status_code == 200, copied.text
     copy_id = copied.json()["id"]
@@ -151,14 +151,14 @@ def test_copy_uses_independent_reference_and_each_delete_removes_owned_secret(
     assert LOCAL_SECRET not in copied.text
 
     source_reference = source_internal["credential"]["reference"]
-    assert client.delete(f"/api/model-connections/{source['id']}").status_code == 200
+    assert client.delete(f"/agent-shell/api/model-connections/{source['id']}").status_code == 200
     assert resolver_for(data_root).resolve_model(
         copy_id
     ) == LOCAL_SECRET
     environment = InstanceEnvironmentStore(data_root / "config" / "agent-shell.env")
     assert environment.get(source_reference) is None
     copy_reference = copy_internal["credential"]["reference"]
-    assert client.delete(f"/api/model-connections/{copy_id}").status_code == 200
+    assert client.delete(f"/agent-shell/api/model-connections/{copy_id}").status_code == 200
     assert environment.get(copy_reference) is None
 
 def test_no_key_is_valid_but_a_broken_reference_fails_closed(
@@ -167,13 +167,13 @@ def test_no_key_is_valid_but_a_broken_reference_fails_closed(
     client, data_root = make_client(tmp_path, monkeypatch)
     monkeypatch.setenv("TEST_PROVIDER_KEY", "must-not-be-read")
     no_key = client.post(
-        "/api/model-connections", json=model_payload("No-key model", None)
+        "/agent-shell/api/model-connections", json=model_payload("No-key model", None)
     )
     assert no_key.status_code == 200, no_key.text
     assert no_key.json()["credential"] == {"status": "missing"}
     assert resolver_for(data_root).resolve_model(no_key.json()["id"]) is None
 
-    block = client.post("/api/model-connections", json=model_payload()).json()
+    block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     internal, _ = connection_storage_payload(data_root, block["id"])
     reference = internal["credential"]["reference"]
     InstanceEnvironmentStore(

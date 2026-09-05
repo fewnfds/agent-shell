@@ -10,7 +10,7 @@ from .reference_support import *
 def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     return [
         issue
-        for issue in client.get("/api/validation/repository").json()["issues"]
+        for issue in client.get("/agent-shell/api/validation/repository").json()["issues"]
         if issue["owner_id"] == owner_id
         and issue["code"].startswith("configuration.reference_")
     ]
@@ -23,7 +23,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     original = create_blocks(client, "original")
     replacement = create_blocks(client, "replacement")
     subagent = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload(
             "Matrix worker",
             name="matrix_worker",
@@ -32,7 +32,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     ).json()
 
     response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Main Agent matrix",
             "capability_refs": references(original, MAIN_AGENT_TYPES),
@@ -50,10 +50,10 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
         item["block_id"] for item in main_agent["capability_refs"]
     } | {main_agent["middleware_refs"][0]["middleware_id"]}
     for capability_type, block in original.items():
-        deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
+        deleted = client.delete(f"/agent-shell/api/blocks/{capability_type}/{block['id']}")
         assert deleted.status_code == 200, (capability_type, deleted.text)
 
-    stored = client.get(f"/api/main-agents/{main_agent['id']}").json()
+    stored = client.get(f"/agent-shell/api/main-agents/{main_agent['id']}").json()
     assert stored["capability_refs"] == main_agent["capability_refs"]
     assert stored["middleware_refs"] == main_agent["middleware_refs"]
     issues = repository_reference_issues(client, owner_id=main_agent["id"])
@@ -63,7 +63,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     assert all(issue["code"] == "configuration.reference_not_found" for issue in issues)
 
     updated = client.put(
-        f"/api/main-agents/{main_agent['id']}",
+        f"/agent-shell/api/main-agents/{main_agent['id']}",
         json={
             "name": main_agent["name"],
             "capability_refs": references(replacement, MAIN_AGENT_TYPES),
@@ -74,12 +74,12 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     assert updated.status_code == 200, updated.text
 
     for capability_type, block in replacement.items():
-        deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
+        deleted = client.delete(f"/agent-shell/api/blocks/{capability_type}/{block['id']}")
         assert deleted.status_code == 200, (capability_type, deleted.text)
 
-    stored = client.get(f"/api/main-agents/{main_agent['id']}").json()
+    stored = client.get(f"/agent-shell/api/main-agents/{main_agent['id']}").json()
     assert stored["capability_refs"] == updated.json()["capability_refs"]
-    assert client.delete(f"/api/main-agents/{main_agent['id']}").status_code == 200
+    assert client.delete(f"/agent-shell/api/main-agents/{main_agent['id']}").status_code == 200
 
 
 def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
@@ -89,7 +89,7 @@ def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
     original = create_blocks(client, "override-original", OVERRIDEABLE_TYPES)
 
     response = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload(
             "Override matrix",
             name="override_matrix",
@@ -107,9 +107,9 @@ def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
     subagent = response.json()
 
     for capability_type, block in original.items():
-        deleted = client.delete(f"/api/blocks/{capability_type}/{block['id']}")
+        deleted = client.delete(f"/agent-shell/api/blocks/{capability_type}/{block['id']}")
         assert deleted.status_code == 200, (capability_type, deleted.text)
-    stored = client.get(f"/api/subagents/{subagent['id']}").json()
+    stored = client.get(f"/agent-shell/api/subagents/{subagent['id']}").json()
     assert stored["settings"]["capability_overrides"] == subagent["settings"][
         "capability_overrides"
     ]
@@ -128,7 +128,7 @@ def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
         if index % 2 == 1 and capability_type not in REQUIRED_TYPES
     ]
     updated = client.put(
-        f"/api/subagents/{subagent['id']}",
+        f"/agent-shell/api/subagents/{subagent['id']}",
         json=subagent_payload(
             subagent["component_name"],
             name=subagent["name"],
@@ -144,7 +144,7 @@ def test_subagent_replace_reference_delete_preserves_ids_and_reports_owner(
         item["mode"] for item in passive_modes
     ]
 
-    assert client.delete(f"/api/subagents/{subagent['id']}").status_code == 200
+    assert client.delete(f"/agent-shell/api/subagents/{subagent['id']}").status_code == 200
 
 
 def test_skill_package_delete_preserves_composite_filesystem_reference(
@@ -153,7 +153,7 @@ def test_skill_package_delete_preserves_composite_filesystem_reference(
     client = make_client(tmp_path, monkeypatch)
     skill = create_blocks(client, "filesystem-skill", ("skill",))["skill"]
     filesystem_response = client.post(
-        "/api/blocks/filesystem",
+        "/agent-shell/api/blocks/filesystem",
         json={
             "name": "Skill package workspace",
             "backend_type": "composite",
@@ -163,9 +163,9 @@ def test_skill_package_delete_preserves_composite_filesystem_reference(
     assert filesystem_response.status_code == 200, filesystem_response.text
     filesystem = filesystem_response.json()
 
-    deleted = client.delete(f"/api/blocks/skill/{skill['id']}")
+    deleted = client.delete(f"/agent-shell/api/blocks/skill/{skill['id']}")
     assert deleted.status_code == 200, deleted.text
-    stored = client.get(f"/api/blocks/filesystem/{filesystem['id']}").json()
+    stored = client.get(f"/agent-shell/api/blocks/filesystem/{filesystem['id']}").json()
     assert stored["skill_package_id"] == skill["id"]
     assert repository_reference_issues(client, owner_id=filesystem["id"]) == [
         {
@@ -195,14 +195,14 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
         REQUIRED_TYPES,
     )
     subagent_response = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload("Shared Subagent", name="draft_worker"),
     )
     assert subagent_response.status_code == 200, subagent_response.text
     subagent = subagent_response.json()
 
     owner_response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Override owner",
             "capability_refs": required_refs,
@@ -213,16 +213,16 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
     owner = owner_response.json()
 
     independent_response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={"name": "Independent Main Agent", "capability_refs": required_refs},
     )
     assert independent_response.status_code == 200, independent_response.text
     independent = independent_response.json()
-    assert client.delete(f"/api/main-agents/{independent['id']}").status_code == 200
+    assert client.delete(f"/agent-shell/api/main-agents/{independent['id']}").status_code == 200
 
-    deleted = client.delete(f"/api/subagents/{subagent['id']}")
+    deleted = client.delete(f"/agent-shell/api/subagents/{subagent['id']}")
     assert deleted.status_code == 200, deleted.text
-    stored_owner = client.get(f"/api/main-agents/{owner['id']}").json()
+    stored_owner = client.get(f"/agent-shell/api/main-agents/{owner['id']}").json()
     assert stored_owner["subagents"] == owner["subagents"]
     issue = repository_reference_issues(client, owner_id=owner["id"])
     assert len(issue) == 1
@@ -232,18 +232,18 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
         "reference_id": subagent["id"],
     }
 
-    assert client.delete(f"/api/main-agents/{owner['id']}").status_code == 200
+    assert client.delete(f"/agent-shell/api/main-agents/{owner['id']}").status_code == 200
 
 def test_subagent_nested_references_are_rejected_before_storage(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     target = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload("Direct target", name="direct_worker"),
     ).json()
     nested = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json={
             **subagent_payload(
                 "Invalid nested owner",

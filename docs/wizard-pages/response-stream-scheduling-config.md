@@ -15,7 +15,7 @@ Response Stream Scheduling 是可复用的 Workflow Component，使用现有 Con
 创建配置：
 
 ```http
-POST /api/blocks/response-stream-scheduling
+POST /agent-shell/api/blocks/response-stream-scheduling
 ```
 
 ```json

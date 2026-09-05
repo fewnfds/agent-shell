@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.configuration_collections import (
@@ -136,13 +137,13 @@ def build_workflow_router(
     blocks: BlockStore,
     configuration_validation: ConfigurationValidationService,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/workflow-node-catalog")
+    @router.get("/workflow-node-catalog")
     async def get_workflow_node_catalog() -> list[dict[str, object]]:
         return node_catalog_payload()
 
-    @router.get("/api/workflows")
+    @router.get("/workflows")
     async def list_workflows(
         request: Request,
         view: Literal["full", "summary"] = "full",
@@ -166,7 +167,7 @@ def build_workflow_router(
             limit=limit,
         )
 
-    @router.post("/api/workflows")
+    @router.post("/workflows")
     async def create_workflow(payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         return _save(
@@ -177,7 +178,7 @@ def build_workflow_router(
             expected_repository_id=mutation_repository_id,
         )
 
-    @router.post("/api/workflows/{item_id}/copy")
+    @router.post("/workflows/{item_id}/copy")
     async def copy_workflow(item_id: str, payload: WorkflowCopy) -> dict:
         mutation_repository_id = store.repository_id()
         source = store.get_item(item_id)
@@ -219,7 +220,7 @@ def build_workflow_router(
         assert copied_item is not None
         return copied_item
 
-    @router.post("/api/workflows/delete")
+    @router.post("/workflows/delete")
     async def delete_workflows(payload: WorkflowBulkDelete) -> dict[str, int]:
         mutation_repository_id = store.repository_id()
         ids = (
@@ -246,7 +247,7 @@ def build_workflow_router(
             )
         }
 
-    @router.get("/api/workflows/{item_id}")
+    @router.get("/workflows/{item_id}")
     async def get_workflow(item_id: str) -> dict:
         item = store.get_item(item_id)
         if item is None:
@@ -258,7 +259,7 @@ def build_workflow_router(
             )
         return item
 
-    @router.put("/api/workflows/{item_id}")
+    @router.put("/workflows/{item_id}")
     async def update_workflow(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         if store.get_item(item_id) is None:
@@ -276,7 +277,7 @@ def build_workflow_router(
             expected_repository_id=mutation_repository_id,
         )
 
-    @router.get("/api/workflows/{item_id}/graph")
+    @router.get("/workflows/{item_id}/graph")
     async def get_workflow_graph(item_id: str) -> dict:
         document = store.get_graph(item_id)
         if document is None:
@@ -288,7 +289,7 @@ def build_workflow_router(
             )
         return document.model_dump(mode="json")
 
-    @router.put("/api/workflows/{item_id}/graph")
+    @router.put("/workflows/{item_id}/graph")
     async def update_workflow_graph(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         workflow = store.get_item(item_id)
@@ -330,7 +331,7 @@ def build_workflow_router(
             )
         return document.model_dump(mode="json")
 
-    @router.put("/api/workflows/{item_id}/draft")
+    @router.put("/workflows/{item_id}/draft")
     async def update_workflow_draft(item_id: str, payload: dict) -> dict:
         mutation_repository_id = store.repository_id()
         if store.get_item(item_id) is None:
@@ -360,7 +361,7 @@ def build_workflow_router(
             )
         return document.model_dump(mode="json")
 
-    @router.post("/api/workflows/{item_id}/validate")
+    @router.post("/workflows/{item_id}/validate")
     async def validate_workflow(item_id: str, payload: dict) -> dict:
         workflow = store.get_item(item_id)
         if workflow is None:
@@ -380,7 +381,7 @@ def build_workflow_router(
             configuration_validation=configuration_validation,
         ).as_dict()
 
-    @router.delete("/api/workflows/{item_id}")
+    @router.delete("/workflows/{item_id}")
     async def delete_workflow(item_id: str) -> dict[str, bool]:
         mutation_repository_id = store.repository_id()
         if not store.delete_item(

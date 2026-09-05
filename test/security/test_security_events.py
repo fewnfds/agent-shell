@@ -61,27 +61,27 @@ def test_lifecycle_configuration_events_and_model_secrets_are_metadata_only(
 
     with ScopedAuthTestClient(create_app()) as client:
         created = client.post(
-            "/api/model-connections",
+            "/agent-shell/api/model-connections",
             json=_model(secret),
             headers={"X-Request-ID": request_id},
         )
         assert created.status_code == 200
         block_id = created.json()["id"]
         rotated = client.put(
-            f"/api/model-connections/{block_id}",
+            f"/agent-shell/api/model-connections/{block_id}",
             json=_model(replacement),
             headers={"X-Request-ID": request_id},
         )
         assert rotated.status_code == 200
         configured = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Event prompt", "system_prompt": "Be precise."},
             headers={"X-Request-ID": request_id},
         )
         assert configured.status_code == 200
         prompt_id = configured.json()["id"]
         updated = client.put(
-            f"/api/blocks/system-prompt/{prompt_id}",
+            f"/agent-shell/api/blocks/system-prompt/{prompt_id}",
             json={"name": "Event prompt", "system_prompt": "Be concise."},
             headers={"X-Request-ID": request_id},
         )
@@ -168,18 +168,18 @@ def test_event_persistence_failure_does_not_reverse_committed_configuration(
 
     with ScopedAuthTestClient(create_app()) as client:
         created = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Committed prompt", "system_prompt": "Persist this."},
         )
         assert created.status_code == 200
         block_id = created.json()["id"]
         assert [
             item["id"]
-            for item in client.get("/api/blocks/system-prompt").json()
+            for item in client.get("/agent-shell/api/blocks/system-prompt").json()
         ] == [block_id]
 
         diagnostics = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=_event_feed_params(
                 source="runtime", query="security_event_record_failed"
             ),
@@ -230,12 +230,12 @@ def test_event_feed_filters_persisted_system_operations_and_management_errors(
 
     with ScopedAuthTestClient(create_app()) as client:
         created = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Event prompt", "system_prompt": "Be precise."},
             headers={"X-Request-ID": operation_request_id},
         )
         rejected = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={
                 "name": "Invalid prompt",
                 "system_prompt": "",
@@ -244,11 +244,11 @@ def test_event_feed_filters_persisted_system_operations_and_management_errors(
             headers={"X-Request-ID": error_request_id},
         )
         operation_logs = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=_event_feed_params(source="system", query=operation_request_id),
         )
         error_logs = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=_event_feed_params(
                 source="system",
                 level="error",
@@ -280,7 +280,7 @@ def test_event_feed_filters_persisted_system_operations_and_management_errors(
         "code": "configuration_validation_failed",
         "issue_count": expected_issue_count,
         "method": "POST",
-        "path": "/api/blocks/system-prompt",
+        "path": "/agent-shell/api/blocks/system-prompt",
         "status_code": 422,
     }
     assert "must-never-enter-event-feed" not in json.dumps(error)
@@ -296,14 +296,14 @@ def test_authentication_failures_are_queryable_without_recording_credentials(
 
     with ScopedAuthTestClient(create_app()) as client:
         rejected = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             headers={
                 "Authorization": f"Bearer {invalid_credential}",
                 "X-Request-ID": request_id,
             },
         )
         logs = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=_event_feed_params(source="system", query=request_id),
         )
 

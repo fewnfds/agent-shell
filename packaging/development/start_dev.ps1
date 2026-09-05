@@ -205,7 +205,7 @@ settings:
         }
         try {
             $response = Invoke-RestMethod `
-                -Uri "http://127.0.0.1:$backendPort/api/health" `
+                -Uri "http://127.0.0.1:$backendPort/agent-shell/api/health" `
                 -TimeoutSec 1
             if ($response.status -eq "ok") {
                 $healthy = $true
@@ -227,7 +227,7 @@ settings:
         }
     } | ConvertTo-Json -Depth 3 -Compress
     Invoke-RestMethod `
-        -Uri "http://127.0.0.1:$backendPort/api/api-server" `
+        -Uri "http://127.0.0.1:$backendPort/agent-shell/api/api-server" `
         -Method Put `
         -Headers @{ Authorization = "Bearer $temporaryManagementPassword" } `
         -ContentType "application/json" `

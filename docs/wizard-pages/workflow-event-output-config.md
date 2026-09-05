@@ -40,4 +40,4 @@ Workflow 通过 `workflow_event_output_id` 绑定零或一个组件。可达 cha
 
 `all-events` 会公开它收到的完整 State、message、Tool 参数/结果、媒体引用、路径和运行身份。它只适合受信任的诊断环境；常规公开响应应复制必要分支并过滤其余事件。
 
-从 `GET /api/python-package-templates/workflow-event-output` 取得模板 `key` 与 `revision`，提交到 `POST /api/blocks/workflow-event-output`。package folder 等于配置名称，manifest ID 等于配置 UUID。
+从 `GET /agent-shell/api/python-package-templates/workflow-event-output` 取得模板 `key` 与 `revision`，提交到 `POST /agent-shell/api/blocks/workflow-event-output`。package folder 等于配置名称，manifest ID 等于配置 UUID。

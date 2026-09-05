@@ -29,11 +29,11 @@ def test_health_catalog_and_readiness_are_small_and_current(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
 
-    assert client.get("/api/health").json() == {
+    assert client.get("/agent-shell/api/health").json() == {
         "status": "ok",
         "runtime": "model_streaming",
     }
-    catalog = client.get("/api/catalog").json()
+    catalog = client.get("/agent-shell/api/catalog").json()
     assert set(catalog) == {
         "block_types",
         "resource_component_types",
@@ -103,7 +103,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
     assert by_type["todo-list"]["tool_names"] == ["write_todos"]
     assert by_type["agent-event-output"]["subagent_policy"] == "top-level-only"
     assert by_type["agent-event-output"]["subagent_overrideable"] is False
-    readiness = client.get("/api/readiness").json()
+    readiness = client.get("/agent-shell/api/readiness").json()
     assert readiness["status"] == "configuration_ready"
     assert set(readiness["sections"]) == {
         "security_settings",
@@ -157,12 +157,12 @@ def test_builtin_event_output_examples_are_loadable(
         ),
     ):
         catalog = client.get(
-            f"/api/python-package-templates/{endpoint}"
+            f"/agent-shell/api/python-package-templates/{endpoint}"
         ).json()["catalog"]
         assert {item["key"] for item in catalog} == expected_keys
         for index, example in enumerate(catalog):
             response = client.post(
-                f"/api/blocks/{component_type}",
+                f"/agent-shell/api/blocks/{component_type}",
                 json={
                     "name": f"{component_type} example {index}",
                     "python_package": {"folder": ""},
@@ -175,7 +175,7 @@ def test_builtin_event_output_examples_are_loadable(
             assert response.status_code == 200, response.text
             created = response.json()
             inspection = client.get(
-                f"/api/blocks/{component_type}/{created['id']}/python-package"
+                f"/agent-shell/api/blocks/{component_type}/{created['id']}/python-package"
             )
             assert inspection.status_code == 200, inspection.text
             assert {item["path"] for item in inspection.json()["files"]} >= {
@@ -349,7 +349,7 @@ def test_command_uses_component_crud_storage_and_repository_validation(
     )
     client = make_client(tmp_path, monkeypatch)
     selected = client.get(
-        "/api/python-package-templates/command"
+        "/agent-shell/api/python-package-templates/command"
     ).json()["catalog"][0]
     payload = {
         "name": "Risk routing",
@@ -360,11 +360,11 @@ def test_command_uses_component_crud_storage_and_repository_validation(
         },
     }
 
-    created_response = client.post("/api/blocks/command", json=payload)
+    created_response = client.post("/agent-shell/api/blocks/command", json=payload)
     assert created_response.status_code == 200
     created = created_response.json()
     assert client.get(
-        f"/api/blocks/command/{created['id']}"
+        f"/agent-shell/api/blocks/command/{created['id']}"
     ).json() == created
     assert (
         FileConfigRepository(tmp_path / "data").config_root
@@ -372,20 +372,20 @@ def test_command_uses_component_crud_storage_and_repository_validation(
         / "command"
         / f"{created['id']}.yaml"
     ).is_file()
-    assert client.get("/api/validation/repository").json()["valid"] is True
+    assert client.get("/agent-shell/api/validation/repository").json()["valid"] is True
 
     invalid = {
         "name": payload["name"],
         "python_package": {"folder": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
     }
     rejected = client.put(
-        f"/api/blocks/command/{created['id']}",
+        f"/agent-shell/api/blocks/command/{created['id']}",
         json=invalid,
     )
     assert rejected.status_code == 409
 
     assert client.delete(
-        f"/api/blocks/command/{created['id']}"
+        f"/agent-shell/api/blocks/command/{created['id']}"
     ).json() == {"ok": True}
 
 
@@ -429,7 +429,7 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
     client = make_client(tmp_path, monkeypatch)
 
     for block_type, payload in block_cases(client, tmp_path):
-        created_response = client.post(f"/api/blocks/{block_type}", json=payload)
+        created_response = client.post(f"/agent-shell/api/blocks/{block_type}", json=payload)
         assert created_response.status_code == 200, created_response.text
         created = created_response.json()
         assert created["id"]
@@ -457,10 +457,10 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
             assert created["tool_description_override"] == payload[
                 "tool_description_override"
             ]
-        listed = client.get(f"/api/blocks/{block_type}")
+        listed = client.get(f"/agent-shell/api/blocks/{block_type}")
         assert listed.status_code == 200
         assert [item["id"] for item in listed.json()] == [created["id"]]
-        assert client.get(f"/api/blocks/{block_type}/{created['id']}").json() == created
+        assert client.get(f"/agent-shell/api/blocks/{block_type}/{created['id']}").json() == created
         update_payload = {**payload, "name": f"{payload['name']} updated"}
         if block_type in {"custom-tool", "custom-middleware", "agent-event-output"}:
             update_payload = {
@@ -473,22 +473,22 @@ def test_block_crud_round_trips_every_form_payload(tmp_path: Path, monkeypatch) 
                 "skill_package": created["skill_package"],
             }
         updated = client.put(
-            f"/api/blocks/{block_type}/{created['id']}", json=update_payload
+            f"/agent-shell/api/blocks/{block_type}/{created['id']}", json=update_payload
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["name"] == update_payload["name"]
 
         copied = client.post(
-            f"/api/blocks/{block_type}/{created['id']}/copy",
+            f"/agent-shell/api/blocks/{block_type}/{created['id']}/copy",
             json={"name": f"{payload['name']} copy"},
         )
         assert copied.status_code == 200, copied.text
         assert copied.json()["id"] != created["id"]
 
-        assert client.delete(f"/api/blocks/{block_type}/{created['id']}").json() == {
+        assert client.delete(f"/agent-shell/api/blocks/{block_type}/{created['id']}").json() == {
             "ok": True
         }
-        assert client.get(f"/api/blocks/{block_type}/{created['id']}").status_code == 404
+        assert client.get(f"/agent-shell/api/blocks/{block_type}/{created['id']}").status_code == 404
 
 
 @pytest.mark.parametrize(
@@ -529,7 +529,7 @@ def test_filesystem_rejects_framework_reserved_virtual_namespaces(
 
     for index, (field, item) in enumerate(cases):
         response = client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={"name": f"Reserved namespace {index}", field: [item]},
         )
         assert response.status_code == 422, (field, namespace, response.text)
@@ -542,7 +542,7 @@ def test_filesystem_mapped_directory_modes_are_explicit(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     relative = client.post(
-        "/api/blocks/filesystem",
+        "/agent-shell/api/blocks/filesystem",
         json={
             "name": "Lifecycle mapping",
             "mapped_directories": [
@@ -572,7 +572,7 @@ def test_filesystem_mapped_directory_modes_are_explicit(
         ("data-root-relative", "C:relative"),
     ):
         response = client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={
                 "name": f"Invalid {path_origin}",
                 "mapped_directories": [
@@ -592,29 +592,29 @@ def test_basic_payload_shape_errors_are_rejected(tmp_path: Path, monkeypatch) ->
 
     assert (
         client.post(
-            "/api/blocks/model-requirement",
+            "/agent-shell/api/blocks/model-requirement",
             json={"name": "only-name"},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "empty", "system_prompt": ""},
         ).status_code
         == 422
     )
 
     empty_skill = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={"name": "Empty Skill selection", "skill_template_paths": []},
     )
     removed_skill_switch = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={"name": "Old Skill switch", "enabled": True, "skills": ["demo"]},
     )
     removed_subagent_switch = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={"name": "Old Subagent switch", "enabled": True},
     )
 
@@ -662,7 +662,7 @@ def test_filesystem_backend_types_reject_incompatible_fields(
         },
     ):
         response = client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json=payload,
         )
         assert response.status_code == 422, response.text
@@ -686,6 +686,6 @@ def test_event_output_components_reject_invalid_package_entrypoints(
     client = make_client(tmp_path, monkeypatch)
 
     for endpoint in ("agent-event-output", "workflow-event-output"):
-        catalog = client.get(f"/api/python-package-templates/{endpoint}").json()
+        catalog = client.get(f"/agent-shell/api/python-package-templates/{endpoint}").json()
         assert catalog["catalog"] == []
         assert set(catalog["errors"]) == {"invalid-entrypoint"}

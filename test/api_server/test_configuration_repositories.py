@@ -23,24 +23,24 @@ def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        initial = client.get("/api/configuration-repositories").json()
+        initial = client.get("/agent-shell/api/configuration-repositories").json()
         initial_id = initial["active_id"]
         old_workflow = create_workflow(client, name="First repository Workflow")
         frozen = client.app.state.agent_runtime.capture()
 
         created = client.post(
-            "/api/configuration-repositories",
+            "/agent-shell/api/configuration-repositories",
             json={"name": "Alternate"},
         )
         assert created.status_code == 200, created.text
         alternate_id = created.json()["id"]
         activated = client.post(
-            f"/api/configuration-repositories/{alternate_id}/activate"
+            f"/agent-shell/api/configuration-repositories/{alternate_id}/activate"
         )
         assert activated.status_code == 200, activated.text
         assert activated.json()["active"] is True
         assert activated.json()["restart_required"] is False
-        assert client.get("/api/workflows").json() == []
+        assert client.get("/agent-shell/api/workflows").json() == []
 
         new_workflow = create_workflow(client, name="Alternate repository Workflow")
         current = client.app.state.agent_runtime.capture()
@@ -50,13 +50,13 @@ def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot
         assert current.workflow_by_name(new_workflow["name"])["id"] == new_workflow["id"]
 
         switched_back = client.post(
-            f"/api/configuration-repositories/{initial_id}/activate"
+            f"/agent-shell/api/configuration-repositories/{initial_id}/activate"
         )
         assert switched_back.status_code == 200, switched_back.text
-        assert [item["id"] for item in client.get("/api/workflows").json()] == [
+        assert [item["id"] for item in client.get("/agent-shell/api/workflows").json()] == [
             old_workflow["id"]
         ]
-        listed = client.get("/api/configuration-repositories").json()
+        listed = client.get("/agent-shell/api/configuration-repositories").json()
         assert listed["active_id"] == initial_id
         assert {item["name"] for item in listed["repositories"]} == {
             "Default",
@@ -69,17 +69,17 @@ def test_repository_names_are_unique_without_switching_on_create(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        initial_id = client.get("/api/configuration-repositories").json()["active_id"]
+        initial_id = client.get("/agent-shell/api/configuration-repositories").json()["active_id"]
         first = client.post(
-            "/api/configuration-repositories",
+            "/agent-shell/api/configuration-repositories",
             json={"name": "Portable"},
         )
         assert first.status_code == 200, first.text
         assert first.json()["active"] is False
-        assert client.get("/api/configuration-repositories").json()["active_id"] == initial_id
+        assert client.get("/agent-shell/api/configuration-repositories").json()["active_id"] == initial_id
 
         conflict = client.post(
-            "/api/configuration-repositories",
+            "/agent-shell/api/configuration-repositories",
             json={"name": " portable "},
         )
         assert conflict.status_code == 409, conflict.text
@@ -92,15 +92,15 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         source_repository = client.get(
-            "/api/configuration-repositories"
+            "/agent-shell/api/configuration-repositories"
         ).json()["repositories"][0]
         workflow = create_workflow(client, name="Repairable Workflow")
         scheduling = client.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={"name": "Temporary scheduling"},
         ).json()
         updated = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 **{
                     key: workflow[key]
@@ -119,12 +119,12 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
         )
         assert updated.status_code == 200, updated.text
         deleted = client.delete(
-            f"/api/blocks/response-stream-scheduling/{scheduling['id']}"
+            f"/agent-shell/api/blocks/response-stream-scheduling/{scheduling['id']}"
         )
         assert deleted.status_code == 200, deleted.text
 
         downloaded = client.get(
-            f"/api/configuration-repositories/{source_repository['id']}/download"
+            f"/agent-shell/api/configuration-repositories/{source_repository['id']}/download"
         )
         assert downloaded.status_code == 200, downloaded.text
         with ZipFile(BytesIO(downloaded.content)) as archive:
@@ -136,15 +136,15 @@ def test_repository_copy_download_and_activate_preserve_dangling_references(
         assert scheduling["id"].encode() in b"".join(workflow_documents)
 
         copied = client.post(
-            f"/api/configuration-repositories/{source_repository['id']}/copy",
+            f"/agent-shell/api/configuration-repositories/{source_repository['id']}/copy",
             json={"name": "Repairable copy"},
         )
         assert copied.status_code == 200, copied.text
         activated = client.post(
-            f"/api/configuration-repositories/{copied.json()['id']}/activate"
+            f"/agent-shell/api/configuration-repositories/{copied.json()['id']}/activate"
         )
         assert activated.status_code == 200, activated.text
-        copied_workflow = client.get("/api/workflows").json()[0]
+        copied_workflow = client.get("/agent-shell/api/workflows").json()[0]
         assert copied_workflow["id"] != workflow["id"]
         assert copied_workflow["response_stream_scheduling_id"] == scheduling["id"]
         issues = [
@@ -164,7 +164,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         source_repository = client.get(
-            "/api/configuration-repositories"
+            "/agent-shell/api/configuration-repositories"
         ).json()["repositories"][0]
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Copied repository Workflow")
@@ -177,12 +177,12 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         )
         source_binding = next(
             item
-            for item in client.get("/api/model-requirements").json()
+            for item in client.get("/agent-shell/api/model-requirements").json()
             if item["id"] == source_requirement["id"]
         )
 
         copied_response = client.post(
-            f"/api/configuration-repositories/{source_repository['id']}/copy",
+            f"/agent-shell/api/configuration-repositories/{source_repository['id']}/copy",
             json={"name": "Independent copy"},
         )
         assert copied_response.status_code == 200, copied_response.text
@@ -190,7 +190,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         assert copied_repository["active"] is False
 
         downloaded = client.get(
-            f"/api/configuration-repositories/{copied_repository['id']}/download"
+            f"/agent-shell/api/configuration-repositories/{copied_repository['id']}/download"
         )
         assert downloaded.status_code == 200, downloaded.text
         with ZipFile(BytesIO(downloaded.content)) as archive:
@@ -202,7 +202,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         assert b"provider-test-secret" not in archive_bytes
 
         activated = client.post(
-            f"/api/configuration-repositories/{copied_repository['id']}/activate"
+            f"/agent-shell/api/configuration-repositories/{copied_repository['id']}/activate"
         )
         assert activated.status_code == 200, activated.text
         copied_config = FileConfigRepository(tmp_path / "data").config()
@@ -211,12 +211,12 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         assert copied_ids.isdisjoint(source_ids)
         assert len(copied_ids) == len(source_ids)
 
-        copied_agent = client.get("/api/main-agents").json()[0]
-        copied_workflow = client.get("/api/workflows").json()[0]
+        copied_agent = client.get("/agent-shell/api/main-agents").json()[0]
+        copied_workflow = client.get("/agent-shell/api/workflows").json()[0]
         copied_requirement = client.get(
-            "/api/blocks/model-requirement"
+            "/agent-shell/api/blocks/model-requirement"
         ).json()[0]
-        copied_output = client.get("/api/blocks/agent-event-output").json()[0]
+        copied_output = client.get("/agent-shell/api/blocks/agent-event-output").json()[0]
         assert copied_agent["id"] != main_agent["id"]
         assert {
             reference["block_id"]
@@ -224,7 +224,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         }.issubset(copied_ids)
         assert copied_workflow["enabled"] is False
         copied_graph = client.get(
-            f"/api/workflows/{copied_workflow['id']}/graph"
+            f"/agent-shell/api/workflows/{copied_workflow['id']}/graph"
         ).json()
         assert copied_graph["layout"] == source_graph["layout"]
         copied_agent_node = next(
@@ -235,7 +235,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         assert copied_agent_node["config"]["main_agent_id"] == copied_agent["id"]
         copied_binding = next(
             item
-            for item in client.get("/api/model-requirements").json()
+            for item in client.get("/agent-shell/api/model-requirements").json()
             if item["id"] == copied_requirement["id"]
         )
         assert copied_binding["binding"] == source_binding["binding"]
@@ -255,7 +255,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         )["id"] == copied_output["id"]
 
         active_delete = client.delete(
-            f"/api/configuration-repositories/{copied_repository['id']}"
+            f"/agent-shell/api/configuration-repositories/{copied_repository['id']}"
         )
         assert active_delete.status_code == 409
         assert active_delete.json()["detail"]["code"] == (
@@ -263,16 +263,16 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
         )
 
         switched_back = client.post(
-            f"/api/configuration-repositories/{source_repository['id']}/activate"
+            f"/agent-shell/api/configuration-repositories/{source_repository['id']}/activate"
         )
         assert switched_back.status_code == 200, switched_back.text
         deleted = client.delete(
-            f"/api/configuration-repositories/{copied_repository['id']}"
+            f"/agent-shell/api/configuration-repositories/{copied_repository['id']}"
         )
         assert deleted.json() == {"ok": True}
         listed_ids = {
             item["id"]
-            for item in client.get("/api/configuration-repositories").json()[
+            for item in client.get("/agent-shell/api/configuration-repositories").json()[
                 "repositories"
             ]
         }
@@ -287,7 +287,7 @@ def test_invalid_repository_name_does_not_leave_an_orphan_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        response = client.post("/api/configuration-repositories", json={"name": "   "})
+        response = client.post("/agent-shell/api/configuration-repositories", json={"name": "   "})
         assert response.status_code == 422, response.text
         repository_root = tmp_path / "data" / "config_repos"
         assert len(list(repository_root.iterdir())) == 1
@@ -300,7 +300,7 @@ def test_repository_names_follow_windows_directory_rules_and_allow_unicode(
     with make_client(tmp_path, monkeypatch) as client:
         valid_name = "项目_日本語 Français Deutsch"
         created = client.post(
-            "/api/configuration-repositories",
+            "/agent-shell/api/configuration-repositories",
             json={"name": valid_name},
         )
         assert created.status_code == 200, created.text
@@ -314,7 +314,7 @@ def test_repository_names_follow_windows_directory_rules_and_allow_unicode(
             "trailing.",
         ):
             rejected = client.post(
-                "/api/configuration-repositories",
+                "/agent-shell/api/configuration-repositories",
                 json={"name": invalid_name},
             )
             assert rejected.status_code == 422, rejected.text

@@ -14,19 +14,19 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
     client = make_client(tmp_path, monkeypatch)
     for name, prompt in (("Alpha", "a" * 4_096), ("Beta", "b" * 4_096)):
         response = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": name, "system_prompt": prompt},
         )
         assert response.status_code == 200
 
-    full = client.get("/api/blocks/system-prompt")
+    full = client.get("/agent-shell/api/blocks/system-prompt")
     assert full.status_code == 200
     assert isinstance(full.json(), list)
     assert [item["name"] for item in full.json()] == ["Alpha", "Beta"]
     assert len(full.json()[0]["system_prompt"]) == 4_096
 
     explicit_full = client.get(
-        "/api/blocks/system-prompt",
+        "/agent-shell/api/blocks/system-prompt",
         params={"view": "full", "offset": 0},
     )
     assert explicit_full.status_code == 200
@@ -34,7 +34,7 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
     assert explicit_full.json()["total"] == 2
 
     summary = client.get(
-        "/api/blocks/system-prompt",
+        "/agent-shell/api/blocks/system-prompt",
         params={"view": "summary", "q": "a", "offset": 1, "limit": 1},
     )
     assert summary.status_code == 200
@@ -46,17 +46,17 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
 
     first_revision = payload["repository_revision"]
     created = client.post(
-        "/api/blocks/system-prompt",
+        "/agent-shell/api/blocks/system-prompt",
         json={"name": "Gamma", "system_prompt": "new"},
     )
     assert created.status_code == 200
     refreshed = client.get(
-        "/api/blocks/system-prompt", params={"view": "summary"}
+        "/agent-shell/api/blocks/system-prompt", params={"view": "summary"}
     ).json()
     assert refreshed["repository_revision"] > first_revision
 
     mcp_requirement = client.post(
-        "/api/blocks/mcp-requirement",
+        "/agent-shell/api/blocks/mcp-requirement",
         json={
             "name": "Browser access",
             "description": "Browser automation tools.",
@@ -65,7 +65,7 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
     )
     assert mcp_requirement.status_code == 200
     mcp_summary_response = client.get(
-        "/api/blocks/mcp-requirement", params={"view": "summary"}
+        "/agent-shell/api/blocks/mcp-requirement", params={"view": "summary"}
     ).json()
     mcp_summary = mcp_summary_response["items"]
     assert mcp_summary == [{
@@ -74,7 +74,7 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
         "namespace": "browser",
     }]
 
-    options = client.get("/api/configuration-options")
+    options = client.get("/agent-shell/api/configuration-options")
     assert options.status_code == 200
     assert options.json()["repository_revision"] == mcp_summary_response["repository_revision"]
     assert options.json()["components"]["system-prompt"] == refreshed["items"]
@@ -82,7 +82,7 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
     assert "system_prompt" not in options.text
     assert "Browser automation tools." not in options.text
 
-    for path in ("/api/main-agents", "/api/subagents", "/api/workflows"):
+    for path in ("/agent-shell/api/main-agents", "/agent-shell/api/subagents", "/agent-shell/api/workflows"):
         collection = client.get(path, params={"view": "summary"})
         assert collection.status_code == 200
         assert set(collection.json()) == {
@@ -93,46 +93,46 @@ def test_configuration_collection_views_keep_full_discovery_and_offer_summary_qu
         }
 
     deleted = client.post(
-        "/api/blocks/system-prompt/delete",
+        "/agent-shell/api/blocks/system-prompt/delete",
         json={"q": "gamma"},
     )
     assert deleted.status_code == 200
     assert deleted.json() == {"deleted": 1}
-    assert len(client.get("/api/blocks/system-prompt").json()) == 2
+    assert len(client.get("/agent-shell/api/blocks/system-prompt").json()) == 2
     assert client.post(
-        "/api/blocks/system-prompt/delete",
+        "/agent-shell/api/blocks/system-prompt/delete",
         json={"ids": [full.json()[0]["id"]], "q": "alpha"},
     ).status_code == 422
 
-    no_match_revision = client.get("/api/configuration-options").json()[
+    no_match_revision = client.get("/agent-shell/api/configuration-options").json()[
         "repository_revision"
     ]
-    for path in ("/api/main-agents/delete", "/api/subagents/delete", "/api/workflows/delete"):
+    for path in ("/agent-shell/api/main-agents/delete", "/agent-shell/api/subagents/delete", "/agent-shell/api/workflows/delete"):
         no_match = client.post(path, json={"q": "does-not-exist"})
         assert no_match.status_code == 200
         assert no_match.json() == {"deleted": 0}
     assert (
-        client.get("/api/configuration-options").json()["repository_revision"]
+        client.get("/agent-shell/api/configuration-options").json()["repository_revision"]
         == no_match_revision
     )
 
     first = client.post(
-        "/api/workflows",
+        "/agent-shell/api/workflows",
         json={"name": "Shared first"},
     )
     second = client.post(
-        "/api/workflows",
+        "/agent-shell/api/workflows",
         json={"name": "Shared second"},
     )
     assert first.status_code == 200
     assert second.status_code == 200
     deleted_workflows = client.post(
-        "/api/workflows/delete",
+        "/agent-shell/api/workflows/delete",
         json={"q": "shared"},
     )
     assert deleted_workflows.status_code == 200
     assert deleted_workflows.json() == {"deleted": 2}
-    assert client.get("/api/workflows").json() == []
+    assert client.get("/agent-shell/api/workflows").json() == []
 
 
 def test_configuration_stores_read_owned_sections_without_full_snapshot(

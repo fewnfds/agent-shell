@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.file_manager import FileManagerError, FileManagerService
 
@@ -49,9 +50,9 @@ def _raise_file_error(error: FileManagerError) -> NoReturn:
 
 
 def build_file_manager_router(files: FileManagerService) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/file-manager")
+    @router.get("/file-manager")
     async def list_directory(
         path: str = Query(default="data", max_length=4096),
     ) -> dict:
@@ -60,21 +61,21 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.post("/api/file-manager/directories")
+    @router.post("/file-manager/directories")
     async def create_directory(payload: FilePathInput) -> dict:
         try:
             return files.create_directory(payload.path)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.post("/api/file-manager/text-files")
+    @router.post("/file-manager/text-files")
     async def create_text_file(payload: FilePathInput) -> dict:
         try:
             return files.create_text_file(payload.path)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.put("/api/file-manager/upload")
+    @router.put("/file-manager/upload")
     async def upload_file(
         request: Request,
         path: str = Query(max_length=4096),
@@ -89,7 +90,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.get("/api/file-manager/download")
+    @router.get("/file-manager/download")
     async def download_file(
         path: str = Query(max_length=4096),
     ) -> FileResponse:
@@ -108,14 +109,14 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             ),
         )
 
-    @router.post("/api/file-manager/archive/preview")
+    @router.post("/file-manager/archive/preview")
     async def preview_archive(payload: FileSelectionInput) -> dict:
         try:
             return files.preview_archive(payload.paths)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.post("/api/file-manager/archive")
+    @router.post("/file-manager/archive")
     async def download_archive(
         payload: FileSelectionInput,
     ) -> FileResponse:
@@ -130,7 +131,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
             background=BackgroundTask(files.release_download, download),
         )
 
-    @router.get("/api/file-manager/text")
+    @router.get("/file-manager/text")
     async def read_text_file(
         path: str = Query(max_length=4096),
     ) -> dict:
@@ -139,7 +140,7 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.put("/api/file-manager/text")
+    @router.put("/file-manager/text")
     async def save_text_file(payload: TextFileSaveInput) -> dict:
         try:
             return files.save_text(
@@ -150,14 +151,14 @@ def build_file_manager_router(files: FileManagerService) -> APIRouter:
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.patch("/api/file-manager")
+    @router.patch("/file-manager")
     async def rename_file(payload: FileRenameInput) -> dict:
         try:
             return files.rename(payload.path, payload.name)
         except FileManagerError as exc:
             _raise_file_error(exc)
 
-    @router.delete("/api/file-manager")
+    @router.delete("/file-manager")
     async def delete_file(
         path: str = Query(max_length=4096),
     ) -> dict:

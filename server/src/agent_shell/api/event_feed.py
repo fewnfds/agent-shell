@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.event_feed import (
     EventFeedService,
@@ -62,9 +63,9 @@ def build_event_feed_router(
     service: EventFeedService,
     events: Any,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/event-feed")
+    @router.get("/event-feed")
     async def list_event_feed(
         started_at: datetime = Query(),
         ended_at: datetime = Query(),
@@ -85,7 +86,7 @@ def build_event_feed_router(
             query=query.strip(),
         )
 
-    @router.post("/api/event-feed/delete")
+    @router.post("/event-feed/delete")
     async def delete_matching_events(
         payload: EventFeedDeleteMatching,
     ) -> dict[str, int]:
@@ -100,7 +101,7 @@ def build_event_feed_router(
         await events.publish({"type": "history_changed"})
         return result
 
-    @router.get("/api/event-feed/{source}/{item_id}/download")
+    @router.get("/event-feed/{source}/{item_id}/download")
     async def download_event(
         source: EventSource,
         item_id: str,
@@ -126,11 +127,11 @@ def build_event_feed_router(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @router.get("/api/event-feed/system/settings")
+    @router.get("/event-feed/system/settings")
     async def get_system_log_settings() -> dict[str, int]:
         return service.system_log_settings()
 
-    @router.put("/api/event-feed/system/settings")
+    @router.put("/event-feed/system/settings")
     async def update_system_log_settings(
         payload: SystemLogSettingsUpdate,
     ) -> dict[str, int]:

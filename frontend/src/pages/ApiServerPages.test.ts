@@ -71,11 +71,31 @@ const messages = {
       saved: 'Request settings saved',
       saveFailed: 'Request settings failed',
     },
+    serviceEntries: {
+      title: 'Service entries',
+      managementConsole: 'Agent Shell management console',
+      agentServerBase: 'LangGraph Agent Server Base URL',
+      apiDocs: 'API Docs',
+      openapiSchema: 'OpenAPI Schema',
+      langgraphStudio: 'LangGraph Studio',
+    },
     endpoints: {
-      title: 'Endpoints',
-      base: 'API base URL',
+      title: 'API endpoints',
+      agentShellBase: 'Agent Shell API Base URL',
+      openaiBase: 'OpenAI-compatible Base URL',
+      getMethod: 'GET',
+      postMethod: 'POST',
       models: 'Models endpoint',
       chatCompletions: 'Chat completions endpoint',
+      langgraphRoutes: 'LangGraph Agent Server route families',
+      diagnostics: 'Diagnostic endpoints',
+      agentShellHealth: 'Agent Shell Health',
+      agentShellReadiness: 'Agent Shell Readiness',
+      langgraphHealth: 'LangGraph Health',
+      langgraphInfo: 'LangGraph Info',
+      langgraphMetrics: 'LangGraph Metrics',
+      managementAuth: 'Management Bearer routes',
+      apiKeyAuth: 'API Key Bearer routes',
     },
   },
   fields: {
@@ -130,9 +150,32 @@ const settings: ApiServerSettings = {
   api_key: { configured: true },
   max_initial_messages: 1000,
   message_interception_enabled: false,
-  api_base_url: 'http://localhost/v1',
-  models_endpoint: 'http://localhost/v1/models',
-  chat_completions_endpoint: 'http://localhost/v1/chat/completions',
+  service_entries: {
+    management_console_url: 'http://localhost/admin#/',
+    agent_server_base_url: 'http://localhost',
+    api_docs_url: 'http://localhost/docs',
+    openapi_schema_url: 'http://localhost/openapi.json',
+    langgraph_studio_url: 'https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2Flocalhost',
+  },
+  api_endpoints: {
+    agent_shell_base_url: 'http://localhost/agent-shell/api',
+    openai_base_url: 'http://localhost/compat/openai/v1',
+    models_endpoint: 'http://localhost/compat/openai/v1/models',
+    chat_completions_endpoint: 'http://localhost/compat/openai/v1/chat/completions',
+    langgraph_route_families: [
+      '/assistants/*',
+      '/threads/*',
+      '/runs/*',
+      '/store/*',
+      '/mcp/',
+      '/a2a/{assistant_id}',
+    ],
+    agent_shell_health_endpoint: 'http://localhost/agent-shell/api/health',
+    agent_shell_readiness_endpoint: 'http://localhost/agent-shell/api/readiness',
+    langgraph_health_endpoint: 'http://localhost/ok',
+    langgraph_info_endpoint: 'http://localhost/info',
+    langgraph_metrics_endpoint: 'http://localhost/metrics',
+  },
   runtime: 'model_streaming',
 }
 
@@ -219,8 +262,25 @@ describe('ApiServerSettingsPage', () => {
     expect(alerts.text()).toContain('Configuration alerts')
     expect(alerts.text()).toContain('Broken MainAgent')
     expect(alerts.find('a').exists()).toBe(false)
+    const serviceEntryCard = wrapper.get('[data-testid="service-entry-card"]')
+    expect(serviceEntryCard.text()).toContain('Service entries')
+    expect(serviceEntryCard.get('[data-testid="management-console-link"]').attributes('href'))
+      .toBe('http://localhost/admin#/')
+    expect(serviceEntryCard.get('[data-testid="api-docs-link"]').attributes('href'))
+      .toBe('http://localhost/docs')
+    expect(serviceEntryCard.get('[data-testid="openapi-schema-link"]').attributes('href'))
+      .toBe('http://localhost/openapi.json')
+    expect(serviceEntryCard.get('[data-testid="langgraph-studio-link"]').attributes('href'))
+      .toBe('https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2Flocalhost')
     const endpointCard = wrapper.get('[data-testid="endpoint-card"]')
-    expect(endpointCard.text()).toContain('Endpoints')
+    expect(endpointCard.text()).toContain('API endpoints')
+    expect(endpointCard.text()).toContain('/assistants/*')
+    expect(endpointCard.get<HTMLInputElement>('#agent-shell-base-url').element.value)
+      .toBe('http://localhost/agent-shell/api')
+    expect(endpointCard.get<HTMLInputElement>('#openai-base-url').element.value)
+      .toBe('http://localhost/compat/openai/v1')
+    expect(endpointCard.get<HTMLInputElement>('#models-endpoint').element.value)
+      .toBe('http://localhost/compat/openai/v1/models')
     expect(endpointCard.findAll('button')).toHaveLength(0)
     expect(endpointCard.findAll('a')).toHaveLength(0)
     expect(wrapper.find('[data-testid="configuration-card"]').exists()).toBe(false)

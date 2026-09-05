@@ -58,9 +58,9 @@ def test_readiness_is_partitioned_while_health_remains_minimal(
     monkeypatch.setattr("agent_shell.readiness.find_spec", selective_find_spec)
 
     with TestClient(create_app()) as client:
-        health = client.get("/api/health")
+        health = client.get("/agent-shell/api/health")
         readiness = client.get(
-            "/api/readiness", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/readiness", headers=_bearer(MANAGEMENT_TOKEN)
         )
 
     assert health.status_code == 200
@@ -102,7 +102,7 @@ def test_readiness_requires_deepagents_for_the_mandatory_filesystem_runtime(
 
     with TestClient(create_app()) as client:
         report = client.get(
-            "/api/readiness", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/readiness", headers=_bearer(MANAGEMENT_TOKEN)
         ).json()
 
     runtime = report["sections"]["runtime_dependencies"]
@@ -120,15 +120,15 @@ def test_readiness_and_runtime_diagnostics_require_management_scope(
     _auth(monkeypatch, tmp_path)
 
     with TestClient(create_app()) as client:
-        health = client.get("/api/health")
-        missing = client.get("/api/readiness")
-        wrong = client.get("/api/readiness", headers=_bearer(API_KEY))
-        ready = client.get("/api/readiness", headers=_bearer(MANAGEMENT_TOKEN))
+        health = client.get("/agent-shell/api/health")
+        missing = client.get("/agent-shell/api/readiness")
+        wrong = client.get("/agent-shell/api/readiness", headers=_bearer(API_KEY))
+        ready = client.get("/agent-shell/api/readiness", headers=_bearer(MANAGEMENT_TOKEN))
         diagnostic_wrong = client.get(
-            "/api/runtime-diagnostics", headers=_bearer(API_KEY)
+            "/agent-shell/api/runtime-diagnostics", headers=_bearer(API_KEY)
         )
         diagnostic = client.get(
-            "/api/runtime-diagnostics", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/runtime-diagnostics", headers=_bearer(MANAGEMENT_TOKEN)
         )
 
     assert health.status_code == 200

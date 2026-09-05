@@ -10,6 +10,11 @@ from uuid import uuid4
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from agent_shell.http_surface import (
+    AGENT_SHELL_API_PREFIX,
+    is_agent_shell_api_path,
+    is_compat_api_path,
+)
 from agent_shell.localization import localized_message
 from agent_shell.settings import Settings, bearer_token_is_valid
 from agent_shell.request_context import bind_request_context
@@ -135,11 +140,11 @@ def security_error_response(
 
 
 def _required_scope(path: str) -> Literal["management", "api"] | None:
-    if path == "/api/health":
+    if path == f"{AGENT_SHELL_API_PREFIX}/health":
         return None
-    if path == "/api" or path.startswith("/api/"):
+    if is_agent_shell_api_path(path):
         return "management"
-    if path == "/v1" or path.startswith("/v1/"):
+    if is_compat_api_path(path):
         return "api"
     return None
 

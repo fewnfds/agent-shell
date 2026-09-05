@@ -2,15 +2,17 @@
 
 ## 认证
 
-- 除 `/api/health` 外，管理密码保护 `/api/*`；`/admin` 静态应用壳可以匿名加载，但其数据和操作都通过受保护的 management API；
-- API Key 保护 `/v1/*`；
+- 除 `/agent-shell/api/health` 外，管理密码保护 `/agent-shell/api/*`；`/admin` 静态应用壳可以匿名加载，但其数据和操作都通过受保护的 management API；
+- API Key 保护 `/compat/openai/v1/*`；
 - LangGraph Dev 的 Assistant、Thread、Run、State 与 Store 官方路由使用同一个 management Bearer；
 - 两者都必须是无空格的可打印 ASCII，均为 write-only；
-- `/api/health` 免鉴权用于存活探测，`/api/readiness` 需要 management Bearer 并返回分层就绪状态。
+- `/agent-shell/api/health` 免鉴权用于存活探测，`/agent-shell/api/readiness` 需要 management Bearer 并返回分层就绪状态。
 
 默认监听 `127.0.0.1`，本地模式也始终要求管理密码。管理台、Management API、OpenAI-compatible API 与 LangGraph Dev 官方 API 共用一个普通服务端口；`debug_port` 留空时不创建第二个 listener。监听非 loopback 地址或配置可信代理前，必须在系统配置显式设置 `allow_remote: true` 并配置 API Key。远程部署只需反向代理这个普通服务端口；若显式启用 DAP 调试端口，不应把它作为公共 HTTP 服务发布。生产远程部署应由受信任反向代理提供 TLS、请求体限制、超时与访问控制。
 
 系统配置页提供同一服务端口上的 API Docs 与 LangGraph Studio 入口。`/docs` 和 `/openapi.json` 公开 API schema，便于加载文档和 Authorize UI；Assistant、Thread、Run、Store 与 Management 操作仍要求 management Bearer。链接不携带 credential；API Docs 的 Authorize 与 Studio 的连接配置需要显式填写 management Bearer Token。Studio 页面托管在 `smith.langchain.com`，远程部署需让浏览器可以访问反向代理后的 Agent Shell HTTPS 地址，并在 `cors_origins` 中允许实际使用的 origin。不要公开 DAP listener。
+
+同一 listener 的路径 owner 固定为：`/admin` 属于 Agent Shell 管理台，`/agent-shell/api/*` 属于 Agent Shell API，`/compat/openai/v1/*` 属于 OpenAI-compatible API；`/assistants/*`、`/threads/*`、`/runs/*`、`/store/*`、`/mcp/` 与 `/a2a/{assistant_id}` 保持 LangGraph Agent Server 官方 contract。反向代理不得只转发其中一部分后假设首页、Studio 或 SDK 仍能使用完整服务。
 
 管理台 HTML 使用 `Content-Security-Policy: frame-ancestors 'none'` 拒绝被其他页面嵌入。反向代理不得删除或覆盖这个响应头。
 
@@ -83,7 +85,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、invocation 和 filesystem route 记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
-官方 Graph、State/history、Server Store 和 Agent invocation artifact 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 和完整 `data/` 作为敏感数据保护。`/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 全部需要 management Bearer，不建立新的多租户可见性边界。
+官方 Graph、State/history、Server Store 和 Agent invocation artifact 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 和完整 `data/` 作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 全部需要 management Bearer，不建立新的多租户可见性边界。
 
 ## 系统配置与变量
 

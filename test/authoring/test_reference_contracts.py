@@ -11,11 +11,11 @@ def test_main_agent_subagent_reference_only_stores_entity_id(
         REQUIRED_TYPES,
     )
     subagent = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload("Self worker", name="self_worker"),
     ).json()
     valid = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Unsaved self Main Agent",
             "capability_refs": required_refs,
@@ -52,13 +52,13 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
     ]
     for index, capability_refs in enumerate(invalid_main_agent_refs):
         response = client.post(
-            "/api/main-agents",
+            "/agent-shell/api/main-agents",
             json={"name": f"Invalid Main Agent {index}", "capability_refs": capability_refs},
         )
         assert response.status_code == 422, response.text
 
     required_filesystem_disabled = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload(
             "Disabled Filesystem Subagent",
             name="minimal_filesystem_subagent",
@@ -83,7 +83,7 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
     ]
     for index, capability_overrides in enumerate(invalid_overrides):
         response = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json=subagent_payload(
                 f"Invalid Subagent {index}",
                 name=f"invalid_subagent_{index}",
@@ -107,7 +107,7 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
                         for index in range(len(required_refs))]
     for index, capability_refs in enumerate(missing_required):
         response = client.post(
-            "/api/main-agents",
+            "/agent-shell/api/main-agents",
             json={
                 "name": f"Missing required {index}",
                 "capability_refs": capability_refs,
@@ -116,7 +116,7 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
         assert response.status_code == 422, response.text
 
     without_filesystem = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "No filesystem required",
             "capability_refs": [
@@ -127,7 +127,7 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
     assert without_filesystem.status_code == 422, without_filesystem.text
 
     direct_skill_selection = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Direct Skill selection",
             "capability_refs": [
@@ -140,7 +140,7 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
 
     filesystem = blocks["filesystem"]
     bound_filesystem = client.put(
-        f"/api/blocks/filesystem/{filesystem['id']}",
+        f"/agent-shell/api/blocks/filesystem/{filesystem['id']}",
         json={
             "name": filesystem["name"],
             "backend_type": "composite",
@@ -151,11 +151,11 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
     assert bound_filesystem.json()["skill_package_id"] == blocks["skill"]["id"]
 
     delegation = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={"name": "Delegation"},
     ).json()
     delegation_without_binding = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Delegation without binding",
             "capability_refs": [
@@ -171,7 +171,7 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
     )
 
     child_skill_override = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload(
             "Child skill without filesystem",
             name="skill_worker",
@@ -188,11 +188,11 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
     assert child_skill_override.status_code == 422, child_skill_override.text
 
     complete_worker = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload("Complete worker", name="self_worker"),
     ).json()
     valid = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Complete required contract",
             "capability_refs": [

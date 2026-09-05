@@ -19,7 +19,7 @@ public Skill Template 根为 `data/skills-template/`。扫描允许任意层级�
 {"skill_package": {"folder": "<component-name>"}}
 ```
 
-新建组件时使用 `skill_template_paths`，系统复制所选 Template 后只保存 `skill_package`。已有组件的普通更新必须继续提交原 `skill_package` 引用；增量添加使用 `POST /api/blocks/skill/{id}/skills` 与 `{"template_path": "..."}`，删除使用 `DELETE /api/blocks/skill/{id}/skills/{folder_name}`。
+新建组件时使用 `skill_template_paths`，系统复制所选 Template 后只保存 `skill_package`。已有组件的普通更新必须继续提交原 `skill_package` 引用；增量添加使用 `POST /agent-shell/api/blocks/skill/{id}/skills` 与 `{"template_path": "..."}`，删除使用 `DELETE /agent-shell/api/blocks/skill/{id}/skills/{folder_name}`。
 
 `system_prompt_enabled: false` 时，`instruction_override` 必须为 `null`。启用且提供 override 时，文本最多 100,000 字符，并必须各包含一次或多次 `{skills_locations}`、`{skills_load_warnings}` 和 `{skills_list}`；不支持其他 placeholder、conversion 或 format spec。
 

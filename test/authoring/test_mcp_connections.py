@@ -256,7 +256,7 @@ def test_mcp_connection_api_imports_atomically_and_maps_requirement(
     }
 
     preview = client.post(
-        "/api/mcp-connections/import/preview",
+        "/agent-shell/api/mcp-connections/import/preview",
         json={"document": document},
     )
     assert preview.status_code == 200, preview.text
@@ -266,7 +266,7 @@ def test_mcp_connection_api_imports_atomically_and_maps_requirement(
     ]
 
     imported = client.post(
-        "/api/mcp-connections/import",
+        "/agent-shell/api/mcp-connections/import",
         json={"document": document},
     )
     assert imported.status_code == 200, imported.text
@@ -298,21 +298,21 @@ def test_mcp_connection_api_imports_atomically_and_maps_requirement(
         "agent_shell.api.mcp_connections.MultiServerMCPClient",
         FakeClient,
     )
-    installed = client.post(f"/api/mcp-connections/{connection_id}/install")
+    installed = client.post(f"/agent-shell/api/mcp-connections/{connection_id}/install")
     assert installed.status_code == 200, installed.text
     assert installed.json()["tools"] == ["navigate"]
 
-    requirements = client.get("/api/mcp-requirements").json()
+    requirements = client.get("/agent-shell/api/mcp-requirements").json()
     assert requirements[0]["binding"] is None
     bound = client.put(
-        f"/api/mcp-requirements/{requirement_id}/binding",
+        f"/agent-shell/api/mcp-requirements/{requirement_id}/binding",
         json={"connection_id": connection_id},
     )
     assert bound.status_code == 200, bound.text
     assert bound.json()["binding"] == connection_id
 
     failed = client.post(
-        "/api/mcp-connections/import",
+        "/agent-shell/api/mcp-connections/import",
         json={
             "document": {
                 "mcpServers": {

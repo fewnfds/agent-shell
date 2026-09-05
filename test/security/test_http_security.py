@@ -19,9 +19,9 @@ def test_local_management_password_blocks_cross_site_state_change(
 
     with TestClient(create_app()) as client:
         before = client.get(
-            "/api/api-server", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/api-server", headers=_bearer(MANAGEMENT_TOKEN)
         ).json()["enabled"]
-        target = "/api/api-server/stop" if before else "/api/api-server/start"
+        target = "/agent-shell/api/api-server/stop" if before else "/agent-shell/api/api-server/start"
         attack = client.post(
             target,
             headers={
@@ -31,7 +31,7 @@ def test_local_management_password_blocks_cross_site_state_change(
             content=b"x",
         )
         after = client.get(
-            "/api/api-server", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/api-server", headers=_bearer(MANAGEMENT_TOKEN)
         ).json()["enabled"]
 
     assert attack.status_code == 401
@@ -46,15 +46,15 @@ def test_api_key_remains_independent_from_management_password(
 
     with TestClient(create_app()) as client:
         saved = client.put(
-            "/api/api-server",
+            "/agent-shell/api/api-server",
             headers=_bearer(MANAGEMENT_TOKEN),
             json={"api_key": {"operation": "replace", "value": page_key}},
         )
-        missing = client.get("/v1/models")
+        missing = client.get("/compat/openai/v1/models")
         wrong_scope = client.get(
-            "/v1/models", headers=_bearer(MANAGEMENT_TOKEN)
+            "/compat/openai/v1/models", headers=_bearer(MANAGEMENT_TOKEN)
         )
-        allowed = client.get("/v1/models", headers=_bearer(page_key))
+        allowed = client.get("/compat/openai/v1/models", headers=_bearer(page_key))
 
     assert saved.status_code == 200
     assert saved.json()["api_key"] == {"configured": True}
@@ -84,7 +84,7 @@ def test_remote_mode_cannot_clear_the_persisted_api_key(
 
     with TestClient(create_app()) as client:
         response = client.put(
-            "/api/api-server",
+            "/agent-shell/api/api-server",
             headers=_bearer(MANAGEMENT_TOKEN),
             json={"api_key": {"operation": "clear"}},
         )
@@ -98,7 +98,7 @@ def test_management_and_api_scopes_are_independent(
     _configure_auth(monkeypatch, tmp_path)
     app = create_app()
 
-    @app.get("/api/whoami")
+    @app.get("/agent-shell/api/whoami")
     async def whoami(request: Request) -> dict[str, object]:
         principal = request.state.principal
         return {
@@ -108,15 +108,15 @@ def test_management_and_api_scopes_are_independent(
         }
 
     with TestClient(app) as client:
-        management = client.get("/api/whoami", headers=_bearer(MANAGEMENT_TOKEN))
+        management = client.get("/agent-shell/api/whoami", headers=_bearer(MANAGEMENT_TOKEN))
         wrong_management_scope = client.get(
-            "/api/catalog", headers=_bearer(API_KEY)
+            "/agent-shell/api/catalog", headers=_bearer(API_KEY)
         )
         api_namespace = client.get(
-            "/v1/not-implemented", headers=_bearer(API_KEY)
+            "/compat/openai/v1/not-implemented", headers=_bearer(API_KEY)
         )
         wrong_api_scope = client.get(
-            "/v1/not-implemented", headers=_bearer(MANAGEMENT_TOKEN)
+            "/compat/openai/v1/not-implemented", headers=_bearer(MANAGEMENT_TOKEN)
         )
 
     assert management.json() == {
@@ -150,7 +150,7 @@ def test_invalid_bearer_forms_use_stable_401_without_echo(
     _configure_auth(monkeypatch, tmp_path)
 
     with TestClient(create_app()) as client:
-        response = client.get("/api/catalog", headers=headers)
+        response = client.get("/agent-shell/api/catalog", headers=headers)
 
     payload = response.json()
     assert response.status_code == 401
@@ -184,7 +184,7 @@ def test_duplicate_authorization_is_rejected(
 
     with TestClient(create_app()) as client:
         response = client.get(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers=[
                 ("Authorization", f"Bearer {MANAGEMENT_TOKEN}"),
                 ("Authorization", f"Bearer {MANAGEMENT_TOKEN}"),
@@ -202,14 +202,14 @@ def test_authentication_stops_before_route_or_upstream_work(
     called = False
     app = create_app()
 
-    @app.get("/api/auth-order/{item_id}")
+    @app.get("/agent-shell/api/auth-order/{item_id}")
     async def auth_order(item_id: str) -> dict[str, str]:
         nonlocal called
         called = True
         return {"item_id": item_id}
 
     with TestClient(app) as client:
-        response = client.get("/api/auth-order/sensitive-item")
+        response = client.get("/agent-shell/api/auth-order/sensitive-item")
 
     assert response.status_code == 401
     assert called is False
@@ -224,7 +224,7 @@ def test_valid_cors_preflight_does_not_require_bearer_token(
 
     with TestClient(create_app()) as client:
         response = client.options(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={
                 "Origin": "https://console.example",
                 "Access-Control-Request-Method": "GET",
@@ -245,7 +245,7 @@ def test_allowed_cors_origin_can_read_authentication_failure(
 
     with TestClient(create_app()) as client:
         response = client.get(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={"Origin": "https://console.example"},
         )
 
@@ -261,11 +261,11 @@ def test_client_request_id_is_validated_and_returned(
 
     with TestClient(create_app()) as client:
         accepted = client.get(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={**_bearer(MANAGEMENT_TOKEN), "X-Request-ID": "client_req-123"},
         )
         replaced = client.get(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={**_bearer(MANAGEMENT_TOKEN), "X-Request-ID": "bad value"},
         )
 

@@ -9,16 +9,31 @@
     "path": "agent_shell.langgraph_dev:auth",
     "openapi": {
       "securitySchemes": {
-        "BearerAuth": {
+        "ManagementBearer": {
+          "type": "http",
+          "scheme": "bearer"
+        },
+        "ApiKeyBearer": {
           "type": "http",
           "scheme": "bearer"
         }
       },
       "security": [
         {
-          "BearerAuth": []
+          "ManagementBearer": []
         }
-      ]
+      ],
+      "paths": {
+        "/ok": {
+          "get": []
+        },
+        "/info": {
+          "get": []
+        },
+        "/metrics": {
+          "get": []
+        }
+      }
     },
     "disable_studio_auth": false
   },

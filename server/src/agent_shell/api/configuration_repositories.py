@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.errors import management_error
 from agent_shell.configuration.repository_management import (
@@ -31,16 +32,16 @@ def build_configuration_repository_router(
     management: ConfigurationRepositoryManagementService,
     validation: RepositoryValidationService,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/configuration-repositories")
+    @router.get("/configuration-repositories")
     async def list_repositories() -> dict[str, object]:
         return {
             "active_id": repository.repository_id,
             "repositories": repository.list_repositories(),
         }
 
-    @router.post("/api/configuration-repositories")
+    @router.post("/configuration-repositories")
     async def create_repository(payload: RepositoryCreate) -> dict[str, object]:
         try:
             return repository.create_repository(payload.name)
@@ -52,7 +53,7 @@ def build_configuration_repository_router(
                 message=str(exc),
             ) from exc
 
-    @router.post("/api/configuration-repositories/{repository_id}/activate")
+    @router.post("/configuration-repositories/{repository_id}/activate")
     async def activate_repository(repository_id: str) -> dict[str, object]:
         try:
             active = repository.switch_repository(repository_id)
@@ -70,7 +71,7 @@ def build_configuration_repository_router(
             "validation": report.as_dict(),
         }
 
-    @router.post("/api/configuration-repositories/{repository_id}/copy")
+    @router.post("/configuration-repositories/{repository_id}/copy")
     async def copy_repository(
         repository_id: str,
         payload: RepositoryCopy,
@@ -85,7 +86,7 @@ def build_configuration_repository_router(
                 message=str(exc),
             ) from exc
 
-    @router.get("/api/configuration-repositories/{repository_id}/download")
+    @router.get("/configuration-repositories/{repository_id}/download")
     async def download_repository(repository_id: str) -> Response:
         try:
             content, filename = management.export(repository_id)
@@ -104,7 +105,7 @@ def build_configuration_repository_router(
             },
         )
 
-    @router.delete("/api/configuration-repositories/{repository_id}")
+    @router.delete("/configuration-repositories/{repository_id}")
     async def delete_repository(repository_id: str) -> dict[str, bool]:
         try:
             management.delete(repository_id)

@@ -9,7 +9,7 @@
 开始前确认：
 
 - active Configuration Repository 没有变化；
-- 已读取当前 `/api/workflow-node-catalog`；
+- 已读取当前 `/agent-shell/api/workflow-node-catalog`；
 - design record 已明确 topology、State owner 和结束条件；
 - Graph 使用的 Main Agent、Command 和 Workflow Event Output UUID 已记录；
 - 缺少 Python-backed Component 时，先按[编写 Python extension](06-python-extensions.md)创建，再返回本章。
@@ -21,7 +21,7 @@
 创建 Workflow 的 payload 示例：
 
 ```http
-POST /api/workflows
+POST /agent-shell/api/workflows
 ```
 
 ```json
@@ -33,7 +33,7 @@ POST /api/workflows
 
 新 Workflow 固定从 `enabled=false` 开始。创建 payload 不能直接启用 Workflow；只有完整 Graph publish 成功后才会设置 `enabled=true`。
 
-保存 response 中的 Workflow UUID 和精确 name。全部 enabled Workflow name 都是 `/v1/chat/completions` 可用的 `model` 值，也都可以作为跨 Workflow 调用目标。Main Agent name 和 UUID 不直接出现在 `/v1/models`。
+保存 response 中的 Workflow UUID 和精确 name。全部 enabled Workflow name 都是 `/compat/openai/v1/chat/completions` 可用的 `model` 值，也都可以作为跨 Workflow 调用目标。Main Agent name 和 UUID 不直接出现在 `/compat/openai/v1/models`。
 
 ## 3. Runtime metadata
 
@@ -61,7 +61,7 @@ Server-managed Workflow Run 的 Thread、checkpoint、State 与 history 由 Lang
 需要调整公开响应的排队和排水时，先创建 Response Stream Scheduling Component：
 
 ```http
-POST /api/blocks/response-stream-scheduling
+POST /agent-shell/api/blocks/response-stream-scheduling
 ```
 
 ```json
@@ -336,7 +336,7 @@ Command 的动态 pending worker 需要 downstream aggregation 时，可以在�
 把完整 Graph document 保存为 draft：
 
 ```http
-PUT /api/workflows/<workflow UUID>/draft
+PUT /agent-shell/api/workflows/<workflow UUID>/draft
 Content-Type: application/json
 
 <complete WorkflowGraphDocumentV1>
@@ -346,13 +346,13 @@ Content-Type: application/json
 
 draft save 不执行完整 Node Catalog、topology、reference、Python package 或 Agent assembly validation。基础字段类型、ID、extra field 和 layout 数值不合法时仍返回 422。
 
-保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/v1/models` 和跨 Workflow 调用的 enabled target 集合移除。
+保存已 enabled Workflow 的 draft 会立即将它设为 disabled，并从 `/compat/openai/v1/models` 和跨 Workflow 调用的 enabled target 集合移除。
 
 保存后 GET 回读：
 
 ```text
-GET /api/workflows/<workflow UUID>
-GET /api/workflows/<workflow UUID>/graph
+GET /agent-shell/api/workflows/<workflow UUID>
+GET /agent-shell/api/workflows/<workflow UUID>/graph
 ```
 
 核对 Workflow UUID、name、`enabled=false`、Node、Edge 和 layout。

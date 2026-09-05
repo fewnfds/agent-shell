@@ -100,19 +100,19 @@ export const managementApi = {
   },
 
   getHealth(): Promise<HealthResponse> {
-    return managementRequest('/api/health')
+    return managementRequest('/health')
   },
 
   getReadiness(): Promise<ReadinessResponse> {
-    return managementRequest('/api/readiness')
+    return managementRequest('/readiness')
   },
 
   getCatalog(): Promise<CatalogResponse> {
-    return managementRequest('/api/catalog')
+    return managementRequest('/catalog')
   },
 
   getConfigurationOptions(): Promise<ConfigurationOptions> {
-    return managementRequest('/api/configuration-options')
+    return managementRequest('/configuration-options')
   },
 
   fetchModels(
@@ -121,7 +121,7 @@ export const managementApi = {
     credential: string | null,
     blockId = '',
   ): Promise<string[]> {
-    return managementRequest('/api/fetch-models', jsonBody({
+    return managementRequest('/fetch-models', jsonBody({
       provider,
       base_url: baseUrl,
       credential,
@@ -130,178 +130,178 @@ export const managementApi = {
   },
 
   listModelProviders(): Promise<ModelProviderCatalog> {
-    return managementRequest('/api/model-providers')
+    return managementRequest('/model-providers')
   },
 
   listModelConnections(): Promise<ModelConnection[]> {
-    return managementRequest('/api/model-connections')
+    return managementRequest('/model-connections')
   },
 
   getModelConnection(id: string): Promise<ModelConnection> {
-    return managementRequest(recordPath('/api/model-connections', id))
+    return managementRequest(recordPath('/model-connections', id))
   },
 
   saveModelConnection<T extends object>(data: T & { id?: string }): Promise<ModelConnection> {
     const id = typeof data.id === 'string' ? data.id : ''
-    return managementRequest(id ? recordPath('/api/model-connections', id) : '/api/model-connections', {
+    return managementRequest(id ? recordPath('/model-connections', id) : '/model-connections', {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(withoutId(data)),
     })
   },
 
   copyModelConnection(id: string, name: string): Promise<ModelConnection> {
-    return managementRequest(`${recordPath('/api/model-connections', id)}/copy`, jsonBody({ name }))
+    return managementRequest(`${recordPath('/model-connections', id)}/copy`, jsonBody({ name }))
   },
 
   deleteModelConnection(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/model-connections', id), { method: 'DELETE' })
+    return managementRequest(recordPath('/model-connections', id), { method: 'DELETE' })
   },
 
   listModelRequirements(): Promise<ModelRequirementBinding[]> {
-    return managementRequest('/api/model-requirements')
+    return managementRequest('/model-requirements')
   },
 
   bindModelRequirement(id: string, connectionId: string | null): Promise<ModelRequirementBinding> {
-    return managementRequest(`${recordPath('/api/model-requirements', id)}/binding`, {
+    return managementRequest(`${recordPath('/model-requirements', id)}/binding`, {
       method: 'PUT',
       body: JSON.stringify({ connection_id: connectionId }),
     })
   },
 
   listMcpConnections(): Promise<McpConnection[]> {
-    return managementRequest('/api/mcp-connections')
+    return managementRequest('/mcp-connections')
   },
 
   getMcpConnection(id: string): Promise<McpConnection> {
-    return managementRequest(recordPath('/api/mcp-connections', id))
+    return managementRequest(recordPath('/mcp-connections', id))
   },
 
   saveMcpConnection<T extends object>(data: T & { id?: string }): Promise<McpConnection> {
     const id = typeof data.id === 'string' ? data.id : ''
-    return managementRequest(id ? recordPath('/api/mcp-connections', id) : '/api/mcp-connections', {
+    return managementRequest(id ? recordPath('/mcp-connections', id) : '/mcp-connections', {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(withoutId(data)),
     })
   },
 
   copyMcpConnection(id: string, name: string): Promise<McpConnection> {
-    return managementRequest(`${recordPath('/api/mcp-connections', id)}/copy`, jsonBody({ name }))
+    return managementRequest(`${recordPath('/mcp-connections', id)}/copy`, jsonBody({ name }))
   },
 
   installMcpConnection(id: string): Promise<McpInstallationResult> {
-    return managementRequest(`${recordPath('/api/mcp-connections', id)}/install`, {
+    return managementRequest(`${recordPath('/mcp-connections', id)}/install`, {
       method: 'POST',
     })
   },
 
   deleteMcpConnection(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/mcp-connections', id), { method: 'DELETE' })
+    return managementRequest(recordPath('/mcp-connections', id), { method: 'DELETE' })
   },
 
   previewMcpConnectionsImport(document: unknown): Promise<McpImportPreview> {
-    return managementRequest('/api/mcp-connections/import/preview', jsonBody({ document }))
+    return managementRequest('/mcp-connections/import/preview', jsonBody({ document }))
   },
 
   importMcpConnections(
     document: unknown,
     valueSources: McpImportValueSources,
   ): Promise<McpConnection[]> {
-    return managementRequest('/api/mcp-connections/import', jsonBody({
+    return managementRequest('/mcp-connections/import', jsonBody({
       document,
       value_sources: valueSources,
     }))
   },
 
   listMcpRequirements(): Promise<McpRequirementBinding[]> {
-    return managementRequest('/api/mcp-requirements')
+    return managementRequest('/mcp-requirements')
   },
 
   bindMcpRequirement(id: string, connectionId: string | null): Promise<McpRequirementBinding> {
-    return managementRequest(`${recordPath('/api/mcp-requirements', id)}/binding`, {
+    return managementRequest(`${recordPath('/mcp-requirements', id)}/binding`, {
       method: 'PUT',
       body: JSON.stringify({ connection_id: connectionId }),
     })
   },
 
   listCustomToolTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/custom-tool')
+    return managementRequest('/python-package-templates/custom-tool')
   },
 
   listMiddlewareTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/middleware')
+    return managementRequest('/python-package-templates/middleware')
   },
 
   listAgentEventOutputTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/agent-event-output')
+    return managementRequest('/python-package-templates/agent-event-output')
   },
 
   listWorkflowEventOutputTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/workflow-event-output')
+    return managementRequest('/python-package-templates/workflow-event-output')
   },
 
   listCommandTemplates(): Promise<ResourceCatalog<PythonPackageTemplate>> {
-    return managementRequest('/api/python-package-templates/command')
+    return managementRequest('/python-package-templates/command')
   },
 
   listSkills(): Promise<ResourceCatalog<SkillResource>> {
-    return managementRequest('/api/skills')
+    return managementRequest('/skills')
   },
 
   inspectPrivateSkills(blockId: string): Promise<SkillPackageInspection> {
-    return managementRequest(`${recordPath('/api/blocks/skill', blockId)}/skills`)
+    return managementRequest(`${recordPath('/blocks/skill', blockId)}/skills`)
   },
 
   addPrivateSkill(blockId: string, templatePath: string): Promise<SkillPackageInspection> {
     return managementRequest(
-      `${recordPath('/api/blocks/skill', blockId)}/skills`,
+      `${recordPath('/blocks/skill', blockId)}/skills`,
       jsonBody({ template_path: templatePath }),
     )
   },
 
   deletePrivateSkill(blockId: string, folder: string): Promise<SkillPackageInspection> {
     return managementRequest(
-      `${recordPath('/api/blocks/skill', blockId)}/skills/${encodeURIComponent(folder)}`,
+      `${recordPath('/blocks/skill', blockId)}/skills/${encodeURIComponent(folder)}`,
       { method: 'DELETE' },
     )
   },
 
   listConfigurationRepositories(): Promise<ConfigurationRepositoryList> {
-    return managementRequest('/api/configuration-repositories')
+    return managementRequest('/configuration-repositories')
   },
 
   createConfigurationRepository(name: string): Promise<ConfigurationRepository> {
-    return managementRequest('/api/configuration-repositories', jsonBody({ name }))
+    return managementRequest('/configuration-repositories', jsonBody({ name }))
   },
 
   activateConfigurationRepository(id: string): Promise<ConfigurationRepositoryActivation> {
     return managementRequest(
-      `${recordPath('/api/configuration-repositories', id)}/activate`,
+      `${recordPath('/configuration-repositories', id)}/activate`,
       { method: 'POST' },
     )
   },
 
   copyConfigurationRepository(id: string, name: string): Promise<ConfigurationRepository> {
     return managementRequest(
-      `${recordPath('/api/configuration-repositories', id)}/copy`,
+      `${recordPath('/configuration-repositories', id)}/copy`,
       jsonBody({ name }),
     )
   },
 
   downloadConfigurationRepository(id: string): Promise<NamedDownload> {
     return managementNamedDownload(
-      `${recordPath('/api/configuration-repositories', id)}/download`,
+      `${recordPath('/configuration-repositories', id)}/download`,
     )
   },
 
   deleteConfigurationRepository(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/configuration-repositories', id), {
+    return managementRequest(recordPath('/configuration-repositories', id), {
       method: 'DELETE',
     })
   },
 
   exportConfigurationBundle(root: ConfigurationBundleRoot): Promise<NamedDownload> {
     return managementNamedDownload(
-      '/api/configuration-bundles/export',
+      '/configuration-bundles/export',
       jsonBody(root),
     )
   },
@@ -309,7 +309,7 @@ export const managementApi = {
   previewConfigurationBundle(bundle: File): Promise<ConfigurationBundlePreview> {
     const body = new FormData()
     body.append('bundle', bundle, bundle.name)
-    return managementRequest('/api/configuration-bundles/preview', {
+    return managementRequest('/configuration-bundles/preview', {
       method: 'POST',
       body,
     })
@@ -328,7 +328,7 @@ export const managementApi = {
       plan_token: planToken,
       resolutions,
     }))
-    return managementRequest('/api/configuration-bundles/import', {
+    return managementRequest('/configuration-bundles/import', {
       method: 'POST',
       body,
     })
@@ -337,7 +337,7 @@ export const managementApi = {
   listWorkflowSummaries(
     request?: { q?: string, offset?: number, limit?: number },
   ): Promise<ConfigurationCollection<WorkflowSummary>> {
-    return managementRequest(`/api/workflows${buildQuery({
+    return managementRequest(`/workflows${buildQuery({
       view: 'summary',
       q: request?.q,
       offset: request?.offset,
@@ -346,38 +346,38 @@ export const managementApi = {
   },
 
   listWorkflowNodeCatalog(): Promise<WorkflowNodeCatalogItem[]> {
-    return managementRequest('/api/workflow-node-catalog')
+    return managementRequest('/workflow-node-catalog')
   },
 
   getWorkflow(id: string): Promise<Workflow> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}`)
+    return managementRequest(`/workflows/${encodeURIComponent(id)}`)
   },
 
   createWorkflow(payload: WorkflowPayload): Promise<Workflow> {
-    return managementRequest('/api/workflows', jsonBody(payload))
+    return managementRequest('/workflows', jsonBody(payload))
   },
 
   copyWorkflow(id: string, name: string): Promise<Workflow> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/copy`, jsonBody({ name }))
+    return managementRequest(`/workflows/${encodeURIComponent(id)}/copy`, jsonBody({ name }))
   },
 
   updateWorkflow(id: string, payload: WorkflowPayload): Promise<Workflow> {
-    return managementRequest(`/api/workflows/${id}`, {
+    return managementRequest(`/workflows/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
   },
 
   deleteWorkflow(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(`/api/workflows/${id}`, { method: 'DELETE' })
+    return managementRequest(`/workflows/${id}`, { method: 'DELETE' })
   },
 
   deleteWorkflows(ids: string[]): Promise<{ deleted: number }> {
-    return managementRequest('/api/workflows/delete', jsonBody({ ids }))
+    return managementRequest('/workflows/delete', jsonBody({ ids }))
   },
 
   deleteWorkflowsMatching(query: string): Promise<{ deleted: number }> {
-    return managementRequest('/api/workflows/delete', jsonBody({
+    return managementRequest('/workflows/delete', jsonBody({
       q: query,
     }))
   },
@@ -390,18 +390,18 @@ export const managementApi = {
     if (request?.page_size !== undefined) params.set('page_size', String(request.page_size))
     if (request?.query) params.set('query', request.query)
     const query = params.toString()
-    return managementRequest(`/api/workflow-lifecycles${query ? `?${query}` : ''}`)
+    return managementRequest(`/workflow-lifecycles${query ? `?${query}` : ''}`)
   },
 
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(id)}`,
+      `/workflow-lifecycles/${encodeURIComponent(id)}`,
       { method: 'DELETE' },
     )
   },
 
   deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult> {
-    return managementRequest('/api/workflow-lifecycles/delete', jsonBody({
+    return managementRequest('/workflow-lifecycles/delete', jsonBody({
       query,
     }))
   },
@@ -411,7 +411,7 @@ export const managementApi = {
     signal?: AbortSignal,
   ): Promise<LangGraphLifecycleSnapshot> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
       { signal },
     )
   },
@@ -422,7 +422,7 @@ export const managementApi = {
     signal?: AbortSignal,
   ): Promise<LangGraphGraphResponse> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/graph`,
       { signal },
     )
@@ -434,7 +434,7 @@ export const managementApi = {
     signal?: AbortSignal,
   ): Promise<LangGraphStateResponse> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/state`,
       { signal },
     )
@@ -447,21 +447,21 @@ export const managementApi = {
     signal?: AbortSignal,
   ): Promise<LangGraphHistoryResponse> {
     return managementRequest(
-      `/api/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/history${buildQuery({ limit })}`,
       { signal },
     )
   },
 
   getWorkflowGraph(id: string): Promise<WorkflowGraphDocument> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/graph`)
+    return managementRequest(`/workflows/${encodeURIComponent(id)}/graph`)
   },
 
   saveWorkflowDraft(
     id: string,
     document: WorkflowGraphDocument,
   ): Promise<WorkflowGraphDocument> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/draft`, {
+    return managementRequest(`/workflows/${encodeURIComponent(id)}/draft`, {
       method: 'PUT',
       body: JSON.stringify(document),
     })
@@ -471,7 +471,7 @@ export const managementApi = {
     id: string,
     document: WorkflowGraphDocument,
   ): Promise<WorkflowGraphDocument> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/graph`, {
+    return managementRequest(`/workflows/${encodeURIComponent(id)}/graph`, {
       method: 'PUT',
       body: JSON.stringify(document),
     })
@@ -481,44 +481,44 @@ export const managementApi = {
     id: string,
     document: WorkflowGraphDocument,
   ): Promise<ValidationReport> {
-    return managementRequest(`/api/workflows/${encodeURIComponent(id)}/validate`, {
+    return managementRequest(`/workflows/${encodeURIComponent(id)}/validate`, {
       method: 'POST',
       body: JSON.stringify(document),
     })
   },
 
   getSystemSettings(): Promise<SystemSettings> {
-    return managementRequest('/api/system/settings')
+    return managementRequest('/system/settings')
   },
 
   updateSystemSettings(payload: SystemSettingsUpdate): Promise<SystemSettings> {
-    return managementRequest('/api/system/settings', {
+    return managementRequest('/system/settings', {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
   },
 
   getRuntimePolicy(): Promise<RuntimePolicySettings> {
-    return managementRequest('/api/system/runtime-policy')
+    return managementRequest('/system/runtime-policy')
   },
 
   updateRuntimePolicy(payload: RuntimePolicyUpdate): Promise<RuntimePolicySettings> {
-    return managementRequest('/api/system/runtime-policy', {
+    return managementRequest('/system/runtime-policy', {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
   },
 
   listManagedFiles(path = 'data'): Promise<ManagedDirectory> {
-    return managementRequest(`/api/file-manager${buildQuery({ path })}`)
+    return managementRequest(`/file-manager${buildQuery({ path })}`)
   },
 
   createManagedDirectory(path: string): Promise<{ path: string }> {
-    return managementRequest('/api/file-manager/directories', jsonBody({ path }))
+    return managementRequest('/file-manager/directories', jsonBody({ path }))
   },
 
   createManagedTextFile(path: string): Promise<{ path: string }> {
-    return managementRequest('/api/file-manager/text-files', jsonBody({ path }))
+    return managementRequest('/file-manager/text-files', jsonBody({ path }))
   },
 
   uploadManagedFile(
@@ -528,7 +528,7 @@ export const managementApi = {
     onProgress?: (loaded: number, total: number) => void,
   ): Promise<ManagedFileUploadResult> {
     return managementUpload(
-      `/api/file-manager/upload${buildQuery({ path, overwrite })}`,
+      `/file-manager/upload${buildQuery({ path, overwrite })}`,
       file,
       { onProgress },
     )
@@ -536,23 +536,23 @@ export const managementApi = {
 
   downloadManagedEntry(path: string): Promise<Blob> {
     return managementDownload(
-      `/api/file-manager/download${buildQuery({ path })}`,
+      `/file-manager/download${buildQuery({ path })}`,
     )
   },
 
   previewManagedArchive(
     paths: string[],
   ): Promise<ManagedArchivePreview> {
-    return managementRequest('/api/file-manager/archive/preview', jsonBody({ paths }))
+    return managementRequest('/file-manager/archive/preview', jsonBody({ paths }))
   },
 
   downloadManagedArchive(paths: string[]): Promise<Blob> {
-    return managementDownload('/api/file-manager/archive', jsonBody({ paths }))
+    return managementDownload('/file-manager/archive', jsonBody({ paths }))
   },
 
   readManagedTextFile(path: string): Promise<ManagedTextFile> {
     return managementRequest(
-      `/api/file-manager/text${buildQuery({ path })}`,
+      `/file-manager/text${buildQuery({ path })}`,
     )
   },
 
@@ -561,7 +561,7 @@ export const managementApi = {
     content: string,
     revision: string,
   ): Promise<{ path: string; revision: string }> {
-    return managementRequest('/api/file-manager/text', {
+    return managementRequest('/file-manager/text', {
       method: 'PUT',
       body: JSON.stringify({ path, content, revision }),
     })
@@ -571,7 +571,7 @@ export const managementApi = {
     path: string,
     name: string,
   ): Promise<{ path: string }> {
-    return managementRequest('/api/file-manager', {
+    return managementRequest('/file-manager', {
       method: 'PATCH',
       body: JSON.stringify({ path, name }),
     })
@@ -579,7 +579,7 @@ export const managementApi = {
 
   deleteManagedFile(path: string): Promise<{ deleted: boolean }> {
     return managementRequest(
-      `/api/file-manager${buildQuery({ path })}`,
+      `/file-manager${buildQuery({ path })}`,
       { method: 'DELETE' },
     )
   },
@@ -588,7 +588,7 @@ export const managementApi = {
     type: ManagedComponentType,
     request?: { q?: string, offset?: number, limit?: number },
   ): Promise<ConfigurationCollection<ConfigurationSummary>> {
-    return managementRequest(`/api/blocks/${type}${buildQuery({
+    return managementRequest(`/blocks/${type}${buildQuery({
       view: 'summary',
       q: request?.q,
       offset: request?.offset,
@@ -600,7 +600,7 @@ export const managementApi = {
     type: ManagedComponentType,
     id: string,
   ): Promise<SavedBlock<TPayload>> {
-    return managementRequest(recordPath(`/api/blocks/${type}`, id))
+    return managementRequest(recordPath(`/blocks/${type}`, id))
   },
 
   inspectPythonPackage(
@@ -608,7 +608,7 @@ export const managementApi = {
     id: string,
   ): Promise<PythonPackageInspection> {
     return managementRequest(
-      `${recordPath(`/api/blocks/${type}`, id)}/python-package`,
+      `${recordPath(`/blocks/${type}`, id)}/python-package`,
     )
   },
 
@@ -617,7 +617,7 @@ export const managementApi = {
     data: TPayload | SavedBlock<TPayload>,
   ): Promise<SavedBlock<TPayload>> {
     const id = 'id' in data && typeof data.id === 'string' ? data.id : ''
-    const path = id ? recordPath(`/api/blocks/${type}`, id) : `/api/blocks/${type}`
+    const path = id ? recordPath(`/blocks/${type}`, id) : `/blocks/${type}`
     return managementRequest(path, {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(withoutId(data)),
@@ -629,39 +629,39 @@ export const managementApi = {
     id: string,
     name: string,
   ): Promise<SavedBlock<TPayload>> {
-    return managementRequest(`${recordPath(`/api/blocks/${type}`, id)}/copy`, jsonBody({ name }))
+    return managementRequest(`${recordPath(`/blocks/${type}`, id)}/copy`, jsonBody({ name }))
   },
 
   deleteBlock(type: ManagedComponentType, id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath(`/api/blocks/${type}`, id), { method: 'DELETE' })
+    return managementRequest(recordPath(`/blocks/${type}`, id), { method: 'DELETE' })
   },
 
   deleteUnsupportedBlock(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/unsupported-blocks', id), { method: 'DELETE' })
+    return managementRequest(recordPath('/unsupported-blocks', id), { method: 'DELETE' })
   },
 
   deleteBlocks(type: ManagedComponentType, ids: string[]): Promise<{ deleted: number }> {
-    return managementRequest(`/api/blocks/${type}/delete`, jsonBody({ ids }))
+    return managementRequest(`/blocks/${type}/delete`, jsonBody({ ids }))
   },
 
   deleteBlocksMatching(type: ManagedComponentType, query: string): Promise<{ deleted: number }> {
-    return managementRequest(`/api/blocks/${type}/delete`, jsonBody({ q: query }))
+    return managementRequest(`/blocks/${type}/delete`, jsonBody({ q: query }))
   },
 
   validateRepository(): Promise<ValidationReport> {
-    return managementRequest('/api/validation/repository')
+    return managementRequest('/validation/repository')
   },
 
   validateDraft(request: DraftValidationRequest): Promise<ValidationReport> {
-    return managementRequest('/api/validation/draft', jsonBody(request))
+    return managementRequest('/validation/draft', jsonBody(request))
   },
 
   getValidationSettings(): Promise<ConfigurationValidationSettings> {
-    return managementRequest('/api/validation/settings')
+    return managementRequest('/validation/settings')
   },
 
   updateValidationSettings(debounceMs: number): Promise<ConfigurationValidationSettings> {
-    return managementRequest('/api/validation/settings', {
+    return managementRequest('/validation/settings', {
       method: 'PUT',
       body: JSON.stringify({ debounce_ms: debounceMs }),
     })
@@ -670,7 +670,7 @@ export const managementApi = {
   listMainAgentSummaries(
     request?: { q?: string, offset?: number, limit?: number },
   ): Promise<ConfigurationCollection<MainAgentSummary>> {
-    return managementRequest(`/api/main-agents${buildQuery({
+    return managementRequest(`/main-agents${buildQuery({
       view: 'summary',
       q: request?.q,
       offset: request?.offset,
@@ -679,37 +679,37 @@ export const managementApi = {
   },
 
   getMainAgent(id: string): Promise<MainAgent> {
-    return managementRequest(recordPath('/api/main-agents', id))
+    return managementRequest(recordPath('/main-agents', id))
   },
 
   saveMainAgent(data: MainAgentPayload | MainAgent): Promise<MainAgent> {
     const id = 'id' in data ? data.id : ''
-    return managementRequest(id ? recordPath('/api/main-agents', id) : '/api/main-agents', {
+    return managementRequest(id ? recordPath('/main-agents', id) : '/main-agents', {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(withoutId(data)),
     })
   },
 
   copyMainAgent(id: string, name: string): Promise<MainAgent> {
-    return managementRequest(`${recordPath('/api/main-agents', id)}/copy`, jsonBody({ name }))
+    return managementRequest(`${recordPath('/main-agents', id)}/copy`, jsonBody({ name }))
   },
 
   deleteMainAgent(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/main-agents', id), { method: 'DELETE' })
+    return managementRequest(recordPath('/main-agents', id), { method: 'DELETE' })
   },
 
   deleteMainAgents(ids: string[]): Promise<{ deleted: number }> {
-    return managementRequest('/api/main-agents/delete', jsonBody({ ids }))
+    return managementRequest('/main-agents/delete', jsonBody({ ids }))
   },
 
   deleteMainAgentsMatching(query: string): Promise<{ deleted: number }> {
-    return managementRequest('/api/main-agents/delete', jsonBody({ q: query }))
+    return managementRequest('/main-agents/delete', jsonBody({ q: query }))
   },
 
   listSubagentSummaries(
     request?: { q?: string, offset?: number, limit?: number },
   ): Promise<ConfigurationCollection<SubagentSummary>> {
-    return managementRequest(`/api/subagents${buildQuery({
+    return managementRequest(`/subagents${buildQuery({
       view: 'summary',
       q: request?.q,
       offset: request?.offset,
@@ -718,7 +718,7 @@ export const managementApi = {
   },
 
   getSubagent(id: string): Promise<Subagent> {
-    return managementRequest(recordPath('/api/subagents', id))
+    return managementRequest(recordPath('/subagents', id))
   },
 
   saveSubagent(
@@ -726,7 +726,7 @@ export const managementApi = {
   ): Promise<Subagent> {
     const id = 'id' in data ? data.id : ''
     return managementRequest(
-      id ? recordPath('/api/subagents', id) : '/api/subagents',
+      id ? recordPath('/subagents', id) : '/subagents',
       {
         method: id ? 'PUT' : 'POST',
         body: JSON.stringify(withoutId(data)),
@@ -736,48 +736,48 @@ export const managementApi = {
 
   copySubagent(id: string, componentName: string): Promise<Subagent> {
     return managementRequest(
-      `${recordPath('/api/subagents', id)}/copy`,
+      `${recordPath('/subagents', id)}/copy`,
       jsonBody({ component_name: componentName }),
     )
   },
 
   deleteSubagent(id: string): Promise<{ ok: boolean }> {
-    return managementRequest(recordPath('/api/subagents', id), { method: 'DELETE' })
+    return managementRequest(recordPath('/subagents', id), { method: 'DELETE' })
   },
 
   deleteSubagents(ids: string[]): Promise<{ deleted: number }> {
-    return managementRequest('/api/subagents/delete', jsonBody({ ids }))
+    return managementRequest('/subagents/delete', jsonBody({ ids }))
   },
 
   deleteSubagentsMatching(query: string): Promise<{ deleted: number }> {
-    return managementRequest('/api/subagents/delete', jsonBody({ q: query }))
+    return managementRequest('/subagents/delete', jsonBody({ q: query }))
   },
 
   getApiServer(): Promise<ApiServerSettings> {
-    return managementRequest('/api/api-server')
+    return managementRequest('/api-server')
   },
 
   saveApiServer(update: ApiServerSettingsUpdate): Promise<ApiServerSettings> {
-    return managementRequest('/api/api-server', {
+    return managementRequest('/api-server', {
       method: 'PUT',
       body: JSON.stringify(update),
     })
   },
 
   startApiServer(): Promise<ApiServerSettings> {
-    return managementRequest('/api/api-server/start', { method: 'POST' })
+    return managementRequest('/api-server/start', { method: 'POST' })
   },
 
   stopApiServer(): Promise<ApiServerSettings> {
-    return managementRequest('/api/api-server/stop', { method: 'POST' })
+    return managementRequest('/api-server/stop', { method: 'POST' })
   },
 
   getMessageInterception(): Promise<MessageInterception> {
-    return managementRequest('/api/message-interception')
+    return managementRequest('/message-interception')
   },
 
   updateMessageInterception(enabled: boolean): Promise<MessageInterception> {
-    return managementRequest('/api/message-interception', {
+    return managementRequest('/message-interception', {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     })
@@ -788,14 +788,14 @@ export const managementApi = {
     onError?: (error: unknown) => void,
   ): () => void {
     return watchManagementEvents(
-      '/api/api-server/events',
+      '/api-server/events',
       onEvent,
       onError ? { onError } : {},
     )
   },
 
   listEventFeed(filters: EventFeedFilters): Promise<EventFeedResponse> {
-    return managementRequest(`/api/event-feed${buildQuery({
+    return managementRequest(`/event-feed${buildQuery({
       started_at: filters.started_at,
       ended_at: filters.ended_at,
       page: filters.page,
@@ -807,23 +807,23 @@ export const managementApi = {
   },
 
   downloadEvent(source: EventSource, id: string): Promise<Blob> {
-    const path = `/api/event-feed/${source}/${encodeURIComponent(id)}/download`
+    const path = `/event-feed/${source}/${encodeURIComponent(id)}/download`
     return managementDownload(path)
   },
 
   getSystemLogSettings(): Promise<SystemLogSettings> {
-    return managementRequest('/api/event-feed/system/settings')
+    return managementRequest('/event-feed/system/settings')
   },
 
   updateSystemLogSettings(maxSizeMib: number): Promise<SystemLogSettings> {
-    return managementRequest('/api/event-feed/system/settings', {
+    return managementRequest('/event-feed/system/settings', {
       method: 'PUT',
       body: JSON.stringify({ max_size_mib: maxSizeMib }),
     })
   },
 
   deleteMatchingEventFeed(filters: EventFeedFilters): Promise<{ deleted: number }> {
-    return managementRequest('/api/event-feed/delete', jsonBody({
+    return managementRequest('/event-feed/delete', jsonBody({
       started_at: filters.started_at,
       ended_at: filters.ended_at,
       source: filters.source ?? [],
@@ -833,11 +833,11 @@ export const managementApi = {
   },
 
   getRuntimeDiagnostics(): Promise<RuntimeDiagnostics> {
-    return managementRequest('/api/runtime-diagnostics')
+    return managementRequest('/runtime-diagnostics')
   },
 
   updateRuntimeDiagnosticRetention(retentionLimit: number): Promise<RuntimeDiagnostics> {
-    return managementRequest('/api/runtime-diagnostics/retention', {
+    return managementRequest('/runtime-diagnostics/retention', {
       method: 'PUT',
       body: JSON.stringify({ retention_limit: retentionLimit }),
     })

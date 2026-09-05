@@ -12,7 +12,7 @@ def test_catalog_exposes_release_managed_provider_integrations(
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
 
-    response = client.get("/api/model-providers")
+    response = client.get("/agent-shell/api/model-providers")
 
     assert response.status_code == 200, response.text
     providers = {item["provider"]: item for item in response.json()["providers"]}

@@ -156,7 +156,7 @@ def test_http_and_unhandled_errors_reuse_safe_redaction(
 ) -> None:
     app = configure_app(monkeypatch, tmp_path)
 
-    @app.get("/api/redacted-http-error")
+    @app.get("/agent-shell/api/redacted-http-error")
     async def redacted_http_error() -> None:
         raise HTTPException(
             status_code=400,
@@ -167,15 +167,15 @@ def test_http_and_unhandled_errors_reuse_safe_redaction(
             },
         )
 
-    @app.get("/api/redacted-internal-error")
+    @app.get("/agent-shell/api/redacted-internal-error")
     async def redacted_internal_error() -> None:
         raise RuntimeError(
             "internal-secret-sentinel C:\\Users\\private\\trace.py"
         )
 
     with ScopedAuthTestClient(app, raise_server_exceptions=False) as client:
-        public = client.get("/api/redacted-http-error")
-        internal = client.get("/api/redacted-internal-error")
+        public = client.get("/agent-shell/api/redacted-http-error")
+        internal = client.get("/agent-shell/api/redacted-internal-error")
 
     assert public.status_code == 400
     assert public.json()["detail"] == {

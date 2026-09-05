@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi.testclient import TestClient
 
+from agent_shell.http_surface import is_agent_shell_api_path, is_compat_api_path
 from agent_shell.storage.api_server import ApiServerStore
 from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.file_config import FileConfigRepository
@@ -83,9 +84,9 @@ class ScopedAuthTestClient(TestClient):
         headers = httpx.Headers(kwargs.get("headers"))
         if "authorization" not in headers:
             path = urlsplit(str(url)).path
-            if path == "/api" or path.startswith("/api/"):
+            if is_agent_shell_api_path(path):
                 headers["Authorization"] = f"Bearer {MANAGEMENT_TOKEN}"
-            elif path == "/v1" or path.startswith("/v1/"):
+            elif is_compat_api_path(path):
                 headers["Authorization"] = f"Bearer {API_KEY}"
         kwargs["headers"] = headers
         return super().request(method, url, **kwargs)

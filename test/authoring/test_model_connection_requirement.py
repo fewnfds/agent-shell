@@ -312,11 +312,11 @@ def test_model_requirement_binding_is_scoped_and_reports_unbound(tmp_path: Path)
     app = FastAPI()
     app.include_router(build_model_connection_router(repository, blocks, resources))
     client = TestClient(app)
-    requirement = client.get("/api/model-requirements").json()[0]
+    requirement = client.get("/agent-shell/api/model-requirements").json()[0]
     assert requirement["binding"] is None
 
     bound = client.put(
-        f"/api/model-requirements/{requirement_id}/binding",
+        f"/agent-shell/api/model-requirements/{requirement_id}/binding",
         json={"connection_id": connection["id"]},
     )
     assert bound.status_code == 200
@@ -325,7 +325,7 @@ def test_model_requirement_binding_is_scoped_and_reports_unbound(tmp_path: Path)
     assert resources.get_binding(repository.repository_id, requirement_id) is None
 
     assert client.put(
-        f"/api/model-requirements/{requirement_id}/binding",
+        f"/agent-shell/api/model-requirements/{requirement_id}/binding",
         json={"connection_id": None, "unexpected": True},
     ).status_code == 422
 
@@ -339,27 +339,27 @@ def test_model_connection_api_uses_distinct_error_semantics(tmp_path: Path) -> N
     client = TestClient(app)
 
     created = client.post(
-        "/api/model-connections",
+        "/agent-shell/api/model-connections",
         json=connection_payload(),
     )
     assert created.status_code == 200
 
     cases = [
         (
-            client.post("/api/model-connections", json=connection_payload()),
+            client.post("/agent-shell/api/model-connections", json=connection_payload()),
             409,
             "model_connection_name_conflict",
             "errors.modelConnectionNameConflict",
         ),
         (
-            client.post("/api/model-connections", json={"name": "Incomplete"}),
+            client.post("/agent-shell/api/model-connections", json={"name": "Incomplete"}),
             422,
             "model_connection_invalid",
             "errors.modelConnectionInvalid",
         ),
         (
             client.get(
-                "/api/model-connections/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                "/agent-shell/api/model-connections/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             ),
             404,
             "model_connection_not_found",
@@ -367,7 +367,7 @@ def test_model_connection_api_uses_distinct_error_semantics(tmp_path: Path) -> N
         ),
         (
             client.put(
-                "/api/model-requirements/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/binding",
+                "/agent-shell/api/model-requirements/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/binding",
                 json={"connection_id": None},
             ),
             404,

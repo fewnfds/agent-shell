@@ -13,7 +13,7 @@
 - 一个 Filesystem Tools；
 - 一个 Agent Event Output。
 
-仍应通过 `GET /api/catalog` 确认当前 required capability。
+仍应通过 `GET /agent-shell/api/catalog` 确认当前 required capability。
 
 依赖关系如下：
 
@@ -42,7 +42,7 @@ Model Requirement 是可迁移的能力描述，不保存 Provider credential �
 创建示例：
 
 ```http
-POST /api/blocks/model-requirement
+POST /agent-shell/api/blocks/model-requirement
 ```
 
 ```json
@@ -73,7 +73,7 @@ Model Connection 不进入 Configuration Bundle。credential value 是 write-onl
 用户已经建立合适连接后提交 binding：
 
 ```http
-PUT /api/model-requirements/<requirement UUID>/binding
+PUT /agent-shell/api/model-requirements/<requirement UUID>/binding
 ```
 
 ```json
@@ -93,13 +93,13 @@ Agent Event Output 决定 Agent event 如何过滤和渲染为公开字符串。
 先读取：
 
 ```text
-GET /api/python-package-templates/agent-event-output
+GET /agent-shell/api/python-package-templates/agent-event-output
 ```
 
 从 response 选择当前 template 的精确 `key` 和 `revision`，再创建 Component：
 
 ```http
-POST /api/blocks/agent-event-output
+POST /agent-shell/api/blocks/agent-event-output
 ```
 
 ```json
@@ -124,7 +124,7 @@ POST /api/blocks/agent-event-output
 保存 Model Requirement、Filesystem Backend、Filesystem Tools 和 Agent Event Output 的 UUID，然后创建 Main Agent：
 
 ```http
-POST /api/main-agents
+POST /agent-shell/api/main-agents
 ```
 
 ```json
@@ -164,7 +164,7 @@ POST /api/main-agents
 System Prompt 适合保存每次 Agent invocation 都适用的稳定角色、长期约束和固定输出约定。
 
 ```http
-POST /api/blocks/system-prompt
+POST /agent-shell/api/blocks/system-prompt
 ```
 
 ```json
@@ -188,13 +188,13 @@ POST /api/blocks/system-prompt
 AAP 是可选 Custom Middleware template。先读取：
 
 ```text
-GET /api/python-package-templates/middleware
+GET /agent-shell/api/python-package-templates/middleware
 ```
 
 按精确 `key == "内置示例-agent-additional-prompt"` 选择当前 revision，然后创建：
 
 ```http
-POST /api/blocks/custom-middleware
+POST /agent-shell/api/blocks/custom-middleware
 ```
 
 ```json
@@ -250,14 +250,14 @@ Exception Retry：按配置处理可重试 Provider 或 Tool error。
 
 Prompt Caching：为支持该能力的 Provider 和 model 配置显式 caching 参数。
 
-required flag、inheritance 和 override policy 以 `/api/catalog` 为准。详细字段见[代理组件](../capabilities.md)。
+required flag、inheritance 和 override policy 以 `/agent-shell/api/catalog` 为准。详细字段见[代理组件](../capabilities.md)。
 
 ## 8. Filesystem
 
 Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。先创建 Backend：
 
 ```http
-POST /api/blocks/filesystem
+POST /agent-shell/api/blocks/filesystem
 ```
 
 ```json
@@ -280,7 +280,7 @@ POST /api/blocks/filesystem
 再创建 Tools：
 
 ```http
-POST /api/blocks/filesystem-tools
+POST /agent-shell/api/blocks/filesystem-tools
 ```
 
 ```json
@@ -307,10 +307,10 @@ Main Agent 和 synchronous Subagent 共享 current Run 的 Deep Agents StateBack
 
 每个 `mcp_refs` item 引用一个 Repository-owned MCP Requirement，并独立保存 `all|include` Tool selection。它不引用实例 Connection UUID；Requirement 通过 MCP Mapping 绑定本机 Connection。MCP Server 公布的 Tool 已由 LangChain adapter 转为标准 `BaseTool`，不需要再创建 Custom Tool package。
 
-创建 Skill Component 时，先读取 `GET /api/skills`，再提交当前实例存在的 template path：
+创建 Skill Component 时，先读取 `GET /agent-shell/api/skills`，再提交当前实例存在的 template path：
 
 ```http
-POST /api/blocks/skill
+POST /agent-shell/api/blocks/skill
 ```
 
 ```json
@@ -334,7 +334,7 @@ Subagent 用于 Main Agent 内部的一层 synchronous delegation。
 创建示例：
 
 ```http
-POST /api/subagents
+POST /agent-shell/api/subagents
 ```
 
 ```json

@@ -23,7 +23,7 @@
 
 | 界面名称 | 含义 |
 | --- | --- |
-| Workflow | 保存 UUID、唯一名称、`enabled`、可选 Workflow Event Output、current Graph document/layout 与运行约束的产品实体；运行时编译为 Graph；全部 enabled Workflow 发布到 `/v1/models` 并可被其他 Run 调用 |
+| Workflow | 保存 UUID、唯一名称、`enabled`、可选 Workflow Event Output、current Graph document/layout 与运行约束的产品实体；运行时编译为 Graph；全部 enabled Workflow 发布到 `/compat/openai/v1/models` 并可被其他 Run 调用 |
 | Main Agent | 完整的 Deep Agents assembly，可被 Workflow canvas 中的 Agent Node 引用 |
 | Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其 Python/Skill package；写入目标由 active Configuration Repository 决定 |
 | 配置库 | 使用通用列表查看和管理配置；系统组也列出实例私有、不可下载的模型连接 |

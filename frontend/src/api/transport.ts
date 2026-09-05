@@ -1,5 +1,7 @@
 import type { JsonPrimitive, ManagementEvent, NamedDownload, ValidationReport } from './types'
 
+export const MANAGEMENT_API_PREFIX = '/agent-shell/api'
+
 type AuthChallengeReason = 'invalid' | 'required'
 
 export interface ManagementAuthSnapshot {
@@ -248,8 +250,15 @@ async function parseManagementResponse<T>(response: Response): Promise<T> {
   })
 }
 
+function managementEndpoint(path: string): string {
+  if (!path.startsWith('/')) {
+    throw new TypeError('Management API paths must start with /.')
+  }
+  return `${MANAGEMENT_API_PREFIX}${path}`
+}
+
 function requiresManagementAuth(path: string): boolean {
-  return (path === '/api' || path.startsWith('/api/')) && path !== '/api/health'
+  return path !== '/health'
 }
 
 function abortError(): DOMException {
@@ -294,6 +303,7 @@ async function authenticatedFetch(
   accept: string,
 ): Promise<Response> {
   const needsAuth = requiresManagementAuth(path)
+  const endpoint = managementEndpoint(path)
   let reason: AuthChallengeReason = 'required'
   while (true) {
     if (init.signal?.aborted) throw abortError()
@@ -315,7 +325,7 @@ async function authenticatedFetch(
     }
     let response: Response
     try {
-      response = await fetch(path, { ...init, headers })
+      response = await fetch(endpoint, { ...init, headers })
     } catch (error: unknown) {
       if (isAbortError(error)) throw error
       throw new ManagementApiError({
@@ -452,7 +462,7 @@ export async function managementUpload<T>(
     const token = await waitForToken(managementAuth, reason, options.signal)
     const generation = managementAuth.credentialGeneration()
     const response = await sendUpload(
-      path,
+      managementEndpoint(path),
       body,
       token,
       options.signal,

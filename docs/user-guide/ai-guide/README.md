@@ -23,9 +23,9 @@ Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭
 
 ## 2. 产品入口
 
-Management API 使用 `/api/*`，负责发现、创建、修改、校验和发布配置。
+Management API 使用 `/agent-shell/api/*`，负责发现、创建、修改、校验和发布配置。
 
-OpenAI-compatible API 使用 `/v1/*`，负责发现和运行全部 enabled Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
+OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行全部 enabled Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
 一次外部请求按以下路径运行：
 
@@ -56,7 +56,7 @@ Component
   -> Workflow metadata
   -> Workflow Graph
   -> enabled Workflow
-  -> /v1/chat/completions
+  -> /compat/openai/v1/chat/completions
 ```
 
 Model Connection 是当前实例私有资源。Model Requirement 是可迁移的能力描述。Model Mapping 把当前 Configuration Repository 中的 Model Requirement 绑定到本机 Model Connection。
@@ -92,7 +92,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
   -> 验证同一份完整 Graph document
   -> publish
   -> 检查 Model/MCP Mapping 和 Python dependency
-  -> 确认 /v1/models
+  -> 确认 /compat/openai/v1/models
   -> 发起与任务相符的真实 invocation
   -> 交付验收结果
 ```
@@ -123,7 +123,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 - 确认 base URL、credential domain、认证 credential 是否可由本地程序或运行平台取得，以及 active Configuration Repository；
 - 按[发现当前实例事实](01-discover-current-instance.md)的认证边界使用 `AGENT_SHELL_MANAGEMENT_TOKEN` 和 `AGENT_SHELL_API_KEY`；操作 Agent 不打开或接收实例 secret store 的内容，不要求用户在对话中发送 secret；
-- 读取 `/api/catalog`、`/api/workflow-node-catalog` 和 `/api/configuration-options`；
+- 读取 `/agent-shell/api/catalog`、`/agent-shell/api/workflow-node-catalog` 和 `/agent-shell/api/configuration-options`；
 - 读取准备复用或修改的完整对象；
 - 读取需要使用的 Python template catalog；
 - 明确 topology、State ownership、Agent input 和结束条件。
@@ -143,7 +143,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - Graph draft、validation 和 publish 使用明确的完整 Graph document；
 - 修正全部 `severity=error` issue；
 - publish 后确认 `enabled=true`；
-- 用 `/v1/models` 和一次真实 invocation 验证用户可观察行为。
+- 用 `/compat/openai/v1/models` 和一次真实 invocation 验证用户可观察行为。
 
 ## 8. 交付条件
 

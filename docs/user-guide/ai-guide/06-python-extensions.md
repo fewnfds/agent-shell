@@ -41,10 +41,10 @@ State persistence、routing 和 output projection 分别通过对应 contract �
 
 具体步骤：
 
-1. 调用对应的 `GET /api/python-package-templates/{kind}`；
+1. 调用对应的 `GET /agent-shell/api/python-package-templates/{kind}`；
 2. 从当前 response 选择精确 `key` 和 `revision`；
 3. POST 创建 Component，并保存 UUID；
-4. 调用 `GET /api/blocks/{type}/{id}/python-package`；
+4. 调用 `GET /agent-shell/api/blocks/{type}/{id}/python-package`；
 5. 从 response 确认私有 folder、manifest、entry file、file path 和 revision；
 6. 通过 File Manager API 或用户授权的本地编辑器修改该私有 package；
 7. 只为 source 直接 import 的额外 third-party package 声明 dependency；
@@ -57,7 +57,7 @@ State persistence、routing 和 output projection 分别通过对应 contract �
 Python-backed Component 使用统一创建形状：
 
 ```http
-POST /api/blocks/<component type>
+POST /agent-shell/api/blocks/<component type>
 ```
 
 ```json
@@ -89,7 +89,7 @@ Component type 与 template kind 的常用对应关系是：
 
 ## 4. 编辑 package
 
-`GET /api/blocks/{type}/{id}/python-package` 递归返回 package file 和真实 File Manager path。根据 response 编辑 `main.py`、local module 和 `requirements.txt`。
+`GET /agent-shell/api/blocks/{type}/{id}/python-package` 递归返回 package file 和真实 File Manager path。根据 response 编辑 `main.py`、local module 和 `requirements.txt`。
 
 local module 使用普通 relative import，例如：
 

@@ -14,6 +14,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from agent_shell.api.errors import management_error
+from agent_shell.http_surface import (
+    API_KEY_BEARER_SCHEME,
+    http_surface,
+    management_api_router,
+    openai_compat_api_router,
+)
 from agent_shell.runtime.agent_runtime import RunExecution
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.errors import AgentRuntimeError
@@ -520,10 +526,11 @@ def build_api_server_router(
     detached_tasks: DetachedTaskManager,
 ) -> APIRouter:
     router = APIRouter()
+    management_router = management_api_router()
+    compat_router = openai_compat_api_router()
 
     def public_settings(request: Request) -> dict[str, object]:
         current = store.settings()
-        base = str(request.base_url).rstrip("/")
         return {
             "enabled": current["enabled"],
             "status": "running" if current["enabled"] else "stopped",
@@ -532,17 +539,15 @@ def build_api_server_router(
             "message_interception_enabled": current[
                 "message_interception_enabled"
             ],
-            "api_base_url": f"{base}/v1",
-            "models_endpoint": f"{base}/v1/models",
-            "chat_completions_endpoint": f"{base}/v1/chat/completions",
+            **http_surface(request),
             "runtime": "model_streaming",
         }
 
-    @router.get("/api/api-server")
+    @management_router.get("/api-server")
     async def get_api_server_settings(request: Request) -> dict[str, object]:
         return public_settings(request)
 
-    @router.put("/api/api-server", response_model=None)
+    @management_router.put("/api-server", response_model=None)
     async def update_api_server_settings(
         payload: ApiServerSettingsUpdate, request: Request
     ) -> dict[str, object] | JSONResponse:
@@ -574,7 +579,7 @@ def build_api_server_router(
         await events.publish({"type": "settings_changed"})
         return public_settings(request)
 
-    @router.post("/api/api-server/start")
+    @management_router.post("/api-server/start")
     async def start_api_server(request: Request) -> dict[str, object]:
         store.set_enabled(True)
         await events.publish({"type": "settings_changed"})
@@ -586,11 +591,11 @@ def build_api_server_router(
             "latest": message_interception.latest(),
         }
 
-    @router.get("/api/message-interception")
+    @management_router.get("/message-interception")
     async def get_message_interception() -> dict[str, object]:
         return interception_snapshot()
 
-    @router.put("/api/message-interception")
+    @management_router.put("/message-interception")
     async def update_message_interception(
         payload: MessageInterceptionUpdate,
     ) -> dict[str, object]:
@@ -603,13 +608,13 @@ def build_api_server_router(
         await events.publish({"type": "message_interception_changed"})
         return interception_snapshot()
 
-    @router.post("/api/api-server/stop")
+    @management_router.post("/api-server/stop")
     async def stop_api_server(request: Request) -> dict[str, object]:
         store.set_enabled(False)
         await events.publish({"type": "settings_changed"})
         return public_settings(request)
 
-    @router.get("/api/api-server/events")
+    @management_router.get("/api-server/events")
     async def api_server_events() -> StreamingResponse:
         return StreamingResponse(
             events.stream(),
@@ -620,7 +625,10 @@ def build_api_server_router(
             },
         )
 
-    @router.get("/v1/models")
+    @compat_router.get(
+        "/models",
+        openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
+    )
     async def models() -> JSONResponse:
         if not store.is_enabled():
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
@@ -630,7 +638,11 @@ def build_api_server_router(
         ]
         return JSONResponse(content={"object": "list", "data": workflow_models})
 
-    @router.post("/v1/chat/completions", response_model=None)
+    @compat_router.post(
+        "/chat/completions",
+        response_model=None,
+        openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
+    )
     async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
         server_settings = store.settings()
         if not server_settings["enabled"]:
@@ -783,4 +795,6 @@ def build_api_server_router(
             )
         )
 
+    router.include_router(management_router)
+    router.include_router(compat_router)
     return router

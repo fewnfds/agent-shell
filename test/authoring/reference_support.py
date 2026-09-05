@@ -152,7 +152,7 @@ def create_blocks(client: TestClient, suffix: str, types=PUBLIC_TYPES) -> dict[s
                 "agent-event-output": "agent-event-output",
             }[capability_type]
             selected = client.get(
-                f"/api/python-package-templates/{endpoint}"
+                f"/agent-shell/api/python-package-templates/{endpoint}"
             ).json()["catalog"][0]
             payload = {
                 **payload,
@@ -163,7 +163,7 @@ def create_blocks(client: TestClient, suffix: str, types=PUBLIC_TYPES) -> dict[s
                 },
             }
         response = client.post(
-            f"/api/blocks/{capability_type}",
+            f"/agent-shell/api/blocks/{capability_type}",
             json=payload,
         )
         assert response.status_code == 200, response.text

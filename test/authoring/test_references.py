@@ -15,7 +15,7 @@ def test_main_agent_uses_ordered_custom_tool_references(
     second = create_blocks(client, "second-tool", ("custom-tool",))["custom-tool"]
 
     response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Tool list",
             "capability_refs": references(
@@ -47,7 +47,7 @@ def test_custom_tool_is_not_a_single_capability_or_subagent_override(
     )
 
     main_agent = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Old tool selection",
             "capability_refs": references(
@@ -57,7 +57,7 @@ def test_custom_tool_is_not_a_single_capability_or_subagent_override(
         },
     )
     subagent = client.post(
-        "/api/subagents",
+        "/agent-shell/api/subagents",
         json=subagent_payload(
             "Old tool override",
             capability_overrides=[
@@ -91,7 +91,7 @@ def test_missing_custom_tool_reference_is_reported(
     )
 
     response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Missing tool",
             "capability_refs": references(
@@ -119,7 +119,7 @@ def test_missing_subagent_custom_tool_reference_is_rejected(
         {"tool_id": "00000000-0000-4000-8000-000000000098"}
     ]
 
-    response = client.post("/api/subagents", json=payload)
+    response = client.post("/agent-shell/api/subagents", json=payload)
 
     assert response.status_code == 422, response.text
     issue = response.json()["detail"]["validation"]["issues"][0]
@@ -140,11 +140,11 @@ def test_main_agent_and_subagent_have_independent_tool_lists(
     child_tool = create_blocks(client, "child-tool", ("custom-tool",))["custom-tool"]
     child_payload = subagent_payload("Tool worker")
     child_payload["settings"]["tool_refs"] = [{"tool_id": child_tool["id"]}]
-    child = client.post("/api/subagents", json=child_payload)
+    child = client.post("/agent-shell/api/subagents", json=child_payload)
     assert child.status_code == 200, child.text
 
     response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Independent tools",
             "capability_refs": references(
@@ -157,7 +157,7 @@ def test_main_agent_and_subagent_have_independent_tool_lists(
     )
 
     assert response.status_code == 200, response.text
-    stored_child = client.get(f"/api/subagents/{child.json()['id']}").json()
+    stored_child = client.get(f"/agent-shell/api/subagents/{child.json()['id']}").json()
     assert stored_child["settings"]["tool_refs"] == [{"tool_id": child_tool["id"]}]
 
 
@@ -167,7 +167,7 @@ def test_generic_draft_validation_covers_each_target_without_writing(
     client = make_client(tmp_path, monkeypatch)
 
     block_report = client.post(
-        "/api/validation/draft",
+        "/agent-shell/api/validation/draft",
         json={
             "target": {"kind": "block", "type": "system-prompt"},
             "payload": {
@@ -178,14 +178,14 @@ def test_generic_draft_validation_covers_each_target_without_writing(
         },
     )
     main_agent_report = client.post(
-        "/api/validation/draft",
+        "/agent-shell/api/validation/draft",
         json={
             "target": {"kind": "main_agent"},
             "payload": {"name": "Draft Main Agent", "capability_refs": []},
         },
     )
     subagent_report = client.post(
-        "/api/validation/draft",
+        "/agent-shell/api/validation/draft",
         json={
             "target": {"kind": "subagent"},
             "payload": subagent_payload(
@@ -211,9 +211,9 @@ def test_generic_draft_validation_covers_each_target_without_writing(
         for issue in main_agent_report.json()["issues"]
     )
     assert subagent_report.json()["issues"][0]["code"] == "configuration.reference_not_found"
-    assert client.get("/api/blocks/system-prompt").json() == []
-    assert client.get("/api/main-agents").json() == []
-    assert client.get("/api/subagents").json() == []
+    assert client.get("/agent-shell/api/blocks/system-prompt").json() == []
+    assert client.get("/agent-shell/api/main-agents").json() == []
+    assert client.get("/agent-shell/api/subagents").json() == []
 
 
 def test_draft_validation_rejects_unknown_block_type_with_localized_detail(
@@ -222,7 +222,7 @@ def test_draft_validation_rejects_unknown_block_type_with_localized_detail(
     client = make_client(tmp_path, monkeypatch)
 
     response = client.post(
-        "/api/validation/draft",
+        "/agent-shell/api/validation/draft",
         json={
             "target": {"kind": "block", "type": "unknown-block"},
             "payload": {},

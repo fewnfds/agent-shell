@@ -35,7 +35,7 @@ def test_custom_tool_template_catalog_scans_package_without_importing_it(
     (templates_dir / "broken-package").mkdir()
     client = make_client(tmp_path, monkeypatch)
 
-    response = client.get("/api/python-package-templates/custom-tool")
+    response = client.get("/agent-shell/api/python-package-templates/custom-tool")
     assert response.status_code == 200
     result = response.json()
     assert [item["name"] for item in result["catalog"]] == ["safe-tool"]
@@ -95,7 +95,7 @@ def test_skill_catalog_enforces_current_deepagents_metadata_contract(
         encoding="utf-8",
     )
 
-    response = client.get("/api/skills")
+    response = client.get("/agent-shell/api/skills")
 
     assert response.status_code == 200
     result = response.json()
@@ -134,7 +134,7 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
         )
     client = make_client(tmp_path, monkeypatch)
     created = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={"name": "Writing", "skill_template_paths": ["first/outline"]},
     )
     assert created.status_code == 200, created.text
@@ -149,7 +149,7 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
     )
 
     conflict = client.post(
-        f"/api/blocks/skill/{owner_id}/skills",
+        f"/agent-shell/api/blocks/skill/{owner_id}/skills",
         json={"template_path": "second/outline"},
     )
     assert conflict.status_code == 409, conflict.text
@@ -158,11 +158,11 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
         encoding="utf-8"
     )
 
-    removed = client.delete(f"/api/blocks/skill/{owner_id}/skills/outline")
+    removed = client.delete(f"/agent-shell/api/blocks/skill/{owner_id}/skills/outline")
     assert removed.status_code == 200, removed.text
     assert removed.json()["warnings"] == {}
     added = client.post(
-        f"/api/blocks/skill/{owner_id}/skills",
+        f"/agent-shell/api/blocks/skill/{owner_id}/skills",
         json={"template_path": "second/outline"},
     )
     assert added.status_code == 200, added.text
@@ -173,11 +173,11 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
     private_root.joinpath("outline", "SKILL.md").write_text(
         "invalid user content\n", encoding="utf-8"
     )
-    inspected = client.get(f"/api/blocks/skill/{owner_id}/skills")
+    inspected = client.get(f"/agent-shell/api/blocks/skill/{owner_id}/skills")
     assert inspected.status_code == 200, inspected.text
     assert set(inspected.json()["warnings"]) == {"outline"}
     saved = client.put(
-        f"/api/blocks/skill/{owner_id}",
+        f"/agent-shell/api/blocks/skill/{owner_id}",
         json={
             "name": "Writing",
             "skill_package": {"folder": component["name"]},
@@ -188,13 +188,13 @@ def test_skill_component_owns_private_copy_and_rejects_same_name_add(
     assert saved.status_code == 200, saved.text
 
     copied = client.post(
-        f"/api/blocks/skill/{owner_id}/copy", json={"name": "Writing copy"}
+        f"/agent-shell/api/blocks/skill/{owner_id}/copy", json={"name": "Writing copy"}
     )
     assert copied.status_code == 200, copied.text
     copy_id = copied.json()["id"]
     copy_name = copied.json()["name"]
     assert (private_root.parent / copy_name / "outline" / "SKILL.md").is_file()
-    deleted = client.delete(f"/api/blocks/skill/{copy_id}")
+    deleted = client.delete(f"/agent-shell/api/blocks/skill/{copy_id}")
     assert deleted.status_code == 200, deleted.text
     assert not (private_root.parent / copy_name).exists()
 
@@ -210,7 +210,7 @@ def test_failed_skill_create_rolls_back_private_package(tmp_path: Path, monkeypa
     repository = FileConfigRepository(tmp_path / "data")
     before = set(repository.skill_packages_root.iterdir())
     response = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={"name": "", "skill_template_paths": ["outline"]},
     )
     assert response.status_code == 422, response.text
@@ -273,7 +273,7 @@ def test_skill_scan_warnings_use_localized_message_payload_shape(
     broken.joinpath("SKILL.md").write_text("invalid\n", encoding="utf-8")
     client = make_client(tmp_path, monkeypatch)
 
-    warnings = client.get("/api/skills").json()["errors"]
+    warnings = client.get("/agent-shell/api/skills").json()["errors"]
 
     assert warnings
     assert all(set(payload) == {"message_key", "message_args"} for payload in warnings.values())
@@ -297,7 +297,7 @@ def test_custom_middleware_catalog_scans_recipes_without_executing_them(
     broken_dir.mkdir()
 
     client = make_client(tmp_path, monkeypatch)
-    response = client.get("/api/python-package-templates/middleware")
+    response = client.get("/agent-shell/api/python-package-templates/middleware")
 
     assert response.status_code == 200
     result = response.json()
@@ -341,11 +341,11 @@ def test_resource_catalogs_only_scan_the_data_root(
 
     client = make_client(tmp_path, monkeypatch)
 
-    assert client.get("/api/python-package-templates/custom-tool").json() == {
+    assert client.get("/agent-shell/api/python-package-templates/custom-tool").json() == {
         "catalog": [],
         "errors": {},
     }
-    assert client.get("/api/python-package-templates/middleware").json() == {
+    assert client.get("/agent-shell/api/python-package-templates/middleware").json() == {
         "catalog": [],
         "errors": {},
     }
@@ -372,11 +372,11 @@ def test_saving_custom_middleware_source_does_not_execute_it(
     (package_dir / "main.py").write_text(source, encoding="utf-8")
     client = make_client(tmp_path, monkeypatch)
     selected = client.get(
-        "/api/python-package-templates/middleware"
+        "/agent-shell/api/python-package-templates/middleware"
     ).json()["catalog"][0]
 
     response = client.post(
-        "/api/blocks/custom-middleware",
+        "/agent-shell/api/blocks/custom-middleware",
         json={
             "name": "Static only",
             "python_package": {"folder": ""},

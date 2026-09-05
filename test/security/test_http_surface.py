@@ -42,13 +42,72 @@ def test_health_and_static_shell_remain_public_when_api_auth_is_enabled(
     _configure_auth(monkeypatch, tmp_path)
 
     with TestClient(create_app()) as client:
-        health = client.get("/api/health")
+        health = client.get("/agent-shell/api/health")
         admin = client.get("/admin")
-        protected = client.get("/api/catalog")
+        protected = client.get("/agent-shell/api/catalog")
 
     assert health.status_code == 200
     assert admin.status_code == 200
     assert protected.status_code == 401
+
+
+def test_http_surface_exposes_owned_paths_and_drops_old_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_auth(monkeypatch, tmp_path)
+
+    with TestClient(create_app()) as client:
+        settings = client.get(
+            "/agent-shell/api/api-server",
+            headers=_bearer(MANAGEMENT_TOKEN),
+        )
+        models = client.get(
+            "/compat/openai/v1/models",
+            headers=_bearer(API_KEY),
+        )
+        old_management = client.get("/api/health")
+        old_compat = client.get("/v1/models")
+
+    assert settings.status_code == 200
+    assert settings.json()["service_entries"] == {
+        "management_console_url": "http://testserver/admin#/",
+        "agent_server_base_url": "http://testserver",
+        "api_docs_url": "http://testserver/docs",
+        "openapi_schema_url": "http://testserver/openapi.json",
+        "langgraph_studio_url": (
+            "https://smith.langchain.com/studio/"
+            "?baseUrl=http%3A%2F%2Ftestserver"
+        ),
+    }
+    assert settings.json()["api_endpoints"] == {
+        "agent_shell_base_url": "http://testserver/agent-shell/api",
+        "openai_base_url": "http://testserver/compat/openai/v1",
+        "models_endpoint": "http://testserver/compat/openai/v1/models",
+        "chat_completions_endpoint": (
+            "http://testserver/compat/openai/v1/chat/completions"
+        ),
+        "langgraph_route_families": [
+            "/assistants/*",
+            "/threads/*",
+            "/runs/*",
+            "/store/*",
+            "/mcp/",
+            "/a2a/{assistant_id}",
+        ],
+        "agent_shell_health_endpoint": (
+            "http://testserver/agent-shell/api/health"
+        ),
+        "agent_shell_readiness_endpoint": (
+            "http://testserver/agent-shell/api/readiness"
+        ),
+        "langgraph_health_endpoint": "http://testserver/ok",
+        "langgraph_info_endpoint": "http://testserver/info",
+        "langgraph_metrics_endpoint": "http://testserver/metrics",
+    }
+    assert models.status_code == 200
+    assert old_management.status_code == 404
+    assert old_compat.status_code == 404
 
 def test_admin_shell_uses_only_bundled_script_assets(
     monkeypatch: pytest.MonkeyPatch,
@@ -71,9 +130,9 @@ def test_admin_shell_uses_only_bundled_script_assets(
                 "/admin/assets/api.js",
             )
         ]
-        protected = client.get("/api/catalog")
+        protected = client.get("/agent-shell/api/catalog")
         authorized = client.get(
-            "/api/catalog", headers=_bearer(MANAGEMENT_TOKEN)
+            "/agent-shell/api/catalog", headers=_bearer(MANAGEMENT_TOKEN)
         )
 
     assert root.status_code == 307

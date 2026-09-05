@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.configuration.bundles.archive import BundleArchiveError
 from agent_shell.configuration.bundles.contracts import BundleRoot, ImportResolutions
 from agent_shell.configuration.bundles.exporting import BundleExportError
@@ -36,9 +37,9 @@ def _bundle_error(exc: Exception, *, status_code: int = 422) -> HTTPException:
 def build_configuration_bundle_router(
     bundles: ConfigurationBundleService,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.post("/api/configuration-bundles/export")
+    @router.post("/configuration-bundles/export")
     async def export_configuration_bundle(root: BundleRoot) -> Response:
         try:
             exported = bundles.export(root)
@@ -52,7 +53,7 @@ def build_configuration_bundle_router(
             },
         )
 
-    @router.post("/api/configuration-bundles/preview")
+    @router.post("/configuration-bundles/preview")
     async def preview_configuration_bundle(
         bundle: Annotated[UploadFile, File()],
     ) -> dict[str, object]:
@@ -61,7 +62,7 @@ def build_configuration_bundle_router(
         except (BundleArchiveError, BundleImportError, ValueError) as exc:
             raise _bundle_error(exc) from exc
 
-    @router.post("/api/configuration-bundles/import")
+    @router.post("/configuration-bundles/import")
     async def import_configuration_bundle(
         bundle: Annotated[UploadFile, File()],
         request: Annotated[str, Form()],

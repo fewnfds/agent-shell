@@ -155,7 +155,7 @@ def test_management_proxy_error_exposes_a_localization_key(
 
     with TestClient(create_app(), client=("10.2.0.4", 5000)) as client:
         response = client.get(
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={
                 "Origin": "https://console.example",
                 "X-Forwarded-For": "not-an-ip",

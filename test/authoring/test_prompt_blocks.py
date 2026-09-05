@@ -9,7 +9,7 @@ def test_prompt_templates_reject_unsupported_single_brace_fields(
     write_skill_template(tmp_path)
     client = make_client(tmp_path, monkeypatch)
     skill = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={
             "name": "Invalid Skill prompt",
             "skill_template_paths": ["outline"],
@@ -20,21 +20,21 @@ def test_prompt_templates_reject_unsupported_single_brace_fields(
         },
     )
     subagent = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={
             "name": "Invalid task description",
             "task_description_override": "{available_agents}\n{unknown}",
         },
     )
     missing_catalog = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={
             "name": "Missing available agents",
             "task_description_override": "Delegate a complete task.",
         },
     )
     empty_format_spec = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={
             "name": "Empty format spec",
             "task_description_override": "Agents: {available_agents:}",
@@ -52,7 +52,7 @@ def test_prompt_templates_accept_escaped_literal_braces(
     write_skill_template(tmp_path)
     client = make_client(tmp_path, monkeypatch)
     skill = client.post(
-        "/api/blocks/skill",
+        "/agent-shell/api/blocks/skill",
         json={
             "name": "Escaped Skill prompt",
             "skill_template_paths": ["outline"],
@@ -63,7 +63,7 @@ def test_prompt_templates_accept_escaped_literal_braces(
         },
     )
     subagent = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={
             "name": "Escaped task description",
             "task_description_override": (
@@ -96,13 +96,13 @@ def test_prompt_templates_accept_escaped_literal_braces(
     (missing_output / "main.py").write_text("value = object()\n", encoding="utf-8")
     assert (
         client.post(
-            "/api/blocks/custom-tool",
+            "/agent-shell/api/blocks/custom-tool",
             json={"name": "bad", "tools": ["not valid!"]},
         ).status_code
         == 422
     )
     middleware_catalog = client.get(
-        "/api/python-package-templates/middleware"
+        "/agent-shell/api/python-package-templates/middleware"
     ).json()
     assert [item["key"] for item in middleware_catalog["catalog"]] == [
         "syntax-check"
@@ -119,21 +119,21 @@ def test_prompt_templates_accept_escaped_literal_braces(
         ("todo-list", "system_prompt_override"),
     ):
         response = client.post(
-            f"/api/blocks/{block_type}",
+            f"/agent-shell/api/blocks/{block_type}",
             json={"name": "old text shape", field: old_text_shape},
         )
         assert response.status_code == 422
 
     assert (
         client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"id": "client-id", "name": "bad id", "system_prompt": "x"},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/main-agents",
+            "/agent-shell/api/main-agents",
             json={
                 "id": "client-id",
                 "name": "bad id",
@@ -145,7 +145,7 @@ def test_prompt_templates_accept_escaped_literal_braces(
     )
     assert (
         client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json={
                 "id": "client-id",
                 **subagent_payload("Bad client id", name="bad_id"),
@@ -155,7 +155,7 @@ def test_prompt_templates_accept_escaped_literal_braces(
     )
     assert (
         client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json=subagent_payload(
                 "Explicit inherit",
                 name="explicit_inherit",
@@ -168,17 +168,17 @@ def test_prompt_templates_accept_escaped_literal_braces(
     )
     missing_credential = model_payload("Missing credential")
     del missing_credential["credential"]
-    assert client.post("/api/model-connections", json=missing_credential).status_code == 422
+    assert client.post("/agent-shell/api/model-connections", json=missing_credential).status_code == 422
     assert (
         client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={"name": "bad threshold", "tool_token_limit_before_evict": 0},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={
                 "name": "read must stay visible",
                 "tool_configs": {"read_file": {"visible": False}},
@@ -186,7 +186,7 @@ def test_prompt_templates_accept_escaped_literal_braces(
         ).status_code
         == 422
     )
-    assert client.get("/api/blocks/not-a-type").status_code == 404
+    assert client.get("/agent-shell/api/blocks/not-a-type").status_code == 404
 
 
 def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
@@ -195,14 +195,14 @@ def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
     client = make_client(tmp_path, monkeypatch)
 
     filesystem = client.post(
-        "/api/blocks/filesystem",
+        "/agent-shell/api/blocks/filesystem",
         json={
             "name": "No file instructions",
             "system_prompt_override": "",
         },
     )
     filesystem_tools = client.post(
-        "/api/blocks/filesystem-tools",
+        "/agent-shell/api/blocks/filesystem-tools",
         json={
             "name": "No file tool instructions",
             "tool_configs": {
@@ -211,7 +211,7 @@ def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
         },
     )
     todo = client.post(
-        "/api/blocks/todo-list",
+        "/agent-shell/api/blocks/todo-list",
         json={
             "name": "No todo instructions",
             "system_prompt_override": "",
@@ -219,7 +219,7 @@ def test_empty_text_is_an_explicit_override_where_the_middleware_allows_it(
         },
     )
     subagent = client.post(
-        "/api/blocks/subagent",
+        "/agent-shell/api/blocks/subagent",
         json={
             "name": "No delegation instructions",
             "instruction_override": "",

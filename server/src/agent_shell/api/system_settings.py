@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from typing import Literal, NoReturn
-from urllib.parse import quote
-
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
@@ -87,15 +86,12 @@ def _raise_settings_error(error: SystemSettingsError) -> NoReturn:
 
 
 def _with_active_urls(payload: dict, request: Request) -> dict:
-    base = str(request.base_url).rstrip("/")
+    entries = http_surface(request)["service_entries"]
     return {
         **payload,
-        "active_management_url": f"{base}/admin",
-        "active_api_docs_url": f"{base}/docs",
-        "active_studio_url": (
-            "https://smith.langchain.com/studio/?baseUrl="
-            f"{quote(base, safe='')}"
-        ),
+        "active_management_url": entries["management_console_url"],
+        "active_api_docs_url": entries["api_docs_url"],
+        "active_studio_url": entries["langgraph_studio_url"],
     }
 
 
@@ -105,13 +101,13 @@ def build_system_settings_router(
     *,
     on_runtime_policy_updated=None,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/system/settings")
+    @router.get("/system/settings")
     async def get_system_settings(request: Request) -> dict:
         return _with_active_urls(settings.get(), request)
 
-    @router.put("/api/system/settings")
+    @router.put("/system/settings")
     async def update_system_settings(
         payload: SystemSettingsUpdate,
         request: Request,
@@ -127,11 +123,11 @@ def build_system_settings_router(
             _raise_settings_error(exc)
         return _with_active_urls(result, request)
 
-    @router.get("/api/system/runtime-policy")
+    @router.get("/system/runtime-policy")
     async def get_runtime_policy() -> dict[str, object]:
         return runtime_policy.public()
 
-    @router.put("/api/system/runtime-policy")
+    @router.put("/system/runtime-policy")
     async def update_runtime_policy(payload: RuntimePolicyUpdate) -> dict[str, object]:
         try:
             result = runtime_policy.update(payload.model_dump())

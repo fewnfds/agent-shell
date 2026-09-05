@@ -9,11 +9,11 @@ def test_subagent_rejects_every_non_empty_child_reference(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         child = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json=subagent_payload("Child", name="child"),
         ).json()
         response = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json={
                 **subagent_payload(
                     "Parent-shaped Subagent",
@@ -40,7 +40,7 @@ def test_main_agent_accepts_multiple_direct_subagents(
         main_agent = create_main_agent(client)
         workers = [
             client.post(
-                "/api/subagents",
+                "/agent-shell/api/subagents",
                 json=subagent_payload(
                     f"Worker {index}",
                     name=f"worker_{index}",
@@ -49,11 +49,11 @@ def test_main_agent_accepts_multiple_direct_subagents(
             for index in range(2)
         ]
         delegation = client.post(
-            "/api/blocks/subagent",
+            "/agent-shell/api/blocks/subagent",
             json={"name": "Direct delegation"},
         ).json()
         response = client.put(
-            f"/api/main-agents/{main_agent['id']}",
+            f"/agent-shell/api/main-agents/{main_agent['id']}",
             json={
                 "name": main_agent["name"],
                 "capability_refs": [

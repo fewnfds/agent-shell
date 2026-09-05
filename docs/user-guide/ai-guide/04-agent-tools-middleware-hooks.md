@@ -39,14 +39,14 @@ Command 和 Event Output 的代码 contract 见[编写 Python extension](06-pyth
 先从当前实例读取 template catalog：
 
 ```text
-GET /api/python-package-templates/custom-tool
-GET /api/python-package-templates/middleware
+GET /agent-shell/api/python-package-templates/custom-tool
+GET /agent-shell/api/python-package-templates/middleware
 ```
 
 选择 response 中存在的精确 `key + revision`，再创建 Component：
 
 ```http
-POST /api/blocks/custom-tool
+POST /agent-shell/api/blocks/custom-tool
 ```
 
 ```json
@@ -65,14 +65,14 @@ POST /api/blocks/custom-tool
 Custom Middleware 使用相同 payload shape，endpoint 为：
 
 ```http
-POST /api/blocks/custom-middleware
+POST /agent-shell/api/blocks/custom-middleware
 ```
 
 创建成功后保存 Component UUID，并读取 private package：
 
 ```text
-GET /api/blocks/custom-tool/<tool UUID>/python-package
-GET /api/blocks/custom-middleware/<middleware UUID>/python-package
+GET /agent-shell/api/blocks/custom-tool/<tool UUID>/python-package
+GET /agent-shell/api/blocks/custom-middleware/<middleware UUID>/python-package
 ```
 
 response 给出 owner folder、manifest、文件列表、revision 与 dependency status。通过 File Manager API 或用户授权的本地编辑器修改该 package 中的 `main.py`、local module 和 `requirements.txt`。
@@ -146,11 +146,11 @@ Subagent 在 `settings` 中保存自己的列表：
 修改已有 Agent 时先读取完整对象，再把 reference 合入 endpoint 的完整可写 payload：
 
 ```text
-GET /api/main-agents/<main Agent UUID>
-PUT /api/main-agents/<main Agent UUID>
+GET /agent-shell/api/main-agents/<main Agent UUID>
+PUT /agent-shell/api/main-agents/<main Agent UUID>
 
-GET /api/subagents/<Subagent UUID>
-PUT /api/subagents/<Subagent UUID>
+GET /agent-shell/api/subagents/<Subagent UUID>
+PUT /agent-shell/api/subagents/<Subagent UUID>
 ```
 
 每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool 和 Subagent delegation 的 `task` Tool 共享模型可见 Tool namespace；重复 Tool name 会在 Agent assembly validation 中返回错误。
@@ -279,7 +279,7 @@ Agent Additional Prompt 是内置 Custom Middleware template。它在 `abefore_a
 创建入口：
 
 ```text
-GET /api/python-package-templates/middleware
+GET /agent-shell/api/python-package-templates/middleware
 key == "内置示例-agent-additional-prompt"
 ```
 

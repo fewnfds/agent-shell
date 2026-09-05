@@ -44,23 +44,23 @@ def test_api_key_is_write_only_and_takes_effect_immediately(
 ) -> None:
     secret = "page-inference-key"
     with make_client(tmp_path, monkeypatch) as client:
-        initial = client.get("/v1/models")
+        initial = client.get("/compat/openai/v1/models")
         saved = client.put(
-            "/api/api-server",
+            "/agent-shell/api/api-server",
             json={"api_key": {"operation": "replace", "value": secret}},
         )
-        missing = client.get("/v1/models", headers={"Authorization": ""})
+        missing = client.get("/compat/openai/v1/models", headers={"Authorization": ""})
         wrong = client.get(
-            "/v1/models", headers={"Authorization": "Bearer wrong-key"}
+            "/compat/openai/v1/models", headers={"Authorization": "Bearer wrong-key"}
         )
         allowed = client.get(
-            "/v1/models", headers={"Authorization": f"Bearer {secret}"}
+            "/compat/openai/v1/models", headers={"Authorization": f"Bearer {secret}"}
         )
-        status = client.get("/api/api-server")
+        status = client.get("/agent-shell/api/api-server")
 
     with ScopedAuthTestClient(create_app()) as restarted:
         persisted = restarted.get(
-            "/v1/models", headers={"Authorization": f"Bearer {secret}"}
+            "/compat/openai/v1/models", headers={"Authorization": f"Bearer {secret}"}
         )
 
     assert initial.status_code == 200
@@ -92,7 +92,7 @@ def test_api_key_update_restores_environment_when_system_write_fails(
 
         with pytest.raises(OSError, match="injected system write failure"):
             client.put(
-                "/api/api-server",
+                "/agent-shell/api/api-server",
                 json={
                     "api_key": {
                         "operation": "replace",
@@ -112,12 +112,12 @@ def test_start_stop_and_known_workflow_runs_after_restart(
         main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Runnable later")
         save_linear_workflow_graph(client, workflow, main_agent)
-        stopped = client.post("/api/api-server/stop")
-        unavailable = client.get("/v1/models")
-        started = client.post("/api/api-server/start")
-        models = client.get("/v1/models")
+        stopped = client.post("/agent-shell/api/api-server/stop")
+        unavailable = client.get("/compat/openai/v1/models")
+        started = client.post("/agent-shell/api/api-server/start")
+        models = client.get("/compat/openai/v1/models")
         completion = client.post(
-            "/v1/chat/completions",
+            "/compat/openai/v1/chat/completions",
             json={
                 "model": workflow["name"],
                 "messages": [{"role": "user", "content": "stream"}],

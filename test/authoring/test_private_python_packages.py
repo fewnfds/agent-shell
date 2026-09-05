@@ -34,11 +34,11 @@ def _write_router_template(data_root: Path, *, key: str = "basic_router") -> Pat
 
 
 def _create_command(client: TestClient, *, name: str = "Private router") -> dict:
-    catalog_response = client.get("/api/python-package-templates/command")
+    catalog_response = client.get("/agent-shell/api/python-package-templates/command")
     assert catalog_response.status_code == 200, catalog_response.text
     selected = catalog_response.json()["catalog"][0]
     response = client.post(
-        "/api/blocks/command",
+        "/agent-shell/api/blocks/command",
         json={
             "name": name,
             "python_package": {"folder": ""},
@@ -90,7 +90,7 @@ def test_template_create_persists_identity_only_and_projects_recursive_paths(
     with make_client(tmp_path, monkeypatch) as client:
         created = _create_command(client)
         package = client.get(
-            f"/api/blocks/command/{created['id']}/python-package"
+            f"/agent-shell/api/blocks/command/{created['id']}/python-package"
         )
 
     assert created["python_package"] == {"folder": created["name"]}
@@ -144,16 +144,16 @@ def test_private_package_files_use_file_manager_revision_and_refresh_projection(
     with make_client(tmp_path, monkeypatch) as client:
         created = _create_command(client)
         projection = client.get(
-            f"/api/blocks/command/{created['id']}/python-package"
+            f"/agent-shell/api/blocks/command/{created['id']}/python-package"
         ).json()
         helper = next(item for item in projection["files"] if item["path"] == "helpers/rules.py")
         opened = client.get(
-            "/api/file-manager/text", params={"path": helper["file_manager_path"]}
+            "/agent-shell/api/file-manager/text", params={"path": helper["file_manager_path"]}
         ).json()
         private_file = _private_folder(data_root, created) / "helpers" / "rules.py"
         private_file.write_text("VALUE = 2\n", encoding="utf-8")
         conflict = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": helper["file_manager_path"],
                 "content": "VALUE = 3\n",
@@ -161,10 +161,10 @@ def test_private_package_files_use_file_manager_revision_and_refresh_projection(
             },
         )
         latest = client.get(
-            "/api/file-manager/text", params={"path": helper["file_manager_path"]}
+            "/agent-shell/api/file-manager/text", params={"path": helper["file_manager_path"]}
         ).json()
         saved = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": helper["file_manager_path"],
                 "content": "VALUE = 3\n",
@@ -172,7 +172,7 @@ def test_private_package_files_use_file_manager_revision_and_refresh_projection(
             },
         )
         refreshed = client.get(
-            f"/api/blocks/command/{created['id']}/python-package"
+            f"/agent-shell/api/blocks/command/{created['id']}/python-package"
         ).json()
 
     assert conflict.status_code == 409
@@ -189,18 +189,18 @@ def test_manual_manifest_damage_is_reported_without_repair(
     with make_client(tmp_path, monkeypatch) as client:
         created = _create_command(client)
         projection = client.get(
-            f"/api/blocks/command/{created['id']}/python-package"
+            f"/agent-shell/api/blocks/command/{created['id']}/python-package"
         ).json()
         manifest_file = next(
             item for item in projection["files"] if item["path"] == "package.json"
         )
         opened = client.get(
-            "/api/file-manager/text", params={"path": manifest_file["file_manager_path"]}
+            "/agent-shell/api/file-manager/text", params={"path": manifest_file["file_manager_path"]}
         ).json()
         manifest = json.loads(opened["content"])
         manifest["id"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         saved = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": manifest_file["file_manager_path"],
                 "content": json.dumps(manifest),
@@ -208,7 +208,7 @@ def test_manual_manifest_damage_is_reported_without_repair(
             },
         )
         inspected = client.get(
-            f"/api/blocks/command/{created['id']}/python-package"
+            f"/agent-shell/api/blocks/command/{created['id']}/python-package"
         )
 
     assert saved.status_code == 200
@@ -250,7 +250,7 @@ def test_copy_and_delete_follow_complete_private_package_ownership(
     with make_client(tmp_path, monkeypatch) as client:
         created = _create_command(client, name="Source router")
         copied_response = client.post(
-            f"/api/blocks/command/{created['id']}/copy",
+            f"/agent-shell/api/blocks/command/{created['id']}/copy",
             json={"name": "Copied router"},
         )
         assert copied_response.status_code == 200, copied_response.text
@@ -259,7 +259,7 @@ def test_copy_and_delete_follow_complete_private_package_ownership(
         original_manifest = json.loads(
             (copied_folder / "package.json").read_text(encoding="utf-8")
         )
-        deleted = client.delete(f"/api/blocks/command/{copied['id']}")
+        deleted = client.delete(f"/agent-shell/api/blocks/command/{copied['id']}")
 
     assert copied["python_package"] == {"folder": copied["name"]}
     assert original_manifest["id"] == copied["id"]
@@ -277,7 +277,7 @@ def test_component_rename_moves_private_package_without_changing_uuid(
         created = _create_command(client, name="Original router")
         original_folder = _private_folder(data_root, created)
         renamed_response = client.put(
-            f"/api/blocks/command/{created['id']}",
+            f"/agent-shell/api/blocks/command/{created['id']}",
             json={
                 "name": "路由 Français",
                 "python_package": created["python_package"],
@@ -297,7 +297,7 @@ def test_component_rename_moves_private_package_without_changing_uuid(
 
     with make_client(tmp_path, monkeypatch) as client:
         case_changed_response = client.put(
-            f"/api/blocks/command/{created['id']}",
+            f"/agent-shell/api/blocks/command/{created['id']}",
             json={
                 "name": "路由 FRANÇAIS",
                 "python_package": renamed["python_package"],
@@ -322,7 +322,7 @@ def test_component_record_create_failure_rolls_back_new_private_package(
     data_root = tmp_path / "data"
     _write_router_template(data_root)
     with make_client(tmp_path, monkeypatch) as client:
-        selected = client.get("/api/python-package-templates/command").json()[
+        selected = client.get("/agent-shell/api/python-package-templates/command").json()[
             "catalog"
         ][0]
         package_root = FileConfigRepository(
@@ -337,7 +337,7 @@ def test_component_record_create_failure_rolls_back_new_private_package(
             failure_patch.setattr(BlockStore, "save_block", fail_save)
             with pytest.raises(RuntimeError, match="record write failed"):
                 client.post(
-                    "/api/blocks/command",
+                    "/agent-shell/api/blocks/command",
                     json={
                         "name": "Uncommitted router",
                         "python_package": {"folder": ""},
@@ -349,7 +349,7 @@ def test_component_record_create_failure_rolls_back_new_private_package(
                 )
 
         assert set(package_root.iterdir()) == before
-        assert client.get("/api/blocks/command").json() == []
+        assert client.get("/agent-shell/api/blocks/command").json() == []
 
 
 def test_component_record_delete_failure_restores_only_its_private_package(
@@ -369,8 +369,8 @@ def test_component_record_delete_failure_restores_only_its_private_package(
         with monkeypatch.context() as failure_patch:
             failure_patch.setattr(BlockStore, "delete_block", fail_delete)
             with pytest.raises(RuntimeError, match="record delete failed"):
-                client.delete(f"/api/blocks/command/{target['id']}")
+                client.delete(f"/agent-shell/api/blocks/command/{target['id']}")
 
         assert target_folder.is_dir()
         assert neighbor_folder.is_dir()
-        assert client.get(f"/api/blocks/command/{target['id']}").status_code == 200
+        assert client.get(f"/agent-shell/api/blocks/command/{target['id']}").status_code == 200

@@ -5,6 +5,7 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.contracts import MANAGED_COMPONENT_MODELS, ModelConnectionBlock
 from agent_shell.storage.validation_settings import (
@@ -46,23 +47,23 @@ def build_validation_router(
     repository_validation: RepositoryValidationService,
     settings: ConfigurationValidationSettingsStore,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/validation/repository")
+    @router.get("/validation/repository")
     async def validate_repository() -> dict[str, object]:
         return repository_validation.validate_repository().as_dict()
 
-    @router.get("/api/validation/settings")
+    @router.get("/validation/settings")
     async def get_validation_settings() -> dict[str, int]:
         return settings.snapshot()
 
-    @router.put("/api/validation/settings")
+    @router.put("/validation/settings")
     async def update_validation_settings(
         payload: ConfigurationValidationSettingsUpdate,
     ) -> dict[str, int]:
         return settings.update(payload.debounce_ms)
 
-    @router.post("/api/validation/draft")
+    @router.post("/validation/draft")
     async def validate_draft(request: DraftValidationRequest) -> dict[str, object]:
         target = request.target
         if target.kind == "block":

@@ -23,8 +23,19 @@ export default defineConfig({
     ...(proxyTarget
       ? {
           proxy: {
-            '/api': proxyTarget,
-            '/v1': proxyTarget,
+            '/agent-shell': proxyTarget,
+            '/compat': proxyTarget,
+            '/assistants': proxyTarget,
+            '/threads': proxyTarget,
+            '/runs': proxyTarget,
+            '/store': proxyTarget,
+            '/mcp': proxyTarget,
+            '/a2a': proxyTarget,
+            '/ok': proxyTarget,
+            '/info': proxyTarget,
+            '/metrics': proxyTarget,
+            '/docs': proxyTarget,
+            '/openapi.json': proxyTarget,
           },
         }
       : {}),

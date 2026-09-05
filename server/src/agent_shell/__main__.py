@@ -189,7 +189,7 @@ def initialize_local_settings(
 
     print("首次启动：请设置管理网站密码。", file=output_stream)
     print(
-        "这个密码只用于打开管理网站，不会改变 /v1 OpenAI API 使用的 Key。",
+        "这个密码用于管理台、Agent Shell API 和 LangGraph Agent Server，不会改变 /compat/openai/v1 使用的 API Key。",
         file=output_stream,
     )
     print("请输入不含空格的可打印 ASCII 字符。", file=output_stream)

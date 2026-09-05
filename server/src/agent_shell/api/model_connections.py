@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
@@ -20,7 +21,7 @@ def build_model_connection_router(
     block_store: BlockStore,
     resources: ModelResourceStore,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
     def connection_or_404(connection_id: str) -> dict[str, Any]:
         value = resources.get_connection(connection_id)
@@ -59,24 +60,24 @@ def build_model_connection_router(
             "connection": resources.get_connection(connection_id) if connection_id else None,
         }
 
-    @router.get("/api/model-connections")
+    @router.get("/model-connections")
     async def list_model_connections() -> list[dict[str, Any]]:
         return resources.list_connections()
 
-    @router.get("/api/model-connections/{connection_id}")
+    @router.get("/model-connections/{connection_id}")
     async def get_model_connection(connection_id: str) -> dict[str, Any]:
         return connection_or_404(connection_id)
 
-    @router.post("/api/model-connections")
+    @router.post("/model-connections")
     async def create_model_connection(payload: dict[str, Any]) -> dict[str, Any]:
         return save_connection(new_configuration_id(), payload)
 
-    @router.put("/api/model-connections/{connection_id}")
+    @router.put("/model-connections/{connection_id}")
     async def update_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         return save_connection(connection_id, payload)
 
-    @router.post("/api/model-connections/{connection_id}/copy")
+    @router.post("/model-connections/{connection_id}/copy")
     async def copy_model_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str) or not payload["name"].strip():
@@ -99,7 +100,7 @@ def build_model_connection_router(
                 message="The model connection is invalid.",
             ) from exc
 
-    @router.delete("/api/model-connections/{connection_id}")
+    @router.delete("/model-connections/{connection_id}")
     async def delete_model_connection(connection_id: str) -> dict[str, bool]:
         if not resources.delete_connection(connection_id):
             raise management_error(
@@ -110,12 +111,12 @@ def build_model_connection_router(
             )
         return {"ok": True}
 
-    @router.get("/api/model-requirements")
+    @router.get("/model-requirements")
     async def list_model_requirements() -> list[dict[str, Any]]:
         requirements = block_store.list_blocks("model-requirement")
         return [requirement_projection(item) for item in requirements]
 
-    @router.put("/api/model-requirements/{requirement_id}/binding")
+    @router.put("/model-requirements/{requirement_id}/binding")
     async def bind_model_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requirement = block_store.get_block("model-requirement", requirement_id)
         if requirement is None:

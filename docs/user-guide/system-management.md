@@ -73,11 +73,11 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面按六个真实提交边界展示和保存：LangGraph Dev、LangSmith、代理设置（均使用 `PUT /api/system/settings` 的对应区域）、API Server（`PUT /api/api-server`）、配置校验（`PUT /api/validation/settings`）和限制策略（`PUT /api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只提交该区域的草稿，其他区域的未保存修改不会一起提交。页面统一 Refresh 仍并行读取四类后端设置。页面管理监听地址、普通服务端口、LangGraph Dev 的 Run 并发与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。LangGraph Dev Card 还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面按六个真实提交边界展示和保存：LangGraph Dev、LangSmith、代理设置（均使用 `PUT /agent-shell/api/system/settings` 的对应区域）、API Server（`PUT /agent-shell/api/api-server`）、配置校验（`PUT /agent-shell/api/validation/settings`）和限制策略（`PUT /agent-shell/api/system/runtime-policy`）。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只提交该区域的草稿，其他区域的未保存修改不会一起提交。页面统一 Refresh 仍并行读取四类后端设置。页面管理监听地址、普通服务端口、LangGraph Dev 的 Run 并发与可选 DAP 调试端口、远程访问、管理密码、API Key、初始消息条数上限、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。LangGraph Dev Card 还提供当前服务的 API Docs 与 LangGraph Studio 入口，链接本身不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`n_jobs_per_worker` 默认 `10`、最小 `1`、没有产品最大值；每个经官方队列执行的 Run 占一个槽位，增大该值会同时提高并行度、CPU、内存和外部请求压力。`debug_port` 默认留空；留空时没有第二个调试 listener，填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。这三个字段均在服务重启后生效。
 
-API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Lifecycle 保留数量、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/api/system/runtime-policy` 返回 10 项数值 runtime-policy 的当前值、默认值与最小值。
+API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Lifecycle 保留数量、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/agent-shell/api/system/runtime-policy` 返回 10 项数值 runtime-policy 的当前值、默认值与最小值。
 
 `retained_lifecycles` 默认 `20`、最小 `0`；其他 9 项只有正数约束。全部策略都没有额外产品最大值。其他默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
 

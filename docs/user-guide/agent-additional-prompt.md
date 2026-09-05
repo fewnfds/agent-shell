@@ -56,8 +56,8 @@ payload = task.get("payload", {})
 
 ## 从内置 template 创建
 
-1. `GET /api/python-package-templates/middleware` 获取当前 catalog revision。
-2. 选择 `key=="内置示例-agent-additional-prompt"`，通过【代理组件 / Custom Middleware】或 `POST /api/blocks/custom-middleware` 新建配置，并提交 `python_package: {"folder":""}` 与 `python_package_template: {"key":"内置示例-agent-additional-prompt","revision":"<catalog revision>"}`。
+1. `GET /agent-shell/api/python-package-templates/middleware` 获取当前 catalog revision。
+2. 选择 `key=="内置示例-agent-additional-prompt"`，通过【代理组件 / Custom Middleware】或 `POST /agent-shell/api/blocks/custom-middleware` 新建配置，并提交 `python_package: {"folder":""}` 与 `python_package_template: {"key":"内置示例-agent-additional-prompt","revision":"<catalog revision>"}`。
 3. 保存后编辑 configuration-owned Python package 中的 `main.py`。
 4. 在需要 AAP 的 Main Agent 或 Subagent 的有序 `middleware_refs` 中选择该配置。
 

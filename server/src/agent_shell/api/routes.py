@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_shell import __version__
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.configuration_collections import (
     configuration_collection,
     configuration_collection_requested,
@@ -101,7 +102,7 @@ def build_router(
     component_mutations: ComponentMutationService,
     runtime_policy: RuntimePolicyStore,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
     def configuration_mutation(endpoint):
         @wraps(endpoint)
@@ -136,7 +137,7 @@ def build_router(
             else ("id", "name"),
         )
 
-    @router.get("/api/configuration-options")
+    @router.get("/configuration-options")
     async def get_configuration_options() -> dict[str, object]:
         repository_id, repository_revision = configuration.repository_context()
         return {
@@ -213,7 +214,7 @@ def build_router(
             }
         return block
 
-    @router.get("/api/catalog")
+    @router.get("/catalog")
     async def catalog() -> dict:
         return {
             "block_types": BLOCK_CATALOG,
@@ -222,7 +223,7 @@ def build_router(
             "editor_defaults": editor_defaults(),
         }
 
-    @router.post("/api/fetch-models")
+    @router.post("/fetch-models")
     async def fetch_models(request: Request) -> list[str]:
         body = await request.json()
         if not isinstance(body, dict) or set(body) != {
@@ -362,11 +363,11 @@ def build_router(
             model_ids.append(item["id"])
         return model_ids
 
-    @router.get("/api/skills")
+    @router.get("/skills")
     async def skills() -> dict:
         return scan_skills(skills_dir)
 
-    @router.get("/api/blocks/skill/{block_id}/skills")
+    @router.get("/blocks/skill/{block_id}/skills")
     async def private_skills(block_id: str) -> dict:
         block = block_store.get_block_internal("skill", block_id)
         if block is None:
@@ -381,7 +382,7 @@ def build_router(
             str(block.get("skill_package", {}).get("folder", "")),
         )
 
-    @router.post("/api/blocks/skill/{block_id}/skills")
+    @router.post("/blocks/skill/{block_id}/skills")
     async def add_private_skill(block_id: str, payload: dict) -> dict:
         if set(payload) != {"template_path"}:
             raise management_error(
@@ -394,13 +395,13 @@ def build_router(
             lambda: component_mutations.add_skill(block_id, payload["template_path"])
         )
 
-    @router.delete("/api/blocks/skill/{block_id}/skills/{folder_name}")
+    @router.delete("/blocks/skill/{block_id}/skills/{folder_name}")
     async def delete_private_skill(block_id: str, folder_name: str) -> dict:
         return perform_component_mutation(
             lambda: component_mutations.remove_skill(block_id, folder_name)
         )
 
-    @router.get("/api/blocks/{block_type}")
+    @router.get("/blocks/{block_type}")
     async def list_blocks(
         request: Request,
         block_type: str,
@@ -426,7 +427,7 @@ def build_router(
             limit=limit,
         )
 
-    @router.delete("/api/unsupported-blocks/{block_id}")
+    @router.delete("/unsupported-blocks/{block_id}")
     @configuration_mutation
     async def delete_unsupported_block(block_id: str) -> dict[str, bool]:
         mutation_repository_id = block_store.repository_id()
@@ -452,7 +453,7 @@ def build_router(
             )
         return {"ok": True}
 
-    @router.post("/api/blocks/{block_type}/delete")
+    @router.post("/blocks/{block_type}/delete")
     async def delete_blocks(
         block_type: str,
         payload: ConfigurationBulkDelete,
@@ -482,7 +483,7 @@ def build_router(
         )
         return {"deleted": deleted}
 
-    @router.get("/api/blocks/{block_type}/{block_id}")
+    @router.get("/blocks/{block_type}/{block_id}")
     async def get_block(block_type: str, block_id: str) -> dict:
         check_type(block_type)
         block = block_store.get_block(block_type, block_id)
@@ -495,7 +496,7 @@ def build_router(
             )
         return project_block(block_type, block, include_package_details=True)
 
-    @router.get("/api/blocks/{block_type}/{block_id}/python-package")
+    @router.get("/blocks/{block_type}/{block_id}/python-package")
     @configuration_mutation
     async def inspect_python_package(
         block_type: str,
@@ -530,7 +531,7 @@ def build_router(
         except PythonPackageAuthoringError as exc:
             raise authoring_error(exc) from exc
 
-    @router.post("/api/blocks/{block_type}")
+    @router.post("/blocks/{block_type}")
     async def create_block(block_type: str, payload: dict) -> dict:
         check_type(block_type)
         created = perform_component_mutation(
@@ -542,7 +543,7 @@ def build_router(
             include_package_details=True,
         )
 
-    @router.post("/api/blocks/{block_type}/{block_id}/copy")
+    @router.post("/blocks/{block_type}/{block_id}/copy")
     async def copy_block(block_type: str, block_id: str, payload: dict) -> dict:
         check_type(block_type)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str):
@@ -570,7 +571,7 @@ def build_router(
         )
         return project_block(block_type, copied, include_package_details=True)
 
-    @router.put("/api/blocks/{block_type}/{block_id}")
+    @router.put("/blocks/{block_type}/{block_id}")
     async def update_block(block_type: str, block_id: str, payload: dict) -> dict:
         check_type(block_type)
         updated = perform_component_mutation(
@@ -582,7 +583,7 @@ def build_router(
             include_package_details=True,
         )
 
-    @router.delete("/api/blocks/{block_type}/{block_id}")
+    @router.delete("/blocks/{block_type}/{block_id}")
     async def delete_block(block_type: str, block_id: str) -> dict[str, bool]:
         check_type(block_type)
         perform_component_mutation(

@@ -1,19 +1,19 @@
 # API Server
 
-首页显示接入地址和配置告警。API Server 运行状态与启动、停止按钮位于管理台 navbar，在所有页面可见；
-API Key 位于【系统 / 系统配置】的网络卡片，单次请求初始消息条数上限 `max_initial_messages` 位于请求与限制策略卡片；两者由 `PUT /api/api-server` 一起保存。
+首页使用【服务入口】和【API 端点】两张 Card 展示当前实例地址、LangGraph 官方路径族、诊断端点与认证边界。OpenAI-compatible Base URL 是 `<origin>/compat/openai/v1`；Agent Shell API Base URL 是 `<origin>/agent-shell/api`。API Server 运行状态与启动、停止按钮位于管理台 navbar，在所有页面可见；
+API Key 位于【系统 / 系统配置】的网络卡片，单次请求初始消息条数上限 `max_initial_messages` 位于请求与限制策略卡片；两者由 `PUT /agent-shell/api/api-server` 一起保存。
 
 ## 接口
 
 ```http
-GET /v1/models
+GET /compat/openai/v1/models
 Authorization: Bearer <API Key>
 ```
 
 返回 OpenAI-compatible list；`data[].id` 使用当前启用的 Workflow name。
 
 ```http
-POST /v1/chat/completions
+POST /compat/openai/v1/chat/completions
 Authorization: Bearer <API Key>
 Content-Type: application/json
 
@@ -27,7 +27,7 @@ Content-Type: application/json
 请求按 Workflow name 捕获一次配置快照，并为该 Workflow 创建或复用官方 Assistant、为请求创建专属 Thread 和 Run。LangGraph Dev 的 dynamic graph factory 从同一快照读取 current Graph 和 canvas Agent Node reference，再递归构造 Main Agent、Subagent、各自 Filesystem、权限、Middleware、组件和 Provider secret view；官方 Worker 执行 Graph。官方 ProtocolEvent 继续由已有 Agent/Workflow Event Output、Response Stream Scheduler 和 OpenAI response writer 消费。
 
 Chat 请求体、content block、输入媒体单项/合计和输出媒体边界由【系统 / 系统配置】的限制策略决定；
-`GET /api/system/runtime-policy` 返回后端当前值、默认值、最小值和可配置字段，前端不复制隐藏上限。策略只有后端返回的正数最小值约束，没有额外产品最大值，实际仍受 Provider、
+`GET /agent-shell/api/system/runtime-policy` 返回后端当前值、默认值、最小值和可配置字段，前端不复制隐藏上限。策略只有后端返回的正数最小值约束，没有额外产品最大值，实际仍受 Provider、
 内存、磁盘和网络能力影响。
 
 当前可执行 Node class 为 Start、Agent、Command 和 End，Edge class 为 normal、branch 与 dispatch；一张图可以包含多个 Agent Node，并可串联、
@@ -54,17 +54,17 @@ fan-out、fan-in 或形成 LangGraph 支持的循环。canvas Start/End 直接�
 ## 运行边界
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
-- 全部 enabled Workflow 都可由 `/v1` 启动，也可被其他 Run 调用；
+- 全部 enabled Workflow 都可由 `/compat/openai/v1` 启动，也可被其他 Run 调用；
 - 每次请求执行一次完整官方 Run；Assistant ID 使用 Workflow UUID，Thread 和 Run ID 使用官方身份，Node 从 `Runtime.execution_info.run_id` 读取同一个 Run ID；
 - 跨 Workflow 调用通过 `Runtime.context.workflow_runs` 的 `start_workflow/check/list/join/cancel` 使用公共 Agent Server SDK；每次调用创建独立 Thread 和普通 Run。Command Dispatch 在 current Run 内生成动态 Agent invocation，多个 normal 出边、一次激活的多个 Branch target 和多个 Send task 按 LangGraph Super-step 语义执行；
 - 每个被调用 Run 使用自己的 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 只按 Run identity 隔离输出，不建立静态运行角色；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
-- Assistant、Thread、Run 与 State 可通过同端口的 LangGraph Dev 官方 API 读取；官方 route 使用管理密码。`/api/workflow-lifecycles` 通过公共 Thread/Run API 聚合本次请求的全部 Run，并提供 Graph、latest State 和 State history 读取。
+- Assistant、Thread、Run 与 State 可通过同端口的 LangGraph Dev 官方 API 读取；官方 route 使用管理密码。`/agent-shell/api/workflow-lifecycles` 通过公共 Thread/Run API 聚合本次请求的全部 Run，并提供 Graph、latest State 和 State history 读取。
 
 ## API Key 与状态
 
-API Key 是 write-only 设置，用于 `/v1/*`；管理密码用于管理台和 `/api/*`。清除 API Key 后推理 API 不可用。
+API Key 是 write-only 设置，用于 `/compat/openai/v1/*`；管理密码用于管理台、除 Health 外的 `/agent-shell/api/*`，以及 LangGraph Agent Server 官方资源路径。清除 API Key 后推理 API 不可用。
 API Server 启停不扫描未被 Workflow 引用的 Main Agent；完整 repository validation 只用于管理诊断，单次 Chat 请求只解析所选 Workflow 的 current Graph 和可达装配。
 
 普通 API response、DOM 和 log summary 仅提供脱敏后的公开字段；management-only 的 local exception-detail attachment 保留完整排错信息。

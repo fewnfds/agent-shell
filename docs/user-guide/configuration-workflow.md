@@ -4,7 +4,7 @@
 
 【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、可选 Workflow Event Output 与 Response Stream Scheduling 组件引用、`durability`（默认 `async`）、`on_disconnect`（默认 `cancel`）、`recursion_limit`（最大 Super-step 数，默认 `1,000,000`）、`max_concurrency`（并行节点最大并发数，默认 `100`）和一份 current Graph definition/layout。所有 Workflow 使用相同运行能力；数值只要求正整数，没有额外产品最大值，实际资源能力取决于 Workflow、Provider、工具、进程和宿主机资源。
 `enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
-全部 enabled Workflow 都出现在 `/v1/models`，也都可以作为跨 Workflow 调用目标。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
+全部 enabled Workflow 都出现在 `/compat/openai/v1/models`，也都可以作为跨 Workflow 调用目标。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
 
 Response Stream Scheduling 是【工作流组件】中的可复用配置，进入现有配置库统一管理。组件只包含输出原子、空闲让位时间、批次软大小和最小发送间隔。作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 为本次 response 选择组件；未装配时使用内置默认调度。公开 response 封口前，由该请求入口 Run 直接或间接启动的 Run 都向同一个 Lifecycle scheduler 提交已投影文本。各 Run 先由自己的 Agent Event Output 或 Workflow Event Output 决定事件是否公开及其文本修饰；调度器按 Run identity 隔离 lane 和 transaction。字段与 API 示例见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
 
@@ -86,6 +86,6 @@ Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模�
 
 ## 校验与生效
 
-Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。`PUT /api/workflows/{id}/draft` 只做 wire 解析并停用；
-`POST /api/workflows/{id}/validate` 返回正式静态问题；`PUT /api/workflows/{id}/graph` 重复完整校验并正式启用，metadata PUT 保留既有 enabled。真实 Chat 请求从一次文件配置快照读取 Workflow current Graph、
+Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。`PUT /agent-shell/api/workflows/{id}/draft` 只做 wire 解析并停用；
+`POST /agent-shell/api/workflows/{id}/validate` 返回正式静态问题；`PUT /agent-shell/api/workflows/{id}/graph` 重复完整校验并正式启用，metadata PUT 保留既有 enabled。真实 Chat 请求从一次文件配置快照读取 Workflow current Graph、
 Main Agent、Subagent、各自 Filesystem Backend、Filesystem Tools、组件和 Provider secret view，完成 Agent 构造后关闭配置快照。

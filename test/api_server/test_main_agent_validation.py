@@ -10,11 +10,11 @@ def test_subagent_references_report_duplicate_entity_name_and_missing_target(
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         first = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json=subagent_payload("First worker", name="worker"),
         ).json()
         second = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json=subagent_payload("Second worker", name="WORKER"),
         ).json()
         payload = {
@@ -29,10 +29,10 @@ def test_subagent_references_report_duplicate_entity_name_and_missing_target(
         }
 
         draft = client.post(
-            "/api/validation/draft",
+            "/agent-shell/api/validation/draft",
             json={"target": {"kind": "main_agent"}, "payload": payload},
         )
-        saved = client.put(f"/api/main-agents/{main_agent['id']}", json=payload)
+        saved = client.put(f"/agent-shell/api/main-agents/{main_agent['id']}", json=payload)
 
     expected = {
         ("contract.subagent_reference_duplicate", "subagents[1].subagent_id"),
@@ -56,7 +56,7 @@ def test_subagent_entity_owns_routing_identity_contract(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         response = client.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json={
                 "component_name": "Invalid routing identity",
                 "name": "中文名称",

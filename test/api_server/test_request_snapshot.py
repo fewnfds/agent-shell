@@ -22,7 +22,7 @@ def test_snapshot_freezes_workflow_metadata(
         )
         assert "_response_scheduler" in coordinator.__dataclass_fields__
         changed = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": "Changed after snapshot",

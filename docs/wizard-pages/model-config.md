@@ -6,11 +6,11 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 
 模型连接不属于 Configuration Repository，不进入配置 Bundle，也不提供下载。接口为：
 
-- `GET/POST /api/model-connections`
-- `GET/PUT/DELETE /api/model-connections/{id}`
-- `POST /api/model-connections/{id}/copy`，body 为 `{"name":"<1-120 trimmed>"}`；重名返回 409 `model_connection_name_conflict`。
-- `GET /api/model-requirements`，返回当前 Configuration Repository 的模型要求及绑定投影；
-- `PUT /api/model-requirements/{id}/binding`，body 为 `{"connection_id":"<uuid>"}` 或 `{"connection_id":null}`，后者表示解绑。
+- `GET/POST /agent-shell/api/model-connections`
+- `GET/PUT/DELETE /agent-shell/api/model-connections/{id}`
+- `POST /agent-shell/api/model-connections/{id}/copy`，body 为 `{"name":"<1-120 trimmed>"}`；重名返回 409 `model_connection_name_conflict`。
+- `GET /agent-shell/api/model-requirements`，返回当前 Configuration Repository 的模型要求及绑定投影；
+- `PUT /agent-shell/api/model-requirements/{id}/binding`，body 为 `{"connection_id":"<uuid>"}` 或 `{"connection_id":null}`，后者表示解绑。
 
 模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。`google_vertexai` 使用无 credential 配置。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
 `name` 去除首尾空白后必须包含 1 到 120 个字符，并在实例内按大小写不敏感规则保持唯一。空白或超长名称返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。

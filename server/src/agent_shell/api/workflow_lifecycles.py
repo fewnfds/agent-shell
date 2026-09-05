@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleActive,
@@ -22,9 +23,9 @@ def build_workflow_lifecycle_router(
 ) -> APIRouter:
     """Expose Lifecycle grouping without owning a second Run registry."""
 
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/workflow-lifecycles")
+    @router.get("/workflow-lifecycles")
     async def list_workflow_lifecycles(
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=10, ge=1),
@@ -32,7 +33,7 @@ def build_workflow_lifecycle_router(
     ) -> dict[str, object]:
         return await service.list_page(page=page, page_size=page_size, query=query)
 
-    @router.delete("/api/workflow-lifecycles/{lifecycle_id}")
+    @router.delete("/workflow-lifecycles/{lifecycle_id}")
     async def delete_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
         try:
             deleted_threads = await service.delete(lifecycle_id)
@@ -52,7 +53,7 @@ def build_workflow_lifecycle_router(
             ) from exc
         return {"ok": True, "deleted_thread_count": deleted_threads}
 
-    @router.post("/api/workflow-lifecycles/delete")
+    @router.post("/workflow-lifecycles/delete")
     async def delete_workflow_lifecycles(
         payload: WorkflowLifecycleBulkDelete,
     ) -> dict[str, int]:

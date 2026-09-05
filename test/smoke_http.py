@@ -353,7 +353,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         deadline = time.monotonic() + 20
         while True:
             try:
-                if client.get("/api/health").status_code == 200:
+                if client.get("/agent-shell/api/health").status_code == 200:
                     break
             except httpx.HTTPError:
                 pass
@@ -382,51 +382,79 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         )
         for path in admin_assets:
             _request(client, "GET", path)
-        health = _request(client, "GET", "/api/health").json()
+        health = _request(client, "GET", "/agent-shell/api/health").json()
         assert health == {"status": "ok", "runtime": "model_streaming"}
         docs = _request(client, "GET", "/docs")
         assert "agent server api reference" in docs.text.lower()
         openapi = _request(client, "GET", "/openapi.json").json()
-        assert openapi["components"]["securitySchemes"]["BearerAuth"] == {
+        assert openapi["components"]["securitySchemes"]["ManagementBearer"] == {
             "type": "http",
             "scheme": "bearer",
         }
-        assert openapi["security"] == [{"BearerAuth": []}]
+        assert openapi["components"]["securitySchemes"]["ApiKeyBearer"] == {
+            "type": "http",
+            "scheme": "bearer",
+        }
+        assert openapi["security"] == [{"ManagementBearer": []}]
+        assert openapi["paths"]["/agent-shell/api/health"]["get"]["security"] == []
+        assert openapi["paths"]["/compat/openai/v1/models"]["get"][
+            "security"
+        ] == [{"ApiKeyBearer": []}]
+        assert openapi["paths"]["/compat/openai/v1/chat/completions"]["post"][
+            "security"
+        ] == [{"ApiKeyBearer": []}]
+        for public_path in ("/ok", "/info", "/metrics"):
+            assert _request(client, "GET", public_path).status_code == 200
+            assert openapi["paths"][public_path]["get"]["security"] == []
+        assert "/api/health" not in openapi["paths"]
+        assert "/v1/models" not in openapi["paths"]
+        openapi_paths = tuple(openapi["paths"])
+        for route_prefix in (
+            "/assistants",
+            "/threads",
+            "/runs",
+            "/store",
+            "/mcp",
+            "/a2a/",
+        ):
+            assert any(path.startswith(route_prefix) for path in openapi_paths)
+        _request(client, "GET", "/api/health", headers=management, expected=404)
+        _request(client, "GET", "/v1/models", headers=management, expected=404)
         _request(client, "POST", "/threads/search", json_body={}, expected=401)
-        _request(client, "GET", "/api/catalog", expected=401)
-        _request(client, "GET", "/api/catalog", headers=inference, expected=403)
-        _request(client, "GET", "/v1/unknown", headers=management, expected=403)
-        _request(client, "GET", "/v1/unknown", headers=inference, expected=401)
-        catalog = _request(client, "GET", "/api/catalog", headers=management).json()
+        _request(client, "GET", "/agent-shell/api/catalog", expected=401)
+        _request(client, "GET", "/agent-shell/api/catalog", headers=inference, expected=403)
+        _request(client, "GET", "/compat/openai/v1/unknown", headers=management, expected=403)
+        _request(client, "GET", "/compat/openai/v1/unknown", headers=inference, expected=401)
+        catalog = _request(client, "GET", "/agent-shell/api/catalog", headers=management).json()
         assert tuple(item["type"] for item in catalog["block_types"]) == CAPABILITY_TYPES
         tool_templates = _request(
             client,
             "GET",
-            "/api/python-package-templates/custom-tool",
+            "/agent-shell/api/python-package-templates/custom-tool",
             headers=management,
         ).json()
-        _request(client, "GET", "/api/python-package-templates/middleware", headers=management)
+        _request(client, "GET", "/agent-shell/api/python-package-templates/middleware", headers=management)
         output_templates = _request(
             client,
             "GET",
-            "/api/python-package-templates/agent-event-output",
+            "/agent-shell/api/python-package-templates/agent-event-output",
             headers=management,
         ).json()
         workflow_output_templates = _request(
             client,
             "GET",
-            "/api/python-package-templates/workflow-event-output",
+            "/agent-shell/api/python-package-templates/workflow-event-output",
             headers=management,
         ).json()
         command_templates = _request(
             client,
             "GET",
-            "/api/python-package-templates/command",
+            "/agent-shell/api/python-package-templates/command",
             headers=management,
         ).json()
-        _request(client, "GET", "/api/skills", headers=management)
+        _request(client, "GET", "/agent-shell/api/skills", headers=management)
         readiness = _request(
-            client, "GET", "/api/readiness", headers=management
+            client, "GET", "/agent-shell/api/readiness", headers=management
         ).json()
         assert set(readiness["sections"]) == {
             "security_settings",
@@ -439,7 +467,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         preflight = _request(
             client,
             "OPTIONS",
-            "/api/catalog",
+            "/agent-shell/api/catalog",
             headers={
                 "Origin": "https://console.example.invalid",
                 "Access-Control-Request-Method": "GET",
@@ -467,7 +495,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         workflow_output = _request(
             client,
             "POST",
-            "/api/blocks/workflow-event-output",
+            "/agent-shell/api/blocks/workflow-event-output",
             headers=management,
             json_body={
                 "name": f"{mode}-workflow-output",
@@ -478,7 +506,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         target_workflow = _request(
             client,
             "POST",
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             headers=management,
             json_body={
                 "name": f"{mode}-spawned-workflow",
@@ -489,7 +517,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "PUT",
-            f"/api/workflows/{target_workflow['id']}/graph",
+            f"/agent-shell/api/workflows/{target_workflow['id']}/graph",
             headers=management,
             json_body={
                 "definition": {
@@ -522,7 +550,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         command_templates = _request(
             client,
             "GET",
-            "/api/python-package-templates/command",
+            "/agent-shell/api/python-package-templates/command",
             headers=management,
         ).json()
         command_template_reference = {
@@ -532,7 +560,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         workflow_command = _request(
             client,
             "POST",
-            "/api/blocks/command",
+            "/agent-shell/api/blocks/command",
             headers=management,
             json_body={
                 "name": f"{mode}-workflow-run-command",
@@ -544,7 +572,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         workflow = _request(
             client,
             "POST",
-            "/api/workflows",
+            "/agent-shell/api/workflows",
             headers=management,
             json_body={
                 "name": f"{mode}-official-workflow",
@@ -555,7 +583,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "PUT",
-            f"/api/workflows/{workflow['id']}/graph",
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
             headers=management,
             json_body={
                 "definition": {
@@ -612,7 +640,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         completion = _request(
             client,
             "POST",
-            "/v1/chat/completions",
+            "/compat/openai/v1/chat/completions",
             headers=inference,
             json_body={
                 "model": workflow["name"],
@@ -634,7 +662,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         lifecycle_page = _request(
             client,
             "GET",
-            "/api/workflow-lifecycles?page=1&page_size=10",
+            "/agent-shell/api/workflow-lifecycles?page=1&page_size=10",
             headers=management,
         ).json()
         lifecycle = next(
@@ -648,7 +676,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         snapshot = _request(
             client,
             "GET",
-            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
             headers=management,
         ).json()
         assert len(snapshot["runs"]) >= 2
@@ -657,28 +685,28 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         graph = _request(
             client,
             "GET",
-            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/graph",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/graph",
             headers=management,
         ).json()
         assert graph["run_id"] == run_id
         state = _request(
             client,
             "GET",
-            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
             headers=management,
         ).json()
         assert state["thread_id"] == inspected_run["thread_id"]
         history = _request(
             client,
             "GET",
-            f"/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
             headers=management,
         ).json()
         assert history["thread_id"] == inspected_run["thread_id"]
         model_connection = _request(
             client,
             "POST",
-            "/api/model-connections",
+            "/agent-shell/api/model-connections",
             headers={**management, "X-Request-ID": f"smoke-{mode}"},
             json_body=_model_connection_payload(
                 f"{mode}-model-connection",
@@ -695,7 +723,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             created = _request(
                 client,
                 "POST",
-                f"/api/blocks/{capability_type}",
+                f"/agent-shell/api/blocks/{capability_type}",
                 headers={**management, "X-Request-ID": f"smoke-{mode}"},
                 json_body=_payload(
                     capability_type,
@@ -707,13 +735,13 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             assert provider_secret not in json.dumps(created)
             blocks[capability_type] = created
             listed = _request(
-                client, "GET", f"/api/blocks/{capability_type}", headers=management
+                client, "GET", f"/agent-shell/api/blocks/{capability_type}", headers=management
             ).json()
             assert any(item["id"] == created["id"] for item in listed)
             fetched = _request(
                 client,
                 "GET",
-                f"/api/blocks/{capability_type}/{created['id']}",
+                f"/agent-shell/api/blocks/{capability_type}/{created['id']}",
                 headers=management,
             ).json()
             assert fetched["id"] == created["id"]
@@ -735,7 +763,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             updated = _request(
                 client,
                 "PUT",
-                f"/api/blocks/{capability_type}/{created['id']}",
+                f"/agent-shell/api/blocks/{capability_type}/{created['id']}",
                 headers=management,
                 json_body=update_payload,
             ).json()
@@ -749,7 +777,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         updated_model = _request(
             client,
             "PUT",
-            f"/api/model-connections/{model_connection['id']}",
+            f"/agent-shell/api/model-connections/{model_connection['id']}",
             headers=management,
             json_body=updated_model_payload,
         ).json()
@@ -763,7 +791,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             client,
             "PUT",
             (
-                "/api/model-requirements/"
+                "/agent-shell/api/model-requirements/"
                 f"{blocks['model-requirement']['id']}/binding"
             ),
             headers=management,
@@ -773,7 +801,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         main_agent = _request(
             client,
             "POST",
-            "/api/main-agents",
+            "/agent-shell/api/main-agents",
             headers=management,
             json_body={
                 "name": f"{mode}-main-agent",
@@ -801,7 +829,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         subagent = _request(
             client,
             "POST",
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             headers=management,
             json_body={
                 "component_name": f"{mode}-subagent",
@@ -817,9 +845,9 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             ("subagents", subagent),
         ):
             UUID(item["id"])
-            _request(client, "GET", f"/api/{path}", headers=management)
+            _request(client, "GET", f"/agent-shell/api/{path}", headers=management)
             fetched = _request(
-                client, "GET", f"/api/{path}/{item['id']}", headers=management
+                client, "GET", f"/agent-shell/api/{path}/{item['id']}", headers=management
             ).json()
             assert fetched["id"] == item["id"]
         updated_main_agent = dict(main_agent)
@@ -828,7 +856,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "PUT",
-            f"/api/main-agents/{main_agent['id']}",
+            f"/agent-shell/api/main-agents/{main_agent['id']}",
             headers=management,
             json_body=updated_main_agent,
         )
@@ -838,7 +866,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "PUT",
-            f"/api/subagents/{subagent['id']}",
+            f"/agent-shell/api/subagents/{subagent['id']}",
             headers=management,
             json_body=updated_subagent,
         )
@@ -878,57 +906,57 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "DELETE",
-            f"/api/workflow-lifecycles/{lifecycle_id}",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}",
             headers=management,
         )
 
         _request(
             client,
             "DELETE",
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/workflows/{target_workflow['id']}",
+            f"/agent-shell/api/workflows/{target_workflow['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/blocks/command/{workflow_command['id']}",
+            f"/agent-shell/api/blocks/command/{workflow_command['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/blocks/workflow-event-output/{workflow_output['id']}",
+            f"/agent-shell/api/blocks/workflow-event-output/{workflow_output['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/main-agents/{main_agent['id']}",
+            f"/agent-shell/api/main-agents/{main_agent['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/subagents/{subagent['id']}",
+            f"/agent-shell/api/subagents/{subagent['id']}",
             headers=management,
         )
         _request(
             client,
             "DELETE",
-            f"/api/model-connections/{model_id}",
+            f"/agent-shell/api/model-connections/{model_id}",
             headers=management,
         )
         for capability_type, block in blocks.items():
             _request(
                 client,
                 "DELETE",
-                f"/api/blocks/{capability_type}/{block['id']}",
+                f"/agent-shell/api/blocks/{capability_type}/{block['id']}",
                 headers=management,
             )
         final_environment = parse_environment_text(

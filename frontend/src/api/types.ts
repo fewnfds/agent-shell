@@ -783,6 +783,27 @@ export interface ReadinessResponse {
   sections: Record<string, unknown>
 }
 
+export interface ServiceEntries {
+  management_console_url: string
+  agent_server_base_url: string
+  api_docs_url: string
+  openapi_schema_url: string
+  langgraph_studio_url: string
+}
+
+export interface ApiEndpoints {
+  agent_shell_base_url: string
+  openai_base_url: string
+  models_endpoint: string
+  chat_completions_endpoint: string
+  langgraph_route_families: string[]
+  agent_shell_health_endpoint: string
+  agent_shell_readiness_endpoint: string
+  langgraph_health_endpoint: string
+  langgraph_info_endpoint: string
+  langgraph_metrics_endpoint: string
+}
+
 export interface ApiServerSettings {
   enabled: boolean
   status: 'running' | 'stopped'
@@ -791,9 +812,8 @@ export interface ApiServerSettings {
   }
   max_initial_messages: number
   message_interception_enabled: boolean
-  api_base_url: string
-  models_endpoint: string
-  chat_completions_endpoint: string
+  service_entries: ServiceEntries
+  api_endpoints: ApiEndpoints
   runtime: string
 }
 

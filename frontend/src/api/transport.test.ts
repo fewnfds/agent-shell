@@ -39,7 +39,7 @@ describe('management transport', () => {
       }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const request = managementRequest<{ block_types: unknown[] }>('/api/catalog')
+    const request = managementRequest<{ block_types: unknown[] }>('/catalog')
     expect(managementAuth.getSnapshot()).toEqual({ open: true, reason: 'required' })
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -49,10 +49,31 @@ describe('management transport', () => {
 
     await expect(request).resolves.toEqual({ block_types: [] })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/agent-shell/api/catalog')
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Authorization'))
       .toBe('Bearer rejected-token')
     expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get('Authorization'))
       .toBe('Bearer accepted-token')
+  })
+
+  it('uses the namespaced public health endpoint without opening the auth challenge', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'ok',
+      runtime: 'model_streaming',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(managementRequest('/health')).resolves.toEqual({
+      status: 'ok',
+      runtime: 'model_streaming',
+    })
+
+    expect(managementAuth.getSnapshot()).toEqual({ open: false, reason: 'required' })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/agent-shell/api/health')
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Authorization')).toBe(false)
   })
 
   it('does not let a stale concurrent 401 clear a newer token', async () => {
@@ -67,8 +88,8 @@ describe('management transport', () => {
       })))
     vi.stubGlobal('fetch', fetchMock)
 
-    const firstRequest = managementRequest<{ ok: boolean }>('/api/catalog')
-    const secondRequest = managementRequest<{ ok: boolean }>('/api/readiness')
+    const firstRequest = managementRequest<{ ok: boolean }>('/catalog')
+    const secondRequest = managementRequest<{ ok: boolean }>('/readiness')
     managementAuth.submit('old-token')
     await until(() => fetchMock.mock.calls.length === 2)
 
@@ -119,7 +140,7 @@ describe('management transport', () => {
       headers: { 'X-Request-ID': 'req-test' },
     })))
 
-    const request = managementRequest('/api/main-agents', {
+    const request = managementRequest('/main-agents', {
       method: 'POST',
       body: JSON.stringify({}),
     })
@@ -146,7 +167,7 @@ describe('management transport', () => {
       },
     })))
 
-    const download = await managementNamedDownload('/api/configuration-bundles/export')
+    const download = await managementNamedDownload('/configuration-bundles/export')
 
     expect(download.filename).toBe('portable.agent-shell-config.zip')
     await expect(download.blob.text()).resolves.toBe('bundle')
@@ -166,6 +187,7 @@ describe('management transport', () => {
       status = 0
       statusText = ''
       responseText = ''
+      url = ''
       private progressListener: ((event: ProgressEvent) => void) | null = null
       private readonly listeners = new Map<string, () => void>()
 
@@ -173,7 +195,9 @@ describe('management transport', () => {
         FakeUploadRequest.instances.push(this)
       }
 
-      open(): void {}
+      open(_method: string, url: string): void {
+        this.url = url
+      }
 
       setRequestHeader(name: string, value: string): void {
         this.headers.set(name, value)
@@ -213,7 +237,7 @@ describe('management transport', () => {
     vi.stubGlobal('XMLHttpRequest', FakeUploadRequest)
     const progress = vi.fn()
     const upload = managementUpload<{ path: string }>(
-      '/api/file-manager/files/upload?path=notes%2Freadme.md',
+      '/file-manager/files/upload?path=notes%2Freadme.md',
       new Blob(['hello']),
       { onProgress: progress },
     )
@@ -223,6 +247,8 @@ describe('management transport', () => {
 
     await expect(upload).resolves.toEqual({ path: 'notes/readme.md' })
     expect(FakeUploadRequest.instances).toHaveLength(2)
+    expect(FakeUploadRequest.instances[0]?.url)
+      .toBe('/agent-shell/api/file-manager/files/upload?path=notes%2Freadme.md')
     expect(FakeUploadRequest.instances[0]?.headers.get('Authorization'))
       .toBe('Bearer old-token')
     expect(FakeUploadRequest.instances[1]?.headers.get('Authorization'))
@@ -246,7 +272,7 @@ describe('management transport', () => {
     managementAuth.submit('management-token')
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('host details')))
 
-    await expect(managementRequest('/api/catalog')).rejects.toMatchObject({
+    await expect(managementRequest('/catalog')).rejects.toMatchObject({
       code: 'network_error',
       messageKey: 'errors.network',
     })

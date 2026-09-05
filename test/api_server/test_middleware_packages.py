@@ -72,10 +72,10 @@ def test_middleware_template_catalog_and_private_package_creation(
     write_middleware_template(tmp_path, source=source)
 
     with make_client(tmp_path, monkeypatch) as client:
-        catalog = client.get("/api/python-package-templates/middleware")
+        catalog = client.get("/agent-shell/api/python-package-templates/middleware")
         selected = catalog.json()["catalog"][0]
         created = client.post(
-            "/api/blocks/custom-middleware",
+            "/agent-shell/api/blocks/custom-middleware",
             json={
                 "name": "Request label",
                 "python_package": {"folder": ""},
@@ -100,7 +100,7 @@ def test_middleware_requires_a_template_selection(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         created = client.post(
-            "/api/blocks/custom-middleware",
+            "/agent-shell/api/blocks/custom-middleware",
             json={
                 "name": "From empty template",
                 "python_package": {"folder": ""},
@@ -121,9 +121,9 @@ def test_missing_private_middleware_is_rejected_when_inspected(
     )
     write_middleware_template(tmp_path, source=source)
     with make_client(tmp_path, monkeypatch) as client:
-        selected = client.get("/api/python-package-templates/middleware").json()["catalog"][0]
+        selected = client.get("/agent-shell/api/python-package-templates/middleware").json()["catalog"][0]
         created = client.post(
-            "/api/blocks/custom-middleware",
+            "/agent-shell/api/blocks/custom-middleware",
             json={
                 "name": "Missing package",
                 "python_package": {"folder": ""},
@@ -141,10 +141,10 @@ def test_missing_private_middleware_is_rejected_when_inspected(
             / folder
         )
         assert client.get(
-            f"/api/blocks/custom-middleware/{created.json()['id']}"
+            f"/agent-shell/api/blocks/custom-middleware/{created.json()['id']}"
         ).status_code == 200
         response = client.get(
-            f"/api/blocks/custom-middleware/{created.json()['id']}/python-package"
+            f"/agent-shell/api/blocks/custom-middleware/{created.json()['id']}/python-package"
         )
 
     assert response.status_code == 404

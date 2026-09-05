@@ -16,7 +16,7 @@ def test_model_catalog_reports_a_missing_saved_connection_as_not_found(
     client, _ = make_client(tmp_path, monkeypatch)
 
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": "https://provider.example/v1",
@@ -35,7 +35,7 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, _ = make_client(tmp_path, monkeypatch)
-    connection = client.post("/api/model-connections", json=model_payload()).json()
+    connection = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     observed: list[tuple[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -56,7 +56,7 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": connection["base_url"],
@@ -65,7 +65,7 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
         },
     )
     no_key_response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": connection["base_url"],
@@ -88,7 +88,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_endpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, _ = make_client(tmp_path, monkeypatch)
-    connection = client.post("/api/model-connections", json=model_payload()).json()
+    connection = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     upstream_called = False
 
     def unexpected_client(**kwargs):
@@ -100,7 +100,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_endpoint(
         "agent_shell.provider_http.ProviderAsyncCurlTransport", unexpected_client
     )
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": "https://other-provider.example/v1",
@@ -132,7 +132,7 @@ def test_model_catalog_reports_cloudflare_browser_challenge_without_leaking_body
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": "https://provider.example/v1",
@@ -149,7 +149,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_provider(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, _ = make_client(tmp_path, monkeypatch)
-    connection = client.post("/api/model-connections", json=model_payload()).json()
+    connection = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     upstream_called = False
 
     def unexpected_client(**kwargs):
@@ -161,7 +161,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_provider(
         "agent_shell.provider_http.ProviderAsyncCurlTransport", unexpected_client
     )
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "deepseek",
             "base_url": connection["base_url"],
@@ -200,7 +200,7 @@ def test_model_catalog_rejects_malformed_provider_payload_without_leaking_it(
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(
-        "/api/fetch-models",
+        "/agent-shell/api/fetch-models",
         json={
             "provider": "openai",
             "base_url": "https://provider.example/v1",

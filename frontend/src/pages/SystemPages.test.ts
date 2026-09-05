@@ -35,7 +35,7 @@ const currentSettings: SystemSettings = {
   cors_origins: [],
   trusted_proxy_cidrs: [],
   restart_required: false,
-  active_management_url: 'http://127.0.0.1:19100/admin',
+  active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
   active_studio_url: 'https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2F127.0.0.1%3A19100',
 }
@@ -46,9 +46,25 @@ const currentApiServerSettings: ApiServerSettings = {
   api_key: { configured: true },
   max_initial_messages: 1000,
   message_interception_enabled: false,
-  api_base_url: 'http://127.0.0.1:19100/v1',
-  models_endpoint: 'http://127.0.0.1:19100/v1/models',
-  chat_completions_endpoint: 'http://127.0.0.1:19100/v1/chat/completions',
+  service_entries: {
+    management_console_url: 'http://127.0.0.1:19100/admin#/',
+    agent_server_base_url: 'http://127.0.0.1:19100',
+    api_docs_url: 'http://127.0.0.1:19100/docs',
+    openapi_schema_url: 'http://127.0.0.1:19100/openapi.json',
+    langgraph_studio_url: 'https://smith.langchain.com/studio/?baseUrl=http%3A%2F%2F127.0.0.1%3A19100',
+  },
+  api_endpoints: {
+    agent_shell_base_url: 'http://127.0.0.1:19100/agent-shell/api',
+    openai_base_url: 'http://127.0.0.1:19100/compat/openai/v1',
+    models_endpoint: 'http://127.0.0.1:19100/compat/openai/v1/models',
+    chat_completions_endpoint: 'http://127.0.0.1:19100/compat/openai/v1/chat/completions',
+    langgraph_route_families: ['/assistants/*', '/threads/*', '/runs/*', '/store/*', '/mcp/', '/a2a/{assistant_id}'],
+    agent_shell_health_endpoint: 'http://127.0.0.1:19100/agent-shell/api/health',
+    agent_shell_readiness_endpoint: 'http://127.0.0.1:19100/agent-shell/api/readiness',
+    langgraph_health_endpoint: 'http://127.0.0.1:19100/ok',
+    langgraph_info_endpoint: 'http://127.0.0.1:19100/info',
+    langgraph_metrics_endpoint: 'http://127.0.0.1:19100/metrics',
+  },
   runtime: 'model_streaming',
 }
 

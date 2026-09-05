@@ -8,18 +8,18 @@ def test_configuration_validation_settings_are_persistent_and_bounded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        initial = client.get("/api/validation/settings")
+        initial = client.get("/agent-shell/api/validation/settings")
         saved = client.put(
-            "/api/validation/settings",
+            "/agent-shell/api/validation/settings",
             json={"debounce_ms": 500},
         )
-        reloaded = client.get("/api/validation/settings")
+        reloaded = client.get("/agent-shell/api/validation/settings")
         too_small = client.put(
-            "/api/validation/settings",
+            "/agent-shell/api/validation/settings",
             json={"debounce_ms": 99},
         )
         large = client.put(
-            "/api/validation/settings",
+            "/agent-shell/api/validation/settings",
             json={"debounce_ms": 10_001},
         )
 

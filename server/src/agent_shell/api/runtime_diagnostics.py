@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 
 
@@ -15,13 +16,13 @@ class RuntimeDiagnosticsRetentionUpdate(BaseModel):
 def build_runtime_diagnostics_router(
     diagnostics: RuntimeDiagnostics,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
-    @router.get("/api/runtime-diagnostics")
+    @router.get("/runtime-diagnostics")
     async def get_runtime_diagnostics() -> dict[str, object]:
         return diagnostics.settings()
 
-    @router.put("/api/runtime-diagnostics/retention")
+    @router.put("/runtime-diagnostics/retention")
     async def update_runtime_diagnostics_retention(
         payload: RuntimeDiagnosticsRetentionUpdate,
     ) -> dict[str, object]:

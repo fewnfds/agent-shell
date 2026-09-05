@@ -162,13 +162,13 @@ def create_main_agent(
         **(model_request_settings or {}),
     }
     connection_response = client.post(
-        "/api/model-connections",
+        "/agent-shell/api/model-connections",
         json=model_payload,
     )
     assert connection_response.status_code == 200, connection_response.text
     connection = connection_response.json()
     requirement_response = client.post(
-        "/api/blocks/model-requirement",
+        "/agent-shell/api/blocks/model-requirement",
         json={
             "name": "Published model requirement",
             "description": "A model capable of the published workflow task.",
@@ -177,12 +177,12 @@ def create_main_agent(
     assert requirement_response.status_code == 200, requirement_response.text
     requirement = requirement_response.json()
     binding_response = client.put(
-        f"/api/model-requirements/{requirement['id']}/binding",
+        f"/agent-shell/api/model-requirements/{requirement['id']}/binding",
         json={"connection_id": connection["id"]},
     )
     assert binding_response.status_code == 200, binding_response.text
     output_response = client.post(
-        "/api/blocks/agent-event-output",
+        "/agent-shell/api/blocks/agent-event-output",
         json=agent_event_output_payload(
             client,
             "Published output",
@@ -192,13 +192,13 @@ def create_main_agent(
     event_output = output_response.json()
     if filesystem_id is None:
         filesystem = client.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={"name": "Published Agent filesystem"},
         )
         assert filesystem.status_code == 200, filesystem.text
         filesystem_id = filesystem.json()["id"]
     filesystem_tools = client.post(
-        "/api/blocks/filesystem-tools",
+        "/agent-shell/api/blocks/filesystem-tools",
         json={"name": "Published Agent filesystem tools"},
     )
     assert filesystem_tools.status_code == 200, filesystem_tools.text
@@ -216,7 +216,7 @@ def create_main_agent(
         }
     )
     response = client.post(
-        "/api/main-agents",
+        "/agent-shell/api/main-agents",
         json={
             "name": "Published Main Agent",
             "capability_refs": capability_refs,
@@ -234,7 +234,7 @@ def create_workflow(
 ) -> dict:
     workflow_name = name or "Test Workflow"
     response = client.post(
-        "/api/workflows",
+        "/agent-shell/api/workflows",
         json={
             "name": workflow_name,
             "description": "Test Workflow.",
@@ -290,7 +290,7 @@ def save_linear_workflow_graph(
         },
     }
     response = client.put(
-        f"/api/workflows/{workflow['id']}/graph",
+        f"/agent-shell/api/workflows/{workflow['id']}/graph",
         json=document,
     )
     assert response.status_code == 200, response.text
@@ -337,7 +337,7 @@ def _python_output_payload(
     selected = next(
         item
         for item in client.get(
-            f"/api/python-package-templates/{component_type}"
+            f"/agent-shell/api/python-package-templates/{component_type}"
         ).json()["catalog"]
         if item["key"] == template_key
     )

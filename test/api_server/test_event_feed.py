@@ -35,10 +35,10 @@ def test_event_feed_exposes_only_supported_sources(
             exception_type="AgentRuntimeError",
         )
         response = client.get(
-            "/api/event-feed", params=event_feed_params(page_size=100)
+            "/agent-shell/api/event-feed", params=event_feed_params(page_size=100)
         )
         rejected = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=event_feed_params(source="api_call"),
         )
 
@@ -68,7 +68,7 @@ def test_system_log_settings_reject_boolean_size(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         rejected = client.put(
-            "/api/event-feed/system/settings",
+            "/agent-shell/api/event-feed/system/settings",
             json={"max_size_mib": True},
         )
 
@@ -101,11 +101,11 @@ def test_event_feed_deletes_filtered_runtime_records_across_pages(
             "query": marker,
         }
         listed = client.get(
-            "/api/event-feed", params={**window, "page_size": 2}
+            "/agent-shell/api/event-feed", params={**window, "page_size": 2}
         ).json()
-        deleted = client.post("/api/event-feed/delete", json=window)
+        deleted = client.post("/agent-shell/api/event-feed/delete", json=window)
         remaining = client.get(
-            "/api/event-feed", params=event_feed_params(source="runtime", query=marker)
+            "/agent-shell/api/event-feed", params=event_feed_params(source="runtime", query=marker)
         ).json()
 
     assert listed["total"] == 3
@@ -117,13 +117,13 @@ def test_runtime_diagnostic_settings_have_no_capture_switch(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        settings = client.get("/api/runtime-diagnostics")
+        settings = client.get("/agent-shell/api/runtime-diagnostics")
         removed = client.put(
-            "/api/runtime-diagnostics/detail",
+            "/agent-shell/api/runtime-diagnostics/detail",
             json={"enabled": True},
         )
         listing = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=event_feed_params(source="runtime"),
         ).json()
 
@@ -171,15 +171,15 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
             )
 
         listing = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=event_feed_params(source="runtime", query=request_id),
         ).json()
         item = listing["items"][0]
         download = client.get(
-            f"/api/event-feed/runtime/{item['id']}/download"
+            f"/agent-shell/api/event-feed/runtime/{item['id']}/download"
         )
         deleted = client.post(
-            "/api/event-feed/delete",
+            "/agent-shell/api/event-feed/delete",
             json={
                 **EVENT_FEED_TEST_WINDOW,
                 "source": ["runtime"],
@@ -188,7 +188,7 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
             },
         )
         missing = client.get(
-            f"/api/event-feed/runtime/{item['id']}/download"
+            f"/agent-shell/api/event-feed/runtime/{item['id']}/download"
         )
 
     assert item["download_kind"] == "diagnostic_detail"
@@ -227,14 +227,14 @@ def test_provider_error_detail_is_management_only(
         )
 
         listing = client.get(
-            "/api/event-feed",
+            "/agent-shell/api/event-feed",
             params=event_feed_params(
                 source="runtime", query="request-provider-detail"
             ),
         ).json()
         item = listing["items"][0]
         download = client.get(
-            f"/api/event-feed/runtime/{item['id']}/download"
+            f"/agent-shell/api/event-feed/runtime/{item['id']}/download"
         )
 
     assert raw_provider_response not in json.dumps(listing)

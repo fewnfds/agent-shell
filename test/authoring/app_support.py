@@ -90,7 +90,7 @@ def python_component_payload(
         "agent-event-output": "agent-event-output",
     }[component_type]
     selected = client.get(
-        f"/api/python-package-templates/{endpoint}"
+        f"/agent-shell/api/python-package-templates/{endpoint}"
     ).json()["catalog"][0]
     return {
         "name": name,

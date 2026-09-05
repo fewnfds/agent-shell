@@ -60,7 +60,7 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, client = _client(tmp_path, monkeypatch)
-    response = client.get("/api/system/settings")
+    response = client.get("/agent-shell/api/system/settings")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -78,7 +78,7 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "trusted_proxy_cidrs": [],
         "management_token": {"configured": True},
         "restart_required": False,
-        "active_management_url": "http://testserver/admin",
+        "active_management_url": "http://testserver/admin#/",
         "active_api_docs_url": "http://testserver/docs",
         "active_studio_url": (
             "https://smith.langchain.com/studio/"
@@ -99,7 +99,7 @@ def test_valid_system_settings_are_atomic_and_take_effect_after_restart(
     )
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             port=9123,
             n_jobs_per_worker=12,
@@ -168,7 +168,7 @@ def test_system_and_model_secret_updates_preserve_each_other(
     app.state.model_resources.save_connection(connection_id, model_payload)
 
     updated = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(port=9125),
     )
 
@@ -179,7 +179,7 @@ def test_system_and_model_secret_updates_preserve_each_other(
     )
 
     client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             management_token={
                 "operation": "replace",
@@ -217,7 +217,7 @@ def test_unreachable_langsmith_connection_does_not_save_settings_or_secret(
     )
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             langsmith_tracing_enabled=True,
             langsmith_api_key={"operation": "replace", "value": replacement},
@@ -241,7 +241,7 @@ def test_invalid_candidate_does_not_write_or_reveal_replacement_secrets(
     original = settings_path.read_text(encoding="utf-8")
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             host="0.0.0.0",
             management_token={"operation": "replace", "value": replacement},
@@ -261,7 +261,7 @@ def test_management_password_replacement_is_write_only_and_persists(
     replacement = "new-management-password"
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             management_token={"operation": "replace", "value": replacement},
         ),
@@ -286,7 +286,7 @@ def test_management_password_can_equal_the_api_key(
     _, client = _client(tmp_path, monkeypatch)
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             management_token={"operation": "replace", "value": API_KEY},
         ),
@@ -313,7 +313,7 @@ def test_permission_failure_leaves_existing_settings_unchanged(
     )
 
     response = client.put(
-        "/api/system/settings",
+        "/agent-shell/api/system/settings",
         json=_payload(
             port=9124,
             management_token={
@@ -334,7 +334,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
 ) -> None:
     _, client = _client(tmp_path, monkeypatch)
 
-    current = client.get("/api/system/runtime-policy")
+    current = client.get("/agent-shell/api/system/runtime-policy")
 
     assert current.status_code == 200
     assert current.json()["retained_lifecycles"] == 20
@@ -359,7 +359,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
             "retained_lifecycles": 0,
         }
     )
-    saved = client.put("/api/system/runtime-policy", json=update)
+    saved = client.put("/agent-shell/api/system/runtime-policy", json=update)
 
     assert saved.status_code == 200, saved.text
     assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
@@ -375,11 +375,11 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     ] == 0
 
     invalid = {**update, "content_blocks": 0}
-    rejected = client.put("/api/system/runtime-policy", json=invalid)
+    rejected = client.put("/agent-shell/api/system/runtime-policy", json=invalid)
     assert rejected.status_code == 422
 
     boolean = {**update, "content_blocks": True}
-    rejected_boolean = client.put("/api/system/runtime-policy", json=boolean)
+    rejected_boolean = client.put("/agent-shell/api/system/runtime-policy", json=boolean)
     assert rejected_boolean.status_code == 422
 
     invalid_retention = {
@@ -387,7 +387,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
         "retained_lifecycles": -1,
     }
     rejected_retention = client.put(
-        "/api/system/runtime-policy",
+        "/agent-shell/api/system/runtime-policy",
         json=invalid_retention,
     )
     assert rejected_retention.status_code == 422
@@ -397,7 +397,7 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
         "retained_lifecycles": True,
     }
     rejected_boolean_retention = client.put(
-        "/api/system/runtime-policy",
+        "/agent-shell/api/system/runtime-policy",
         json=boolean_retention,
     )
     assert rejected_boolean_retention.status_code == 422

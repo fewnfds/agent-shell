@@ -7,6 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from pydantic import ValidationError
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.configuration.identity import new_configuration_id
 from agent_shell.mcp.importing import (
@@ -27,7 +28,7 @@ def build_mcp_connection_router(
     block_store: BlockStore,
     resources: McpResourceStore,
 ) -> APIRouter:
-    router = APIRouter()
+    router = management_api_router()
 
     def connection_or_404(connection_id: str) -> dict[str, Any]:
         value = resources.get_connection(connection_id)
@@ -72,11 +73,11 @@ def build_mcp_connection_router(
             "connection": resources.get_connection(connection_id) if connection_id else None,
         }
 
-    @router.get("/api/mcp-connections")
+    @router.get("/mcp-connections")
     async def list_mcp_connections() -> list[dict[str, Any]]:
         return resources.list_connections()
 
-    @router.post("/api/mcp-connections/import/preview")
+    @router.post("/mcp-connections/import/preview")
     async def preview_mcp_connections_import(payload: dict[str, Any]) -> dict[str, Any]:
         if set(payload) != {"document"}:
             raise management_error(
@@ -95,7 +96,7 @@ def build_mcp_connection_router(
                 message="The MCP import document is invalid or unsupported.",
             ) from exc
 
-    @router.post("/api/mcp-connections/import")
+    @router.post("/mcp-connections/import")
     async def import_mcp_connections(payload: dict[str, Any]) -> list[dict[str, Any]]:
         if set(payload).difference({"document", "value_sources"}) or "document" not in payload:
             raise management_error(
@@ -127,11 +128,11 @@ def build_mcp_connection_router(
                 message="The MCP import document is invalid or unsupported.",
             ) from exc
 
-    @router.get("/api/mcp-connections/{connection_id}")
+    @router.get("/mcp-connections/{connection_id}")
     async def get_mcp_connection(connection_id: str) -> dict[str, Any]:
         return connection_or_404(connection_id)
 
-    @router.post("/api/mcp-connections/{connection_id}/install")
+    @router.post("/mcp-connections/{connection_id}/install")
     async def install_mcp_connection(connection_id: str) -> dict[str, Any]:
         connection = connection_or_404(connection_id)
         if connection.get("transport") != "stdio":
@@ -168,16 +169,16 @@ def build_mcp_connection_router(
             "tools": [str(tool.name) for tool in tools],
         }
 
-    @router.post("/api/mcp-connections")
+    @router.post("/mcp-connections")
     async def create_mcp_connection(payload: dict[str, Any]) -> dict[str, Any]:
         return save_connection(new_configuration_id(), payload)
 
-    @router.put("/api/mcp-connections/{connection_id}")
+    @router.put("/mcp-connections/{connection_id}")
     async def update_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         return save_connection(connection_id, payload)
 
-    @router.post("/api/mcp-connections/{connection_id}/copy")
+    @router.post("/mcp-connections/{connection_id}/copy")
     async def copy_mcp_connection(connection_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         connection_or_404(connection_id)
         if set(payload) != {"name"} or not isinstance(payload.get("name"), str) or not payload["name"].strip():
@@ -199,7 +200,7 @@ def build_mcp_connection_router(
         except (ValidationError, ValueError) as exc:
             raise invalid_connection(exc) from exc
 
-    @router.delete("/api/mcp-connections/{connection_id}")
+    @router.delete("/mcp-connections/{connection_id}")
     async def delete_mcp_connection(connection_id: str) -> dict[str, bool]:
         if not resources.delete_connection(connection_id):
             raise management_error(
@@ -210,14 +211,14 @@ def build_mcp_connection_router(
             )
         return {"ok": True}
 
-    @router.get("/api/mcp-requirements")
+    @router.get("/mcp-requirements")
     async def list_mcp_requirements() -> list[dict[str, Any]]:
         return [
             requirement_projection(item)
             for item in block_store.list_blocks("mcp-requirement")
         ]
 
-    @router.put("/api/mcp-requirements/{requirement_id}/binding")
+    @router.put("/mcp-requirements/{requirement_id}/binding")
     async def bind_mcp_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requirement = block_store.get_block("mcp-requirement", requirement_id)
         if requirement is None:

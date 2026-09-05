@@ -31,7 +31,7 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
     mapped.mkdir()
     with make_client(source_root, monkeypatch) as source:
         filesystem_response = source.post(
-            "/api/blocks/filesystem",
+            "/agent-shell/api/blocks/filesystem",
             json={
                 "name": "Portable workspace",
                 "mapped_directories": [
@@ -49,7 +49,7 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             filesystem_id=filesystem_response.json()["id"],
         )
         subagent = source.post(
-            "/api/subagents",
+            "/agent-shell/api/subagents",
             json={
                 "component_name": "Portable Worker",
                 "name": "portable_worker",
@@ -69,13 +69,13 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             {"kind": "main_agent", "source_id": main_agent["id"]},
         ):
             root_export = source.post(
-                "/api/configuration-bundles/export",
+                "/agent-shell/api/configuration-bundles/export",
                 json=root,
             )
             assert root_export.status_code == 200, root_export.text
         workflow = create_workflow(source, name="Portable Workflow")
         scheduling_response = source.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={
                 "name": "Portable response scheduling",
                 "queue": {
@@ -88,7 +88,7 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
         )
         assert scheduling_response.status_code == 200, scheduling_response.text
         configured_workflow = source.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 **{
                     key: workflow[key]
@@ -109,7 +109,7 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
         workflow = configured_workflow.json()
         save_linear_workflow_graph(source, workflow, main_agent)
         exported = source.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={"kind": "workflow", "source_id": workflow["id"]},
         )
         assert exported.status_code == 200, exported.text
@@ -142,7 +142,7 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
     target_workspace.mkdir()
     with make_client(target_root, monkeypatch) as target:
         preview_response = target.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("portable.zip", bundle, "application/zip")},
         )
         assert preview_response.status_code == 200, preview_response.text
@@ -181,7 +181,7 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
             },
         }
         rejected_rebind = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("portable.zip", bundle, "application/zip")},
             data={"request": json.dumps(invalid_rebind)},
         )
@@ -201,7 +201,7 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
             },
         }
         imported_response = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("portable.zip", bundle, "application/zip")},
             data={"request": json.dumps(request)},
         )
@@ -280,7 +280,7 @@ def test_bundle_import_failure_removes_staged_configuration_and_assets(
     target_workspace.mkdir()
     with make_client(target_root, monkeypatch) as target:
         preview = target.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("portable.zip", bundle, "application/zip")},
         ).json()
         binding = preview["filesystem_bindings"][0]
@@ -316,7 +316,7 @@ def test_bundle_import_failure_removes_staged_configuration_and_assets(
 
         monkeypatch.setattr(FileConfigRepository, "update_config", fail_import)
         response = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("portable.zip", bundle, "application/zip")},
             data={"request": json.dumps(request)},
         )
@@ -340,12 +340,12 @@ def test_stale_target_uuid_is_rejected_without_deleting_current_configuration(
     source_root.mkdir()
     with make_client(source_root, monkeypatch) as source:
         created = source.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Portable prompt", "system_prompt": "Be precise."},
         )
         assert created.status_code == 200, created.text
         exported = source.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={
                 "kind": "component",
                 "type": "system-prompt",
@@ -411,12 +411,12 @@ def test_committed_import_survives_deferred_housekeeping(
     source_root.mkdir()
     with make_client(source_root, monkeypatch) as source:
         created = source.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Committed prompt", "system_prompt": "Be precise."},
         )
         assert created.status_code == 200, created.text
         exported = source.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={
                 "kind": "component",
                 "type": "system-prompt",
@@ -441,11 +441,11 @@ def test_committed_import_survives_deferred_housekeeping(
     )
     with make_client(target_root, monkeypatch) as target:
         preview = target.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
         ).json()
         response = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={
                 "request": json.dumps(
@@ -461,7 +461,7 @@ def test_committed_import_survives_deferred_housekeeping(
         target_id = next(iter(preview["target_ids"].values()))
         imported_ids = {
             item["id"]
-            for item in target.get("/api/blocks/system-prompt").json()
+            for item in target.get("/agent-shell/api/blocks/system-prompt").json()
         }
         assert imported_ids == {target_id}
 
@@ -495,7 +495,7 @@ def test_skill_private_package_import_is_independent_from_target_templates(
     )
     with make_client(source_root, monkeypatch) as source:
         created = source.post(
-            "/api/blocks/skill",
+            "/agent-shell/api/blocks/skill",
             json={
                 "name": "Outline Skill",
                 "skill_template_paths": ["group/outline"],
@@ -511,7 +511,7 @@ def test_skill_private_package_import_is_independent_from_target_templates(
         )
         private_manifest.write_text("user-authored invalid content\n", encoding="utf-8")
         exported = source.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={
                 "kind": "component",
                 "type": "skill",
@@ -530,7 +530,7 @@ def test_skill_private_package_import_is_independent_from_target_templates(
     )
     with make_client(target_root, monkeypatch) as target:
         preview_response = target.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("skill.zip", exported.content, "application/zip")},
         )
         assert preview_response.status_code == 200, preview_response.text
@@ -556,7 +556,7 @@ def test_skill_private_package_import_is_independent_from_target_templates(
             "resolutions": {"target_ids": preview["target_ids"]},
         }
         imported = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("skill.zip", exported.content, "application/zip")},
             data={"request": json.dumps(request)},
         )
@@ -648,13 +648,13 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
     source_root.mkdir()
     with make_client(source_root, monkeypatch) as source:
         created = source.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": "Shared prompt", "system_prompt": "Be precise."},
         )
         assert created.status_code == 200, created.text
         source_id = created.json()["id"]
         exported = source.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={
                 "kind": "component",
                 "type": "system-prompt",
@@ -667,12 +667,12 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
     target_root.mkdir()
     with make_client(target_root, monkeypatch) as target:
         existing = target.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": " shared prompt ", "system_prompt": "Existing."},
         )
         assert existing.status_code == 200, existing.text
         preview_response = target.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
         )
         assert preview_response.status_code == 200, preview_response.text
@@ -689,7 +689,7 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
             "resolutions": {"target_ids": preview["target_ids"]},
         }
         unconfirmed = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={"request": json.dumps(base_request)},
         )
@@ -710,7 +710,7 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
             "33333333-3333-4333-8333-333333333333"
         )
         rejected_plan = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={"request": json.dumps(wrong_plan)},
         )
@@ -719,25 +719,25 @@ def test_name_conflict_requires_confirmation_and_import_plan_cannot_be_replayed(
         wrong_digest = deepcopy_json(confirmed_request)
         wrong_digest["bundle_sha256"] = "0" * 64
         rejected_digest = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={"request": json.dumps(wrong_digest)},
         )
         assert rejected_digest.status_code == 409, rejected_digest.text
 
         imported = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={"request": json.dumps(confirmed_request)},
         )
         assert imported.status_code == 200, imported.text
         replayed = target.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("prompt.zip", exported.content, "application/zip")},
             data={"request": json.dumps(confirmed_request)},
         )
         assert replayed.status_code == 409, replayed.text
-        prompts = target.get("/api/blocks/system-prompt").json()
+        prompts = target.get("/agent-shell/api/blocks/system-prompt").json()
 
     assert {prompt["name"] for prompt in prompts} == {
         "shared prompt",
@@ -753,11 +753,11 @@ def test_malformed_bundle_is_422_for_preview_and_import(
     malformed = b"not-a-zip"
     with make_client(tmp_path, monkeypatch) as client:
         preview = client.post(
-            "/api/configuration-bundles/preview",
+            "/agent-shell/api/configuration-bundles/preview",
             files={"bundle": ("broken.zip", malformed, "application/zip")},
         )
         imported = client.post(
-            "/api/configuration-bundles/import",
+            "/agent-shell/api/configuration-bundles/import",
             files={"bundle": ("broken.zip", malformed, "application/zip")},
             data={
                 "request": json.dumps(
@@ -784,7 +784,7 @@ def test_configuration_names_reject_windows_reserved_basenames(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         created = client.post(
-            "/api/blocks/system-prompt",
+            "/agent-shell/api/blocks/system-prompt",
             json={"name": name, "system_prompt": "Portable prompt."},
         )
     assert created.status_code == 422, created.text
@@ -798,11 +798,11 @@ def test_single_root_bundle_rejects_a_dangling_reference(
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Incomplete Workflow")
         scheduling = client.post(
-            "/api/blocks/response-stream-scheduling",
+            "/agent-shell/api/blocks/response-stream-scheduling",
             json={"name": "Temporary scheduling"},
         ).json()
         updated = client.put(
-            f"/api/workflows/{workflow['id']}",
+            f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 **{
                     key: workflow[key]
@@ -821,12 +821,12 @@ def test_single_root_bundle_rejects_a_dangling_reference(
         )
         assert updated.status_code == 200, updated.text
         deleted = client.delete(
-            f"/api/blocks/response-stream-scheduling/{scheduling['id']}"
+            f"/agent-shell/api/blocks/response-stream-scheduling/{scheduling['id']}"
         )
         assert deleted.status_code == 200, deleted.text
 
         exported = client.post(
-            "/api/configuration-bundles/export",
+            "/agent-shell/api/configuration-bundles/export",
             json={"kind": "workflow", "source_id": workflow["id"]},
         )
 

@@ -66,4 +66,4 @@ Shell 合成的 Workflow Run 状态不是 Agent-owned ProtocolEvent，由 Workfl
 
 ## 配置保存
 
-从 `GET /api/python-package-templates/agent-event-output` 取得模板 `key` 与 `revision`，提交到 `POST /api/blocks/agent-event-output`。首次保存后服务端生成配置 UUID，package folder 等于配置名称，manifest ID 等于配置 UUID。源码位于当前 Configuration Repository 的 `data/config_repos/<repository-name>/python_packages/agent_event_output/<configuration-name>/` 独占目录。
+从 `GET /agent-shell/api/python-package-templates/agent-event-output` 取得模板 `key` 与 `revision`，提交到 `POST /agent-shell/api/blocks/agent-event-output`。首次保存后服务端生成配置 UUID，package folder 等于配置名称，manifest ID 等于配置 UUID。源码位于当前 Configuration Repository 的 `data/config_repos/<repository-name>/python_packages/agent_event_output/<configuration-name>/` 独占目录。

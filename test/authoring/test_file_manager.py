@@ -12,7 +12,7 @@ from .app_support import make_client
 
 def _repository_path(client) -> str:
     response = client.get(
-        "/api/file-manager",
+        "/agent-shell/api/file-manager",
         params={"path": "data/config_repos"},
     )
     assert response.status_code == 200, response.text
@@ -25,25 +25,25 @@ def test_file_manager_uses_real_data_paths_for_common_file_workflows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        root = client.get("/api/file-manager")
+        root = client.get("/agent-shell/api/file-manager")
         created_directory = client.post(
-            "/api/file-manager/directories",
+            "/agent-shell/api/file-manager/directories",
             json={"path": "data/files/notes/drafts"},
         )
         created_file = client.post(
-            "/api/file-manager/text-files",
+            "/agent-shell/api/file-manager/text-files",
             json={"path": "data/files/notes/drafts/idea.txt"},
         )
         client.post(
-            "/api/file-manager/directories",
+            "/agent-shell/api/file-manager/directories",
             json={"path": "data/files/notes/empty"},
         )
         opened = client.get(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             params={"path": "data/files/notes/drafts/idea.txt"},
         )
         saved = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": "data/files/notes/drafts/idea.txt",
                 "content": "第一版内容\n",
@@ -51,26 +51,26 @@ def test_file_manager_uses_real_data_paths_for_common_file_workflows(
             },
         )
         listing = client.get(
-            "/api/file-manager",
+            "/agent-shell/api/file-manager",
             params={"path": "data/files/notes/drafts"},
         )
         renamed = client.patch(
-            "/api/file-manager",
+            "/agent-shell/api/file-manager",
             json={
                 "path": "data/files/notes/drafts/idea.txt",
                 "name": "final.txt",
             },
         )
         downloaded = client.get(
-            "/api/file-manager/download",
+            "/agent-shell/api/file-manager/download",
             params={"path": "data/files/notes/drafts/final.txt"},
         )
         archived = client.get(
-            "/api/file-manager/download",
+            "/agent-shell/api/file-manager/download",
             params={"path": "data/files/notes"},
         )
         deleted = client.delete(
-            "/api/file-manager",
+            "/agent-shell/api/file-manager",
             params={"path": "data/files/notes"},
         )
 
@@ -120,15 +120,15 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
         config_file.write_text("name: Managed\n", encoding="utf-8")
 
         repository = client.get(
-            "/api/file-manager",
+            "/agent-shell/api/file-manager",
             params={"path": repository_path},
         )
         config_text = client.get(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             params={"path": f"{repository_path}/components/example/record.yaml"},
         )
         config_write = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": f"{repository_path}/components/example/record.yaml",
                 "content": "name: bypassed\n",
@@ -136,19 +136,19 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
             },
         )
         config_create = client.post(
-            "/api/file-manager/text-files",
+            "/agent-shell/api/file-manager/text-files",
             json={"path": f"{repository_path}/components/example/other.yaml"},
         )
         template_create = client.post(
-            "/api/file-manager/text-files",
+            "/agent-shell/api/file-manager/text-files",
             json={"path": "data/templates/custom/example.yaml"},
         )
         template_open = client.get(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             params={"path": "data/templates/custom/example.yaml"},
         )
         template_write = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": "data/templates/custom/example.yaml",
                 "content": "enabled: true\n",
@@ -156,14 +156,14 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
             },
         )
         hidden = [
-            client.get("/api/file-manager", params={"path": "data/config"}),
-            client.get("/api/file-manager", params={"path": "data/state"}),
+            client.get("/agent-shell/api/file-manager", params={"path": "data/config"}),
+            client.get("/agent-shell/api/file-manager", params={"path": "data/state"}),
             client.get(
-                "/api/file-manager/text",
+                "/agent-shell/api/file-manager/text",
                 params={"path": f"{repository_path}/repository.json"},
             ),
             client.get(
-                "/api/file-manager",
+                "/agent-shell/api/file-manager",
                 params={"path": f"{repository_path}/configuration_imports"},
             ),
         ]
@@ -194,23 +194,23 @@ def test_file_manager_uses_the_configured_text_editor_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        current = client.get("/api/system/runtime-policy").json()
+        current = client.get("/agent-shell/api/system/runtime-policy").json()
         update = {
             key: value
             for key, value in current.items()
             if key not in {"defaults", "minimums", "configurable"}
         }
         update["text_edit_bytes"] = 4
-        assert client.put("/api/system/runtime-policy", json=update).status_code == 200
+        assert client.put("/agent-shell/api/system/runtime-policy", json=update).status_code == 200
         assert client.post(
-            "/api/file-manager/text-files",
+            "/agent-shell/api/file-manager/text-files",
             json={"path": "data/files/small.txt"},
         ).status_code == 200
         opened = client.get(
-            "/api/file-manager/text", params={"path": "data/files/small.txt"}
+            "/agent-shell/api/file-manager/text", params={"path": "data/files/small.txt"}
         )
         saved = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": "data/files/small.txt",
                 "content": "12345",
@@ -228,18 +228,18 @@ def test_file_upload_streams_nested_paths_and_requires_explicit_overwrite(
     with make_client(tmp_path, monkeypatch) as client:
         path = "data/skills-template/outline/references/example.md"
         uploaded = client.put(
-            "/api/file-manager/upload", params={"path": path}, content=b"first"
+            "/agent-shell/api/file-manager/upload", params={"path": path}, content=b"first"
         )
         conflict = client.put(
-            "/api/file-manager/upload", params={"path": path}, content=b"second"
+            "/agent-shell/api/file-manager/upload", params={"path": path}, content=b"second"
         )
         replaced = client.put(
-            "/api/file-manager/upload",
+            "/agent-shell/api/file-manager/upload",
             params={"path": path, "overwrite": "true"},
             content=b"second",
         )
         downloaded = client.get(
-            "/api/file-manager/download", params={"path": path}
+            "/agent-shell/api/file-manager/download", params={"path": path}
         )
 
     assert uploaded.status_code == 200
@@ -255,17 +255,17 @@ def test_archive_preview_supports_mixed_selection_and_cleans_temporary_zip(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         client.put(
-            "/api/file-manager/upload",
+            "/agent-shell/api/file-manager/upload",
             params={"path": "data/files/readme.txt"},
             content=b"root",
         )
         client.put(
-            "/api/file-manager/upload",
+            "/agent-shell/api/file-manager/upload",
             params={"path": "data/files/documents/nested/note.txt"},
             content=b"nested",
         )
         client.post(
-            "/api/file-manager/directories",
+            "/agent-shell/api/file-manager/directories",
             json={"path": "data/files/documents/empty"},
         )
         selection = {
@@ -275,8 +275,8 @@ def test_archive_preview_supports_mixed_selection_and_cleans_temporary_zip(
                 "data/files/documents",
             ]
         }
-        preview = client.post("/api/file-manager/archive/preview", json=selection)
-        archived = client.post("/api/file-manager/archive", json=selection)
+        preview = client.post("/agent-shell/api/file-manager/archive/preview", json=selection)
+        archived = client.post("/agent-shell/api/file-manager/archive", json=selection)
 
     assert preview.json() == {
         "total_size": 10,
@@ -301,13 +301,13 @@ def test_text_save_detects_external_changes_and_rejects_binary_files(
     with make_client(tmp_path, monkeypatch) as client:
         path = "data/files/shared.txt"
         client.put(
-            "/api/file-manager/upload", params={"path": path}, content=b"original"
+            "/agent-shell/api/file-manager/upload", params={"path": path}, content=b"original"
         )
-        opened = client.get("/api/file-manager/text", params={"path": path}).json()
+        opened = client.get("/agent-shell/api/file-manager/text", params={"path": path}).json()
         disk_path = tmp_path / "data" / "files" / "shared.txt"
         disk_path.write_text("external change", encoding="utf-8")
         conflict = client.put(
-            "/api/file-manager/text",
+            "/agent-shell/api/file-manager/text",
             json={
                 "path": path,
                 "content": "stale edit",
@@ -315,12 +315,12 @@ def test_text_save_detects_external_changes_and_rejects_binary_files(
             },
         )
         client.put(
-            "/api/file-manager/upload",
+            "/agent-shell/api/file-manager/upload",
             params={"path": "data/files/binary.bin"},
             content=b"\xff\xfe",
         )
         binary = client.get(
-            "/api/file-manager/text", params={"path": "data/files/binary.bin"}
+            "/agent-shell/api/file-manager/text", params={"path": "data/files/binary.bin"}
         )
 
     assert conflict.status_code == 409
@@ -347,7 +347,7 @@ def test_file_manager_rejects_noncanonical_or_out_of_root_paths(
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         response = client.put(
-            "/api/file-manager/upload", params={"path": path}, content=b"blocked"
+            "/agent-shell/api/file-manager/upload", params={"path": path}, content=b"blocked"
         )
 
     assert response.status_code == 422
@@ -373,10 +373,10 @@ def test_file_manager_rejects_links_in_visible_and_archived_trees(
         except OSError:
             pytest.skip("This Windows account cannot create symbolic links.")
         linked = client.get(
-            "/api/file-manager", params={"path": "data/files/linked"}
+            "/agent-shell/api/file-manager", params={"path": "data/files/linked"}
         )
         archived = client.post(
-            "/api/file-manager/archive/preview",
+            "/agent-shell/api/file-manager/archive/preview",
             json={"paths": ["data/files/archive"]},
         )
 

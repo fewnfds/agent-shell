@@ -31,9 +31,9 @@ Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_re
 
 current backend 可以把一个 Component、Subagent、Main Agent 或 Workflow 作为 single-root export。Bundle 是 ZIP，root record 所需的声明式配置依赖会自动闭合；shared dependency 只保存一次。single-root closure 中存在缺失或类型错误的引用时，export 返回 `configuration_bundle_invalid`，不生成不完整 Bundle。整仓库下载是另一种原样诊断快照，会保留悬空 UUID。Management API 为：
 
-- `POST /api/configuration-bundles/export`：JSON body 使用 `kind`、`source_id`，Component 根另带 `type`；返回 Bundle ZIP。下载名只保留 ASCII 字母数字、`-`、`_` 和 `.`，其他字符替换为 `-`，再去除首尾的 `-`/`.`；空名回退到 root kind，Windows 保留设备名增加 `configuration-` 前缀，并使用 `.agent-shell-config.zip` 后缀；实际文件名以响应的 `Content-Disposition` 为准。整仓库下载是另一种 `agent-shell.configuration-repository` 格式，使用 `.agent-shell-repository.zip` 后缀。
-- `POST /api/configuration-bundles/preview`：multipart 的 `bundle` 文件；返回 `bundle_sha256`、固定 target UUID map、名称建议、Filesystem binding、errors、warnings 和本次 preview 的 `plan_token`；
-- `POST /api/configuration-bundles/import`：再次提交同一个 multipart `bundle`，并在 `request` form field 中提交 JSON；JSON 包含 preview 的 `bundle_sha256`、`plan_token`，以及与源记录一一对应的 `resolutions.target_ids`、可选 `resolutions.names` 和 `resolutions.filesystem_bindings`。
+- `POST /agent-shell/api/configuration-bundles/export`：JSON body 使用 `kind`、`source_id`，Component 根另带 `type`；返回 Bundle ZIP。下载名只保留 ASCII 字母数字、`-`、`_` 和 `.`，其他字符替换为 `-`，再去除首尾的 `-`/`.`；空名回退到 root kind，Windows 保留设备名增加 `configuration-` 前缀，并使用 `.agent-shell-config.zip` 后缀；实际文件名以响应的 `Content-Disposition` 为准。整仓库下载是另一种 `agent-shell.configuration-repository` 格式，使用 `.agent-shell-repository.zip` 后缀。
+- `POST /agent-shell/api/configuration-bundles/preview`：multipart 的 `bundle` 文件；返回 `bundle_sha256`、固定 target UUID map、名称建议、Filesystem binding、errors、warnings 和本次 preview 的 `plan_token`；
+- `POST /agent-shell/api/configuration-bundles/import`：再次提交同一个 multipart `bundle`，并在 `request` form field 中提交 JSON；JSON 包含 preview 的 `bundle_sha256`、`plan_token`，以及与源记录一一对应的 `resolutions.target_ids`、可选 `resolutions.names` 和 `resolutions.filesystem_bindings`。
 
 配置库根据当前名称输入、服务端 blocker 和 Filesystem binding 实时决定是否允许导入；mapped directory 还需明确 path origin。名称冲突时服务端建议的新名称只作为提示，不会被当成用户已确认值；输入有效新名称后可提交，commit 仍由服务端按当前 active Repository 再次校验。commit 复用本次 preview 的 `bundle_sha256`、`plan_token` 和 target UUID map。导入成功后刷新当前列表并留在原页面。
 

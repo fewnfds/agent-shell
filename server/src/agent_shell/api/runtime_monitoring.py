@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
+from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleNotFound,
@@ -29,8 +30,8 @@ def _not_found(exc: LookupError):
 def build_runtime_monitoring_router(service: LangGraphLifecycleService) -> APIRouter:
     """Expose official Run, Graph, State, and history through a thin product route."""
 
-    router = APIRouter()
-    prefix = "/api/workflow-lifecycles/{lifecycle_id}/monitoring"
+    router = management_api_router()
+    prefix = "/workflow-lifecycles/{lifecycle_id}/monitoring"
 
     async def read(call):
         try:
