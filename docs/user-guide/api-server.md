@@ -26,7 +26,7 @@ Content-Type: application/json
 
 请求按 Workflow name 捕获一次配置快照，并为该 Workflow 创建或复用官方 Assistant、为请求创建专属 Thread 和 Run。LangGraph Dev 的 dynamic graph factory 从同一快照读取 current Graph 和 canvas Agent Node reference，再递归构造 Main Agent、Subagent、各自 Filesystem、权限、Middleware、组件和 Provider secret view；官方 Worker 执行 Graph。官方 ProtocolEvent 继续由已有 Agent/Workflow Event Output、Response Stream Scheduler 和 OpenAI response writer 消费。
 
-Chat 请求体、content block、输入媒体单项/合计和输出媒体边界由【系统 / 系统配置】的限制策略决定；
+Chat 请求体、content block 和输入媒体单项/合计边界由【系统 / 系统配置】的限制策略决定；
 `GET /agent-shell/api/system/runtime-policy` 返回后端当前值、默认值、最小值和可配置字段，前端不复制隐藏上限。策略只有后端返回的正数最小值约束，没有额外产品最大值，实际仍受 Provider、
 内存、磁盘和网络能力影响。
 

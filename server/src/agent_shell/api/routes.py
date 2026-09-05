@@ -37,7 +37,6 @@ from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.workflows import WorkflowStore
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.validation.models import validation_failure_detail
 from agent_shell.python_packages.authoring import (
     PythonPackageAuthoringError,
@@ -100,7 +99,6 @@ def build_router(
     python_package_authoring: PythonPackageAuthoringService,
     skill_package_authoring: SkillPackageAuthoringService,
     component_mutations: ComponentMutationService,
-    runtime_policy: RuntimePolicyStore,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -300,7 +298,6 @@ def build_router(
             response = await provider_http_clients.async_client.get(
                 f"{base_url}/models",
                 headers=headers,
-                timeout=runtime_policy.snapshot().provider_catalog_timeout_seconds,
             )
             if (
                 response.status_code == 403

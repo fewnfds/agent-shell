@@ -59,25 +59,18 @@ const apiServerSettings: ApiServerSettings = {
 }
 
 const runtimePolicyValues: RuntimePolicySettings['defaults'] = {
-  retained_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
   decoded_total_bytes: 48 * 1024 * 1024,
-  media_output_bytes: 64 * 1024 * 1024,
-  text_edit_bytes: 2 * 1024 * 1024,
   provider_timeout_seconds: 600,
   provider_connect_timeout_seconds: 5,
-  provider_catalog_timeout_seconds: 15,
 }
 const runtimePolicySettings: RuntimePolicySettings = {
   ...runtimePolicyValues,
   defaults: { ...runtimePolicyValues },
   minimums: Object.fromEntries(
-    Object.keys(runtimePolicyValues).map((key) => [
-      key,
-      key === 'retained_lifecycles' ? 0 : 1,
-    ]),
+    Object.keys(runtimePolicyValues).map((key) => [key, 1]),
   ) as RuntimePolicySettings['minimums'],
   configurable: true,
 }
@@ -119,7 +112,6 @@ describe('SystemSettingsPage', () => {
       .toBe(systemSettings.active_studio_url)
 
     await interval.setValue('500')
-    await wrapper.get('#runtime-policy-retained_lifecycles').setValue('0')
     await wrapper.get('#runtime-policy-chat_completion_body_bytes').setValue('32')
     await wrapper.get('[data-testid="system-card-validation"]').trigger('submit')
     await flushPromises()
@@ -132,7 +124,6 @@ describe('SystemSettingsPage', () => {
     expect(api.updateRuntimePolicy).toHaveBeenCalledWith(expect.objectContaining({
       chat_completion_body_bytes: 32 * 1024 * 1024,
       provider_timeout_seconds: 600,
-      retained_lifecycles: 0,
     }))
     wrapper.unmount()
   })
@@ -170,7 +161,6 @@ describe('SystemSettingsPage', () => {
       'debounce_ms',
       'chat_completion_body_bytes',
       'provider_timeout_seconds',
-      'retained_lifecycles',
       'cors_origins',
       'trusted_proxy_cidrs',
     ]) {

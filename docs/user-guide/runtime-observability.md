@@ -30,7 +30,7 @@
 
 ## 保留与删除
 
-【系统 / 系统配置】的 `retained_lifecycles` 默认 `20`、最小 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
+【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
 
 删除 Lifecycle 会删除其官方 Thread、Run/checkpoint/State 和 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
 

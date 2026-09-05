@@ -12,8 +12,6 @@ from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.storage.database import SQLiteDatabase
-from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.runtime_policy import RuntimePolicyStore
 
 
 def test_database_initialization_drops_obsolete_runtime_tables(tmp_path: Path) -> None:
@@ -48,10 +46,8 @@ def test_database_initialization_drops_obsolete_runtime_tables(tmp_path: Path) -
 
 def test_media_output_becomes_a_file_manager_user_file(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
-    repository = FileConfigRepository(data_root)
-    policy = RuntimePolicyStore(repository)
-    files = FileManagerService(data_root, tmp_path / "runtime" / "tmp", policy)
-    response = MainAgentMediaResponse(files, "request-1", policy)
+    files = FileManagerService(data_root, tmp_path / "runtime" / "tmp")
+    response = MainAgentMediaResponse(files, "request-1")
 
     notification = asyncio.run(
         response.project(
@@ -82,38 +78,6 @@ def test_media_output_becomes_a_file_manager_user_file(tmp_path: Path) -> None:
         "path": renamed["path"],
         "deleted": True,
     }
-
-
-def test_media_response_uses_the_configured_byte_limit(tmp_path: Path) -> None:
-    data_root = tmp_path / "data"
-    repository = FileConfigRepository(data_root)
-    policy = RuntimePolicyStore(repository)
-    current = policy.public()
-    update = {
-        key: value
-        for key, value in current.items()
-        if key not in {"defaults", "minimums", "configurable"}
-    }
-    update["media_output_bytes"] = 4
-    policy.update(update)
-    files = FileManagerService(data_root, tmp_path / "runtime" / "tmp", policy)
-    response = MainAgentMediaResponse(files, "request-1", policy)
-
-    notification = asyncio.run(
-        response.project(
-            MediaContentBlock(
-                message_id="message-1",
-                block_index=0,
-                content={
-                    "type": "image",
-                    "mime_type": "image/png",
-                    "base64": base64.b64encode(b"12345").decode("ascii"),
-                },
-            )
-        )
-    )
-
-    assert notification == "AI发送来了【图片】，但返回内容无法保存。"
 
 
 def test_cancelled_projection_waits_for_file_save_without_publishing() -> None:

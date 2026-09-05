@@ -63,16 +63,12 @@ class SystemSettingsUpdate(BaseModel):
 class RuntimePolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    retained_lifecycles: int = Field(strict=True, ge=0)
     chat_completion_body_bytes: int = Field(strict=True, ge=1)
     content_blocks: int = Field(strict=True, ge=1)
     decoded_block_bytes: int = Field(strict=True, ge=1)
     decoded_total_bytes: int = Field(strict=True, ge=1)
-    media_output_bytes: int = Field(strict=True, ge=1)
-    text_edit_bytes: int = Field(strict=True, ge=1)
     provider_timeout_seconds: int = Field(strict=True, ge=1)
     provider_connect_timeout_seconds: int = Field(strict=True, ge=1)
-    provider_catalog_timeout_seconds: int = Field(strict=True, ge=1)
 
 
 def _raise_settings_error(error: SystemSettingsError) -> NoReturn:
@@ -98,8 +94,6 @@ def _with_active_urls(payload: dict, request: Request) -> dict:
 def build_system_settings_router(
     settings: SystemSettingsService,
     runtime_policy: RuntimePolicyStore,
-    *,
-    on_runtime_policy_updated=None,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -138,8 +132,6 @@ def build_system_settings_router(
                 message_key="errors.systemSettingsInvalid",
                 message=str(exc),
             ) from exc
-        if on_runtime_policy_updated is not None:
-            await on_runtime_policy_updated()
         return result
 
     return router

@@ -12,6 +12,7 @@ from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
 from agent_shell.storage.system_log_settings import SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
+from agent_shell.storage.workflow_lifecycle_settings import WorkflowLifecycleSettingsStore
 from support import API_KEY, MANAGEMENT_TOKEN, ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -27,7 +28,7 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         return None
 
     monkeypatch.setattr(
-        "agent_shell.runtime.request_snapshot.RequestSnapshotRuntime.enforce_lifecycle_retention",
+        "agent_shell.runtime.langgraph_lifecycle.LangGraphLifecycleService.enforce_retention",
         skip_external_retention,
     )
     monkeypatch.chdir(tmp_path)
@@ -337,10 +338,6 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     current = client.get("/agent-shell/api/system/runtime-policy")
 
     assert current.status_code == 200
-    assert current.json()["retained_lifecycles"] == 20
-    assert current.json()["minimums"][
-        "retained_lifecycles"
-    ] == 0
     assert current.json()["chat_completion_body_bytes"] == 64 * 1024 * 1024
     assert current.json()["defaults"]["provider_timeout_seconds"] == 600
     assert current.json()["minimums"]["content_blocks"] == 1
@@ -356,7 +353,6 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
             "chat_completion_body_bytes": 256 * 1024 * 1024,
             "content_blocks": 100_000,
             "provider_timeout_seconds": 3600,
-            "retained_lifecycles": 0,
         }
     )
     saved = client.put("/agent-shell/api/system/runtime-policy", json=update)
@@ -365,14 +361,10 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     assert saved.json()["chat_completion_body_bytes"] == 256 * 1024 * 1024
     assert saved.json()["content_blocks"] == 100_000
     assert saved.json()["provider_timeout_seconds"] == 3600
-    assert saved.json()["retained_lifecycles"] == 0
     document = yaml.safe_load(
         (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
     )
     assert document["runtime_policy"]["provider_timeout_seconds"] == 3600
-    assert document["runtime_policy"][
-        "retained_lifecycles"
-    ] == 0
 
     invalid = {**update, "content_blocks": 0}
     rejected = client.put("/agent-shell/api/system/runtime-policy", json=invalid)
@@ -382,25 +374,36 @@ def test_runtime_policy_is_discoverable_and_persists_without_product_maximums(
     rejected_boolean = client.put("/agent-shell/api/system/runtime-policy", json=boolean)
     assert rejected_boolean.status_code == 422
 
-    invalid_retention = {
-        **update,
-        "retained_lifecycles": -1,
-    }
-    rejected_retention = client.put(
-        "/agent-shell/api/system/runtime-policy",
-        json=invalid_retention,
-    )
-    assert rejected_retention.status_code == 422
 
-    boolean_retention = {
-        **update,
-        "retained_lifecycles": True,
-    }
-    rejected_boolean_retention = client.put(
-        "/agent-shell/api/system/runtime-policy",
-        json=boolean_retention,
+
+def test_workflow_lifecycle_settings_are_owned_by_runtime_monitoring(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+
+    current = client.get("/agent-shell/api/workflow-lifecycles/settings")
+    saved = client.put(
+        "/agent-shell/api/workflow-lifecycles/settings",
+        json={"retained_lifecycles": 0},
     )
-    assert rejected_boolean_retention.status_code == 422
+
+    assert current.status_code == 200
+    assert current.json()["retained_lifecycles"] == 20
+    assert current.json()["minimums"] == {"retained_lifecycles": 0}
+    assert saved.status_code == 200
+    assert saved.json()["retained_lifecycles"] == 0
+    document = yaml.safe_load(
+        (tmp_path / "data" / "config" / "system.yaml").read_text(encoding="utf-8")
+    )
+    assert document["workflow_lifecycles"]["retained_lifecycles"] == 0
+    assert client.put(
+        "/agent-shell/api/workflow-lifecycles/settings",
+        json={"retained_lifecycles": -1},
+    ).status_code == 422
+    assert client.put(
+        "/agent-shell/api/workflow-lifecycles/settings",
+        json={"retained_lifecycles": True},
+    ).status_code == 422
 
 
 def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> None:
@@ -418,6 +421,11 @@ def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> Non
     repository.update_system(
         lambda system: system["system_log"].__setitem__("max_size_mib", True)
     )
+    repository.update_system(
+        lambda system: system["workflow_lifecycles"].__setitem__(
+            "retained_lifecycles", True
+        )
+    )
 
     with pytest.raises(ValueError, match="runtime policy content_blocks"):
         RuntimePolicyStore(repository).snapshot()
@@ -425,3 +433,5 @@ def test_numeric_system_setting_snapshots_reject_booleans(tmp_path: Path) -> Non
         ConfigurationValidationSettingsStore(repository).snapshot()
     with pytest.raises(ValueError, match="system log maximum size"):
         SystemLogSettingsStore(repository).snapshot()
+    with pytest.raises(ValueError, match="retained_lifecycles"):
+        WorkflowLifecycleSettingsStore(repository).snapshot()

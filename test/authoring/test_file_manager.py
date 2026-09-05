@@ -190,38 +190,6 @@ def test_file_manager_filters_hidden_data_and_enforces_root_capabilities(
     assert all(response.status_code == 404 for response in hidden)
 
 
-def test_file_manager_uses_the_configured_text_editor_limit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        current = client.get("/agent-shell/api/system/runtime-policy").json()
-        update = {
-            key: value
-            for key, value in current.items()
-            if key not in {"defaults", "minimums", "configurable"}
-        }
-        update["text_edit_bytes"] = 4
-        assert client.put("/agent-shell/api/system/runtime-policy", json=update).status_code == 200
-        assert client.post(
-            "/agent-shell/api/file-manager/text-files",
-            json={"path": "data/files/small.txt"},
-        ).status_code == 200
-        opened = client.get(
-            "/agent-shell/api/file-manager/text", params={"path": "data/files/small.txt"}
-        )
-        saved = client.put(
-            "/agent-shell/api/file-manager/text",
-            json={
-                "path": "data/files/small.txt",
-                "content": "12345",
-                "revision": opened.json()["revision"],
-            },
-        )
-
-    assert saved.status_code == 413
-    assert saved.json()["detail"]["message_args"] == {"max_bytes": 4}
-
-
 def test_file_upload_streams_nested_paths_and_requires_explicit_overwrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

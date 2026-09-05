@@ -77,13 +77,13 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`n_jobs_per_worker` 默认 `10`、最小 `1`、没有产品最大值；每个经官方队列执行的 Run 占一个槽位，增大该值会同时提高并行度、CPU、内存和外部请求压力。`debug_port` 默认留空；留空时没有第二个调试 listener，填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。这三个字段均在服务重启后生效。
 
-API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Lifecycle 保留数量、Chat 请求体、content block 数量、单个/合计输入媒体、单个输出媒体、在线编辑文件以及 Provider 总超时、连接超时和模型目录超时。后端通过 `/agent-shell/api/system/runtime-policy` 返回 10 项数值 runtime-policy 的当前值、默认值与最小值。
+API Server 区域设置 API Key 与 `max_initial_messages`（默认 `1000`）；配置校验区域设置去抖时间（默认 `1000 ms`，最小值由后端返回）；限制策略区域设置 Chat 请求体、content block 数量、单个/合计输入媒体以及共享 OpenAI-compatible Provider HTTP client 的总超时和连接超时。后端通过 `/agent-shell/api/system/runtime-policy` 返回这 6 项 runtime policy 的当前值、默认值与最小值。
 
-`retained_lifecycles` 默认 `20`、最小 `0`；其他 9 项只有正数约束。全部策略都没有额外产品最大值。其他默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、单个输出媒体 `64 MiB`、在线编辑文件 `2 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`、模型目录超时 `15 秒`。
+这 6 项只有正数约束，没有额外产品最大值。默认值依次为：Chat 请求体 `64 MiB`、content block `4096`、单个输入媒体 `24 MiB`、合计输入媒体 `48 MiB`、Provider 总超时 `600 秒`、连接超时 `5 秒`。模型目录读取不拥有独立 timeout 设置，使用共享 Provider HTTP client。生成媒体落盘和 File Manager 在线文本编辑不设置 Agent Shell 项目级字节上限，实际能力由内存、磁盘和操作系统决定。
 
-Lifecycle 保留数量只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
+【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-LangGraph Dev、LangSmith 和代理设置分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于代理设置，API Key 与消息上限属于 API Server，Lifecycle 保留数量与其他 9 项数值策略属于限制策略。
+LangGraph Dev、LangSmith 和代理设置分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；API Server、配置校验与限制策略分别使用自己的 Card 和 Save。管理密码属于代理设置，API Key 与消息上限属于 API Server，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
 
 当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；系统设置只提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
 

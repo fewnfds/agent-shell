@@ -68,6 +68,9 @@ from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
+from agent_shell.storage.workflow_lifecycle_settings import (
+    WorkflowLifecycleSettingsStore,
+)
 from agent_shell.storage.system_log_settings import MIB_BYTES, SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from agent_shell.storage.workflows import WorkflowStore
@@ -153,6 +156,7 @@ def create_app(
         mutations=configuration_mutations,
     )
     runtime_policy = RuntimePolicyStore(configuration)
+    workflow_lifecycle_settings = WorkflowLifecycleSettingsStore(configuration)
     system_log_settings = SystemLogSettingsStore(configuration)
     event_logger = SecurityEventLogger(
         logs_dir,
@@ -260,7 +264,6 @@ def create_app(
     file_manager = FileManagerService(
         settings.data_root,
         settings.resolved_runtime_dir() / "tmp",
-        runtime_policy,
     )
     system_settings = SystemSettingsService(
         settings,
@@ -280,6 +283,7 @@ def create_app(
         detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
         runtime_policy=runtime_policy,
+        workflow_lifecycle_settings=workflow_lifecycle_settings,
         model_resources=model_resources,
         mcp_resources=mcp_resources,
         agent_server_url=settings.internal_service_url(),
@@ -578,7 +582,6 @@ def create_app(
             python_package_authoring,
             skill_package_authoring,
             component_mutations,
-            runtime_policy,
         )
     )
     app.include_router(
@@ -609,7 +612,10 @@ def create_app(
         )
     )
     app.include_router(
-        build_workflow_lifecycle_router(agent_runtime.langgraph_lifecycles)
+        build_workflow_lifecycle_router(
+            agent_runtime.langgraph_lifecycles,
+            workflow_lifecycle_settings,
+        )
     )
     app.include_router(
         build_runtime_monitoring_router(agent_runtime.langgraph_lifecycles)
@@ -637,7 +643,6 @@ def create_app(
         build_system_settings_router(
             system_settings,
             runtime_policy,
-            on_runtime_policy_updated=agent_runtime.enforce_lifecycle_retention,
         )
     )
     app.include_router(

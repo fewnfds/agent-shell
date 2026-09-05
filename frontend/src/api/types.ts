@@ -328,16 +328,12 @@ export interface ConfigurationValidationSettings {
 }
 
 export interface RuntimePolicyValues {
-  retained_lifecycles: number
   chat_completion_body_bytes: number
   content_blocks: number
   decoded_block_bytes: number
   decoded_total_bytes: number
-  media_output_bytes: number
-  text_edit_bytes: number
   provider_timeout_seconds: number
   provider_connect_timeout_seconds: number
-  provider_catalog_timeout_seconds: number
 }
 
 export interface RuntimePolicySettings extends RuntimePolicyValues {
@@ -568,6 +564,18 @@ export interface WorkflowLifecycleBulkDeleteResult {
   deleted: number
   skipped_active: number
 }
+
+export interface WorkflowLifecycleSettingsValues {
+  retained_lifecycles: number
+}
+
+export interface WorkflowLifecycleSettings extends WorkflowLifecycleSettingsValues {
+  defaults: WorkflowLifecycleSettingsValues
+  minimums: WorkflowLifecycleSettingsValues
+  configurable: boolean
+}
+
+export type WorkflowLifecycleSettingsUpdate = WorkflowLifecycleSettingsValues
 
 export type LangGraphRunStatus =
   | 'pending'

@@ -1011,7 +1011,6 @@ class AgentRuntime:
             media_response=MainAgentMediaResponse(
                 self._files,
                 request_id,
-                self._runtime_policy,
             ),
             response_scheduler=effective_response_scheduler,
             usage_accumulator=usage_accumulator,

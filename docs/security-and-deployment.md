@@ -80,8 +80,8 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 ## 容量与保留
 
-部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求/媒体、响应媒体和文件管理文本编辑的默认边界可在系统配置中调整，只有正数约束，没有额外产品最大值；其他文件传输采用流式处理，不构成实例配额。
-运行诊断使用可配置保存条数，系统日志使用文件大小上限。`retained_lifecycles` 按 terminal Lifecycle 数量保留，默认 `20`、最小 `0`、没有产品最大值；active Lifecycle 不计入数量。降低数值会通过公共 Thread/Store 删除 API 清理超出的终态 Lifecycle；`0` 表示不保留已结束 Lifecycle。
+部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求体、content block 和输入媒体单项/合计边界可在系统配置中调整，只有正数约束，没有额外产品最大值。Agent 响应媒体落盘和 File Manager 在线文本编辑不设置项目级字节上限；其他文件传输采用流式处理，不构成实例配额。
+运行诊断使用可配置保存条数，系统日志使用文件大小上限。运行监控页面的【监控设定】管理 `retained_lifecycles`：按 terminal Lifecycle 数量保留，默认 `20`、最小 `0`、没有产品最大值；active Lifecycle 不计入数量。降低数值会通过公共 Thread/Store 删除 API 清理超出的终态 Lifecycle；`0` 表示不保留已结束 Lifecycle。
 
 Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、invocation 和 filesystem route 记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
@@ -108,6 +108,8 @@ api_server:
   enabled: true
   max_initial_messages: 1000
   message_interception_enabled: false
+workflow_lifecycles:
+  retained_lifecycles: 20
 ```
 
 `data/config/agent-shell.env` 使用 UTF-8 的标准 dotenv `KEY=value` 格式保存敏感变量，例如：

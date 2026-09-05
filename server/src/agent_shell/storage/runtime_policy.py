@@ -8,30 +8,22 @@ from agent_shell.storage.file_config import FileConfigRepository
 
 @dataclass(frozen=True, slots=True)
 class RuntimePolicy:
-    retained_lifecycles: int = 20
     chat_completion_body_bytes: int = 64 * 1024 * 1024
     content_blocks: int = 4096
     decoded_block_bytes: int = 24 * 1024 * 1024
     decoded_total_bytes: int = 48 * 1024 * 1024
-    media_output_bytes: int = 64 * 1024 * 1024
-    text_edit_bytes: int = 2 * 1024 * 1024
     provider_timeout_seconds: int = 600
     provider_connect_timeout_seconds: int = 5
-    provider_catalog_timeout_seconds: int = 15
 
 
 RUNTIME_POLICY_DEFAULTS = RuntimePolicy()
 RUNTIME_POLICY_MINIMUMS = RuntimePolicy(
-    retained_lifecycles=0,
     chat_completion_body_bytes=1,
     content_blocks=1,
     decoded_block_bytes=1,
     decoded_total_bytes=1,
-    media_output_bytes=1,
-    text_edit_bytes=1,
     provider_timeout_seconds=1,
     provider_connect_timeout_seconds=1,
-    provider_catalog_timeout_seconds=1,
 )
 
 

@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from agent_shell.file_manager import FileManagerError, FileManagerService
 from agent_shell.runtime.media_events import MediaContentBlock
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 
 
 _MEDIA_LABELS = {
@@ -52,11 +51,9 @@ class MainAgentMediaResponse:
         self,
         files: FileManagerService,
         request_id: str,
-        runtime_policy: RuntimePolicyStore | None = None,
     ) -> None:
         self._files = files
         self._request_id = request_id
-        self._runtime_policy = runtime_policy
         self._handled_event_keys: set[str] = set()
 
     @staticmethod
@@ -82,20 +79,12 @@ class MainAgentMediaResponse:
             return None
         return _MIME_EXTENSIONS.get(mime_type, ".bin")
 
-    def _decode(self, encoded: str) -> bytes | None:
-        maximum_bytes = (
-            self._runtime_policy.snapshot().media_output_bytes
-            if self._runtime_policy is not None
-            else RUNTIME_POLICY_DEFAULTS.media_output_bytes
-        )
-        maximum_encoded = ((maximum_bytes + 2) // 3) * 4
-        if len(encoded) > maximum_encoded:
-            return None
+    @staticmethod
+    def _decode(encoded: str) -> bytes | None:
         try:
-            value = base64.b64decode(encoded, validate=True)
+            return base64.b64decode(encoded, validate=True)
         except (binascii.Error, ValueError):
             return None
-        return value if len(value) <= maximum_bytes else None
 
     @staticmethod
     def _unsaved(label: str) -> str:

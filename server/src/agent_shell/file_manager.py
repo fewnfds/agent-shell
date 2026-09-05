@@ -20,7 +20,6 @@ from agent_shell.configuration.repositories import (
 )
 from agent_shell.storage.atomic_files import write_bytes_atomic
 from agent_shell.storage.owned_paths import is_reparse_point
-from agent_shell.storage.runtime_policy import RUNTIME_POLICY_DEFAULTS, RuntimePolicyStore
 
 
 RELATIVE_PATH_MAX_LENGTH = 4096
@@ -89,18 +88,9 @@ class FileManagerService:
         self,
         data_root: Path,
         temporary_directory: Path,
-        runtime_policy: RuntimePolicyStore | None = None,
     ) -> None:
         self._data_root = Path(data_root).resolve()
         self._temporary_directory = temporary_directory.resolve()
-        self._runtime_policy = runtime_policy
-
-    def _text_edit_max_bytes(self) -> int:
-        return (
-            self._runtime_policy.snapshot().text_edit_bytes
-            if self._runtime_policy is not None
-            else RUNTIME_POLICY_DEFAULTS.text_edit_bytes
-        )
 
     @staticmethod
     def _validate_segment(segment: str) -> None:
@@ -716,15 +706,6 @@ class FileManagerService:
             content = target.read_bytes()
         except OSError as exc:
             raise self._operation_failed() from exc
-        max_bytes = self._text_edit_max_bytes()
-        if len(content) > max_bytes:
-            raise FileManagerError(
-                413,
-                "text_file_too_large",
-                "errors.textFileTooLarge",
-                "The file is too large for the text editor.",
-                {"max_bytes": max_bytes},
-            )
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -760,15 +741,6 @@ class FileManagerService:
                 "The file changed after it was opened.",
             )
         encoded = content.encode("utf-8")
-        max_bytes = self._text_edit_max_bytes()
-        if len(encoded) > max_bytes:
-            raise FileManagerError(
-                413,
-                "text_file_too_large",
-                "errors.textFileTooLarge",
-                "The file is too large for the text editor.",
-                {"max_bytes": max_bytes},
-            )
         try:
             write_bytes_atomic(target, encoded)
         except OSError as exc:

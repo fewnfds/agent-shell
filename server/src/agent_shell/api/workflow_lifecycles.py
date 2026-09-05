@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
@@ -9,6 +9,9 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleActive,
     LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
+)
+from agent_shell.storage.workflow_lifecycle_settings import (
+    WorkflowLifecycleSettingsStore,
 )
 
 
@@ -18,12 +21,31 @@ class WorkflowLifecycleBulkDelete(BaseModel):
     query: str = ""
 
 
+class WorkflowLifecycleSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retained_lifecycles: int = Field(strict=True, ge=0)
+
+
 def build_workflow_lifecycle_router(
     service: LangGraphLifecycleService,
+    settings: WorkflowLifecycleSettingsStore,
 ) -> APIRouter:
     """Expose Lifecycle grouping without owning a second Run registry."""
 
     router = management_api_router()
+
+    @router.get("/workflow-lifecycles/settings")
+    async def get_workflow_lifecycle_settings() -> dict[str, object]:
+        return settings.public()
+
+    @router.put("/workflow-lifecycles/settings")
+    async def update_workflow_lifecycle_settings(
+        payload: WorkflowLifecycleSettingsUpdate,
+    ) -> dict[str, object]:
+        result = settings.update(payload.retained_lifecycles)
+        await service.enforce_retention()
+        return result
 
     @router.get("/workflow-lifecycles")
     async def list_workflow_lifecycles(

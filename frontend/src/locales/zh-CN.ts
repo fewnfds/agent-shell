@@ -293,6 +293,13 @@ export const zhCN = {
   },
   workflowLifecycles: {
     title: '运行监控',
+    settings: {
+      title: '监控设定',
+      retainedLifecycles: '已结束 Lifecycle 保留数量',
+      retainedLifecyclesHelp: '只计算已结束的 Lifecycle；0 表示不保留。保存较小值会立即删除超出的运行数据。',
+      saved: '监控设定已保存。',
+      failed: '无法载入或保存监控设定',
+    },
     tableAriaLabel: 'Workflow Lifecycle 运行目录',
     empty: '尚无 Workflow Lifecycle。',
     filteredEmpty: '没有符合当前条件的 Lifecycle。',
@@ -534,16 +541,12 @@ export const zhCN = {
     },
     runtimePolicy: {
       title: '限制策略',
-      retainedLifecycles: '已结束 Lifecycle 保留数量',
       chatBody: 'Chat 请求体',
       contentBlocks: 'Content block 数量',
       mediaBlock: '单个输入媒体',
       mediaTotal: '单次输入媒体总量',
-      mediaOutput: '单个输出媒体',
-      textEdit: '在线编辑文件',
       providerTimeout: 'Provider 总超时',
       providerConnectTimeout: 'Provider 连接超时',
-      providerCatalogTimeout: '模型目录超时',
     },
     langsmith: {
       title: 'LangSmith',
@@ -1525,7 +1528,6 @@ export const zhCN = {
     fileAlreadyExists: '目标位置已经存在同名文件或文件夹。',
     fileOperationFailed: '文件操作无法完成。',
     fileOperationDenied: '所选路径不允许执行该文件操作。',
-    textFileTooLarge: '文件超过在线文本编辑上限（{max_bytes} 字节）。',
     textFileInvalidEncoding: '在线编辑只支持 UTF-8 文本文件。',
     textFileRevisionConflict: '文件已发生变化，请重新打开后再保存。',
     systemSecretOperationInvalid: 'Secret 修改操作无效。',

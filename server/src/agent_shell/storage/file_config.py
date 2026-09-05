@@ -94,6 +94,9 @@ def _default_system() -> dict[str, Any]:
         "history_retention": {
             "runtime_diagnostics": 20,
         },
+        "workflow_lifecycles": {
+            "retained_lifecycles": 20,
+        },
         "configuration_validation": {"debounce_ms": 1000},
         "system_log": {"max_size_mib": 5},
     }

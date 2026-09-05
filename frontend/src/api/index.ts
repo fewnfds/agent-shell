@@ -43,6 +43,8 @@ import type {
   Workflow,
   WorkflowSummary,
   WorkflowLifecycleBulkDeleteResult,
+  WorkflowLifecycleSettings,
+  WorkflowLifecycleSettingsUpdate,
   WorkflowGraphDocument,
   WorkflowNodeCatalogItem,
   WorkflowPayload,
@@ -391,6 +393,19 @@ export const managementApi = {
     if (request?.query) params.set('query', request.query)
     const query = params.toString()
     return managementRequest(`/workflow-lifecycles${query ? `?${query}` : ''}`)
+  },
+
+  getWorkflowLifecycleSettings(): Promise<WorkflowLifecycleSettings> {
+    return managementRequest('/workflow-lifecycles/settings')
+  },
+
+  updateWorkflowLifecycleSettings(
+    payload: WorkflowLifecycleSettingsUpdate,
+  ): Promise<WorkflowLifecycleSettings> {
+    return managementRequest('/workflow-lifecycles/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
   },
 
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }> {

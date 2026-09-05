@@ -47,6 +47,9 @@ from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.mcp_connections import McpResourceStore
 from agent_shell.storage.model_connections import ModelResourceStore
 from agent_shell.storage.runtime_policy import RuntimePolicyStore
+from agent_shell.storage.workflow_lifecycle_settings import (
+    WorkflowLifecycleSettingsStore,
+)
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.workflow import WorkflowGraphDocumentV1
@@ -775,6 +778,7 @@ class RequestSnapshotRuntime:
         detached_tasks: DetachedTaskManager,
         runtime_diagnostics: RuntimeDiagnostics,
         runtime_policy: RuntimePolicyStore,
+        workflow_lifecycle_settings: WorkflowLifecycleSettingsStore,
         model_resources: ModelResourceStore | None = None,
         mcp_resources: McpResourceStore | None = None,
         agent_server_url: str,
@@ -796,7 +800,8 @@ class RequestSnapshotRuntime:
         self._agent_server_headers = {"Authorization": f"Bearer {agent_server_token}"}
         self._active_lifecycles: dict[str, LifecycleRunCoordinator] = {}
         self._langgraph_lifecycles = LangGraphLifecycleService(
-            self.new_agent_server_client
+            self.new_agent_server_client,
+            workflow_lifecycle_settings,
         )
 
     def runtime_policy_snapshot(self):
@@ -810,8 +815,7 @@ class RequestSnapshotRuntime:
         return self._langgraph_lifecycles
 
     async def enforce_lifecycle_retention(self) -> None:
-        retained = self._runtime_policy.snapshot().retained_lifecycles
-        await self._langgraph_lifecycles.enforce_retention(retained)
+        await self._langgraph_lifecycles.enforce_retention()
 
     def register_active_lifecycle(self, coordinator: LifecycleRunCoordinator) -> None:
         lifecycle_id = coordinator.lifecycle_id

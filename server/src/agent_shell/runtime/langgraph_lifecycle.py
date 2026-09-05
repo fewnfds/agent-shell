@@ -9,6 +9,9 @@ from agent_shell.runtime.workflow_run_calls import (
     official_status,
     search_lifecycle_runs,
 )
+from agent_shell.storage.workflow_lifecycle_settings import (
+    WorkflowLifecycleSettingsStore,
+)
 
 
 class LangGraphLifecycleNotFound(LookupError):
@@ -43,8 +46,13 @@ def _lifecycle_status(runs: list[Mapping[str, Any]]) -> str:
 class LangGraphLifecycleService:
     """Project Lifecycle views from LangGraph's public Thread and Run APIs."""
 
-    def __init__(self, client_factory: Callable[[], Any]) -> None:
+    def __init__(
+        self,
+        client_factory: Callable[[], Any],
+        settings: WorkflowLifecycleSettingsStore | None = None,
+    ) -> None:
         self._client_factory = client_factory
+        self._settings = settings
 
     async def _threads(self, client: Any, lifecycle_id: str | None = None) -> list[dict[str, Any]]:
         threads: list[dict[str, Any]] = []
@@ -297,7 +305,10 @@ class LangGraphLifecycleService:
             "skipped_active": skipped_active,
         }
 
-    async def enforce_retention(self, retained_lifecycles: int) -> None:
+    async def enforce_retention(self) -> None:
+        if self._settings is None:
+            raise RuntimeError("Workflow Lifecycle settings are unavailable")
+        retained_lifecycles = self._settings.snapshot()["retained_lifecycles"]
         items = await self._list_all()
         terminal = [
             item

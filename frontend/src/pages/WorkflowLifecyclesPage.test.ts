@@ -7,6 +7,7 @@ import {
   managementApi,
   type LangGraphLifecyclePage,
   type LangGraphLifecycleSummary,
+  type WorkflowLifecycleSettings,
 } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
 import { useToasts } from '@/composables/useToasts'
@@ -26,6 +27,13 @@ const lifecycle: LangGraphLifecycleSummary = {
   error_run_count: 1,
 }
 
+const lifecycleSettings: WorkflowLifecycleSettings = {
+  retained_lifecycles: 20,
+  defaults: { retained_lifecycles: 20 },
+  minimums: { retained_lifecycles: 0 },
+  configurable: true,
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   useConfirmation().cancel()
@@ -34,6 +42,8 @@ afterEach(() => {
 })
 
 async function mountPage() {
+  vi.spyOn(managementApi, 'getWorkflowLifecycleSettings')
+    .mockResolvedValue(lifecycleSettings)
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -55,6 +65,30 @@ async function mountPage() {
 }
 
 describe('WorkflowLifecyclesPage', () => {
+  it('shows monitoring settings first and saves Lifecycle retention', async () => {
+    vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue({
+      items: [],
+      page: 1,
+      page_size: 10,
+      total: 0,
+      total_pages: 1,
+    })
+    const update = vi.spyOn(managementApi, 'updateWorkflowLifecycleSettings')
+      .mockImplementation(async (payload) => ({ ...lifecycleSettings, ...payload }))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    const settings = wrapper.get('[data-testid="workflow-lifecycle-settings"]')
+    expect(settings.classes()).toContain('col-lg-3')
+    expect(settings.get('label').text()).toBe('Completed Lifecycle retention')
+    await settings.get('input').setValue('0')
+    await settings.trigger('submit')
+    await flushPromises()
+
+    expect(update).toHaveBeenCalledWith({ retained_lifecycles: 0 })
+    wrapper.unmount()
+  })
+
   it('shows official Run summaries and allows every Lifecycle to be monitored', async () => {
     const terminal = {
       ...lifecycle,

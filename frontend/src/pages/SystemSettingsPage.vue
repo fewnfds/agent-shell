@@ -82,16 +82,12 @@ const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
 const runtimePolicyDraft = reactive<RuntimePolicyUpdate>({
-  retained_lifecycles: 20,
   chat_completion_body_bytes: 64 * 1024 * 1024,
   content_blocks: 4096,
   decoded_block_bytes: 24 * 1024 * 1024,
   decoded_total_bytes: 48 * 1024 * 1024,
-  media_output_bytes: 64 * 1024 * 1024,
-  text_edit_bytes: 2 * 1024 * 1024,
   provider_timeout_seconds: 600,
   provider_connect_timeout_seconds: 5,
-  provider_catalog_timeout_seconds: 15,
 })
 type RuntimePolicyNumberKey = keyof RuntimePolicyUpdate
 const runtimePolicyFields: Array<{
@@ -101,21 +97,12 @@ const runtimePolicyFields: Array<{
   step: number
   mib?: boolean
 }> = [
-  {
-    key: 'retained_lifecycles',
-    labelKey: 'systemSettings.runtimePolicy.retainedLifecycles',
-    unit: 'Lifecycle',
-    step: 1,
-  },
   { key: 'chat_completion_body_bytes', labelKey: 'systemSettings.runtimePolicy.chatBody', unit: 'MiB', step: 1, mib: true },
   { key: 'content_blocks', labelKey: 'systemSettings.runtimePolicy.contentBlocks', unit: '', step: 1 },
   { key: 'decoded_block_bytes', labelKey: 'systemSettings.runtimePolicy.mediaBlock', unit: 'MiB', step: 1, mib: true },
   { key: 'decoded_total_bytes', labelKey: 'systemSettings.runtimePolicy.mediaTotal', unit: 'MiB', step: 1, mib: true },
-  { key: 'media_output_bytes', labelKey: 'systemSettings.runtimePolicy.mediaOutput', unit: 'MiB', step: 1, mib: true },
-  { key: 'text_edit_bytes', labelKey: 'systemSettings.runtimePolicy.textEdit', unit: 'MiB', step: 1, mib: true },
   { key: 'provider_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerTimeout', unit: 's', step: 1 },
   { key: 'provider_connect_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerConnectTimeout', unit: 's', step: 1 },
-  { key: 'provider_catalog_timeout_seconds', labelKey: 'systemSettings.runtimePolicy.providerCatalogTimeout', unit: 's', step: 1 },
 ]
 const MIB_BYTES = 1024 * 1024
 

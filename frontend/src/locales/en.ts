@@ -295,6 +295,13 @@ export const en: MessageSchema = {
   },
   workflowLifecycles: {
     title: 'Runtime monitoring',
+    settings: {
+      title: 'Monitoring settings',
+      retainedLifecycles: 'Completed Lifecycle retention',
+      retainedLifecyclesHelp: 'Only completed Lifecycles count. Set 0 to retain none. Saving a lower value immediately deletes excess runtime data.',
+      saved: 'Monitoring settings saved.',
+      failed: 'Could not load or save monitoring settings',
+    },
     tableAriaLabel: 'Workflow Lifecycle runtime catalog',
     empty: 'No Workflow Lifecycles exist.',
     filteredEmpty: 'No Lifecycle matches the current query.',
@@ -536,16 +543,12 @@ export const en: MessageSchema = {
     },
     runtimePolicy: {
       title: 'Restriction policy',
-      retainedLifecycles: 'Completed Lifecycle retention',
       chatBody: 'Chat request body',
       contentBlocks: 'Content block count',
       mediaBlock: 'Single input media',
       mediaTotal: 'Total input media',
-      mediaOutput: 'Single output media',
-      textEdit: 'Online editor file',
       providerTimeout: 'Provider total timeout',
       providerConnectTimeout: 'Provider connect timeout',
-      providerCatalogTimeout: 'Model catalog timeout',
     },
     langsmith: {
       title: 'LangSmith',
@@ -1527,7 +1530,6 @@ export const en: MessageSchema = {
     fileAlreadyExists: 'A file or folder with this name already exists.',
     fileOperationFailed: 'The file operation could not be completed.',
     fileOperationDenied: 'The selected path does not allow this file operation.',
-    textFileTooLarge: 'The file exceeds the online editor limit ({max_bytes} bytes).',
     textFileInvalidEncoding: 'The online editor supports UTF-8 text files only.',
     textFileRevisionConflict: 'The file changed. Reopen it before saving.',
     systemSecretOperationInvalid: 'The secret update operation is invalid.',

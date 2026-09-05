@@ -25,7 +25,7 @@ Response Stream Scheduling 是【工作流组件】中的可复用配置，进�
 
 【系统 / 运行监控】通过 LangGraph Dev 公共 Thread/Run API 按一次客户端请求聚合 Lifecycle，显示涉及的 Workflow、状态、active/total Run 和 error Run 数量。页面提供目录、搜索、分页、删除和详情入口；详情可选择任意 Run，并读取官方 Run 对象、Assistant Graph、Thread latest State 与最近 State history。
 
-系统配置的 `retained_lifecycles` 默认 `20`，只计算 terminal Lifecycle；active Lifecycle 不占保留数量。`0` 表示不保留已结束 Lifecycle。显式删除 active Lifecycle 返回冲突；删除 terminal Lifecycle 会通过公共 API 删除其 Thread、Run/checkpoint/State 和 Agent Shell-owned Server Store 前缀，文件、生成媒体和 mapped directory 由用户自行管理。
+运行监控页面的【监控设定】Card 提供 `retained_lifecycles`，默认 `20`，只计算 terminal Lifecycle；active Lifecycle 不占保留数量。`0` 表示不保留已结束 Lifecycle。显式删除 active Lifecycle 返回冲突；删除 terminal Lifecycle 会通过公共 API 删除其 Thread、Run/checkpoint/State 和 Agent Shell-owned Server Store 前缀，文件、生成媒体和 mapped directory 由用户自行管理。
 
 每个 Workflow 独立保存 `on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。Run 的正常完成、失败或主动取消不触发隐式连锁取消；`caller_run_id` 只表达调用关系。
 
