@@ -27,9 +27,9 @@ DROP TABLE IF EXISTS agent_session_runs;
 DROP TABLE IF EXISTS api_message_history_outputs;
 DROP TABLE IF EXISTS api_message_history;
 DROP TABLE IF EXISTS media_output_assets;
-DROP TABLE IF EXISTS runtime_diagnostics;
+DROP TABLE IF EXISTS runtime_diagnostic_events;
 
-CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
+CREATE TABLE IF NOT EXISTS runtime_diagnostics (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     diagnostic_id TEXT NOT NULL UNIQUE,
     occurred_at TEXT NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
     summary TEXT NOT NULL,
     component TEXT NOT NULL CHECK (
         component IN (
-            'api', 'workflow_runtime',
+            'api', 'graph_runtime',
             'persistence', 'observability', 'security'
         )
     ),
@@ -46,8 +46,6 @@ CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
     lifecycle_id TEXT,
     run_id TEXT,
     thread_id TEXT,
-    entry_workflow_id TEXT,
-    entry_workflow_name TEXT,
     subject_kind TEXT CHECK (
         subject_kind IS NULL OR subject_kind IN (
             'workflow', 'agent', 'workflow_node', 'model', 'tool',
@@ -62,15 +60,15 @@ CREATE TABLE IF NOT EXISTS runtime_diagnostic_events (
     detail_available INTEGER NOT NULL CHECK (detail_available IN (0, 1))
 );
 
-CREATE INDEX IF NOT EXISTS idx_runtime_diagnostic_events_occurred
-ON runtime_diagnostic_events(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_diagnostics_occurred
+ON runtime_diagnostics(occurred_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_runtime_diagnostic_events_request
-ON runtime_diagnostic_events(request_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_diagnostics_request
+ON runtime_diagnostics(request_id);
 
-CREATE INDEX IF NOT EXISTS idx_runtime_diagnostic_events_lifecycle
-ON runtime_diagnostic_events(lifecycle_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_diagnostics_lifecycle
+ON runtime_diagnostics(lifecycle_id, occurred_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_runtime_diagnostic_events_run
-ON runtime_diagnostic_events(run_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_diagnostics_run
+ON runtime_diagnostics(run_id, occurred_at DESC);
 """

@@ -669,7 +669,12 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         lifecycle = next(
             item
             for item in lifecycle_page["items"]
-            if workflow["name"] in item["workflow_names"]
+            if any(
+                subject["graph_kind"] == "workflow"
+                and subject["id"] == workflow["id"]
+                and subject["name"] == workflow["name"]
+                for subject in item["subjects"]
+            )
         )
         assert lifecycle["run_count"] >= 2
         assert lifecycle["active_run_count"] == 0

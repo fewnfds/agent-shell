@@ -25,10 +25,8 @@ def test_event_feed_exposes_only_supported_sources(
             request_id="request-runtime",
             code="runtime_failed",
             summary="request failed",
-            component="workflow_runtime",
+            component="graph_runtime",
             detail_available=False,
-            entry_workflow_id="workflow-entry",
-            entry_workflow_name="Published Workflow",
             subject_kind="agent",
             subject_id="agent-one",
             subject_name="Published Main Agent",
@@ -91,7 +89,7 @@ def test_event_feed_deletes_filtered_runtime_records_across_pages(
                 request_id=f"request-{index}",
                 code="runtime_failed",
                 summary=marker,
-                component="workflow_runtime",
+                component="graph_runtime",
                 detail_available=False,
             )
         window = {
@@ -153,14 +151,12 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
                     status_code=502,
                 ),
                 code="agent_execution_failed",
-                component="workflow_runtime",
+                component="graph_runtime",
                 context=RuntimeDiagnosticContext(
                     request_id=request_id,
                     lifecycle_id="lifecycle-one",
                     run_id="run-one",
                     thread_id="thread-one",
-                    entry_workflow_id="workflow-entry",
-                    entry_workflow_name="Published Workflow",
                     subject_kind="agent",
                     subject_id="agent-one",
                     subject_name="Published Main Agent",
@@ -200,7 +196,7 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
     assert download.headers["content-type"].startswith("text/plain")
     assert download.headers["content-disposition"].endswith('.log"')
     detail_text = download.content.decode("utf-8")
-    assert "entry_workflow_name=Published Workflow" in detail_text
+    assert "subject_kind=agent" in detail_text
     assert "run_id=run-one" in detail_text
     assert "TypeError: private-debug-detail" in detail_text
     assert "RuntimeError: outer debug failure" in detail_text
@@ -222,7 +218,7 @@ def test_provider_error_detail_is_management_only(
         client.app.state.runtime_diagnostics.runtime_error(
             captured.value,
             code=captured.value.code,
-            component="workflow_runtime",
+            component="graph_runtime",
             context=RuntimeDiagnosticContext(request_id="request-provider-detail"),
         )
 

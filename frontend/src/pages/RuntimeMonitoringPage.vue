@@ -37,10 +37,13 @@ function pretty(value: unknown): string {
 }
 
 function runName(run: LangGraphRun): string {
-  const workflowName = run.metadata.workflow_name
-  return typeof workflowName === 'string' && workflowName
-    ? workflowName
-    : run.run_id
+  const metadata = run.metadata
+  const name = metadata.graph_kind === 'agent'
+    ? metadata.main_agent_name
+    : metadata.graph_kind === 'workflow'
+      ? metadata.workflow_name
+      : undefined
+  return typeof name === 'string' && name ? name : run.run_id
 }
 
 async function loadSnapshot(): Promise<void> {

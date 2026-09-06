@@ -1,8 +1,8 @@
-# 日志中心与 Workflow 观测
+# 日志中心与 Graph 运行观测
 
 ## 日志中心
 
-【系统 / 日志中心】保存系统事件和结构化运行失败诊断。诊断条目可以包含 request、Lifecycle、Run 和 Thread ID，详细 traceback 只对持有管理 Bearer Token 的用户开放。日志不是 Run 状态来源，也不会复制用户消息或 Provider 原始响应。
+【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目可以包含 request、Lifecycle、Run 和 Thread ID，详细 traceback 只对持有管理 Bearer Token 的用户开放。日志不是 Run 状态来源，也不会复制用户消息或 Provider 原始响应。
 
 ## 运行监控
 
@@ -10,7 +10,7 @@
 
 目录列出：
 
-- 涉及的 Workflow 名称；
+- 涉及的 Main Agent 与 Workflow Graph；
 - 创建时间与 Lifecycle 聚合状态；
 - active/total Run 数量；
 - error/timeout Run 数量。
@@ -27,6 +27,8 @@
 - history：Thread 的 checkpoint/State history。
 
 这些数据以官方 `assistant_id`、`thread_id`、`run_id` 和 status 为准。页面不重建第二套 Registry，不从 event 时间或 namespace 推测执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
+
+Lifecycle summary 将每个 Run 的 metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID 和名称。Run 选择列表按 `graph_kind` 显示 `main_agent_name` 或 `workflow_name`，身份 metadata 缺失时显示 `run_id`。
 
 ## 保留与删除
 

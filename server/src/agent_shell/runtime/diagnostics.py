@@ -35,8 +35,6 @@ class RuntimeDiagnosticContext:
     lifecycle_id: str = ""
     run_id: str = ""
     thread_id: str = ""
-    entry_workflow_id: str = ""
-    entry_workflow_name: str = ""
     subject_kind: str = ""
     subject_id: str = ""
     subject_name: str = ""

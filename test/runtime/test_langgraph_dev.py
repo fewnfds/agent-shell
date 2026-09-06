@@ -18,6 +18,7 @@ from agent_shell.runtime.context import (
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _AgentRunBinding,
+    _ensure_assistant,
 )
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle
 from agent_shell.workflow import admit_workflow_document
@@ -176,6 +177,45 @@ def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
     assert calls[1][1]["on_completion"] == "keep"
 
 
+def test_stable_assistant_updates_only_when_its_name_changed() -> None:
+    class Assistants:
+        def __init__(self, current_name: str) -> None:
+            self.current_name = current_name
+            self.created: list[tuple[tuple[object, ...], dict[str, object]]] = []
+            self.updated: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        async def create(self, *args, **kwargs):
+            self.created.append((args, kwargs))
+            return {"assistant_id": "assistant-1", "name": self.current_name}
+
+        async def update(self, *args, **kwargs):
+            self.updated.append((args, kwargs))
+            return {"assistant_id": "assistant-1", "name": kwargs["name"]}
+
+    async def ensure(current_name: str):
+        assistants = Assistants(current_name)
+        result = await _ensure_assistant(
+            assistants,
+            "agent-shell-agent",
+            assistant_id="assistant-1",
+            name="Current name",
+        )
+        return assistants, result
+
+    matching, matching_result = asyncio.run(ensure("Current name"))
+    renamed, renamed_result = asyncio.run(ensure("Old name"))
+
+    assert matching.created[0][1] == {
+        "assistant_id": "assistant-1",
+        "if_exists": "do_nothing",
+        "name": "Current name",
+    }
+    assert matching.updated == []
+    assert matching_result["name"] == "Current name"
+    assert renamed.updated == [(('assistant-1',), {"name": "Current name"})]
+    assert renamed_result["name"] == "Current name"
+
+
 def test_parent_materializes_reachable_async_target_assistants_before_its_run() -> None:
     target_id = "22222222-2222-4222-8222-222222222222"
     nested_id = "33333333-3333-4333-8333-333333333333"
@@ -184,7 +224,10 @@ def test_parent_materializes_reachable_async_target_assistants_before_its_run() 
     class Assistants:
         async def create(self, *args, **kwargs):
             created.append((args, kwargs))
-            return {"assistant_id": kwargs["assistant_id"]}
+            return {"assistant_id": kwargs["assistant_id"], "name": kwargs["name"]}
+
+        async def update(self, *_args, **_kwargs):
+            raise AssertionError("matching Assistant names must not be updated")
 
     coordinator = LifecycleRunCoordinator(
         _owner=SimpleNamespace(),

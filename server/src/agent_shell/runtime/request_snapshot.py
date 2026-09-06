@@ -64,6 +64,29 @@ LANGGRAPH_WORKFLOW_GRAPH_ID = "agent-shell-workflow"
 LANGGRAPH_AGENT_GRAPH_ID = "agent-shell-agent"
 
 
+async def _ensure_assistant(
+    assistants: Any,
+    graph_id: str,
+    *,
+    name: str,
+    **create_kwargs: Any,
+) -> Mapping[str, Any]:
+    """Create a stable Assistant and keep its user-facing name current."""
+
+    assistant = await assistants.create(
+        graph_id,
+        **create_kwargs,
+        if_exists="do_nothing",
+        name=name,
+    )
+    if assistant.get("name") == name:
+        return assistant
+    return await assistants.update(
+        str(assistant["assistant_id"]),
+        name=name,
+    )
+
+
 def _root_terminal_status(event: Mapping[str, object]) -> str:
     if event.get("method") != "lifecycle":
         return ""
@@ -978,16 +1001,16 @@ class LifecycleRunCoordinator:
     async def _open_run_session(self, binding: _RunBinding) -> tuple[Any, Any]:
         client = self._owner.new_agent_server_client()
         try:
-            assistant = await client.assistants.create(
+            assistant = await _ensure_assistant(
+                client.assistants,
                 LANGGRAPH_WORKFLOW_GRAPH_ID,
+                name=str(binding.workflow["name"]),
                 config={"configurable": {"workflow_id": str(binding.workflow["id"])}},
                 metadata={
                     "graph_kind": "workflow",
                     "workflow_id": str(binding.workflow["id"]),
                 },
                 assistant_id=str(binding.workflow["id"]),
-                if_exists="do_nothing",
-                name=str(binding.workflow["name"]),
             )
             binding.assistant_id = str(assistant["assistant_id"])
             thread = await client.threads.create(
@@ -1027,13 +1050,13 @@ class LifecycleRunCoordinator:
         client = self._owner.new_agent_server_client()
         try:
             agent_id = str(binding.main_agent["id"])
-            assistant = await client.assistants.create(
+            assistant = await _ensure_assistant(
+                client.assistants,
                 LANGGRAPH_AGENT_GRAPH_ID,
+                name=str(binding.main_agent["name"]),
                 config={"configurable": {"main_agent_id": agent_id}},
                 metadata={"graph_kind": "agent", "main_agent_id": agent_id},
                 assistant_id=main_agent_assistant_id(agent_id),
-                if_exists="do_nothing",
-                name=str(binding.main_agent["name"]),
             )
             binding.assistant_id = str(assistant["assistant_id"])
             await self._ensure_async_subagent_assistants(
@@ -1104,13 +1127,13 @@ class LifecycleRunCoordinator:
                         "An async subagent references a Main Agent that does not exist.",
                         status_code=409,
                     )
-                await client.assistants.create(
+                await _ensure_assistant(
+                    client.assistants,
                     LANGGRAPH_AGENT_GRAPH_ID,
+                    name=str(target["name"]),
                     config={"configurable": {"main_agent_id": target_id}},
                     metadata={"graph_kind": "agent", "main_agent_id": target_id},
                     assistant_id=main_agent_assistant_id(target_id),
-                    if_exists="do_nothing",
-                    name=str(target["name"]),
                 )
                 pending.append(target)
 

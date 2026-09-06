@@ -43,6 +43,26 @@ def _lifecycle_status(runs: list[Mapping[str, Any]]) -> str:
     return "success"
 
 
+def _run_subject(run: Mapping[str, Any]) -> dict[str, str] | None:
+    metadata = _metadata(run.get("metadata"))
+    graph_kind = str(metadata.get("graph_kind") or "")
+    if graph_kind == "agent":
+        subject_id = str(metadata.get("main_agent_id") or "")
+        subject_name = str(metadata.get("main_agent_name") or "")
+    elif graph_kind == "workflow":
+        subject_id = str(metadata.get("workflow_id") or "")
+        subject_name = str(metadata.get("workflow_name") or "")
+    else:
+        return None
+    if not subject_id:
+        return None
+    return {
+        "graph_kind": graph_kind,
+        "id": subject_id,
+        "name": subject_name,
+    }
+
+
 class LangGraphLifecycleService:
     """Project Lifecycle views from LangGraph's public Thread and Run APIs."""
 
@@ -99,13 +119,24 @@ class LangGraphLifecycleService:
         metadata = [_metadata(thread.get("metadata")) for thread in threads]
         created_values = [str(thread.get("created_at") or "") for thread in threads]
         updated_values = [str(thread.get("updated_at") or "") for thread in threads]
-        names = sorted(
-            {
-                str(_metadata(run.get("metadata")).get("workflow_name") or "")
-                for run in runs
-                if _metadata(run.get("metadata")).get("workflow_name")
-            },
-            key=str.casefold,
+        subjects_by_identity: dict[tuple[str, str], dict[str, str]] = {}
+        for run in sorted(
+            runs,
+            key=lambda item: (
+                str(item.get("updated_at") or item.get("created_at") or ""),
+                str(item.get("run_id") or ""),
+            ),
+        ):
+            subject = _run_subject(run)
+            if subject is not None:
+                subjects_by_identity[(subject["graph_kind"], subject["id"])] = subject
+        subjects = sorted(
+            subjects_by_identity.values(),
+            key=lambda subject: (
+                subject["graph_kind"].casefold(),
+                subject["name"].casefold(),
+                subject["id"].casefold(),
+            ),
         )
         statuses = [official_status(run) for run in runs]
         return {
@@ -117,7 +148,7 @@ class LangGraphLifecycleService:
             "created_at": min(created_values) if created_values else "",
             "updated_at": max(updated_values) if updated_values else "",
             "status": _lifecycle_status(runs),
-            "workflow_names": names,
+            "subjects": subjects,
             "run_count": len(runs),
             "active_run_count": sum(
                 status in ACTIVE_RUN_STATUSES for status in statuses
@@ -152,7 +183,15 @@ class LangGraphLifecycleService:
                     [
                         str(item["lifecycle_id"]),
                         str(item["request_id"]),
-                        *[str(name) for name in item["workflow_names"]],
+                        *[
+                            str(value)
+                            for subject in item["subjects"]
+                            for value in (
+                                subject["graph_kind"],
+                                subject["id"],
+                                subject["name"],
+                            )
+                        ],
                     ]
                 ).casefold()
             ]

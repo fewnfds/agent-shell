@@ -7,14 +7,12 @@ from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.history_retention import HistoryRetentionStore
 
 
-_TABLE = "runtime_diagnostic_events"
+_TABLE = "runtime_diagnostics"
 _OPTIONAL_FIELDS = (
     "request_id",
     "lifecycle_id",
     "run_id",
     "thread_id",
-    "entry_workflow_id",
-    "entry_workflow_name",
     "subject_kind",
     "subject_id",
     "subject_name",
@@ -85,8 +83,6 @@ class RuntimeDiagnosticStore:
         lifecycle_id: str | None = None,
         run_id: str | None = None,
         thread_id: str | None = None,
-        entry_workflow_id: str | None = None,
-        entry_workflow_name: str | None = None,
         subject_kind: str | None = None,
         subject_id: str | None = None,
         subject_name: str | None = None,
@@ -99,8 +95,6 @@ class RuntimeDiagnosticStore:
             lifecycle_id,
             run_id,
             thread_id,
-            entry_workflow_id,
-            entry_workflow_name,
             subject_kind,
             subject_id,
             subject_name,

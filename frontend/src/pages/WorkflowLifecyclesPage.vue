@@ -86,6 +86,10 @@ function localTime(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
+function subjectNames(row: LangGraphLifecycleSummary): string[] {
+  return row.subjects.map((subject) => subject.name || subject.id)
+}
+
 const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
   id: 'workflow-lifecycles',
   ariaLabel: () => t('workflowLifecycles.tableAriaLabel'),
@@ -107,13 +111,21 @@ const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
   search: {
     label: () => t('common.search'),
     placeholder: () => t('workflowLifecycles.searchPlaceholder'),
-    values: (row) => [...row.workflow_names, row.lifecycle_id, row.request_id],
+    values: (row) => [
+      ...row.subjects.flatMap((subject) => [
+        subject.graph_kind,
+        subject.id,
+        subject.name,
+      ]),
+      row.lifecycle_id,
+      row.request_id,
+    ],
   },
   columns: [
     {
-      key: 'workflows',
-      label: () => t('workflowLifecycles.columns.workflows'),
-      value: (row) => row.workflow_names.join(', ') || t('common.none'),
+      key: 'graphs',
+      label: () => t('workflowLifecycles.columns.graphs'),
+      value: (row) => subjectNames(row).join(', ') || t('common.none'),
     },
     {
       key: 'created',
@@ -156,7 +168,7 @@ const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
       confirm: (row) => ({
         title: t('workflowLifecycles.deleteTitle'),
         description: t('workflowLifecycles.deleteDescription', {
-          name: row.workflow_names.join(', ') || row.lifecycle_id,
+          name: subjectNames(row).join(', ') || row.lifecycle_id,
         }),
         confirmLabel: t('common.delete'),
         cancelLabel: t('common.cancel'),

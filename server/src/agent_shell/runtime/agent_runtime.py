@@ -162,11 +162,7 @@ class RunExecution:
     def diagnostic_context(self) -> RuntimeDiagnosticContext:
         identity = self.identity
         if identity is None:
-            return RuntimeDiagnosticContext(
-                request_id=self.request_id,
-                subject_kind="workflow",
-                subject_name=self.public_model,
-            )
+            return RuntimeDiagnosticContext(request_id=self.request_id)
         return RuntimeDiagnosticContext(
             request_id=identity.request_id or self.request_id,
             lifecycle_id=identity.lifecycle_id,
@@ -248,7 +244,7 @@ class RunExecution:
                 await self.runtime_diagnostics.aruntime_error(
                     exc,
                     code=code,
-                    component="workflow_runtime",
+                    component="graph_runtime",
                     context=self.diagnostic_context(),
                     detail_exception=detail_exception,
                 )
@@ -1322,7 +1318,7 @@ class AgentRuntime:
                 await runtime_diagnostics.aruntime_error(
                     exc,
                     code=error_code,
-                    component="workflow_runtime",
+                    component="graph_runtime",
                     context=diagnostic_context,
                 )
             raise

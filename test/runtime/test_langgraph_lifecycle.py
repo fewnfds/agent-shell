@@ -121,6 +121,7 @@ class _Client:
                     "assistant_id": "assistant-entry",
                     "status": "success",
                     "metadata": {
+                        "graph_kind": "workflow",
                         "workflow_id": "workflow-entry",
                         "workflow_name": "Entry Workflow",
                         "operation_id": "entry",
@@ -133,8 +134,9 @@ class _Client:
                     "assistant_id": "assistant-peer",
                     "status": "running",
                     "metadata": {
-                        "workflow_id": "workflow-peer",
-                        "workflow_name": "Peer Workflow",
+                        "graph_kind": "agent",
+                        "main_agent_id": "agent-peer",
+                        "main_agent_name": "Peer Agent",
                         "caller_run_id": "run-entry",
                         "operation_id": "peer",
                     },
@@ -199,14 +201,38 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         graph = await service.graph("lifecycle-1", "run-peer")
         state = await service.state("lifecycle-1", "run-entry")
         history = await service.history("lifecycle-1", "run-peer", limit=5)
+        client.run_values["thread-peer"].append(
+            {
+                "run_id": "run-peer-again",
+                "assistant_id": "assistant-peer",
+                "status": "success",
+                "updated_at": "2026-09-05T02:00:00Z",
+                "metadata": {
+                    "graph_kind": "agent",
+                    "main_agent_id": "agent-peer",
+                    "main_agent_name": "Peer Agent Renamed",
+                },
+            }
+        )
+        filtered = await service.list_page(
+            page=1, page_size=10, query="Peer Agent Renamed"
+        )
         with pytest.raises(LangGraphRunNotFound):
             await service.state("lifecycle-1", "missing")
-        return page, snapshot, graph, state, history
+        return page, snapshot, graph, state, history, filtered
 
-    page, snapshot, graph, state, history = asyncio.run(scenario())
+    page, snapshot, graph, state, history, filtered = asyncio.run(scenario())
     assert page["total"] == 1
     assert page["items"][0]["status"] == "running"
     assert page["items"][0]["run_count"] == 2
+    assert page["items"][0]["subjects"] == [
+        {"graph_kind": "agent", "id": "agent-peer", "name": "Peer Agent"},
+        {
+            "graph_kind": "workflow",
+            "id": "workflow-entry",
+            "name": "Entry Workflow",
+        },
+    ]
     assert {run["run_id"] for run in snapshot["runs"]} == {
         "run-entry",
         "run-peer",
@@ -214,6 +240,19 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
     assert graph["assistant_id"] == "assistant-peer"
     assert state["state"]["values"]["shared_vars"] == {"answer": 42}
     assert history["history"] == [{"checkpoint_id": "checkpoint-peer"}]
+    assert filtered["total"] == 1
+    agent_subjects = [
+        subject
+        for subject in filtered["items"][0]["subjects"]
+        if subject["graph_kind"] == "agent"
+    ]
+    assert agent_subjects == [
+        {
+            "graph_kind": "agent",
+            "id": "agent-peer",
+            "name": "Peer Agent Renamed",
+        }
+    ]
 
 
 def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> None:

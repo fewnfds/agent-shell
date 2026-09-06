@@ -21,7 +21,10 @@ const lifecycle: LangGraphLifecycleSummary = {
   created_at: '2026-08-17T00:00:00.000+00:00',
   updated_at: '2026-08-17T00:01:00.000+00:00',
   status: 'running',
-  workflow_names: ['Research Workflow'],
+  subjects: [
+    { graph_kind: 'agent', id: 'agent-1', name: 'Research Agent' },
+    { graph_kind: 'workflow', id: 'workflow-1', name: 'Research Workflow' },
+  ],
   run_count: 4,
   active_run_count: 1,
   error_run_count: 1,
@@ -109,7 +112,7 @@ describe('WorkflowLifecyclesPage', () => {
     await flushPromises()
 
     expect(list).toHaveBeenCalledWith({ page: 1, page_size: 10, query: '' })
-    expect(wrapper.text()).toContain('Research Workflow')
+    expect(wrapper.text()).toContain('Research Agent, Research Workflow')
     expect(wrapper.text()).toContain('Running')
     expect(wrapper.text()).toContain('Success')
     expect(wrapper.text()).toContain('1 / 4')

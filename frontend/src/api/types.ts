@@ -587,13 +587,19 @@ export interface LangGraphRun {
   multitask_strategy: string
 }
 
+export interface LangGraphLifecycleSubject {
+  graph_kind: 'agent' | 'workflow'
+  id: string
+  name: string
+}
+
 export interface LangGraphLifecycleSummary {
   lifecycle_id: string
   request_id: string
   created_at: string
   updated_at: string
   status: LangGraphRunStatus
-  workflow_names: string[]
+  subjects: LangGraphLifecycleSubject[]
   run_count: number
   active_run_count: number
   error_run_count: number
@@ -884,8 +890,6 @@ export interface RuntimeDiagnosticEntry {
   lifecycle_id?: string
   run_id?: string
   thread_id?: string
-  entry_workflow_id?: string
-  entry_workflow_name?: string
   subject_kind?: string
   subject_id?: string
   subject_name?: string

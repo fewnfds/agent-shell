@@ -142,7 +142,10 @@ class _Runs:
 
 class _Assistants:
     async def create(self, _graph_id, *, assistant_id, **_kwargs):
-        return {"assistant_id": assistant_id}
+        return {"assistant_id": assistant_id, "name": _kwargs["name"]}
+
+    async def update(self, *_args, **_kwargs):
+        raise AssertionError("matching Assistant names must not be updated")
 
 
 class _Client:

@@ -10,7 +10,7 @@ from agent_shell.model_provider_contracts import _SETTINGS_BY_PROVIDER
 from agent_shell.provider_integrations import bundled_provider_integrations
 from agent_shell.runtime import agent_builder
 from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 
 def test_workflow_run_has_stable_openai_completion_reason() -> None:
     execution = RunExecution(
@@ -21,6 +21,40 @@ def test_workflow_run_has_stable_openai_completion_reason() -> None:
         media_response=noop_media_response(),
     )
     assert execution.finish_reason == "stop"
+
+
+def test_runtime_diagnostic_context_does_not_invent_workflow_identity() -> None:
+    without_identity = RunExecution(
+        graph=None,
+        input_state={},
+        response_scheduler=None,
+        middleware_runtimes=(noop_middleware_runtime(),),
+        media_response=noop_media_response(),
+        request_id="request-1",
+        public_model="Public model",
+    ).diagnostic_context()
+    workflow_identity = WorkflowRunIdentity(
+        request_id="request-2",
+        lifecycle_id="lifecycle-2",
+        run_id="run-2",
+        workflow_id="workflow-2",
+        workflow_name="Workflow Two",
+    )
+    with_identity = RunExecution(
+        graph=None,
+        input_state={},
+        response_scheduler=None,
+        middleware_runtimes=(noop_middleware_runtime(),),
+        media_response=noop_media_response(),
+        identity=workflow_identity,
+    ).diagnostic_context()
+
+    assert without_identity.subject_kind == ""
+    assert without_identity.subject_id == ""
+    assert without_identity.subject_name == ""
+    assert with_identity.subject_kind == "workflow"
+    assert with_identity.subject_id == "workflow-2"
+    assert with_identity.subject_name == "Workflow Two"
 
 
 def test_workflow_execution_closes_v3_stream_when_cancelled() -> None:
@@ -198,7 +232,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -
 
         lifecycle_id = "shared-lifecycle"
         entry_run_id = "entry-run"
-        entry_workflow_id = "entry-workflow"
+        entry_graph_id = "entry-workflow"
         spawned_run_id = "spawned-run"
         spawned_workflow_id = "spawned-workflow"
         output = OutputProjector(output_renderer())
@@ -215,7 +249,7 @@ def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -
             request_id="request",
             lifecycle_id=lifecycle_id,
             run_id=entry_run_id,
-            workflow_id=entry_workflow_id,
+            workflow_id=entry_graph_id,
             workflow_name="Entry Workflow",
         )
         spawned_identity = WorkflowRunIdentity(
@@ -465,18 +499,24 @@ def test_tool_error_boundary_preserves_successful_result() -> None:
     assert returned.content == result.content
 
 def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
-    async def scenario() -> tuple[str, str]:
+    async def scenario() -> tuple[str, str, str, tuple[str, str, str]]:
         class RecordingDiagnostics:
             detail_exception: BaseException | None = None
+            component = ""
+            context = None
 
             async def aruntime_error(
                 self,
                 _exc,
                 *,
+                component: str,
+                context,
                 detail_exception: BaseException | None = None,
                 **_kwargs,
             ) -> None:
                 self.detail_exception = detail_exception
+                self.component = component
+                self.context = context
 
         class Graph:
             async def astream_events(
@@ -496,6 +536,14 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
             middleware_runtimes=(noop_middleware_runtime(),),
             media_response=noop_media_response(),
             runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
+            identity=AgentRunIdentity(
+                request_id="request-agent",
+                lifecycle_id="lifecycle-agent",
+                run_id="run-agent",
+                thread_id="thread-agent",
+                main_agent_id="agent-1",
+                main_agent_name="Agent One",
+            ),
         )
         stream = execution.stream_text()
         assert await anext(stream) == "running"
@@ -503,11 +551,23 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
         with pytest.raises(AgentRuntimeError) as captured:
             await anext(stream)
         assert "private middleware or graph details" not in captured.value.safe_message
-        return captured.value.code, str(diagnostics.detail_exception)
+        assert diagnostics.context is not None
+        return (
+            captured.value.code,
+            str(diagnostics.detail_exception),
+            diagnostics.component,
+            (
+                diagnostics.context.subject_kind,
+                diagnostics.context.subject_id,
+                diagnostics.context.subject_name,
+            ),
+        )
 
     assert asyncio.run(scenario()) == (
         "agent_execution_failed",
         "private middleware or graph details",
+        "graph_runtime",
+        ("agent", "agent-1", "Agent One"),
     )
 
 def test_classified_graph_failure_emits_matching_lifecycle_error() -> None:
