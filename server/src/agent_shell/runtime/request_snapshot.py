@@ -1036,6 +1036,10 @@ class LifecycleRunCoordinator:
                 name=str(binding.main_agent["name"]),
             )
             binding.assistant_id = str(assistant["assistant_id"])
+            await self._ensure_async_subagent_assistants(
+                client,
+                binding.main_agent,
+            )
             if stateless:
                 return client, None
             if existing_thread_id is not None:
@@ -1070,6 +1074,45 @@ class LifecycleRunCoordinator:
         except BaseException:
             await client.aclose()
             raise
+
+    async def _ensure_async_subagent_assistants(
+        self,
+        client: Any,
+        main_agent: Mapping[str, Any],
+    ) -> None:
+        """Materialize every co-deployed async target reachable from this Agent."""
+
+        root_id = str(main_agent.get("id", ""))
+        seen = {root_id} if root_id else set()
+        pending: list[Mapping[str, Any]] = [main_agent]
+        while pending:
+            owner = pending.pop(0)
+            references = owner.get("async_subagents", [])
+            if not isinstance(references, list):
+                continue
+            for reference in references:
+                if not isinstance(reference, Mapping):
+                    continue
+                target_id = str(reference.get("main_agent_id", ""))
+                if not target_id or target_id in seen:
+                    continue
+                seen.add(target_id)
+                target = self._snapshot.main_agent_by_id(target_id)
+                if target is None:
+                    raise AgentRuntimeError(
+                        "configuration.reference_not_found",
+                        "An async subagent references a Main Agent that does not exist.",
+                        status_code=409,
+                    )
+                await client.assistants.create(
+                    LANGGRAPH_AGENT_GRAPH_ID,
+                    config={"configurable": {"main_agent_id": target_id}},
+                    metadata={"graph_kind": "agent", "main_agent_id": target_id},
+                    assistant_id=main_agent_assistant_id(target_id),
+                    if_exists="do_nothing",
+                    name=str(target["name"]),
+                )
+                pending.append(target)
 
     async def _attach_agent_run_stream(
         self,

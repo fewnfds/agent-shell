@@ -25,25 +25,24 @@ Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭
 
 Management API 使用 `/agent-shell/api/*`，负责发现、创建、修改、校验和发布配置。
 
-OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `enabled=true` 且 `is_model_entry=true` 的 Workflow。其他请求入口也可以复用同一套官方 Assistant、Thread 与 Run 执行模型。
+OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `is_model_entry=true` 的 Main Agent，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow。其他请求入口也复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
 一次外部请求按以下路径运行：
 
 ```text
 OpenAI-compatible messages[]
-  -> 按 model 选择 enabled + is_model_entry Workflow name
+  -> 按 model 选择 Main Agent 或 Workflow 入口
   -> 捕获当前配置与 Model/MCP 资源快照
-  -> 创建或复用官方 Assistant，并创建本次请求的 Thread 与 Run
-  -> 把不可变 request messages[] 写入官方 Server Store
-  -> dynamic graph factory 从同一快照物化 Workflow Graph、Agent、Middleware 和 Python extension
-  -> LangGraph Dev Worker 执行 StateGraph
-  -> 投影 Agent 与 Workflow event
+  -> 创建或复用官方 Assistant，并创建或续接 Thread上的新 Run
+  -> dynamic graph factory 从同一快照物化 Main Agent Graph 或 Workflow Graph
+  -> LangGraph Dev Worker 执行对应 root Graph
+  -> 对应 Agent/Workflow Event Output 投影原始 event
   -> 返回 OpenAI-compatible response
 ```
 
-客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。它们作为本次请求的不可变输入保存在官方 Server Store Lifecycle namespace，不会自动进入 Workflow root State，也不会跨请求累积为产品聊天历史。Workflow State 保存当前 Thread/Run 的执行状态；需要跨 Run 查询的请求材料、Agent invocation artifact 和大型业务结果继续由 Store 或 Filesystem 持有。
+客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。Main Agent入口把它们作为官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口把输入保存在Lifecycle Store快照中，Workflow State只保存`shared_vars`。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
 
-需要让某个 Agent 使用 request、task 或上游结果时，为该 Agent 装配 Agent Additional Prompt（AAP）或其他明确的 Custom Middleware。AAP 在 Agent invocation 开始前选择材料，并构造该 Agent 私有的初始 `messages`。
+需要在Thread第一次执行时整理Agent输入时，为该Agent装配Agent Additional Prompt（AAP）或其他明确的Custom Middleware。AAP从current AgentState messages或显式Store/Filesystem来源选择材料，并用private checkpoint marker保证同一stateful Thread只初始化一次。
 
 ## 3. 配置对象关系
 
@@ -53,9 +52,12 @@ OpenAI-compatible messages[]
 Component
   -> Subagent
   -> Main Agent
-  -> Workflow metadata
-  -> Workflow Graph
-  -> enabled Workflow + is_model_entry
+
+Component
+  -> Workflow metadata / Command
+  -> Workflow control Graph
+
+Main Agent is_model_entry | enabled Workflow is_model_entry
   -> /compat/openai/v1/chat/completions
 ```
 
@@ -63,7 +65,7 @@ Model Connection 是当前实例私有资源。Model Requirement 是可迁移的
 
 MCP Connection 也是当前实例私有资源。Repository-owned MCP Requirement 保存稳定 namespace，MCP Mapping 把它绑定到本机 MCP Connection；Main Agent、Subagent 和 Command 再通过各自的 ordered `mcp_refs` 选择可用 Tool。
 
-Workflow Graph 决定 Node activation、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop。Component 为 Agent、Workflow Node 或 output projection 提供配置。
+Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop，并可通过 ordered AsyncSubAgent references 启动独立后台 Thread/Run。Component 为 Agent、Command 或 output projection 提供配置。
 
 ## 4. 开始前形成任务记录
 
@@ -113,7 +115,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 创建或修改 Command、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明五类 Python package 共用的文件与 dependency contract。
 
-需要从 current Run 启动另一个独立 Workflow Run 时读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。普通异步 Python、parallel Node、Subagent 和 Command dispatch task 都在 current Run 内执行。
+需要从 current Workflow Run 启动另一个独立 Main Agent或Workflow Run时读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。Main Agent使用官方AsyncSubAgent时同时阅读[配置Agent](03-configure-agent.md)中的异步委派边界。
 
 所有任务最后读[验证、运行与交付](08-validate-run-deliver.md)。
 
@@ -167,6 +169,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - Model Connection、Model Requirement、Model Mapping；
 - MCP Connection、MCP Requirement、MCP Mapping、MCP Tool；
 - Main Agent、Subagent、Agent Thread与Run；
+- synchronous Subagent、AsyncSubAgent、`async_tasks`；
 - Agent Event Output、Workflow Event Output；
 - System Prompt、Agent Additional Prompt（AAP）；
 - Command、Custom Tool、Custom Middleware；

@@ -17,6 +17,8 @@ Main Agent root graph
        -> direct Subagent
             -> its own ordered tool_refs
             -> its own ordered middleware_refs
+       -> ordered AsyncSubAgent references
+            -> official async task tools
 ```
 
 Main Agent 和 Subagent 分别维护 `tool_refs` 与 `middleware_refs`。这两个列表独立于 `capability_refs` 和 Subagent capability override。每个 reference 指向当前 Configuration Repository 中一份配置独占的 Python package。
@@ -86,14 +88,14 @@ from langchain_core.tools import BaseTool
 
 
 @tool
-def workflow_label(text: str, runtime: ToolRuntime) -> str:
-    """Attach the current Workflow Node identity to a text label."""
+def agent_label(text: str, runtime: ToolRuntime) -> str:
+    """Attach the configured Main Agent identity to a text label."""
 
-    return f"{runtime.context.workflow_node_id}:{text.strip()}"
+    return f"{runtime.context.main_agent_id}:{text.strip()}"
 
 
 def create_tool() -> BaseTool:
-    return workflow_label
+    return agent_label
 ```
 
 模型看到的 Tool contract 来自：
@@ -108,9 +110,8 @@ def create_tool() -> BaseTool:
 - `runtime.state`：current Agent State；
 - `runtime.context`：current runtime context，包含明确命名的Lifecycle、root Graph、Run和Agent profile identity；
 - `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；
-- `runtime.store`：current Lifecycle 可访问的 LangGraph Store；
+- `runtime.store`：Server注入的LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
-- `runtime.context.workflow_runs`：Agent Shell 的跨 Workflow Run command facade，提供 `start_workflow/check/list/join/cancel`。
 
 Tool 的参数名 `runtime` 与 `config` 由 LangChain 保留。Runtime access 写在 Tool callable 中；`create_tool()` 在 assembly construction stage 执行，没有某次 invocation 的 Runtime。
 
@@ -152,7 +153,7 @@ GET /agent-shell/api/subagents/<Subagent UUID>
 PUT /agent-shell/api/subagents/<Subagent UUID>
 ```
 
-每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool 和 Subagent delegation 的 `task` Tool 共享模型可见 Tool namespace；重复 Tool name 会在 Agent assembly validation 中返回错误。
+每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool、同步Subagent的`task`和AsyncSubAgent的五个task工具共享模型可见Tool namespace；重复Tool name会在Agent assembly validation中返回错误。
 
 ## 6. Custom Middleware factory
 
@@ -168,16 +169,26 @@ factory 可以按参数名声明当前装配需要的数据。Agent Shell 当前
 
 factory 也可以用 `**kwargs` 接收其余可用值。没有 default 的参数必须存在于当前 construction context；缺失时 assembly 失败。每次 invocation 的 State、Runtime Context 和 Store 在 Middleware hook 中读取。
 
-下面的 Middleware 在 Agent invocation 开始时把当前 identity 写入 `shared_vars`：
+下面的Middleware在Agent invocation开始时把配置identity写入自己的private Agent State channel：
 
 ```python
-from typing import Any
+from typing import Annotated, Any
+from typing_extensions import NotRequired, TypedDict
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import PrivateStateAttr
 from langgraph.runtime import Runtime
 
 
+class InvocationIdentityState(TypedDict):
+    configured_agent: NotRequired[
+        Annotated[dict[str, str], PrivateStateAttr]
+    ]
+
+
 class InvocationIdentityMiddleware(AgentMiddleware):
+    state_schema = InvocationIdentityState
+
     def __init__(self, *, agent: dict[str, Any], package_id: str) -> None:
         super().__init__()
         self._agent_id = agent["id"]
@@ -193,14 +204,11 @@ class InvocationIdentityMiddleware(AgentMiddleware):
         state: dict[str, Any],
         runtime: Runtime[Any],
     ) -> dict[str, Any]:
-        context = runtime.context
+        del runtime
         return {
-            "shared_vars": {
-                f"agent:{self._agent_id}": {
-                    "agent_type": self._agent_type,
-                    "workflow_node_id": context.workflow_node_id,
-                    "node_invocation_id": context.node_invocation_id,
-                }
+            "configured_agent": {
+                "id": self._agent_id,
+                "type": self._agent_type,
             }
         }
 
@@ -213,7 +221,7 @@ def create_middleware(
     return InvocationIdentityMiddleware(agent=agent, package_id=package_id)
 ```
 
-`shared_vars` 使用 top-level shallow merge。并行 Agent 为同一个 top-level key 返回不同 value 时，结果取决于 reducer merge，因此示例用 Agent identity 形成独立 key。Workflow 仍应为业务字段定义明确 owner。
+`PrivateStateAttr`使该字段属于Agent自己的State schema，并从模型可见State中隐藏。Workflow的`shared_vars`属于另一个root Graph，Agent Middleware不写入该channel。多个Middleware需要同名State key时，应由一个明确owner定义reducer或使用各自唯一key。
 
 ## 7. Middleware hook
 

@@ -153,6 +153,14 @@ def _main_agent_references(
             target_kind="subagent",
             location=("subagents", index, "subagent_id"),
         )
+    for index, item in enumerate(_records(payload.get("async_subagents", []))):
+        yield _reference(
+            owner,
+            path=f"async_subagents[{index}].main_agent_id",
+            target_id=item.get("main_agent_id"),
+            target_kind="main_agent",
+            location=("async_subagents", index, "main_agent_id"),
+        )
 
 
 def _component_references(

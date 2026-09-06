@@ -124,7 +124,7 @@ def create_middleware(agent, config, backend):
 `references`、`scope`、`workflow_node_id`、`request_id`、`model` 和 `tools` 等；工厂也可以使用 `**kwargs` 接收全部可用值。这些参数是 Agent Shell 的装配投影，部分值会随当前装配范围而为空。工厂返回后，Middleware 通过 LangChain 官方 hook 的 `state` 和 `runtime` 读取每次运行的动态数据。
 Main Agent/Subagent 的有序 `middleware_refs` 决定多个实例进入列表的顺序。一个实例可以实现多个官方 hook，但 hook 不作为独立排序项。LangChain 对 `before_*` 正序执行、对 `after_*` 逆序执行，并把 `wrap_*` 按列表嵌套。Agent Shell 不代理官方 hook、state schema、tools 或 stream transformer。运行链使用异步执行；若自定义类覆盖 `before_agent`、`before_model`、`after_model`、`after_agent`、`wrap_model_call` 或 `wrap_tool_call` 中的同步 hook，也必须覆盖对应的 async hook，否则装配会被拒绝。
 
-内置 `agent-additional-prompt` template 通过普通 `AgentMiddleware.abefore_agent` 选择 Workflow 原始输入、Subagent delegated messages 和 Command dispatch task。复制 template 后，在 `build_agent_additional_prompt_messages(state, runtime, request_messages, backend)` 中按 current Agent 的职责选择、裁剪和转换材料，并通过 Agent 的有序 `middleware_refs` 决定位置。完整说明见 [Agent Additional Prompt](agent-additional-prompt.md)。
+内置 `agent-additional-prompt` template 通过普通 `AgentMiddleware.abefore_agent` 整理 current AgentState messages。Main Agent看到本次Run input，synchronous Subagent看到Deep Agents delegated messages；复制template后，在`build_agent_additional_prompt_messages(state, runtime, request_messages, backend)`中按职责选择、裁剪和转换材料，并可显式读取Store或Filesystem。checkpointed private marker使同一stateful Thread只初始化一次。完整说明见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
 ## Imports 与依赖
 
@@ -132,7 +132,7 @@ Python 名称仍需显式 `import`。本地模块使用正常相对导入，例�
 
 `requirements.txt` 可以不存在，也可以是空文件；两者都表示没有额外依赖。只有 source 实际 import 平台核心之外的 third-party package 时才需要新增或填写它。模板和配置 extension 不会因为缺少这个占位文件而失效。
 
-启动器只收集启用 Workflow 可达的配置扩展 requirements：Graph 中的 Command 和 Workflow Event Output，以及可达 Main Agent/Subagent 引用的 Custom Tool、Custom Middleware 和 Agent Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
+启动器收集全部已配置Main Agent及其synchronous Subagent所引用的Custom Tool、Custom Middleware和Agent Event Output requirements，并收集enabled Workflow使用的Command和Workflow Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
 
 依赖只接受普通 PyPI requirement，并且必须与核心约束兼容；不接受 URL、本地路径或安装后产生不受支持 `.pth` 的依赖。uv 优先安装兼容 wheel，没有 wheel 时按发行包声明尝试源码构建。需要编译器或系统库的包由实例维护者自行准备相应环境；构建失败时启动器显示 uv 的原始错误，并继续使用上一次成功准备的依赖层。
 

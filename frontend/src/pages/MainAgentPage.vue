@@ -4,6 +4,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
+import AsyncSubagentReferencesEditor from '@/components/AsyncSubagentReferencesEditor.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
@@ -428,6 +429,12 @@ onMounted(() => {
         <SubagentReferencesEditor
           v-model:references="form.subagents"
           :profiles="subagentProfiles"
+        />
+
+        <AsyncSubagentReferencesEditor
+          v-model:references="form.async_subagents"
+          :main-agents="profiles"
+          :current-agent-id="form.id"
         />
       </template>
       <template #aside>

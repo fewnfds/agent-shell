@@ -1,6 +1,6 @@
 # 验证、运行与交付
 
-本章验证 current Workflow 在当前实例中的配置、发布、发现与真实运行结果，并形成交付记录。
+本章验证current Main Agent或Workflow在当前实例中的配置、发现与真实运行结果，并形成交付记录。Workflow还需要Graph validation与publish步骤。
 
 `/agent-shell/api/*` 使用 `AGENT_SHELL_MANAGEMENT_TOKEN`。`/compat/openai/v1/*` 使用 `AGENT_SHELL_API_KEY`。两类 credential 不能互换，并按[发现当前实例事实](01-discover-current-instance.md)的本地程序或运行平台注入边界使用，实际值不进入操作 Agent 上下文。
 
@@ -8,9 +8,8 @@
 
 ```text
 Repository validation
-  -> 完整 candidate Graph validation
-  -> publish 同一份 Graph document
-  -> 回读 enabled Workflow 和 Graph
+  -> [Workflow] 完整 candidate Graph validation
+  -> [Workflow] publish并回读同一份 Graph document
   -> Model Mapping
   -> MCP Mapping
   -> Python dependency status
@@ -96,7 +95,7 @@ GET /agent-shell/api/workflows/<workflow UUID>/graph
 
 ## 5. Model Mapping
 
-Workflow不装配模型。只有本次交付包含Main Agent或Command-launched Agent时才检查Model Mapping。
+Workflow不装配模型。只要本次交付包含直接入口Main Agent、Command-launched Agent、synchronous Subagent或AsyncSubAgent目标，就检查对应Model Mapping。
 
 读取：
 
@@ -105,7 +104,7 @@ GET /agent-shell/api/model-requirements
 GET /agent-shell/api/model-connections
 ```
 
-检查每个可达 Main Agent 和 Subagent 使用的 Model Requirement。
+检查每个直接运行或被引用的Main Agent，以及其synchronous Subagent使用的Model Requirement。AsyncSubAgent目标是另一份完整Main Agent assembly，也需要自己的有效binding。
 
 用户先建立满足能力要求的 Model Connection。AI 根据 Requirement description 检查 tool calling、structured output、context window、multimodal input 和其他真实要求。
 
@@ -132,7 +131,7 @@ Management API 没有单独的“测试 MCP”入口。以一次覆盖目标 Age
 
 ## 7. Python dependency status
 
-对 enabled Workflow 可达的 Python-backed Component 调用：
+对全部已配置Main Agent assembly，以及enabled Workflow使用的Python-backed Component调用：
 
 ```text
 GET /agent-shell/api/blocks/<type>/<component UUID>/python-package
@@ -196,28 +195,27 @@ POST /agent-shell/api/api-server/start
 
 API Key 只用于 `/compat/openai/v1/*`，不写入 Graph、Component、日志或交付报告。
 
-## 9. 确认 Workflow 可发现
+## 9. 确认模型入口可发现
 
 ```http
 GET /compat/openai/v1/models
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-确认刚刚 publish 且选择作为模型入口的 Workflow name 出现在 model list。
+确认`is_model_entry=true`的Main Agent name，或刚刚publish且选择作为模型入口的Workflow name出现在model list。
 
 找不到时依次检查：
 
-1. Workflow 是否 `enabled=true`；
-2. Workflow 是否 `is_model_entry=true`；
-3. API Server 是否 running；
-4. 请求是否使用 `/compat/openai/v1` API Key；
-5. Workflow name 是否与预期 `model` 完全一致。
+1. Main Agent是否`is_model_entry=true`，或Workflow是否同时`enabled=true`与`is_model_entry=true`；
+2. API Server 是否 running；
+3. 请求是否使用 `/compat/openai/v1` API Key；
+4. 入口name是否与预期`model`完全一致。
 
-`enabled=true` 且 `is_model_entry=true` 的 Workflow 出现在 `/compat/openai/v1/models`；全部 enabled Workflow 都可以被其他 Workflow Run 调用。
+`is_model_entry=true`的Main Agent和`enabled=true`且`is_model_entry=true`的Workflow出现在`/compat/openai/v1/models`；全部enabled Workflow都可以被其他Workflow Run调用。
 
 ## 10. 发起一次真实 invocation
 
-使用精确 Workflow name 发起 non-streaming request：
+使用精确Main Agent或Workflow入口name发起non-streaming request：
 
 ```http
 POST /compat/openai/v1/chat/completions
@@ -227,7 +225,7 @@ Content-Type: application/json
 
 ```json
 {
-  "model": "ai-workflow",
+  "model": "entry-name",
   "messages": [
     {
       "role": "system",
@@ -245,18 +243,19 @@ Content-Type: application/json
 测试输入必须覆盖本次任务的主要路径：
 
 - Main Agent：确认AAP或其他输入owner把目标材料交给正确Agent，并得到Agent Event Output；
+- AsyncSubAgent：确认父Agent能start并返回完整task ID，后续同一父Thread的新Run能check/list；需要时覆盖update或cancel，并确认child结果只在父Agent复述后进入公开response；
 - Command Workflow：确认预期State update、目标Node ID、独立Run调用、downstream completion和termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
 - 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败、主动取消以及 result handoff；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
-纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是该 Workflow 的预期行为，不强制要求 Assistant text。
+纯 Command Workflow 没有可投影文本时，可以返回合法空内容。验收依据是所选root Graph的预期行为，不强制要求 Assistant text。
 
 ## 11. Invocation 失败
 
 保留 HTTP status、structured error code、request ID 和非敏感 issue。按 owner 定位：
 
-1. 检查 Workflow enabled state；
+1. 检查所选Main Agent的model entry，或Workflow的enabled/model entry状态；
 2. 检查 Model Mapping 与 MCP Mapping；
 3. 检查 MCP secret slot、Tool discovery 和 consumer allowlist；
 4. 检查 Python dependency status；
@@ -266,7 +265,7 @@ Content-Type: application/json
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-运行监控页面按 Lifecycle 浏览本次请求的全部官方 Run；选择 Run 后可查看原始 Run 对象、Assistant Graph、Thread latest State 和最近 State history。页面通过刷新按钮重新读取公共 API，不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
+运行监控页面按Lifecycle浏览本次请求已登记的全部官方Run；选择Run后可查看原始Run对象、Assistant Graph、Thread latest State和最近State history。官方AsyncSubAgent child没有父Lifecycle metadata，因此通过父Agent的`async_tasks`与五个task工具观测。页面通过刷新按钮重新读取公共API，不从日志推演Edge、Node attempt或跨资源Timeline。运行失败继续结合调用方structured error和日志中心诊断定位。
 
 常见 HTTP 范围：
 

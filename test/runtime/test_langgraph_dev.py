@@ -176,6 +176,96 @@ def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
     assert calls[1][1]["on_completion"] == "keep"
 
 
+def test_parent_materializes_reachable_async_target_assistants_before_its_run() -> None:
+    target_id = "22222222-2222-4222-8222-222222222222"
+    nested_id = "33333333-3333-4333-8333-333333333333"
+    created: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Assistants:
+        async def create(self, *args, **kwargs):
+            created.append((args, kwargs))
+            return {"assistant_id": kwargs["assistant_id"]}
+
+    coordinator = LifecycleRunCoordinator(
+        _owner=SimpleNamespace(),
+        _snapshot=SimpleNamespace(
+            main_agent_by_id=lambda requested_id: (
+                {
+                    "id": target_id,
+                    "name": "Async target",
+                    "async_subagents": [
+                        {
+                            "main_agent_id": nested_id,
+                            "name": "nested",
+                            "description": "Run a nested background task.",
+                        }
+                    ],
+                }
+                if requested_id == target_id
+                else (
+                    {
+                        "id": nested_id,
+                        "name": "Nested async target",
+                        "async_subagents": [
+                            {
+                                "main_agent_id": target_id,
+                                "name": "cycle",
+                                "description": "Exercise cycle-safe materialization.",
+                            }
+                        ],
+                    }
+                    if requested_id == nested_id
+                    else None
+                )
+            )
+        ),
+        _detached_tasks=SimpleNamespace(),
+    )
+    parent = {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "Parent",
+        "async_subagents": [
+            {
+                "main_agent_id": target_id,
+                "name": "researcher",
+                "description": "Research in the background.",
+            },
+            {
+                "main_agent_id": target_id,
+                "name": "reviewer",
+                "description": "Review in the background.",
+            },
+        ],
+    }
+
+    asyncio.run(
+        coordinator._ensure_async_subagent_assistants(
+            SimpleNamespace(assistants=Assistants()),
+            parent,
+        )
+    )
+
+    assert len(created) == 2
+    args, kwargs = created[0]
+    assert args == ("agent-shell-agent",)
+    assert kwargs == {
+        "config": {"configurable": {"main_agent_id": target_id}},
+        "metadata": {"graph_kind": "agent", "main_agent_id": target_id},
+        "assistant_id": main_agent_assistant_id(target_id),
+        "if_exists": "do_nothing",
+        "name": "Async target",
+    }
+    args, kwargs = created[1]
+    assert args == ("agent-shell-agent",)
+    assert kwargs == {
+        "config": {"configurable": {"main_agent_id": nested_id}},
+        "metadata": {"graph_kind": "agent", "main_agent_id": nested_id},
+        "assistant_id": main_agent_assistant_id(nested_id),
+        "if_exists": "do_nothing",
+        "name": "Nested async target",
+    }
+
+
 def test_windows_curl_blockbuster_compatibility_wraps_the_runtime_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

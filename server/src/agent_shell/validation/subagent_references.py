@@ -59,3 +59,56 @@ def subagent_reference_issues(
         else:
             seen_names.add(name)
     return issues
+
+
+def async_subagent_reference_issues(
+    references: list[dict[str, Any]],
+    *,
+    scope: str,
+    owner_id: str,
+    owner_name: str,
+    path_prefix: str = "async_subagents",
+) -> list[ValidationIssue]:
+    """Return identity conflicts for official AsyncSubAgent references."""
+
+    issues: list[ValidationIssue] = []
+    seen_names: set[str] = set()
+    for index, reference in enumerate(references):
+        target_id = str(reference.get("main_agent_id", ""))
+        name = name_collision_key(str(reference.get("name", "")))
+        common = {
+            "scope": scope,
+            "owner_id": owner_id,
+            "owner_name": owner_name,
+            "message_args": {},
+        }
+        if owner_id and target_id == owner_id:
+            issues.append(
+                ValidationIssue(
+                    code="contract.async_subagent_self_reference",
+                    path=f"{path_prefix}[{index}].main_agent_id",
+                    message="A Main Agent cannot launch itself as an async subagent.",
+                    message_key=(
+                        "validation.issue.contract.asyncSubagentSelfReference"
+                    ),
+                    **common,
+                )
+            )
+        if name in seen_names:
+            issues.append(
+                ValidationIssue(
+                    code="contract.async_subagent_name_duplicate",
+                    path=f"{path_prefix}[{index}].name",
+                    message="Async subagent routing names must be unique.",
+                    message_key=(
+                        "validation.issue.contract.asyncSubagentNameDuplicate"
+                    ),
+                    **common,
+                )
+            )
+        else:
+            seen_names.add(name)
+    return issues
+
+
+__all__ = ["async_subagent_reference_issues", "subagent_reference_issues"]

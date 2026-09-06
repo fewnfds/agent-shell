@@ -1,6 +1,6 @@
 # Agent Shell 用户指南
 
-Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration（基于 Deep Agents runtime），并把 `enabled=true` 且 `is_model_entry=true` 的 Workflow 暴露为 OpenAI-compatible model。
+Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration（基于 Deep Agents runtime），并把 `is_model_entry=true` 的 Main Agent，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow 暴露为 OpenAI-compatible model。
 
 [AI Workflow 编写指南](ai-guide/README.md)是 AI 或自动化程序的索引，下面的详细页面按任务领域展开。
 
@@ -20,8 +20,8 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component c
 
 三个基础边界是：
 
-- Main Agent 必选且仅需模型要求与 Agent Event Output；Subagent 仅模型要求必选；
-- 客户端在每次请求中提交完整消息；
+- Main Agent 必选 Model Requirement、Filesystem Backend、Filesystem Tools 与 Agent Event Output；Subagent 必须保留前三者的 effective 配置；
+- stateful Main Agent 的续聊复用 Thread并创建新 Run；Workflow State只保存确定性控制数据；
 - `data/` 是需要备份和迁移的完整实例数据根，`runtime/` 可重建，不进入备份，外部 mapped path 需另行迁移。
 
 模型连接与映射的使用方式见 [管理模型连接与模型映射](models.md)，MCP 使用方式见 [MCP 连接、映射与调用](mcp.md)。字段级索引见 [组件说明](../wizard-pages/README.md) 与 [Agent 配置](../agent-pages/README.md)；鉴权与部署见 [安全与部署](../security-and-deployment.md)；完整公开索引见 [Agent Shell 文档](../README.md)。

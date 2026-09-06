@@ -35,7 +35,7 @@ Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由
 
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
-Main Agent是独立Deep Agents root graph，messages和private state由其Thread checkpoint拥有。Workflow不嵌入Main Agent，也不归档AgentState副本；Command需要AI时通过`runtime.context.agent_runs`创建独立Thread/Run并显式读取结果。synchronous Subagent仍由Deep Agents official Middleware在Main Agent内部调度。
+Main Agent是独立Deep Agents root graph，messages和private state由其Thread checkpoint拥有。Workflow通过Command的`runtime.context.agent_runs`创建独立Main Agent Thread/Run并显式读取结果。synchronous Subagent由Deep Agents `SubAgentMiddleware`在current Agent loop内调度；Main Agent的ordered AsyncSubAgent references由官方`AsyncSubAgentMiddleware`启动独立后台Thread/Run。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 
@@ -45,4 +45,4 @@ Command组件保存一个`workflow-node/command`Python扩展引用和普通confi
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。
 
 这些自定义 Python 都运行在服务进程的受信任边界内，没有 sandbox。Custom Tool、Custom Middleware、Command Node、Agent Event Output 和 Workflow Event Output 是五类配置独占的 Python 扩展，并在扩展目录可选的 `requirements.txt` 声明外部包；模板和示例本身不运行也不参与依赖。五类目录与通用依赖边界见[文件化 Python 扩展](middleware-packages.md)，各组件的 factory contract 见对应组件页。
-启动器只收集 enabled Workflow 可达扩展的 requirements；修改后需重启 Agent Shell 以重建依赖层。文件化扩展源码在下一次请求重新加载。
+启动器收集全部已配置Main Agent assembly，以及enabled Workflow触达扩展的requirements；修改后需重启 Agent Shell 以重建依赖层。文件化扩展源码在下一次请求重新加载。

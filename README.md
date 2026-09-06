@@ -1,6 +1,6 @@
 # Agent Shell
 
-Agent Shell Workflow 与 Deep Agents 管理台。已正式保存且选择作为模型入口的 Workflow 作为 OpenAI-compatible model。
+Agent Shell Workflow 与 Deep Agents 管理台。`is_model_entry=true`的Main Agent，以及已正式保存且选择作为模型入口的Workflow可作为OpenAI-compatible model。
 
 ## 开始
 

@@ -28,17 +28,17 @@ Content-Type: application/json
 
 Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
-Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。规范化后的`messages[]`保存在本次Lifecycle的Server Store namespace；Workflow不消费它。Main Agent只有已装配的`before_agent`/`abefore_agent`Middleware决定如何选择输入并写入AgentState。
+Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。Workflow入口的规范化`messages[]`保存在本次Lifecycle的Server Store namespace而不进入Workflow State。Main Agent入口把`messages[]`作为官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它。
 
-每个 Workflow 显式配置 `durability` 与 `on_disconnect`。实例级 `recursion_limit`、可选 `max_concurrency` 和 `n_jobs_per_worker` 位于【系统 / 系统配置 / 限制策略】，使用 LangGraph/LangChain 官方字段；`max_concurrency` 留空时不向运行配置传值。全部 Workflow Run 的 Thread、checkpoint、State 与 history 由 LangGraph Dev 官方运行时拥有。
+Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workflow显式配置`durability`与`on_disconnect`。实例级`recursion_limit`、可选`max_concurrency`和`n_jobs_per_worker`位于【系统 / 系统配置 / 限制策略】，使用LangGraph/LangChain官方字段；`max_concurrency`留空时不向运行配置传值。全部Main Agent/Workflow Run的Thread、checkpoint、State与history由LangGraph Dev官方运行时拥有。
 
-每个 Workflow 独立保存 `on_disconnect=cancel|continue`，默认 `cancel`。客户端在 Run 完成前断开时，只读取本次请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 在后台继续。其他 Run 的成功、失败或取消不会触发隐式连锁取消，调用关系也不形成 Parent/Child 权限。
+每个Main Agent与Workflow独立保存`on_disconnect=cancel|continue`，默认`cancel`。客户端在Run完成前断开时，只读取本次请求入口Graph的设置：`cancel`取消同一Lifecycle的全部active Run，`continue`让全部Run在后台继续。其他Run的成功、失败或取消不会触发隐式连锁取消，调用关系也不形成Parent/Child权限。
 
 【系统 / 系统配置 / 响应流调度】保存全局 `idle_timeout_seconds`、`max_batch_kb` 和 `send_interval_seconds`。每个新请求冻结当时的设置并为 Lifecycle 创建一个 scheduler；保存新值不要求重启，也不改变已运行的 Lifecycle。该设置只调度 Agent/Workflow Event Output 已批准的 presentation frame，不拥有事件可见性或修饰规则。
 
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，各 participating Run 的 Event Output producer 将已投影 frame 提交给它；任一时刻只有一个 `(thread_id, run_id)` 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
-响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的 Run 共用 scheduler。Run 在创建后立即进入 FIFO ready queue，因此完全静默的 owner 也从取得 writer 时开始计算 idle timeout；非空 frame 刷新 deadline，超时只让位、不取消 Run，后续再有 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部已登记 Run terminal且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用 `start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb` 与 `send_interval_seconds` 只控制客户端发送批次，producer 提交不等待 scheduler 消费。
+响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的 Run 共用 scheduler。Run 在创建后立即进入 FIFO ready queue，因此完全静默的 owner 也从取得 writer 时开始计算 idle timeout；非空 frame 刷新 deadline，超时只让位、不取消 Run，后续再有 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部已登记 Run terminal且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用 `start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb` 与 `send_interval_seconds` 只控制客户端发送批次，producer 提交不等待 scheduler 消费。官方AsyncSubAgent child没有Shell Lifecycle metadata，不属于这些已登记producer；父Agentcheck并复述child结果时才产生父Run输出。
 
 ## 拦截消息
 
@@ -51,9 +51,11 @@ Workflow可执行Node class为Start、Command和End，只有一种Control Edge�
 ## 运行边界
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
+- `is_model_entry=true`的Main Agent可由`/compat/openai/v1`启动；
 - `enabled=true` 且 `is_model_entry=true` 的 Workflow 可由 `/compat/openai/v1` 启动；任何 enabled Workflow 都可被其他 Run 调用；
-- 每次请求执行一次完整官方 Run；Assistant ID 使用 Workflow UUID，Thread 和 Run ID 使用官方身份，Node 从 `Runtime.execution_info.run_id` 读取同一个 Run ID；
+- 每次请求执行一次完整官方Run；Main Agent Assistant ID由其UUID稳定派生，Workflow Assistant ID使用Workflow UUID，Thread和Run ID使用官方身份；
 - 独立Graph调用通过`Runtime.context.agent_runs`或`workflow_runs`的`start/check/list/join/cancel`使用公共Agent Server SDK；每次调用创建或明确续接Thread并创建新Run。Command只返回`update + goto`，多个goto目标和循环按LangGraph Super-step语义执行；
+- Main Agent的AsyncSubAgent引用通过官方五个async task工具创建和管理独立child Thread/Run；父Agent的`async_tasks` channel保存task reference；
 - 每个被调用 Run 使用自己的 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 只按 Run identity 隔离输出，不建立静态运行角色；
 - 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
@@ -62,6 +64,6 @@ Workflow可执行Node class为Start、Command和End，只有一种Control Edge�
 ## API Key 与状态
 
 API Key 是 write-only 设置，用于 `/compat/openai/v1/*`；管理密码用于管理台、除 Health 外的 `/agent-shell/api/*`，以及 LangGraph Agent Server 官方资源路径。清除 API Key 后推理 API 不可用。
-API Server 启停不扫描未被 Workflow 引用的 Main Agent；完整 repository validation 只用于管理诊断，单次 Chat 请求只解析所选 Workflow 的 current Graph 和可达装配。
+API Server启停与model catalog使用当前Repository入口配置；完整repository validation用于管理诊断，单次Chat请求只运行所选Main Agent或Workflow root Graph及其显式启动的独立Run。
 
 普通 API response、DOM 和 log summary 仅提供脱敏后的公开字段；management-only 的 local exception-detail attachment 保留完整排错信息。

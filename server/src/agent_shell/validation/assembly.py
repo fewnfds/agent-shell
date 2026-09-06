@@ -36,6 +36,13 @@ class ResolvedSubagent:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedAsyncSubagent:
+    main_agent_id: str
+    name: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
 class StaticAssembly:
     main_agent: dict[str, Any]
     references: dict[str, str]
@@ -47,3 +54,4 @@ class StaticAssembly:
     tool_blocks: tuple[dict[str, Any], ...] = ()
     middleware_blocks: tuple[dict[str, Any], ...] = ()
     mcp_references: tuple[ResolvedMcpReference, ...] = ()
+    async_subagents: tuple[ResolvedAsyncSubagent, ...] = ()

@@ -4,7 +4,47 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent_shell.runtime.subagents import build_subagent_specs
-from agent_shell.validation.assembly import ResolvedSubagent, ResolvedSubagentEdge
+from agent_shell.runtime.subagents import build_async_subagent_specs
+from agent_shell.runtime.agent_assistants import main_agent_assistant_id
+from agent_shell.validation.assembly import (
+    ResolvedAsyncSubagent,
+    ResolvedSubagent,
+    ResolvedSubagentEdge,
+)
+
+
+def test_async_main_agent_references_become_official_specs_in_order() -> None:
+    first_id = "11111111-1111-4111-8111-111111111111"
+    second_id = "22222222-2222-4222-8222-222222222222"
+
+    specs = build_async_subagent_specs(
+        (
+            ResolvedAsyncSubagent(
+                main_agent_id=first_id,
+                name="researcher",
+                description="Research a topic in the background.",
+            ),
+            ResolvedAsyncSubagent(
+                main_agent_id=second_id,
+                name="reviewer",
+                description="Review a completed result.",
+            ),
+        )
+    )
+
+    assert specs == [
+        {
+            "name": "researcher",
+            "description": "Research a topic in the background.",
+            "graph_id": main_agent_assistant_id(first_id),
+        },
+        {
+            "name": "reviewer",
+            "description": "Review a completed result.",
+            "graph_id": main_agent_assistant_id(second_id),
+        },
+    ]
+    assert all("url" not in item and "headers" not in item for item in specs)
 
 
 def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace() -> None:

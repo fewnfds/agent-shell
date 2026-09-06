@@ -83,9 +83,9 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 部署者负责磁盘、内存、上传大小、外部映射和并发限制。Chat 请求体、content block 和输入媒体单项/合计边界可在系统配置中调整，只有正数约束，没有额外产品最大值。Agent 响应媒体落盘和 File Manager 在线文本编辑不设置项目级字节上限；其他文件传输采用流式处理，不构成实例配额。
 运行诊断使用可配置保存条数，系统日志使用文件大小上限。运行监控页面的【监控设定】管理 `retained_lifecycles`：按 terminal Lifecycle 数量保留，默认 `20`、最小 `0`、没有产品最大值；active Lifecycle 不计入数量。降低数值会通过公共 Thread/Store 删除 API 清理超出的终态 Lifecycle；`0` 表示不保留已结束 Lifecycle。
 
-Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、invocation 和 filesystem route 记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
+Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、Graph Run relation和filesystem route记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
-官方 Graph、State/history、Server Store 和 Agent invocation artifact 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把 `data/state/` 和完整 `data/` 作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 全部需要 management Bearer，不建立新的多租户可见性边界。
+官方 Graph、State/history 和 Server Store可以包含prompt、消息、Tool payload、State、路径和其他业务材料。官方AsyncSubAgent child使用独立Thread/Run，并由父Agent checkpoint中的`async_tasks`保存reference；该child不自动进入父Lifecycle retention。平台不能识别用户主动写入普通文本、异常message或自定义对象表示中的任意密钥，实例所有者必须把`data/state/`和完整`data/`作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*`全部需要management Bearer，不建立新的多租户可见性边界。
 
 ## 系统配置与变量
 
@@ -98,6 +98,10 @@ settings:
   n_jobs_per_worker: 20
   recursion_limit: 100000
   max_concurrency: 20
+  response_stream_scheduling:
+    idle_timeout_seconds: 2
+    max_batch_kb: 64
+    send_interval_seconds: 0.05
   debug_port: null
   allow_remote: false
   langsmith_tracing_enabled: false

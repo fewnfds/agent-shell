@@ -10,10 +10,12 @@ from langgraph.store.memory import InMemoryStore
 from typing_extensions import TypedDict
 
 from agent_shell.runtime import agent_builder, subagent_middleware
+from agent_shell.runtime.agent_assistants import main_agent_assistant_id
 from agent_shell.runtime.agent_builder import AgentBuilder
 from agent_shell.runtime.agent_compilation import MaterializedAgentProfile
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.assembly import (
+    ResolvedAsyncSubagent,
     ResolvedSubagent,
     ResolvedSubagentEdge,
     StaticAssembly,
@@ -116,6 +118,13 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
         disabled_capabilities=frozenset(),
         subagents=(ResolvedSubagentEdge(target_key=child.key),),
         subagent_nodes={child.key: child},
+        async_subagents=(
+            ResolvedAsyncSubagent(
+                main_agent_id="22222222-2222-4222-8222-222222222222",
+                name="async_reviewer",
+                description="Review work in the background.",
+            ),
+        ),
     )
     validation = SimpleNamespace(
         resolve_main_agent=lambda *_args, **_kwargs: (
@@ -173,6 +182,13 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
     constructor = captured["constructor"]
     main_middleware = constructor["middleware"]
     child_middleware = constructor["subagents"][0]["middleware"]
+    assert constructor["subagents"][1] == {
+        "name": "async_reviewer",
+        "description": "Review work in the background.",
+        "graph_id": main_agent_assistant_id(
+            "22222222-2222-4222-8222-222222222222"
+        ),
+    }
     delegation_input = captured["delegation_input"]
 
     assert main_middleware[-2:] == list(main_packages)

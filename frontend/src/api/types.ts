@@ -685,6 +685,12 @@ export interface SubagentReference {
   subagent_id: string
 }
 
+export interface AsyncSubagentReference {
+  main_agent_id: string
+  name: string
+  description: string
+}
+
 export interface MiddlewareReference {
   middleware_id: string
 }
@@ -704,6 +710,7 @@ export interface MainAgentPayload {
   middleware_refs: MiddlewareReference[]
   mcp_refs: McpReference[]
   subagents: SubagentReference[]
+  async_subagents: AsyncSubagentReference[]
 }
 
 export type MainAgent = MainAgentPayload & { id: string }

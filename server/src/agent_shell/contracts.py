@@ -779,6 +779,20 @@ class SubagentReference(BaseModel):
     subagent_id: RequiredReference
 
 
+class AsyncSubagentReference(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    main_agent_id: RequiredReference
+    name: Annotated[
+        str,
+        Field(
+            min_length=1,
+            pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$",
+        ),
+    ]
+    description: Annotated[str, Field(min_length=1)]
+
+
 class CapabilityReference(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -822,6 +836,7 @@ class MainAgentProfile(StrictBlock):
     middleware_refs: list[MiddlewareReference] = Field(default_factory=list)
     mcp_refs: list[McpReference] = Field(default_factory=list)
     subagents: list[SubagentReference] = Field(default_factory=list)
+    async_subagents: list[AsyncSubagentReference] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_profile(self) -> "MainAgentProfile":

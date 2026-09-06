@@ -386,6 +386,58 @@ describe('agent authoring pages', () => {
     wrapper.unmount()
   })
 
+  it('authors ordered async Main Agent references', async () => {
+    const firstId = '00000000-0000-0000-0000-000000000071'
+    const secondId = '00000000-0000-0000-0000-000000000072'
+    const api = service({
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: {},
+        main_agents: [
+          { id: firstId, name: 'Research Agent' },
+          { id: secondId, name: 'Review Agent' },
+        ],
+        subagents: [],
+        workflows: [],
+      })),
+    })
+    const { wrapper } = await mountMainAgentPage(api)
+
+    await wrapper.get('[data-action="add-async-subagent-reference"]').trigger('click')
+    await wrapper.get('[data-action="add-async-subagent-reference"]').trigger('click')
+    const targets = wrapper.findAll('[data-testid="async-subagent-target"]')
+    const names = wrapper.findAll('[data-testid="async-subagent-name"]')
+    const descriptions = wrapper.findAll('[data-testid="async-subagent-description"]')
+    await targets[0]!.setValue(firstId)
+    await names[0]!.setValue('researcher')
+    await descriptions[0]!.setValue('Research the request.')
+    await targets[1]!.setValue(secondId)
+    await names[1]!.setValue('reviewer')
+    await descriptions[1]!.setValue('Review the result.')
+    await wrapper.findAll(
+      '[data-action="move-async-subagent-reference-up"]',
+    )[1]!.trigger('click')
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+
+    expect(api.createMainAgent).toHaveBeenCalledWith(expect.objectContaining({
+      async_subagents: [
+        {
+          main_agent_id: secondId,
+          name: 'reviewer',
+          description: 'Review the result.',
+        },
+        {
+          main_agent_id: firstId,
+          name: 'researcher',
+          description: 'Research the request.',
+        },
+      ],
+    }))
+    wrapper.unmount()
+  })
+
   it('copies Main Agent and Subagent configurations and switches to each copy', async () => {
     for (const scenario of [
       {

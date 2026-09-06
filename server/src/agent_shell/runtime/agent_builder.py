@@ -647,6 +647,7 @@ class AgentBuilder:
             }
         )
         resolved_subagents = assembly.subagents
+        resolved_async_subagents = assembly.async_subagents
 
         main_agent_id = str(main_agent["id"])
         main_agent_name = str(main_agent["name"])
@@ -718,6 +719,8 @@ class AgentBuilder:
         }
 
         compiled_subagents: list[dict[str, Any]] = []
+        async_subagent_specs: list[dict[str, str]] = []
+        async_subagent_tool_names: tuple[str, ...] = ()
         subagent_initial_files: dict[str, Any] = {}
         task_description_override: str | None = None
         if resolved_subagents:
@@ -746,6 +749,21 @@ class AgentBuilder:
                     part for part in (existing_prompt, delegation_instruction) if part
                 )
             constructor["subagents"] = compiled_subagents
+
+        if resolved_async_subagents:
+            from agent_shell.runtime.subagents import (
+                ASYNC_SUBAGENT_TOOL_NAMES,
+                build_async_subagent_specs,
+            )
+
+            async_subagent_specs = build_async_subagent_specs(
+                resolved_async_subagents
+            )
+            async_subagent_tool_names = ASYNC_SUBAGENT_TOOL_NAMES
+            constructor["subagents"] = [
+                *compiled_subagents,
+                *async_subagent_specs,
+            ]
 
         middleware.extend(materialized.extra_middleware)
         exception_retry_runtime = materialized.exception_retry
@@ -806,7 +824,8 @@ class AgentBuilder:
                     if resolved_subagents
                     and "SubAgentMiddleware" not in main_agent_middleware_names
                     else ()
-                ),
+                )
+                + async_subagent_tool_names,
             )
         except AgentRuntimeError as exc:
             raise reported_error(

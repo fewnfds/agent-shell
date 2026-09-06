@@ -24,6 +24,7 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.validation.assembly import (
+    ResolvedAsyncSubagent,
     ResolvedSubagent,
     ResolvedSubagentEdge,
     ResolvedMcpReference,
@@ -41,7 +42,10 @@ from agent_shell.validation.references import (
     reference_not_found_issue,
     reference_type_mismatch_issue,
 )
-from agent_shell.validation.subagent_references import subagent_reference_issues
+from agent_shell.validation.subagent_references import (
+    async_subagent_reference_issues,
+    subagent_reference_issues,
+)
 
 
 _MAIN_AGENT_REQUIRED_CAPABILITY_TYPES = frozenset(
@@ -940,6 +944,44 @@ class ConfigurationValidationService:
             )
         return model.model_dump(mode="json"), None
 
+    def _resolve_async_subagents(
+        self,
+        references: list[dict[str, Any]],
+        *,
+        owner_id: str,
+        owner_name: str,
+    ) -> tuple[list[ValidationIssue], tuple[ResolvedAsyncSubagent, ...]]:
+        issues = async_subagent_reference_issues(
+            references,
+            scope="main_agent",
+            owner_id=owner_id,
+            owner_name=owner_name,
+        )
+        resolved: list[ResolvedAsyncSubagent] = []
+        for index, reference in enumerate(references):
+            target_id = str(reference.get("main_agent_id", ""))
+            if self._agent_configs.get_item("main_agents", target_id) is None:
+                issues.append(
+                    self.reference_issue(
+                        scope="main_agent",
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        owner_type="main_agent",
+                        path=f"async_subagents[{index}].main_agent_id",
+                        reference_id=target_id,
+                        expected_type="main_agent",
+                    )
+                )
+                continue
+            resolved.append(
+                ResolvedAsyncSubagent(
+                    main_agent_id=target_id,
+                    name=str(reference["name"]),
+                    description=str(reference["description"]),
+                )
+            )
+        return issues, tuple(resolved)
+
     def _assemble_main_agent(
         self,
         main_agent: dict[str, Any],
@@ -1001,6 +1043,14 @@ class ConfigurationValidationService:
             block_overrides=block_overrides,
         )
         issues.extend(mcp_issues)
+        async_subagent_issues, resolved_async_subagents = (
+            self._resolve_async_subagents(
+                list(main_agent.get("async_subagents", [])),
+                owner_id=owner_id,
+                owner_name=owner_name,
+            )
+        )
+        issues.extend(async_subagent_issues)
 
         delegation_selected = selected.get("subagent") is not None
         root_references = list(main_agent.get("subagents", []))
@@ -1180,6 +1230,7 @@ class ConfigurationValidationService:
             tool_blocks=tool_blocks,
             middleware_blocks=middleware_blocks,
             mcp_references=mcp_references,
+            async_subagents=resolved_async_subagents,
             filesystem_mode=filesystem_mode,
             disabled_capabilities=disabled_capabilities,
             subagents=resolved_subagents,

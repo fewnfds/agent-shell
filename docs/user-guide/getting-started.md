@@ -19,7 +19,7 @@ Windows 源码 Clone 从项目根运行：
 - 【文件管理】：浏览和编辑允许开放的真实 `data/...` 目录；
 - 【模型】：模型连接编辑器与模型映射；
 - 【MCP】：MCP 连接、`mcpServers` JSON 导入与当前 Repository 的 MCP 映射；
-- 【代理】：Main Agent 与一层可复用 Subagent；
+- 【代理】：Main Agent、可复用synchronous Subagent与Main Agent上的AsyncSubAgent references；
 - 【代理组件】：Main Agent 和 Subagent 使用的能力配置；
 - 【工作流】：统一的 Workflow 装配表单和 Vue Flow canvas；
 - 【工作流组件】：Workflow Event Output 和 Command Node 配置；
@@ -55,5 +55,5 @@ OpenAI-compatible 当前提供 `GET /compat/openai/v1/models` 与 `POST /compat/
    需要 MCP 时，在【代理组件 / MCP 要求】创建 portable Requirement，在【MCP / MCP 连接】创建或导入实例 Connection，在【MCP / MCP 映射】完成 binding，最后由 Main Agent、Subagent 或 Command 的 MCP Card 选择 Requirement 与 Tool 范围。
 4. 只需Agent loop时，在Main Agent开启【作为模型入口】。需要确定性控制时，在Workflow canvas添加Command，连接`Start -> Command -> End`；Command通过`runtime.context.agent_runs`启动目标Main Agent。先点击【保存草稿】（草稿保持disabled）。
 5. 点击【正式保存 Workflow】通过校验后启用Workflow；`is_model_entry=true`的Main Agent和已启用且开启【作为模型入口】的Workflow都出现在`/compat/openai/v1/models`。所有enabled Workflow都可以被其他Run调用。
-6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/compat/openai/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认 Workflow 名称后以
-   `{"model":"<workflow-name>","messages":[...]}` 调用 `/compat/openai/v1/chat/completions`。
+6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/compat/openai/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认Main Agent或Workflow入口名称后以
+   `{"model":"<entry-name>","messages":[...]}` 调用 `/compat/openai/v1/chat/completions`。

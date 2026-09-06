@@ -34,6 +34,7 @@ Main Agent页面装配：
 - 可选capability refs；
 - ordered Custom Tool、Custom Middleware和MCP refs；
 - ordered同步Subagent refs；
+- ordered AsyncSubAgent Main Agent refs；
 - root-run设置：`is_model_entry`、`checkpoint_mode`、`durability`和`on_disconnect`。
 
 Main Agent UUID确定稳定Assistant ID。`checkpoint_mode=enabled`时，同一Thread上的后续新Run延续AgentState；`disabled`使用stateless Run，不承诺跨Run消息或private marker连续性。`durability=sync|async|exit`直接传给官方Run，决定checkpoint写入时机。
@@ -45,6 +46,14 @@ Main Agent UUID确定稳定Assistant ID。`checkpoint_mode=enabled`时，同一T
 Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middleware。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和effective Filesystem。
 
 同步Subagent属于Main Agent内部agent loop，不是Workflow Node，也不建立独立Shell archive wrapper。多阶段确定性控制由Workflow和Command表达。
+
+## AsyncSubAgent
+
+Main Agent可以按顺序引用其他Main Agent作为官方AsyncSubAgent。每条引用选择目标Main Agent，并填写父Agent中唯一的tool-facing name和description。目标不需要设置`is_model_entry=true`，但必须是当前Repository中可物化的Main Agent；当前Main Agent不能引用自己。
+
+Deep Agents为装配了异步引用的父Agent提供`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch立即返回task ID并在同一Agent Server中创建独立child Thread/Run；Update在该child Thread上创建新Run。目标使用稳定Assistant ID，ASGI transport不需要另配URL或认证。
+
+父Agent的`async_tasks` channel保存task reference。checkpoint enabled父Thread的后续Run可以继续check、update或cancel；checkpoint disabled父Run结束后不保留这些reference。async child不加入父Lifecycle的公开输出、自动断开取消或retention；父Agentcheck结果并写入自己的回复后，结果才经父Agent Event Output返回。一个父Run和每个active child分别占用一个`n_jobs_per_worker`槽位。
 
 ## Agent Additional Prompt
 

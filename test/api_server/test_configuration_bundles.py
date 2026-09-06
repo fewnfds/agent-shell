@@ -194,6 +194,104 @@ def test_main_agent_bundle_import_remaps_identity_and_requires_path_binding(
     assert len(source_config["main_agents"]) == 1
 
 
+def test_main_agent_bundle_closes_over_and_rewrites_async_agent_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "async-source"
+    source_root.mkdir()
+    with make_client(source_root, monkeypatch) as source:
+        parent = create_main_agent(source)
+        target = source.post(
+            f"/agent-shell/api/main-agents/{parent['id']}/copy",
+            json={"name": "Portable async target"},
+        ).json()
+        payload = {key: value for key, value in parent.items() if key != "id"}
+        payload["async_subagents"] = [
+            {
+                "main_agent_id": target["id"],
+                "name": "researcher",
+                "description": "Research from an independent Thread.",
+            }
+        ]
+        saved = source.put(
+            f"/agent-shell/api/main-agents/{parent['id']}",
+            json=payload,
+        )
+        assert saved.status_code == 200, saved.text
+        exported = source.post(
+            "/agent-shell/api/configuration-bundles/export",
+            json={"kind": "main_agent", "source_id": parent["id"]},
+        )
+        assert exported.status_code == 200, exported.text
+
+    with ZipFile(BytesIO(exported.content)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    bundled_main_ids = {
+        record["source_id"]
+        for record in manifest["records"]
+        if record["kind"] == "main_agent"
+    }
+    assert bundled_main_ids == {parent["id"], target["id"]}
+
+    target_root = tmp_path / "async-target"
+    target_root.mkdir()
+    with make_client(target_root, monkeypatch) as destination:
+        preview_response = destination.post(
+            "/agent-shell/api/configuration-bundles/preview",
+            files={
+                "bundle": (
+                    "async-agent.zip",
+                    exported.content,
+                    "application/zip",
+                )
+            },
+        )
+        assert preview_response.status_code == 200, preview_response.text
+        preview = preview_response.json()
+        assert preview["ready"] is True
+        imported_response = destination.post(
+            "/agent-shell/api/configuration-bundles/import",
+            files={
+                "bundle": (
+                    "async-agent.zip",
+                    exported.content,
+                    "application/zip",
+                )
+            },
+            data={
+                "request": json.dumps(
+                    {
+                        "bundle_sha256": preview["bundle_sha256"],
+                        "plan_token": preview["plan_token"],
+                        "resolutions": {
+                            "target_ids": preview["target_ids"],
+                            "filesystem_bindings": {},
+                        },
+                    }
+                )
+            },
+        )
+        assert imported_response.status_code == 200, imported_response.text
+        imported = imported_response.json()
+        destination_config = FileConfigRepository(
+            target_root / "data"
+        ).config()
+
+    imported_parent = next(
+        agent
+        for agent in destination_config["main_agents"]
+        if agent["id"] == imported["root"]["target_id"]
+    )
+    assert imported_parent["async_subagents"] == [
+        {
+            "main_agent_id": preview["target_ids"][target["id"]],
+            "name": "researcher",
+            "description": "Research from an independent Thread.",
+        }
+    ]
+
+
 def test_bundle_import_failure_removes_staged_configuration_and_assets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

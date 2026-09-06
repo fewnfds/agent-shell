@@ -815,7 +815,6 @@ pre code {
   gap: 8px;
 }
 
-.workflow-node--agent,
 .workflow-node--command {
   display: grid;
   gap: 10px;
