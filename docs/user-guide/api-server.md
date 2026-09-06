@@ -24,7 +24,7 @@ Content-Type: application/json
 }
 ```
 
-请求按model name捕获一次配置快照。Main Agent入口物化完整Deep Agents graph；Workflow入口物化current Start/Command/End control Graph。两者都由稳定Assistant启动官方Thread/Run并由LangGraph Dev Worker执行。Command需要AI时通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run。官方ProtocolEvent由对应Graph的Agent或Workflow Event Output、Lifecycle Response Scheduler和OpenAI response writer消费。
+请求按model name捕获一次配置记录和值视图。Repository YAML、Model/MCP Connection、binding与response policy对该请求保持只读；private Python/Skill package只捕获所在路径，实际源码由Graph factory装配时从磁盘读取，因此运行期间编辑package可能影响尚未装配的Graph。Main Agent入口物化完整Deep Agents graph；Workflow入口物化current Start/Command/End control Graph。两者都由稳定Assistant启动官方Thread/Run并由LangGraph Dev Worker执行。Command需要AI时通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run。官方ProtocolEvent由对应Graph的Agent或Workflow Event Output、Lifecycle Response Scheduler和OpenAI response writer消费。
 
 Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
