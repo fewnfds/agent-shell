@@ -55,21 +55,22 @@ const rows = computed(() => props.defaults.tools.flatMap((tool) => {
       </div>
     </section>
 
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="tool-description-card">
       <header class="card-header"><h3 class="card-title">{{ t('editors.filesystemTools.toolsTitle') }}</h3></header>
       <div class="list-group list-group-flush">
-        <article v-for="row in rows" :key="row.tool.name" class="list-group-item">
-          <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-            <div class="form-check form-switch">
-              <input :id="`filesystem-tool-${row.tool.name}`" v-model="row.config.visible" class="form-check-input" type="checkbox" :disabled="!row.tool.configurable">
+        <article v-for="row in rows" :key="row.tool.name" class="list-group-item" data-testid="tool-description-item">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div v-if="row.tool.configurable" class="form-check form-switch">
+              <input :id="`filesystem-tool-${row.tool.name}`" v-model="row.config.visible" class="form-check-input" type="checkbox">
               <label class="form-check-label font-monospace" :for="`filesystem-tool-${row.tool.name}`">{{ row.tool.name }}</label>
             </div>
+            <label v-else class="form-label font-monospace mb-0" :for="`filesystem-tool-description-${row.tool.name}`">{{ row.tool.name }}</label>
             <LteButton class="action-button ms-auto" data-action="restore-default" type="button" @click="row.config.description_override = row.tool.default_description">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('editors.common.restoreDefault') }}
             </LteButton>
           </div>
-          <LteTextarea v-model="row.config.description_override" :aria-label="t('editors.filesystemTools.toolDescriptionLabel', { tool: row.tool.name })" :rows="4" />
+          <LteTextarea :id="`filesystem-tool-description-${row.tool.name}`" v-model="row.config.description_override" :aria-label="t('editors.filesystemTools.toolDescriptionLabel', { tool: row.tool.name })" :rows="4" />
         </article>
       </div>
     </section>

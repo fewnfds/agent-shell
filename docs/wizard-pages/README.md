@@ -15,7 +15,7 @@
 | Agent / 9 | [Agent Event Output](agent-event-output-config.md) | `agent-event-output` |
 | Agent / 10 | [Exception Retry](exception-retry-config.md) | `exception-retry` |
 | Agent / 11 | [Subagent Delegation](subagent-config.md) | `subagent` |
-| Agent / 12 | [Async Subagent Middleware](async-subagent-config.md) | `async-subagent` |
+| Agent / 12 | [Async Subagent](async-subagent-config.md) | `async-subagent` |
 | Agent / 13 | [Summarization](summarization-config.md) | `summarization` |
 | Agent / 14 | [Prompt Caching](prompt-caching-config.md) | `prompt-caching` |
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |

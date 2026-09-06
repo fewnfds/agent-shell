@@ -332,20 +332,22 @@ function hasSkillPackage(id: string): boolean {
       </div>
     </section>
 
-    <section class="card mb-3">
-      <header class="card-header d-flex align-items-center">
+    <section class="card mb-3" data-testid="system-prompt-card">
+      <header class="card-header">
         <h3 class="card-title">{{ t('editors.filesystem.systemPromptTitle') }}</h3>
-        <LteButton
-          class="action-button ms-auto"
-          data-action="restore-default"
-          type="button"
-          @click="draft.system_prompt_override = defaults.system_prompt"
-        >
-          <i class="bi bi-arrow-clockwise" aria-hidden="true" />
-          {{ t('editors.common.restoreDefault') }}
-        </LteButton>
       </header>
       <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <LteButton
+            class="action-button ms-auto"
+            data-action="restore-default"
+            type="button"
+            @click="draft.system_prompt_override = defaults.system_prompt"
+          >
+            <i class="bi bi-arrow-clockwise" aria-hidden="true" />
+            {{ t('editors.common.restoreDefault') }}
+          </LteButton>
+        </div>
         <LteTextarea
           v-model="draft.system_prompt_override"
           :aria-label="t('editors.filesystem.systemPromptTitle')"

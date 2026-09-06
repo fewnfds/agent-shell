@@ -51,16 +51,20 @@ function removalKey(skill: { folder: string; template_path?: string }): string {
 
 <template>
   <div data-editor="skill">
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="system-prompt-card">
       <header class="card-header"><h3 class="card-title">{{ t('editors.skill.instructionTitle') }}</h3></header>
       <div class="card-body">
-        <div class="form-check form-switch mb-3">
-          <input id="skill-system-prompt-enabled" v-model="draft.system_prompt_enabled" class="form-check-input" data-testid="skill-system-prompt-enabled" type="checkbox">
-          <label class="form-check-label" for="skill-system-prompt-enabled">{{ t('editors.skill.systemPromptEnabled') }}</label>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <div class="form-check form-switch">
+            <input id="skill-system-prompt-enabled" v-model="draft.system_prompt_enabled" class="form-check-input" data-testid="skill-system-prompt-enabled" type="checkbox">
+            <label class="form-check-label" for="skill-system-prompt-enabled">{{ t('editors.skill.systemPromptEnabled') }}</label>
+          </div>
+          <LteButton class="action-button ms-auto" data-action="restore-default" :disabled="!draft.system_prompt_enabled" @click="draft.instruction_override = defaults.system_prompt"><i class="bi bi-arrow-clockwise" aria-hidden="true" />{{ t('editors.common.restoreDefault') }}</LteButton>
         </div>
-        <div class="d-flex justify-content-end mb-3"><LteButton class="action-button" data-action="restore-default" :disabled="!draft.system_prompt_enabled" @click="draft.instruction_override = defaults.system_prompt"><i class="bi bi-arrow-clockwise" aria-hidden="true" />{{ t('editors.common.restoreDefault') }}</LteButton></div>
         <LteTextarea v-model="draft.instruction_override" :aria-label="t('editors.skill.instructionTitle')" :disabled="!draft.system_prompt_enabled" :rows="16" />
-        <p v-if="draft.system_prompt_enabled && defaults.required_placeholders?.length" class="form-text" data-testid="skill-required-placeholders">{{ t('editors.skill.requiredPlaceholdersHint', { placeholders: defaults.required_placeholders.join(' ') }) }}</p>
+        <p v-if="draft.system_prompt_enabled && defaults.required_placeholders?.length" class="form-text mb-0" data-testid="skill-required-placeholders">
+          {{ t('editors.common.requiredVariables') }} <code>{{ defaults.required_placeholders.join(' ') }}</code>
+        </p>
       </div>
     </section>
     <div class="row g-3 align-items-start">

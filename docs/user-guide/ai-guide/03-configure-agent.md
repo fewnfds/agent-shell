@@ -193,7 +193,7 @@ POST /agent-shell/api/main-agents
 
 `component_name`是配置库身份，`name`是模型可见的代理角色名并匹配`^[A-Za-z_][A-Za-z0-9_-]*$`。模板是当前 Repository 中已有的 Main Agent，不需要`is_model_entry=true`。同一个配置不能重复引用；同一父 Main Agent 的有效角色名按大小写不敏感语义唯一，模板指回父 Main Agent 时会被拒绝。
 
-引用不会自行开启能力。父 Main Agent 还必须在`capability_refs`中显式选择`type=async-subagent`的【Async Subagent Middleware / 异步子代理中间件】组件；没有选择时引用只作为候选配置保存，不装配五个工具。组件可以设置 Middleware system prompt，并分别覆盖五个官方 Tool description；选择组件但没有有效引用时保存失败。
+引用不会自行开启能力。父 Main Agent 还必须在`capability_refs`中显式选择`type=async-subagent`的【Async Subagent / 异步子代理】组件；没有选择时引用只作为候选配置保存，不装配五个工具。组件可以设置 Middleware system prompt，并分别覆盖五个官方 Tool description；选择组件但没有有效引用时保存失败。
 
 Deep Agents 官方`AsyncSubAgentMiddleware`提供五个工具：`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch 创建独立 child Thread/Run 并立即返回 task ID；Update 在同一 child Thread 创建新 Run。父 Agent 的`async_tasks` channel 保存 task reference，所以 checkpoint enabled 父 Thread 的后续 Run 能继续管理任务；checkpoint disabled 父 Run 结束后不保留 reference。
 

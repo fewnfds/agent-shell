@@ -482,7 +482,7 @@ onMounted(() => { void load() })
               {{ apiServerError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-lg-6">
+              <div class="col-lg-3">
                 <label class="form-label" for="api-server-key">{{ fieldLabel('apiServer.key.title', 'api_key') }}</label>
                 <div class="input-group">
                   <input
@@ -588,10 +588,10 @@ onMounted(() => { void load() })
                   <option :value="false">{{ t('common.no') }}</option>
                 </select>
               </div>
-              <div class="col-md-6">
+              <div class="col-lg-3">
                 <LteTextarea v-model="corsOrigins" :label="fieldLabel('systemSettings.corsOrigins', 'cors_origins')" :rows="4" />
               </div>
-              <div class="col-md-6">
+              <div class="col-lg-3">
                 <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
               </div>
             </div>
@@ -671,7 +671,7 @@ onMounted(() => { void load() })
               {{ responseSchedulingError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-lg-4">
+              <div class="col-lg-3">
                 <FormField control-id="response-idle-timeout" field-path="response_stream_scheduling.idle_timeout_seconds" label-key="systemSettings.responseScheduling.idleTimeout">
                   <template #default="{ describedBy }">
                     <div class="input-group">
@@ -681,7 +681,7 @@ onMounted(() => { void load() })
                   </template>
                 </FormField>
               </div>
-              <div class="col-lg-4">
+              <div class="col-lg-3">
                 <FormField control-id="response-max-batch" field-path="response_stream_scheduling.max_batch_kb" label-key="systemSettings.responseScheduling.maxBatch">
                   <template #default="{ describedBy }">
                     <div class="input-group">
@@ -691,7 +691,7 @@ onMounted(() => { void load() })
                   </template>
                 </FormField>
               </div>
-              <div class="col-lg-4">
+              <div class="col-lg-3">
                 <FormField control-id="response-send-interval" field-path="response_stream_scheduling.send_interval_seconds" label-key="systemSettings.responseScheduling.sendInterval">
                   <template #default="{ describedBy }">
                     <div class="input-group">
@@ -865,7 +865,7 @@ onMounted(() => { void load() })
               {{ validationError }}
             </LteAlert>
             <div class="row g-3">
-              <div class="col-lg-6">
+              <div class="col-lg-3">
                 <FormField control-id="configuration-validation-debounce" field-path="debounce_ms" label-key="systemSettings.validationDebounceMs">
                   <div class="input-group">
                     <input

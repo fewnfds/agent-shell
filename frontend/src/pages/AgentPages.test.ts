@@ -468,8 +468,18 @@ describe('agent authoring pages', () => {
     )
 
     expect(wrapper.get('#async-subagent-template').element).toHaveProperty('value', targetId)
-    expect(wrapper.text()).toContain('agents.asyncSubagentEntity.checkpointFixed')
-    expect(wrapper.text()).toContain('agents.asyncSubagentEntity.durabilityFixed')
+    expect(wrapper.findAll('[data-testid="async-subagent-option-card"]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-testid="async-subagent-frozen-card"]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-testid="async-subagent-frozen-card"] input:disabled')).toHaveLength(4)
+    expect(wrapper.text()).not.toContain('agents.asyncSubagentEntity.noticeTitle')
+    expect(wrapper.get('#async-subagent-checkpoint-mode').element).toHaveProperty(
+      'value',
+      'agents.asyncSubagentEntity.checkpointFixed',
+    )
+    expect(wrapper.get('#async-subagent-durability').element).toHaveProperty(
+      'value',
+      'agents.asyncSubagentEntity.durabilityFixed',
+    )
     await buttonByText(wrapper, 'common.save').trigger('click')
     await flushPromises()
 

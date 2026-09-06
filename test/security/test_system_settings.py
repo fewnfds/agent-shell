@@ -54,7 +54,7 @@ def _payload(**overrides) -> dict:
         "cors_origins": [],
         "trusted_proxy_cidrs": [],
         "response_stream_scheduling": {
-            "idle_timeout_seconds": 2,
+            "idle_timeout_seconds": 10,
             "max_batch_kb": 64,
             "send_interval_seconds": 0.05,
         },
@@ -87,7 +87,7 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "trusted_proxy_cidrs": [],
         "management_token": {"configured": True},
         "response_stream_scheduling": {
-            "idle_timeout_seconds": 2.0,
+            "idle_timeout_seconds": 10.0,
             "max_batch_kb": 64.0,
             "send_interval_seconds": 0.05,
         },

@@ -79,7 +79,7 @@ def test_snapshot_freezes_response_stream_scheduling(
         current_snapshot = asyncio.run(client.app.state.agent_runtime.capture())
 
         assert frozen.response_stream_policy().model_dump(mode="json") == {
-            "idle_timeout_seconds": 2.0,
+            "idle_timeout_seconds": 10.0,
             "max_batch_kb": 64.0,
             "send_interval_seconds": 0.05,
         }

@@ -51,7 +51,7 @@ Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middlewar
 
 【代理 / Async Subagent】创建可复用配置资源：填写配置名称，选择模板 Main Agent，并填写模型可见的代理角色名和说明。该资源只是引用外壳，不复制模板装配，也不创建第二个 Agent Graph。Main Agent 的`async_subagents`按顺序只保存这些资源的 UUID；同一资源不能重复引用，模板不能指回引用方，所有有效角色名按大小写不敏感语义唯一。
 
-Main Agent 必须另外显式选择【Async Subagent Middleware / 异步子代理中间件】组件，引用才会成为有效装配。没有选择组件时，引用只作为候选配置保存，不提供异步工具；选择组件但没有引用时保存失败。组件可以覆盖 Middleware system prompt 与五个官方 Tool description，并继续复用官方工具实现、参数 schema 和`async_tasks` State contract。
+Main Agent 必须另外显式选择【Async Subagent / 异步子代理】组件，引用才会成为有效装配。没有选择组件时，引用只作为候选配置保存，不提供异步工具；选择组件但没有引用时保存失败。组件可以覆盖 Middleware system prompt 与五个官方 Tool description，并继续复用官方工具实现、参数 schema 和`async_tasks` State contract。
 
 Deep Agents 为有效装配提供`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch 立即返回 task ID，并在同一 Agent Server 中创建独立 child Thread/Run；Update 在该 child Thread 上创建新 Run。目标使用模板 Main Agent 的稳定 Assistant ID，ASGI transport 不需要另配 URL 或认证。
 

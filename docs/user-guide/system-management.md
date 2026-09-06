@@ -79,7 +79,7 @@ LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在�
 
 限制策略包含三个官方运行字段：`n_jobs_per_worker` 默认 `20`，控制单 worker 同时处理的 Run 槽位；`recursion_limit` 默认 `100000`，达到后由 LangGraph 抛出 `GraphRecursionError`；`max_concurrency` 默认 `20`，控制 Graph 内并行任务，留空时不向 `RunnableConfig` 传值。三者只接受正整数且没有产品最大值，增大会提高 CPU、内存和外部请求压力。它们与其他系统启动设置在服务重启后生效。
 
-响应流调度直接保存全局`response_stream_scheduling`：`idle_timeout_seconds`默认`2`，控制当前writer全静默多久后让位；`max_batch_kb`默认`64`，控制一次公开发送的软批次大小；`send_interval_seconds`默认`0.05`，控制连续批次的最小间隔。前两项必须大于零，发送间隔可以为零。保存立即生效于后续Lifecycle，已经开始的Lifecycle继续使用请求创建时冻结的副本。调度单位是官方Graph的`(thread_id, run_id)`；Run终态立即让位，静默超时只切换writer，不取消Run。
+响应流调度直接保存全局`response_stream_scheduling`：`idle_timeout_seconds`默认`10`，控制当前writer全静默多久后让位；`max_batch_kb`默认`64`，控制一次公开发送的软批次大小；`send_interval_seconds`默认`0.05`，控制连续批次的最小间隔。前两项必须大于零，发送间隔可以为零。保存立即生效于后续Lifecycle，已经开始的Lifecycle继续使用请求创建时冻结的副本。调度单位是官方Graph的`(thread_id, run_id)`；Run终态立即让位，静默超时只切换writer，不取消Run。
 
 Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。
 

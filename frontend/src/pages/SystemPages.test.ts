@@ -34,7 +34,7 @@ const currentSettings: SystemSettings = {
   cors_origins: [],
   trusted_proxy_cidrs: [],
   response_stream_scheduling: {
-    idle_timeout_seconds: 2,
+    idle_timeout_seconds: 10,
     max_batch_kb: 64,
     send_interval_seconds: 0.05,
   },
@@ -112,6 +112,11 @@ describe('SystemSettingsPage', () => {
       'system-card-langsmith',
       'system-card-validation',
     ])
+    const fieldColumns = wrapper.findAll(
+      '[data-testid^="system-card-"] > .card-body > .row.g-3 > div',
+    )
+    expect(fieldColumns.length).toBeGreaterThan(0)
+    expect(fieldColumns.every((column) => column.classes().includes('col-lg-3'))).toBe(true)
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
     expect(saveButtons).toHaveLength(7)
@@ -137,7 +142,7 @@ describe('SystemSettingsPage', () => {
       cors_origins: [],
       trusted_proxy_cidrs: [],
       response_stream_scheduling: {
-        idle_timeout_seconds: 2,
+        idle_timeout_seconds: 10,
         max_batch_kb: 64,
         send_interval_seconds: 0.05,
       },

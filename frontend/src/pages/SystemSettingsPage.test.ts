@@ -27,7 +27,7 @@ const systemSettings: SystemSettings = {
   cors_origins: [],
   trusted_proxy_cidrs: [],
   response_stream_scheduling: {
-    idle_timeout_seconds: 2,
+    idle_timeout_seconds: 10,
     max_batch_kb: 64,
     send_interval_seconds: 0.05,
   },

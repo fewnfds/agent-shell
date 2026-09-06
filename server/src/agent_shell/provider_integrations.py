@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import importlib.metadata
-import re
 from dataclasses import dataclass
-
-_PACKAGE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,10 +63,12 @@ def bundled_provider_ids() -> frozenset[str]:
 
 def _distribution_snapshot() -> dict[str, str]:
     installed = {}
-    for distribution in importlib.metadata.distributions():
-        name = str(distribution.metadata.get("Name") or "").lower()
-        if name and _PACKAGE_RE.fullmatch(name):
-            installed[name] = distribution.version
+    package_names = ("langchain", *(item.package for item in bundled_provider_integrations()))
+    for name in package_names:
+        try:
+            installed[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            pass
     return installed
 
 

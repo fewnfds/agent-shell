@@ -5,6 +5,7 @@ import type { Component } from 'vue'
 
 import {
   agentEventOutputAdapter,
+  asyncSubagentAdapter,
   customToolAdapter,
   exceptionRetryAdapter,
   filesystemAdapter,
@@ -12,15 +13,20 @@ import {
   modelAdapter,
   promptCachingAdapter,
   skillAdapter,
+  subagentAdapter,
   summarizationAdapter,
   systemPromptAdapter,
+  todoListAdapter,
+  type AsyncSubagentDefaults,
   type ExceptionRetryDefaults,
   type FilesystemDefaults,
   type FilesystemToolsDefaults,
   workflowEventOutputAdapter,
   type PromptCachingDefaults,
   type SkillDefaults,
+  type SubagentDefaults,
   type SummarizationDefaults,
+  type TodoListDefaults,
 } from '@/domain/blocks'
 import { zhCN } from '@/locales/zh-CN'
 
@@ -33,10 +39,13 @@ import {
   ModelEditor,
   PromptCachingEditor,
   SkillEditor,
+  SubagentCapabilityEditor,
   SummarizationEditor,
   SystemPromptEditor,
+  TodoListEditor,
   WorkflowEventOutputEditor,
 } from './index'
+import AsyncSubagentEditor from './AsyncSubagentEditor.vue'
 
 const filesystemDefaults: FilesystemDefaults = {
   system_prompt: 'filesystem default',
@@ -57,6 +66,24 @@ const filesystemToolsDefaults: FilesystemToolsDefaults = {
 const skillDefaults: SkillDefaults = {
   system_prompt: 'skill default',
   required_placeholders: ['{skills_locations}', '{skills_load_warnings}', '{skills_list}'],
+}
+const subagentDefaults: SubagentDefaults = {
+  system_prompt: 'subagent default prompt',
+  tool_description: 'task default description',
+}
+const asyncSubagentDefaults: AsyncSubagentDefaults = {
+  system_prompt: 'async subagent default prompt',
+  tool_descriptions: {
+    start_async_task: 'start default',
+    check_async_task: 'check default',
+    update_async_task: 'update default',
+    cancel_async_task: 'cancel default',
+    list_async_tasks: 'list default',
+  },
+}
+const todoListDefaults: TodoListDefaults = {
+  system_prompt: 'todo default prompt',
+  tool_description: 'write_todos default description',
 }
 const summarizationDefaults: SummarizationDefaults = {
   summary_prompt_default: '<role>default summary</role>',
@@ -176,6 +203,152 @@ describe('dedicated block editors', () => {
     expect((tools.emitted('update:modelValue')?.at(-1)?.[0] as { tool_configs: Record<string, { visible: boolean }> }).tool_configs.execute?.visible).toBe(true)
   })
 
+  it('uses one list-group card for every built-in tool description set', () => {
+    const scenarios = [
+      {
+        component: FilesystemToolsEditor,
+        props: {
+          modelValue: filesystemToolsAdapter.blank(filesystemToolsDefaults),
+          defaults: filesystemToolsDefaults,
+        },
+        title: '文件系统工具',
+        toolNames: filesystemToolsDefaults.tools.map((tool) => tool.name),
+        switchCount: filesystemToolsDefaults.tools.filter((tool) => tool.configurable).length,
+      },
+      {
+        component: TodoListEditor,
+        props: {
+          modelValue: todoListAdapter.blank(todoListDefaults),
+          defaults: todoListDefaults,
+        },
+        title: '待办计划工具',
+        toolNames: ['write_todos'],
+        switchCount: 0,
+      },
+      {
+        component: SubagentCapabilityEditor,
+        props: {
+          modelValue: subagentAdapter.blank(subagentDefaults),
+          defaults: subagentDefaults,
+        },
+        title: '同步子代理工具',
+        toolNames: ['task'],
+        switchCount: 0,
+      },
+      {
+        component: AsyncSubagentEditor,
+        props: {
+          modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
+          defaults: asyncSubagentDefaults,
+        },
+        title: '异步子代理工具',
+        toolNames: Object.keys(asyncSubagentDefaults.tool_descriptions),
+        switchCount: 0,
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      const editor = mount(scenario.component, {
+        props: scenario.props,
+        global: { plugins: [localizedI18n] },
+      })
+      const card = editor.get('[data-testid="tool-description-card"]')
+      const items = card.findAll('[data-testid="tool-description-item"]')
+
+      expect(card.get('.card-header').text()).toBe(scenario.title)
+      expect(items).toHaveLength(scenario.toolNames.length)
+      expect(items.map((item) => item.get('label').text())).toEqual(scenario.toolNames)
+      expect(card.findAll('.form-switch')).toHaveLength(scenario.switchCount)
+      expect(items.every((item) => item.get('[data-action="restore-default"]').classes().includes('ms-auto'))).toBe(true)
+      expect(card.find('.card-body').exists()).toBe(false)
+    }
+  })
+
+  it('keeps required tool variables concise and visible', () => {
+    const synchronous = mount(SubagentCapabilityEditor, {
+      props: {
+        modelValue: subagentAdapter.blank(subagentDefaults),
+        defaults: subagentDefaults,
+      },
+      global: { plugins: [localizedI18n] },
+    })
+    const asynchronous = mount(AsyncSubagentEditor, {
+      props: {
+        modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
+        defaults: asyncSubagentDefaults,
+      },
+      global: { plugins: [localizedI18n] },
+    })
+
+    expect(synchronous.get('[data-testid="tool-description-card"] .form-text').text())
+      .toBe('必要变量 {available_agents}')
+    expect(asynchronous.get('[data-testid="tool-description-card"] .form-text').text())
+      .toBe('必要变量 {available_agents}')
+  })
+
+  it('places system prompt controls in the card body with only the Skill switch', () => {
+    const scenarios = [
+      {
+        component: FilesystemEditor,
+        props: {
+          modelValue: filesystemAdapter.blank(filesystemDefaults),
+          defaults: filesystemDefaults,
+        },
+        title: '文件系统提示词',
+        switchCount: 0,
+      },
+      {
+        component: SkillEditor,
+        props: {
+          modelValue: skillAdapter.blank(skillDefaults),
+          defaults: skillDefaults,
+        },
+        title: 'Skill 系统提示词',
+        switchCount: 1,
+      },
+      {
+        component: SubagentCapabilityEditor,
+        props: {
+          modelValue: subagentAdapter.blank(subagentDefaults),
+          defaults: subagentDefaults,
+        },
+        title: '同步子代理系统提示词',
+        switchCount: 0,
+      },
+      {
+        component: AsyncSubagentEditor,
+        props: {
+          modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
+          defaults: asyncSubagentDefaults,
+        },
+        title: '异步子代理系统提示词',
+        switchCount: 0,
+      },
+      {
+        component: TodoListEditor,
+        props: {
+          modelValue: todoListAdapter.blank(todoListDefaults),
+          defaults: todoListDefaults,
+        },
+        title: '待办计划系统提示词',
+        switchCount: 0,
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      const editor = mount(scenario.component, {
+        props: scenario.props,
+        global: { plugins: [localizedI18n] },
+      })
+      const card = editor.get('[data-testid="system-prompt-card"]')
+
+      expect(card.get('.card-header').text()).toBe(scenario.title)
+      expect(card.findAll('.form-switch')).toHaveLength(scenario.switchCount)
+      expect(card.get('.card-body > .d-flex [data-action="restore-default"]').classes()).toContain('ms-auto')
+      expect(card.find('.card-header [data-action="restore-default"]').exists()).toBe(false)
+    }
+  })
+
   it('loads configuration-owned Python package templates for both event output editors', async () => {
     const agentOutput = mount(AgentEventOutputEditor, {
       props: {
@@ -236,18 +409,26 @@ describe('dedicated block editors', () => {
     expect(tools.emitted('refresh')).toHaveLength(1)
   })
 
-  it('renders all three LangChain model request settings with their distinct input forms', () => {
+  it('renders model parameters in one card with the requested grid widths', () => {
     const editor = mount(ModelEditor, {
       props: { modelValue: modelAdapter.blank() },
       global: { plugins: [localizedI18n] },
     })
-    const settings = editor.findAll('[data-request-setting]')
+    const card = editor.get('[data-testid="model-parameters-card"]')
+    const providerFields = card.findAll('[data-testid="provider-parameter-field"]')
+    const settings = card.findAll('[data-request-setting]')
 
+    expect(card.get('.card-title').text()).toBe('模型参数')
+    expect(providerFields.length).toBeGreaterThan(0)
+    expect(providerFields.every((field) => field.classes().includes('col-md-4'))).toBe(true)
     expect(settings.map((field) => field.attributes('data-request-setting'))).toEqual([
       'tool_choice',
       'response_format',
       'model_settings',
     ])
+    expect(settings[0]?.classes()).toContain('col-md-4')
+    expect(settings[1]?.classes()).toContain('col-md-6')
+    expect(settings[2]?.classes()).toContain('col-md-6')
     expect(settings[0]?.find('input[list="tool-choice-options"]').exists()).toBe(true)
     expect(settings[1]?.find('textarea').exists()).toBe(true)
     expect(settings[2]?.find('textarea').exists()).toBe(true)

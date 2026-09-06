@@ -37,4 +37,10 @@ describe('locale contract', () => {
     expect(formattingLocale('debug')).toBe('en')
     expect(() => new Intl.DateTimeFormat(formattingLocale('debug'))).not.toThrow()
   })
+
+  it('uses the English Async Subagent tab title and concise component name', () => {
+    expect(zhCN.navigation.sections.asyncSubagents).toBe('Async Subagent')
+    expect(zhCN.capabilities['async-subagent'].label).toBe('异步子代理')
+    expect(en.capabilities['async-subagent'].label).toBe('Async Subagent')
+  })
 })

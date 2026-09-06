@@ -15,7 +15,7 @@
 | Agent Event Output | 用文件化 Python 扩展把 v3 Agent 事件投影为响应文本 | 必选 | 只用于顶层 Main Agent |
 | 异常重试 | Provider 或 ModelRetryMiddleware 重试 | 可选 | 继承、替换或关闭 |
 | Subagent Delegation | synchronous Subagent 的提示与 `task` 说明 | 可选 | 只用于 top-level Main Agent |
-| Async Subagent Middleware | 异步子代理 system prompt 与五个官方 task Tool description | 可选；还需至少一个 Async Subagent 配置引用 | 只用于 top-level Main Agent |
+| Async Subagent | 异步子代理 system prompt 与五个官方 task Tool description | 可选；还需至少一个 Async Subagent 配置引用 | 只用于 top-level Main Agent |
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
 | MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |

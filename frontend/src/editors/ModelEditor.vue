@@ -340,13 +340,18 @@ function setBooleanNumber(key: string, event: Event): void {
       </div>
     </section>
 
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="model-parameters-card">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.model.parametersTitle') }}</h3>
       </header>
       <div class="card-body">
-        <div v-if="parameterFields.length" class="row g-3" data-testid="provider-parameter-fields">
-          <div v-for="field in parameterFields" :key="field.key" class="col-md-6">
+        <div class="row g-3" data-testid="provider-parameter-fields">
+          <div
+            v-for="field in parameterFields"
+            :key="field.key"
+            class="col-md-4"
+            data-testid="provider-parameter-field"
+          >
             <FormField :field-path="`provider_settings.${field.key}`" technical>
               <select
                 v-if="field.kind === 'boolean'"
@@ -394,51 +399,37 @@ function setBooleanNumber(key: string, event: Event): void {
               />
             </FormField>
           </div>
+          <div class="col-md-4" data-request-setting="tool_choice">
+            <FormField field-path="tool_choice" technical>
+              <input
+                v-model="draft.tool_choice"
+                class="form-control"
+                list="tool-choice-options"
+                :placeholder="t('editors.model.toolChoicePlaceholder')"
+              >
+              <datalist id="tool-choice-options"><option value="auto" /><option value="none" /><option value="required" /><option value="any" /></datalist>
+            </FormField>
+          </div>
+          <div class="col-md-6" data-request-setting="response_format">
+            <FormField field-path="response_format" technical>
+              <LteTextarea
+                v-model="draft.response_format"
+                :placeholder="responseFormatPlaceholder"
+                :rows="8"
+              />
+            </FormField>
+          </div>
+          <div class="col-md-6" data-request-setting="model_settings">
+            <FormField field-path="model_settings" technical>
+              <LteTextarea
+                v-model="draft.model_settings"
+                :placeholder="modelSettingsPlaceholder"
+                :rows="5"
+              />
+            </FormField>
+          </div>
         </div>
-        <p v-else class="text-body-secondary mb-0">{{ t('editors.model.selectProviderFirst') }}</p>
-      </div>
-    </section>
-
-    <section class="card mb-3">
-      <header class="card-header">
-        <h3 class="card-title">{{ t('editors.model.requestSettingsTitle') }}</h3>
-      </header>
-      <div class="card-body">
-        <FormField
-          data-request-setting="tool_choice"
-          field-path="tool_choice"
-          technical
-        >
-          <input
-            v-model="draft.tool_choice"
-            class="form-control"
-            list="tool-choice-options"
-            :placeholder="t('editors.model.toolChoicePlaceholder')"
-          >
-          <datalist id="tool-choice-options"><option value="auto" /><option value="none" /><option value="required" /><option value="any" /></datalist>
-        </FormField>
-        <FormField
-          data-request-setting="response_format"
-          field-path="response_format"
-          technical
-        >
-          <LteTextarea
-            v-model="draft.response_format"
-            :placeholder="responseFormatPlaceholder"
-            :rows="8"
-          />
-        </FormField>
-        <FormField
-          data-request-setting="model_settings"
-          field-path="model_settings"
-          technical
-        >
-          <LteTextarea
-            v-model="draft.model_settings"
-            :placeholder="modelSettingsPlaceholder"
-            :rows="5"
-          />
-        </FormField>
+        <p v-if="!parameterFields.length" class="text-body-secondary mb-0 mt-3">{{ t('editors.model.selectProviderFirst') }}</p>
       </div>
     </section>
   </div>

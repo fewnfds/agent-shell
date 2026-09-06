@@ -1,6 +1,6 @@
-# Async Subagent Middleware
+# Async Subagent
 
-该组件的类型为 `async-subagent`，界面名称为【Async Subagent Middleware / 异步子代理中间件】。它控制 Main Agent 是否装配 Deep Agents 官方 `AsyncSubAgentMiddleware`，并可覆写 Middleware system prompt 与五个官方 task Tool 的 description。
+该组件的类型为 `async-subagent`，界面名称为【Async Subagent / 异步子代理】。它控制 Main Agent 是否装配 Deep Agents 官方 `AsyncSubAgentMiddleware`，并可覆写 Middleware system prompt 与五个官方 task Tool 的 description。
 
 ```json
 {

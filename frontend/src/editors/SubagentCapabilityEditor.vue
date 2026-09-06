@@ -17,13 +17,13 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
 
 <template>
   <div data-editor="subagent">
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="system-prompt-card">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.subagent.instructionTitle') }}</h3>
       </header>
       <div class="card-body">
-        <div class="d-flex justify-content-end mb-3">
-          <LteButton class="action-button" data-action="restore-default" @click="draft.instruction_override = defaults.system_prompt">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <LteButton class="action-button ms-auto" data-action="restore-default" @click="draft.instruction_override = defaults.system_prompt">
             <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             {{ t('editors.common.restoreDefault') }}
           </LteButton>
@@ -35,22 +35,29 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
         />
       </div>
     </section>
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="tool-description-card">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.subagent.taskDescriptionTitle') }}</h3>
       </header>
-      <div class="card-body">
-        <div class="d-flex justify-content-end mb-3">
-          <LteButton class="action-button" data-action="restore-default" @click="draft.task_description_override = defaults.tool_description">
-            <i class="bi bi-arrow-clockwise" aria-hidden="true" />
-            {{ t('editors.common.restoreDefault') }}
-          </LteButton>
+      <div class="list-group list-group-flush">
+        <div class="list-group-item" data-testid="tool-description-item">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <label class="form-label font-monospace mb-0" for="subagent-task-description">task</label>
+            <LteButton class="action-button ms-auto" data-action="restore-default" @click="draft.task_description_override = defaults.tool_description">
+              <i class="bi bi-arrow-clockwise" aria-hidden="true" />
+              {{ t('editors.common.restoreDefault') }}
+            </LteButton>
+          </div>
+          <LteTextarea
+            id="subagent-task-description"
+            v-model="draft.task_description_override"
+            :aria-label="t('editors.subagent.taskDescriptionTitle')"
+            :rows="14"
+          />
+          <p class="form-text mb-0">
+            {{ t('editors.common.requiredVariables') }} <code>{available_agents}</code>
+          </p>
         </div>
-        <LteTextarea
-          v-model="draft.task_description_override"
-          :aria-label="t('editors.subagent.taskDescriptionTitle')"
-          :rows="14"
-        />
       </div>
     </section>
   </div>

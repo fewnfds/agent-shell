@@ -30,13 +30,13 @@ function updateDescription(toolName: AsyncSubagentToolName, value: string): void
 
 <template>
   <div data-editor="async-subagent">
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="system-prompt-card">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.asyncSubagent.systemPromptTitle') }}</h3>
       </header>
       <div class="card-body">
-        <div class="d-flex justify-content-end mb-3">
-          <LteButton class="action-button" data-action="restore-default" @click="draft.system_prompt_override = defaults.system_prompt">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <LteButton class="action-button ms-auto" data-action="restore-default" @click="draft.system_prompt_override = defaults.system_prompt">
             <i class="bi bi-arrow-clockwise" aria-hidden="true" />
             {{ t('editors.common.restoreDefault') }}
           </LteButton>
@@ -49,18 +49,17 @@ function updateDescription(toolName: AsyncSubagentToolName, value: string): void
       </div>
     </section>
 
-    <section class="card mb-3">
+    <section class="card mb-3" data-testid="tool-description-card">
       <header class="card-header">
         <h3 class="card-title">{{ t('editors.asyncSubagent.toolDescriptionsTitle') }}</h3>
       </header>
       <div class="list-group list-group-flush">
-        <div v-for="toolName in asyncSubagentToolNames" :key="toolName" class="list-group-item">
-          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div v-for="toolName in asyncSubagentToolNames" :key="toolName" class="list-group-item" data-testid="tool-description-item">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <label class="form-label font-monospace mb-0" :for="`async-subagent-${toolName}`">{{ toolName }}</label>
             <LteButton
-              class="action-button"
+              class="action-button ms-auto"
               data-action="restore-default"
-              size="sm"
               @click="updateDescription(toolName, defaults.tool_descriptions[toolName])"
             >
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
@@ -74,7 +73,7 @@ function updateDescription(toolName: AsyncSubagentToolName, value: string): void
             @update:model-value="updateDescription(toolName, $event)"
           />
           <p v-if="toolName === 'start_async_task'" class="form-text mb-0">
-            {{ t('editors.asyncSubagent.availableAgentsHint') }}
+            {{ t('editors.common.requiredVariables') }} <code>{available_agents}</code>
           </p>
         </div>
       </div>

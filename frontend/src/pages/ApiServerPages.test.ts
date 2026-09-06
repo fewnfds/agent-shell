@@ -88,16 +88,18 @@ const messages = {
       openaiBase: 'OpenAI-compatible Base URL',
       models: 'Models endpoint (GET)',
       chatCompletions: 'Chat completions endpoint (POST)',
-      langgraphRoute: 'LangGraph Agent Server route family {index}',
+      langgraphRoute: 'LangGraph Agent Server route',
+      assistantsApi: 'Assistants API',
+      threadsApi: 'Threads API',
+      runsApi: 'Runs API',
+      storeApi: 'Store API',
+      mcp: 'MCP',
+      a2a: 'A2A',
       agentShellHealth: 'Agent Shell Health (GET)',
       agentShellReadiness: 'Agent Shell Readiness (GET)',
       langgraphHealth: 'LangGraph Health (GET)',
       langgraphInfo: 'LangGraph Info (GET)',
       langgraphMetrics: 'LangGraph Metrics (GET)',
-      managementAuth: 'Management authentication',
-      managementAuthScope: 'Management Bearer (except Agent Shell Health)',
-      apiKeyAuth: 'API key authentication',
-      apiKeyAuthScope: 'API Key Bearer',
     },
   },
   fields: {
@@ -280,32 +282,42 @@ describe('ApiServerSettingsPage', () => {
 
     const langgraphDevApiCard = wrapper.get('[data-testid="langgraph-dev-api-card"]')
     expect(langgraphDevApiCard.text()).toContain('LangGraph Dev API')
-    expect(langgraphDevApiCard.findAll('.col-lg-6')).toHaveLength(13)
-    expect(langgraphDevApiCard.findAll('input[readonly]')).toHaveLength(13)
+    expect(langgraphDevApiCard.findAll('.col-lg-6')).toHaveLength(12)
+    expect(langgraphDevApiCard.findAll('input[readonly]')).toHaveLength(12)
     expect(langgraphDevApiCard.findAll('.small')).toHaveLength(0)
     expect(langgraphDevApiCard.findAll('.input-group-sm')).toHaveLength(0)
     expect(langgraphDevApiCard.findAll('code')).toHaveLength(0)
     expect(langgraphDevApiCard.get<HTMLInputElement>('#agent-shell-base-url').element.value)
       .toBe('http://localhost/agent-shell/api')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-0"]').text())
+      .toBe('Assistants API')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-1"]').text())
+      .toBe('Threads API')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-2"]').text())
+      .toBe('Runs API')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-3"]').text())
+      .toBe('Store API')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-4"]').text())
+      .toBe('MCP')
+    expect(langgraphDevApiCard.get('label[for="langgraph-route-5"]').text())
+      .toBe('A2A')
     expect(langgraphDevApiCard.get<HTMLInputElement>('#langgraph-route-0').element.value)
       .toBe('/assistants/*')
     expect(langgraphDevApiCard.get<HTMLInputElement>('#diagnostic-langgraph-metrics').element.value)
       .toBe('http://localhost/metrics')
-    expect(langgraphDevApiCard.get<HTMLInputElement>('#management-authentication').element.value)
-      .toBe('Management Bearer (except Agent Shell Health)')
+    expect(langgraphDevApiCard.find('#management-authentication').exists()).toBe(false)
 
     const openaiApiCard = wrapper.get('[data-testid="openai-api-card"]')
     expect(openaiApiCard.text()).toContain('OpenAI-compatible API')
-    expect(openaiApiCard.findAll('.col-lg-6')).toHaveLength(4)
-    expect(openaiApiCard.findAll('input[readonly]')).toHaveLength(4)
+    expect(openaiApiCard.findAll('.col-lg-6')).toHaveLength(3)
+    expect(openaiApiCard.findAll('input[readonly]')).toHaveLength(3)
     expect(openaiApiCard.get<HTMLInputElement>('#openai-base-url').element.value)
       .toBe('http://localhost/compat/openai/v1')
     expect(openaiApiCard.get<HTMLInputElement>('#models-endpoint').element.value)
       .toBe('http://localhost/compat/openai/v1/models')
     expect(openaiApiCard.get<HTMLInputElement>('#chat-completions-endpoint').element.value)
       .toBe('http://localhost/compat/openai/v1/chat/completions')
-    expect(openaiApiCard.get<HTMLInputElement>('#api-key-authentication').element.value)
-      .toBe('API Key Bearer')
+    expect(openaiApiCard.find('#api-key-authentication').exists()).toBe(false)
     expect(wrapper.find('[data-testid="endpoint-card"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="configuration-card"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="key-form"]').exists()).toBe(false)

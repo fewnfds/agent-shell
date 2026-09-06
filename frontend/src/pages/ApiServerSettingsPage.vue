@@ -96,6 +96,14 @@ const diagnosticEndpoints = computed(() => {
     },
   ]
 })
+const langgraphRouteLabelKeys: Record<string, string> = {
+  '/assistants/*': 'apiServer.endpoints.assistantsApi',
+  '/threads/*': 'apiServer.endpoints.threadsApi',
+  '/runs/*': 'apiServer.endpoints.runsApi',
+  '/store/*': 'apiServer.endpoints.storeApi',
+  '/mcp/': 'apiServer.endpoints.mcp',
+  '/a2a/{assistant_id}': 'apiServer.endpoints.a2a',
+}
 const { validation: repositoryValidation } = useConfigurationValidation({
   buildRequest: () => ({}),
   validate: () => api.validateRepository(),
@@ -214,7 +222,7 @@ onMounted(() => {
                 class="col-lg-6"
               >
                 <label class="form-label" :for="`langgraph-route-${index}`">
-                  {{ t('apiServer.endpoints.langgraphRoute', { index: index + 1 }) }}
+                  {{ t(langgraphRouteLabelKeys[route] ?? 'apiServer.endpoints.langgraphRoute') }}
                 </label>
                 <input
                   :id="`langgraph-route-${index}`"
@@ -236,17 +244,6 @@ onMounted(() => {
                   class="form-control font-monospace"
                   readonly
                   :value="item.url"
-                >
-              </div>
-              <div class="col-lg-6">
-                <label class="form-label" for="management-authentication">
-                  {{ t('apiServer.endpoints.managementAuth') }}
-                </label>
-                <input
-                  id="management-authentication"
-                  class="form-control font-monospace"
-                  readonly
-                  :value="t('apiServer.endpoints.managementAuthScope')"
                 >
               </div>
             </div>
@@ -289,17 +286,6 @@ onMounted(() => {
                   class="form-control font-monospace"
                   readonly
                   :value="settings.api_endpoints.chat_completions_endpoint"
-                >
-              </div>
-              <div class="col-lg-6">
-                <label class="form-label" for="api-key-authentication">
-                  {{ t('apiServer.endpoints.apiKeyAuth') }}
-                </label>
-                <input
-                  id="api-key-authentication"
-                  class="form-control font-monospace"
-                  readonly
-                  :value="t('apiServer.endpoints.apiKeyAuthScope')"
                 >
               </div>
             </div>

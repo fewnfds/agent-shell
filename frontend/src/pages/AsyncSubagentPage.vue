@@ -161,67 +161,100 @@ onMounted(() => {
           />
         </div>
 
-        <section class="card mb-3">
-          <header class="card-header">
-            <h2 class="card-title mb-0">{{ t('agents.asyncSubagentEntity.identityTitle') }}</h2>
-          </header>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-lg-4">
-                <label class="form-label" for="async-subagent-template">{{ t('agents.asyncSubagentEntity.template') }}</label>
-                <select id="async-subagent-template" v-model="form.main_agent_id" class="form-select">
-                  <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
-                  <option
-                    v-if="form.main_agent_id && !mainAgents.some((item) => item.id === form.main_agent_id)"
-                    disabled
-                    :value="form.main_agent_id"
-                  >
-                    {{ t('common.missingConfiguration', { id: form.main_agent_id }) }}
-                  </option>
-                  <option v-for="agent in mainAgents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
-                </select>
-              </div>
-              <div class="col-lg-4">
-                <label class="form-label" for="async-subagent-role-name">{{ t('agents.asyncSubagentEntity.roleName') }}</label>
-                <input id="async-subagent-role-name" v-model="form.name" class="form-control" autocomplete="off">
-              </div>
-              <div class="col-lg-4">
-                <label class="form-label" for="async-subagent-description">{{ t('fields.description') }}</label>
-                <textarea id="async-subagent-description" v-model="form.description" class="form-control" rows="2" />
-              </div>
+        <section class="mb-3" :aria-label="t('agents.asyncSubagentEntity.identityTitle')">
+          <div class="row g-3">
+            <div class="col-md-6 col-xxl-4">
+              <section class="card h-100" data-testid="async-subagent-option-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-template">{{ t('agents.asyncSubagentEntity.template') }}</label>
+                </header>
+                <div class="card-body">
+                  <select id="async-subagent-template" v-model="form.main_agent_id" class="form-select">
+                    <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option
+                      v-if="form.main_agent_id && !mainAgents.some((item) => item.id === form.main_agent_id)"
+                      disabled
+                      :value="form.main_agent_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.main_agent_id }) }}
+                    </option>
+                    <option v-for="agent in mainAgents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
+                  </select>
+                </div>
+              </section>
+            </div>
+            <div class="col-md-6 col-xxl-4">
+              <section class="card h-100" data-testid="async-subagent-option-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-role-name">{{ t('agents.asyncSubagentEntity.roleName') }}</label>
+                </header>
+                <div class="card-body">
+                  <input id="async-subagent-role-name" v-model="form.name" class="form-control" autocomplete="off">
+                </div>
+              </section>
+            </div>
+            <div class="col-md-6 col-xxl-4">
+              <section class="card h-100" data-testid="async-subagent-option-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-description">{{ t('fields.description') }}</label>
+                </header>
+                <div class="card-body">
+                  <textarea id="async-subagent-description" v-model="form.description" class="form-control" rows="1" />
+                </div>
+              </section>
             </div>
           </div>
         </section>
 
-        <section class="card mb-3">
-          <header class="card-header">
-            <h2 class="card-title mb-0">{{ t('agents.asyncSubagentEntity.runtimeTitle') }}</h2>
-          </header>
-          <ul class="list-group list-group-flush">
-            <li class="list-group-item d-flex justify-content-between gap-3">
-              <span>{{ t('agents.asyncSubagentEntity.templateAssembly') }}</span>
-              <strong>{{ t('agents.asyncSubagentEntity.inheritTemplate') }}</strong>
-            </li>
-            <li class="list-group-item d-flex justify-content-between gap-3">
-              <span>{{ t('agents.mainAgent.fields.onDisconnect') }}</span>
-              <strong>{{ template ? t(`agents.mainAgent.onDisconnect.${template.on_disconnect}`) : '—' }}</strong>
-            </li>
-            <li class="list-group-item d-flex justify-content-between gap-3">
-              <span>{{ t('agents.mainAgent.fields.checkpointMode') }}</span>
-              <strong>{{ t('agents.asyncSubagentEntity.checkpointFixed') }}</strong>
-            </li>
-            <li class="list-group-item d-flex justify-content-between gap-3">
-              <span>{{ t('agents.mainAgent.fields.durability') }}</span>
-              <strong>{{ t('agents.asyncSubagentEntity.durabilityFixed') }}</strong>
-            </li>
-          </ul>
+        <section class="mb-3" :aria-label="t('agents.asyncSubagentEntity.runtimeTitle')">
+          <div class="row g-3">
+            <div class="col-md-6 col-xxl-3">
+              <section class="card h-100" data-testid="async-subagent-frozen-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-template-assembly">{{ t('agents.asyncSubagentEntity.templateAssembly') }}</label>
+                </header>
+                <div class="card-body">
+                  <input id="async-subagent-template-assembly" class="form-control" disabled :value="t('agents.asyncSubagentEntity.inheritTemplate')">
+                </div>
+              </section>
+            </div>
+            <div class="col-md-6 col-xxl-3">
+              <section class="card h-100" data-testid="async-subagent-frozen-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-disconnect">{{ t('agents.mainAgent.fields.onDisconnect') }}</label>
+                </header>
+                <div class="card-body">
+                  <input
+                    id="async-subagent-disconnect"
+                    class="form-control"
+                    disabled
+                    :value="template ? t(`agents.mainAgent.onDisconnect.${template.on_disconnect}`) : '—'"
+                  >
+                </div>
+              </section>
+            </div>
+            <div class="col-md-6 col-xxl-3">
+              <section class="card h-100" data-testid="async-subagent-frozen-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-checkpoint-mode">{{ t('agents.mainAgent.fields.checkpointMode') }}</label>
+                </header>
+                <div class="card-body">
+                  <input id="async-subagent-checkpoint-mode" class="form-control" disabled :value="t('agents.asyncSubagentEntity.checkpointFixed')">
+                </div>
+              </section>
+            </div>
+            <div class="col-md-6 col-xxl-3">
+              <section class="card h-100" data-testid="async-subagent-frozen-card">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="async-subagent-durability">{{ t('agents.mainAgent.fields.durability') }}</label>
+                </header>
+                <div class="card-body">
+                  <input id="async-subagent-durability" class="form-control" disabled :value="t('agents.asyncSubagentEntity.durabilityFixed')">
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
-
-        <LteAlert :title="t('agents.asyncSubagentEntity.noticeTitle')" theme="info">
-          <p>{{ t('agents.asyncSubagentEntity.noticeAsync') }}</p>
-          <p>{{ t('agents.asyncSubagentEntity.noticeSync') }}</p>
-          <p class="mb-0">{{ t('agents.asyncSubagentEntity.noticeAssembly') }}</p>
-        </LteAlert>
       </template>
       <template #aside>
         <ValidationChecklist :title="t('validation.draftTitle')" :validation="validation" />
