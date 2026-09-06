@@ -1,6 +1,6 @@
 # 组件说明
 
-本目录是配置编辑页的字段索引：13 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 3 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
+本目录是配置编辑页的字段索引：13 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 2 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
 
 | 所属 / 顺序 | 页面 | 类型 |
 | --- | --- | --- |
@@ -19,7 +19,6 @@
 | Agent / 13 | [Prompt Caching](prompt-caching-config.md) | `prompt-caching` |
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |
 | Workflow | [Workflow Event Output](workflow-event-output-config.md) | `workflow-event-output` |
-| Workflow | [Response Stream Scheduling](response-stream-scheduling-config.md) | `response-stream-scheduling` |
 | Workflow | [Command Node](command-config.md) | `command` |
 
 Agent / 1..13 是 Agent capability 的固定 catalog order，Resource 与 Workflow 行不参与该 order。`agent_selectable=false` 的 Skill Component 不出现在 Main Agent 或 Subagent 的 capability picker；`mcp-requirement` 通过独立 ordered `mcp_refs` 装配，不进入 capability picker。
@@ -28,6 +27,6 @@ Agent / 1..13 是 Agent capability 的固定 catalog order，Resource 与 Workfl
 
 Filesystem Backend 在 CompositeBackend 与 LocalShellBackend 中二选一。CompositeBackend 的来源各自保存权限，并可引用一个 Skill 独立包；LocalShellBackend 只保存一个真实工作区。Skill Component 只制作独立包，不由 Agent 直接选择。Subagent 分别继承或替换 Backend 与 Tools；Skill 包引用随 CompositeBackend 一起生效。Workflow 不拥有 Filesystem。
 
-其余 Agent capability 按需通过 `capability_refs` 引用；Custom Tool、Custom Middleware 与 MCP Requirement 分别使用独立有序的 `tool_refs`、`middleware_refs` 与 `mcp_refs`，不参与 capability 的 inherit/replace/disabled。Command 也拥有自己的 ordered `mcp_refs`。Workflow Event Output 与 Response Stream Scheduling 分别通过 Workflow metadata 的 `workflow_event_output_id` 与 `response_stream_scheduling_id` 绑定；`durability` 直接保存在 Workflow metadata。Command Node 由 canvas Node 的 `command_id` 引用，Branch key 与 Dispatch key 由对应 Edge 声明。
+其余 Agent capability 按需通过 `capability_refs` 引用；Custom Tool、Custom Middleware 与 MCP Requirement 分别使用独立有序的 `tool_refs`、`middleware_refs` 与 `mcp_refs`，不参与 capability 的 inherit/replace/disabled。Command 也拥有自己的 ordered `mcp_refs`。Workflow Event Output 通过 Workflow metadata 的 `workflow_event_output_id` 绑定；`durability` 直接保存在 Workflow metadata。Command Node 由 canvas Node 的 `command_id` 引用。
 
 Component、Main Agent、Subagent 与 Workflow 共用全局 UUID4 identity，跨类型不得复用；名称按各自作用域校验，Workflow name 保留大小写敏感语义，并在 Workflow 同时启用且选择作为模型入口时成为公开 model ID。组件编辑页提供草稿校验、新建、保存、复制和删除；Model/MCP Connection 分别在【模型】与【MCP】页面独立维护并通过各自映射绑定，配置库提供通用列表与 Repository 操作。

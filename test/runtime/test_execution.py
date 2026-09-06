@@ -125,7 +125,7 @@ def test_scheduler_deadline_wakes_while_upstream_iterator_is_quiet() -> None:
                 return self.run
 
         payload = ResponseStreamPolicy().model_dump(mode="json")
-        payload["queue"]["send_interval_seconds"] = 0.1
+        payload["send_interval_seconds"] = 0.1
         run = QuietRun()
         projector = OutputProjector(
             output_renderer(
@@ -204,12 +204,9 @@ def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -
         output = OutputProjector(output_renderer())
         scheduler = LifecycleResponseScheduler(
             ResponseStreamPolicy.model_validate({
-                "queue": {
-                    "strategy": "request",
-                    "idle_timeout_seconds": 0.01,
-                    "max_batch_kb": 64,
-                    "send_interval_seconds": 0,
-                }
+                "idle_timeout_seconds": 0.01,
+                "max_batch_kb": 64,
+                "send_interval_seconds": 0,
             }),
             lifecycle_id=lifecycle_id,
         )

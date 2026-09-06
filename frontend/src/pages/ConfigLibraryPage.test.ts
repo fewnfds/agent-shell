@@ -10,7 +10,6 @@ import type {
   ModelConnection,
   SavedBlock,
   ValidationReport,
-  WorkflowComponentManifest,
 } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
 import { useToasts } from '@/composables/useToasts'
@@ -141,7 +140,6 @@ const messages = {
     'main-agent': { label: 'Main Agent' },
     'subagent-profile': { label: 'Subagent' },
     workflow: { label: 'Workflow' },
-    'response-stream-scheduling': { label: 'Response Stream Scheduling' },
   },
   validation: {
     status: {
@@ -371,44 +369,11 @@ afterEach(() => {
 })
 
 describe('ConfigLibraryPage', () => {
-  it('lists Response Stream Scheduling in the Workflow Component configuration library', async () => {
-    const api = createApi()
-    const manifest: WorkflowComponentManifest = {
-      type: 'response-stream-scheduling',
-      terminology_key: 'response-stream-scheduling',
-      label: 'Response Stream Scheduling',
-      order: 3,
-      icon_key: 'shuffle',
-      editor_key: 'response_stream_scheduling',
-    }
-    vi.mocked(api.service.getCatalog).mockResolvedValue({
-      block_types: manifests,
-      workflow_component_types: [manifest],
-      editor_defaults: {},
-    })
-    const { wrapper, router } = await mountPage(
-      api.service,
-      '/library/response-stream-scheduling',
-    )
-
-    expect(api.listBlockSummaries).toHaveBeenCalledWith(
-      'response-stream-scheduling',
-      { q: undefined, offset: 0, limit: 20 },
-    )
-    expect(wrapper.get('[data-testid="library-workflow-component-group"]').text())
-      .toContain('Response Stream Scheduling')
-    await buttonByText(wrapper, 'Edit').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe(
-      '/workflow-components/response-stream-scheduling',
-    )
-  })
-
   it('lists Workflows with the common copy, download, and delete actions', async () => {
     const api = createApi()
     const workflow = {
       id: 'workflow-uuid', name: 'Workflow',
-      description: '', workflow_event_output_id: null, response_stream_scheduling_id: null,
+      description: '', workflow_event_output_id: null,
       durability: 'async' as const, on_disconnect: 'cancel' as const,
       enabled: false,
     }

@@ -53,6 +53,11 @@ def _payload(**overrides) -> dict:
         "management_token": {"operation": "preserve"},
         "cors_origins": [],
         "trusted_proxy_cidrs": [],
+        "response_stream_scheduling": {
+            "idle_timeout_seconds": 2,
+            "max_batch_kb": 64,
+            "send_interval_seconds": 0.05,
+        },
     }
     payload.update(overrides)
     return payload
@@ -81,6 +86,11 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "cors_origins": [],
         "trusted_proxy_cidrs": [],
         "management_token": {"configured": True},
+        "response_stream_scheduling": {
+            "idle_timeout_seconds": 2.0,
+            "max_batch_kb": 64.0,
+            "send_interval_seconds": 0.05,
+        },
         "restart_required": False,
         "active_management_url": "http://testserver/admin#/",
         "active_api_docs_url": "http://testserver/docs",
@@ -90,6 +100,64 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         ),
     }
     assert MANAGEMENT_TOKEN not in response.text
+
+
+def test_response_stream_scheduling_updates_without_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(
+            response_stream_scheduling={
+                "idle_timeout_seconds": 1.25,
+                "max_batch_kb": 24,
+                "send_interval_seconds": 0.2,
+            }
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["restart_required"] is False
+    assert response.json()["response_stream_scheduling"] == {
+        "idle_timeout_seconds": 1.25,
+        "max_batch_kb": 24.0,
+        "send_interval_seconds": 0.2,
+    }
+    document = yaml.safe_load(
+        (tmp_path / "data" / "config" / "system.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert document["settings"]["response_stream_scheduling"] == {
+        "idle_timeout_seconds": 1.25,
+        "max_batch_kb": 24.0,
+        "send_interval_seconds": 0.2,
+    }
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"idle_timeout_seconds": 0, "max_batch_kb": 64, "send_interval_seconds": 0},
+        {"idle_timeout_seconds": 2, "max_batch_kb": 0, "send_interval_seconds": 0},
+        {"idle_timeout_seconds": 2, "max_batch_kb": 64, "send_interval_seconds": -1},
+    ],
+)
+def test_response_stream_scheduling_rejects_invalid_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: dict[str, float],
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(response_stream_scheduling=policy),
+    )
+
+    assert response.status_code == 422
 
 
 def test_valid_system_settings_are_atomic_and_take_effect_after_restart(

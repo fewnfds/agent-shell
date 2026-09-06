@@ -33,6 +33,11 @@ const currentSettings: SystemSettings = {
   management_token: { configured: true },
   cors_origins: [],
   trusted_proxy_cidrs: [],
+  response_stream_scheduling: {
+    idle_timeout_seconds: 2,
+    max_batch_kb: 64,
+    send_interval_seconds: 0.05,
+  },
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -95,22 +100,23 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
 
     const cards = wrapper.findAll('[data-testid^="system-card-"]')
-    expect(cards).toHaveLength(6)
+    expect(cards).toHaveLength(7)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
     expect(cards.map((card) => card.attributes('data-testid'))).toEqual([
       'system-card-api-server',
       'system-card-proxy',
       'system-card-runtime-policy',
+      'system-card-response-scheduling',
       'system-card-langgraph-dev',
       'system-card-langsmith',
       'system-card-validation',
     ])
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
-    expect(saveButtons).toHaveLength(6)
+    expect(saveButtons).toHaveLength(7)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-key', 'bi-hdd-network', 'bi-sliders', 'bi-diagram-3', 'bi-cloud-arrow-up', 'bi-check2-square'])
+      .toEqual(['bi-key', 'bi-hdd-network', 'bi-sliders', 'bi-shuffle', 'bi-diagram-3', 'bi-cloud-arrow-up', 'bi-check2-square'])
     await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
@@ -130,6 +136,11 @@ describe('SystemSettingsPage', () => {
       management_token: { operation: 'preserve' },
       cors_origins: [],
       trusted_proxy_cidrs: [],
+      response_stream_scheduling: {
+        idle_timeout_seconds: 2,
+        max_batch_kb: 64,
+        send_interval_seconds: 0.05,
+      },
     })
     expect(api.saveApiServer).not.toHaveBeenCalled()
     expect(api.updateValidationSettings).not.toHaveBeenCalled()
@@ -160,6 +171,7 @@ describe('SystemSettingsPage', () => {
         allow_remote: payload.allow_remote,
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
+        response_stream_scheduling: payload.response_stream_scheduling,
       })),
       saveApiServer: vi.fn().mockImplementation(async () => currentApiServerSettings),
     }
@@ -174,6 +186,9 @@ describe('SystemSettingsPage', () => {
     await wrapper.get('#limit-recursion').setValue('321')
     await wrapper.get('#limit-concurrency').setValue('7')
     await wrapper.get('#langgraph-debug-port').setValue('21001')
+    await wrapper.get('#response-idle-timeout').setValue('1.5')
+    await wrapper.get('#response-max-batch').setValue('32')
+    await wrapper.get('#response-send-interval').setValue('0.1')
     await wrapper.get('#allow-remote').setValue(true)
     await wrapper.get('#management-password').setValue('new-management-password')
     await wrapper.get('#api-server-key').setValue('new-api-key')
@@ -222,9 +237,19 @@ describe('SystemSettingsPage', () => {
       debug_port: 21001,
     }))
 
-    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await wrapper.get('[data-testid="system-card-response-scheduling"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      response_stream_scheduling: {
+        idle_timeout_seconds: 1.5,
+        max_batch_kb: 32,
+        send_interval_seconds: 0.1,
+      },
+    }))
+
+    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(5, expect.objectContaining({
       n_jobs_per_worker: 14,
       langsmith_tracing_enabled: true,
       langsmith_api_key: { operation: 'replace', value: 'new-langsmith-key' },

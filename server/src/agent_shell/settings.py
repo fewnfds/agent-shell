@@ -18,6 +18,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_shell.configuration.repositories import ensure_active_configuration_repository
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.storage.environment import (
     EnvironmentFormatError,
     read_environment_file,
@@ -105,6 +106,9 @@ class Settings(BaseSettings):
     management_token: SecretStr | None = None
     cors_origins: Annotated[tuple[str, ...], NoDecode] = ()
     trusted_proxy_cidrs: Annotated[tuple[str, ...], NoDecode] = ()
+    response_stream_scheduling: ResponseStreamPolicy = Field(
+        default_factory=ResponseStreamPolicy
+    )
     _data_root: Path = PrivateAttr(default_factory=lambda: (Path.cwd() / "data").resolve())
 
     @classmethod

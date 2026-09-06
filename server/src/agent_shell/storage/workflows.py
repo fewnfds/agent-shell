@@ -16,7 +16,6 @@ class WorkflowStore:
         "description",
         "is_model_entry",
         "workflow_event_output_id",
-        "response_stream_scheduling_id",
         "durability",
         "on_disconnect",
         "enabled",
@@ -38,9 +37,6 @@ class WorkflowStore:
             "on_disconnect": str(record.get("on_disconnect", "cancel")),
             "enabled": bool(record["enabled"]),
         }
-        public["response_stream_scheduling_id"] = record.get(
-            "response_stream_scheduling_id"
-        )
         return public
 
     def list_items(

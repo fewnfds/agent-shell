@@ -84,7 +84,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
                 status_code=422,
             )
         lifecycle_id = str(uuid4())
-        coordinator._lifecycle_id = lifecycle_id
+        coordinator._begin_lifecycle(lifecycle_id)
         await graph_store.aput(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
@@ -101,6 +101,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             request_id=str(kwargs.get("request_id", "")),
             public_model=str(kwargs.get("public_model", workflow["name"])),
             lifecycle_id=lifecycle_id,
+            response_scheduler=coordinator._response_scheduler,
         )
 
     monkeypatch.setattr(
@@ -112,7 +113,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         """Execute the frozen Main Agent graph locally for API unit tests."""
 
         lifecycle_id = str(uuid4())
-        coordinator._lifecycle_id = lifecycle_id
+        coordinator._begin_lifecycle(lifecycle_id)
         await graph_store.aput(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
@@ -129,6 +130,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             thread_id=str(uuid4()),
             assistant_id=str(uuid4()),
             public_model=str(kwargs.get("public_model", main_agent["name"])),
+            response_scheduler=coordinator._response_scheduler,
         )
 
     monkeypatch.setattr(

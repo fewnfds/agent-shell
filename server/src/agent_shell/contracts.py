@@ -29,7 +29,6 @@ from agent_shell.command import CommandBlock
 from agent_shell.mcp.contracts import McpReference
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
-from agent_shell.response_stream_policy import ResponseQueuePolicy
 from agent_shell.storage.owned_paths import (
     is_reparse_point,
     require_data_root_relative_path,
@@ -179,10 +178,6 @@ class StrictBlock(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: BlockName
-
-
-class ResponseStreamSchedulingBlock(StrictBlock):
-    queue: ResponseQueuePolicy = Field(default_factory=ResponseQueuePolicy)
 
 
 CredentialValue = Annotated[
@@ -939,7 +934,6 @@ validate_capability_manifests(CAPABILITY_MANIFESTS, BLOCK_MODELS)
 BLOCK_CATALOG = PUBLIC_CAPABILITY_MANIFESTS
 WORKFLOW_COMPONENT_MODELS = {
     "workflow-event-output": WorkflowEventOutputBlock,
-    "response-stream-scheduling": ResponseStreamSchedulingBlock,
     "command": CommandBlock,
 }
 RESOURCE_COMPONENT_MODELS = {

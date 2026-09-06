@@ -122,34 +122,6 @@ def workflow_executable_report(
             )
             project_component_issues("workflow_event_output_id", output_report)
 
-    scheduling_id = workflow.get("response_stream_scheduling_id")
-    if scheduling_id is not None:
-        stored_scheduling = blocks.get_block_internal(
-            "response-stream-scheduling",
-            str(scheduling_id),
-        )
-        if stored_scheduling is None:
-            referenced_issues.append(
-                _component_reference_issue(
-                    configuration_validation,
-                    workflow=workflow,
-                    path="response_stream_scheduling_id",
-                    reference_id=str(scheduling_id),
-                    expected_type="response-stream-scheduling",
-                )
-            )
-        else:
-            scheduling_report = configuration_validation.validate_stored_block(
-                "response-stream-scheduling",
-                stored_scheduling,
-                stage=WORKFLOW_EXECUTABLE_STAGE,
-                check_dependencies=True,
-            )
-            project_component_issues(
-                "response_stream_scheduling_id",
-                scheduling_report,
-            )
-
     def component_report(
         block_type: str,
         reference: str,

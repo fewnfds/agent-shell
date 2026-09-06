@@ -719,47 +719,5 @@ def test_configuration_names_reject_windows_reserved_basenames(
     assert created.json()["detail"]["code"] == "configuration_name_invalid"
 
 
-def test_single_root_bundle_rejects_a_dangling_reference(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client, name="Incomplete Workflow")
-        scheduling = client.post(
-            "/agent-shell/api/blocks/response-stream-scheduling",
-            json={"name": "Temporary scheduling"},
-        ).json()
-        updated = client.put(
-            f"/agent-shell/api/workflows/{workflow['id']}",
-            json={
-                **{
-                    key: workflow[key]
-                    for key in (
-                        "name",
-                        "description",
-                        "workflow_event_output_id",
-                        "durability",
-                        "on_disconnect",
-                    )
-                },
-                "response_stream_scheduling_id": scheduling["id"],
-            },
-        )
-        assert updated.status_code == 200, updated.text
-        deleted = client.delete(
-            f"/agent-shell/api/blocks/response-stream-scheduling/{scheduling['id']}"
-        )
-        assert deleted.status_code == 200, deleted.text
-
-        exported = client.post(
-            "/agent-shell/api/configuration-bundles/export",
-            json={"kind": "workflow", "source_id": workflow["id"]},
-        )
-
-    assert exported.status_code == 422, exported.text
-    assert exported.json()["detail"]["code"] == "configuration_bundle_invalid"
-    assert "response_stream_scheduling_id" in exported.json()["detail"]["message"]
-
-
 def deepcopy_json(value: dict) -> dict:
     return json.loads(json.dumps(value))

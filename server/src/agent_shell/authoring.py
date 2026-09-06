@@ -11,7 +11,6 @@ from agent_shell.contracts import (
     FilesystemToolConfigs,
     FilesystemToolsBlock,
     PromptCachingBlock,
-    ResponseStreamSchedulingBlock,
     SKILL_PROMPT_FIELDS,
     SummarizationBlock,
 )
@@ -323,9 +322,6 @@ def _filesystem_tools() -> list[dict[str, object]]:
 
 
 _EDITOR_DEFAULTS = {
-    "response_stream_scheduling": ResponseStreamSchedulingBlock(
-        name="Response Stream Scheduling"
-    ).model_dump(mode="json", exclude={"name"}),
     "filesystem": {
         "system_prompt": FILESYSTEM_EDITOR_SYSTEM_PROMPT,
     },

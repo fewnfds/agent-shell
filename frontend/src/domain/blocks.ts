@@ -14,7 +14,6 @@ import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
-import { responseStreamSchedulingAdapter } from './blocks/responseStreamScheduling'
 
 export type {
   CustomMiddlewareCatalogItem,
@@ -84,10 +83,6 @@ export type {
   CommandDefaults,
   CommandDraft,
 } from './blocks/command'
-export type {
-  ResponseStreamSchedulingDefaults,
-  ResponseStreamSchedulingDraft,
-} from './blocks/responseStreamScheduling'
 
 export {
   customMiddlewareAdapter,
@@ -106,7 +101,6 @@ export {
   todoListAdapter,
   workflowEventOutputAdapter,
   commandAdapter,
-  responseStreamSchedulingAdapter,
 }
 
 export const blockTypes = [
@@ -129,7 +123,6 @@ export const managedComponentTypes = [
   ...blockTypes,
   'mcp-requirement',
   'workflow-event-output',
-  'response-stream-scheduling',
   'command',
 ] as const
 
@@ -149,6 +142,5 @@ export const blockAdapters = {
   'prompt-caching': promptCachingAdapter,
   'mcp-requirement': mcpRequirementAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
-  'response-stream-scheduling': responseStreamSchedulingAdapter,
   'command': commandAdapter,
 } as const

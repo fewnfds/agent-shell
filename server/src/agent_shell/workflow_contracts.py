@@ -14,6 +14,5 @@ class WorkflowDefinition(BaseModel):
     description: str = ""
     is_model_entry: bool = False
     workflow_event_output_id: RequiredReference | None = None
-    response_stream_scheduling_id: RequiredReference | None = None
     durability: Literal["sync", "async", "exit"] = "async"
     on_disconnect: Literal["cancel", "continue"] = "cancel"

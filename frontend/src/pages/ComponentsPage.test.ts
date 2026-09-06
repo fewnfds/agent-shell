@@ -104,23 +104,6 @@ const commandManifest: WorkflowComponentManifest = {
   editor_key: 'command',
 }
 
-const responseStreamSchedulingManifest: WorkflowComponentManifest = {
-  ...commandManifest,
-  type: 'response-stream-scheduling',
-  terminology_key: 'response-stream-scheduling',
-  label: 'Response Stream Scheduling',
-  editor_key: 'response_stream_scheduling',
-}
-
-const responseStreamSchedulingDefaults = {
-  queue: {
-    strategy: 'request' as const,
-    idle_timeout_seconds: 2,
-    max_batch_kb: 64,
-    send_interval_seconds: 0.05,
-  },
-}
-
 const commandTemplate = {
   key: 'basic-router',
   format_version: 1 as const,
@@ -384,7 +367,6 @@ describe('ComponentsPage', () => {
 
     expect(wrapper.findAll('[data-testid="section-nav"] button').map((item) => item.text())).toEqual([
       'navigation.sections.workflowEventOutput',
-      'navigation.sections.responseStreamScheduling',
       'navigation.sections.command',
     ])
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
@@ -393,65 +375,6 @@ describe('ComponentsPage', () => {
       'common.new',
       'common.save',
     ])
-    wrapper.unmount()
-  })
-
-  it('creates Response Stream Scheduling through the shared Workflow Component CRUD', async () => {
-    api.getCatalog.mockResolvedValueOnce({
-      block_types: [],
-      workflow_component_types: [responseStreamSchedulingManifest],
-      editor_defaults: {
-        response_stream_scheduling: responseStreamSchedulingDefaults,
-      },
-    })
-    api.listBlockSummaries.mockResolvedValueOnce(summaryCollection([]))
-    api.saveBlock.mockResolvedValueOnce({
-      id: 'response-scheduling-id',
-      name: 'Fair stream',
-      queue: {
-        strategy: 'node_invocation',
-        idle_timeout_seconds: 1.5,
-        max_batch_kb: 32,
-        send_interval_seconds: 0.1,
-      },
-    })
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{
-        path: '/workflow-components/:type',
-        component: ComponentsPage,
-        props: { scope: 'workflow' },
-      }],
-    })
-    await router.push('/workflow-components/response-stream-scheduling')
-    await router.isReady()
-    const wrapper = mount(ComponentsPage, {
-      props: { scope: 'workflow' },
-      global: { plugins: [router] },
-    })
-    await settleComponentPage(wrapper)
-
-    expect(wrapper.find('[data-editor="response-stream-scheduling"]').exists()).toBe(true)
-    await wrapper.get('[data-field="record-name"]').setValue('Fair stream')
-    await wrapper.get('#response-queue-strategy').setValue('node_invocation')
-    await wrapper.get('#response-idle-timeout').setValue('1.5')
-    await wrapper.get('#response-max-batch').setValue('32')
-    await wrapper.get('#response-send-interval').setValue('0.1')
-    await buttonByText(wrapper, 'common.save').trigger('click')
-    await flushPromises()
-
-    expect(api.saveBlock).toHaveBeenCalledWith(
-      'response-stream-scheduling',
-      {
-        name: 'Fair stream',
-        queue: {
-          strategy: 'node_invocation',
-          idle_timeout_seconds: 1.5,
-          max_batch_kb: 32,
-          send_interval_seconds: 0.1,
-        },
-      },
-    )
     wrapper.unmount()
   })
 

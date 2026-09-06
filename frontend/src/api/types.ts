@@ -23,7 +23,6 @@ export type BlockType =
 
 export type WorkflowComponentType =
   | 'workflow-event-output'
-  | 'response-stream-scheduling'
   | 'command'
 export type ResourceComponentType = 'mcp-requirement'
 export type ManagedComponentType = BlockType | ResourceComponentType | WorkflowComponentType
@@ -302,6 +301,7 @@ export interface SystemSettings {
   management_token: { configured: boolean }
   cors_origins: string[]
   trusted_proxy_cidrs: string[]
+  response_stream_scheduling: ResponseStreamPolicy
   restart_required: boolean
   active_management_url: string
   active_api_docs_url: string
@@ -324,6 +324,7 @@ export interface SystemSettingsUpdate {
   management_token: SystemSecretUpdate
   cors_origins: string[]
   trusted_proxy_cidrs: string[]
+  response_stream_scheduling: ResponseStreamPolicy
 }
 
 export interface ConfigurationValidationSettings {
@@ -519,15 +520,10 @@ export interface PythonPackageInspection {
   dependency_error_code: string
 }
 
-export type ResponseQueueStrategy = 'request' | 'node_invocation'
-
 export interface ResponseStreamPolicy {
-  queue: {
-    strategy: ResponseQueueStrategy
-    idle_timeout_seconds: number
-    max_batch_kb: number
-    send_interval_seconds: number
-  }
+  idle_timeout_seconds: number
+  max_batch_kb: number
+  send_interval_seconds: number
 }
 
 export interface WorkflowPayload {
@@ -535,7 +531,6 @@ export interface WorkflowPayload {
   description: string
   is_model_entry: boolean
   workflow_event_output_id: string | null
-  response_stream_scheduling_id?: string | null
   durability: 'sync' | 'async' | 'exit'
   on_disconnect: 'cancel' | 'continue'
 }

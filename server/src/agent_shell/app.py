@@ -282,6 +282,7 @@ def create_app(
         detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
         workflow_lifecycle_settings=workflow_lifecycle_settings,
+        response_stream_policy_provider=system_settings.response_stream_policy,
         model_resources=model_resources,
         mcp_resources=mcp_resources,
         run_config={

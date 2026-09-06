@@ -162,7 +162,6 @@ def test_configuration_stores_read_owned_sections_without_full_snapshot(
                     "name": "Workflow",
                     "description": "",
                     "workflow_event_output_id": None,
-                    "response_stream_scheduling_id": None,
                     "durability": "async",
                     "on_disconnect": "cancel",
                     "enabled": False,

@@ -13,6 +13,7 @@ from langgraph.store.base import BaseStore
 from langgraph_sdk import get_client
 
 from agent_shell.file_manager import FileManagerService
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
@@ -202,6 +203,7 @@ class RequestRuntimeSnapshot:
     _workflows: WorkflowStore
     _agents: AgentConfigStore
     _runtime_factory: Callable[[BaseStore | None], AgentRuntime]
+    _response_stream_policy: ResponseStreamPolicy
 
     def workflow_by_name(self, name: str) -> dict[str, Any] | None:
         return self._workflows.get_item_by_name(name)
@@ -220,6 +222,9 @@ class RequestRuntimeSnapshot:
 
     def new_runtime(self, *, store: BaseStore) -> AgentRuntime:
         return self._runtime_factory(store)
+
+    def response_stream_policy(self) -> ResponseStreamPolicy:
+        return self._response_stream_policy.model_copy(deep=True)
 
 
 @dataclass(slots=True)
@@ -246,6 +251,15 @@ class LifecycleRunCoordinator:
     def lifecycle_id(self) -> str:
         return self._lifecycle_id
 
+    def _begin_lifecycle(self, lifecycle_id: str) -> None:
+        if self._lifecycle_id or self._response_scheduler is not None:
+            raise RuntimeError("the request Lifecycle has already started")
+        self._lifecycle_id = lifecycle_id
+        self._response_scheduler = LifecycleResponseScheduler(
+            self._snapshot.response_stream_policy(),
+            lifecycle_id=lifecycle_id,
+        )
+
     async def start_workflow(
         self,
         workflow: Mapping[str, Any],
@@ -259,7 +273,7 @@ class LifecycleRunCoordinator:
             raise TypeError(f"unexpected request Run arguments: {unexpected}")
         messages = validate_client_messages(raw_messages)
         lifecycle_id = str(uuid4())
-        self._lifecycle_id = lifecycle_id
+        self._begin_lifecycle(lifecycle_id)
         binding = self._new_binding(
             workflow,
             request_id=request_id,
@@ -316,7 +330,7 @@ class LifecycleRunCoordinator:
             raise TypeError(f"unexpected request Run arguments: {unexpected}")
         messages = validate_client_messages(raw_messages)
         lifecycle_id = str(uuid4())
-        self._lifecycle_id = lifecycle_id
+        self._begin_lifecycle(lifecycle_id)
         loop = asyncio.get_running_loop()
         binding = _AgentRunBinding(
             main_agent=main_agent,
@@ -1454,6 +1468,7 @@ class RequestSnapshotRuntime:
         detached_tasks: DetachedTaskManager,
         runtime_diagnostics: RuntimeDiagnostics,
         workflow_lifecycle_settings: WorkflowLifecycleSettingsStore,
+        response_stream_policy_provider: Callable[[], ResponseStreamPolicy],
         model_resources: ModelResourceStore | None = None,
         mcp_resources: McpResourceStore | None = None,
         run_config: Mapping[str, Any],
@@ -1469,6 +1484,7 @@ class RequestSnapshotRuntime:
         self._workflow_data = workflow_data
         self._detached_tasks = detached_tasks
         self._runtime_diagnostics = runtime_diagnostics
+        self._response_stream_policy_provider = response_stream_policy_provider
         self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
         self._mcp_resources = mcp_resources or McpResourceStore(configuration.data_root)
         self._run_config = dict(run_config)
@@ -1517,6 +1533,7 @@ class RequestSnapshotRuntime:
         return await asyncio.to_thread(self._capture)
 
     def _capture(self) -> RequestRuntimeSnapshot:
+        response_stream_policy = self._response_stream_policy_provider()
         with self._configuration.request_snapshot_context() as context:
             repository, python_packages_dir, skills_dir, repository_id = context
         blocks = BlockStore(repository)
@@ -1566,6 +1583,7 @@ class RequestSnapshotRuntime:
             _workflows=workflows,
             _agents=configs,
             _runtime_factory=runtime_factory,
+            _response_stream_policy=response_stream_policy,
         )
 
     def create_lifecycle_coordinator(

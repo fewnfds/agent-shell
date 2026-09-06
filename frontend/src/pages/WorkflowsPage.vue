@@ -17,7 +17,6 @@ import { useConfigurationResource } from '@/composables/useConfigurationResource
 const { t } = useI18n()
 const router = useRouter()
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
-const responseStreamSchedulingComponents = ref<ConfigurationSummary[]>([])
 
 function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: readonly T[]): T[] {
   return [...items].sort((left, right) => (
@@ -26,9 +25,7 @@ function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: re
   ))
 }
 
-type WorkflowResource = Omit<WorkflowPayload, 'response_stream_scheduling_id'>
-  & Pick<Workflow, 'id' | 'enabled'>
-  & { response_stream_scheduling_id: string | null }
+type WorkflowResource = WorkflowPayload & Pick<Workflow, 'id' | 'enabled'>
 
 function blankWorkflow(): WorkflowResource {
   return {
@@ -37,7 +34,6 @@ function blankWorkflow(): WorkflowResource {
     description: '',
     is_model_entry: false,
     workflow_event_output_id: null,
-    response_stream_scheduling_id: null,
     durability: 'async',
     on_disconnect: 'cancel',
     enabled: false,
@@ -52,7 +48,6 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     description: workflow.description ?? '',
     is_model_entry: workflow.is_model_entry ?? false,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
-    response_stream_scheduling_id: workflow.response_stream_scheduling_id ?? null,
     durability: workflow.durability ?? 'async',
     on_disconnect: workflow.on_disconnect ?? 'cancel',
     enabled: workflow.enabled ?? false,
@@ -60,7 +55,7 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
 }
 
 function toPayload(workflow: WorkflowResource): WorkflowPayload {
-  const payload: WorkflowPayload = {
+  return {
     name: workflow.name.trim(),
     description: workflow.description.trim(),
     is_model_entry: workflow.is_model_entry,
@@ -68,8 +63,6 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     durability: workflow.durability,
     on_disconnect: workflow.on_disconnect,
   }
-  payload.response_stream_scheduling_id = workflow.response_stream_scheduling_id || null
-  return payload
 }
 
 const {
@@ -163,7 +156,6 @@ async function loadWorkspace(): Promise<void> {
   await initializeWorkspace(async () => {
     const options = await managementApi.getConfigurationOptions()
     workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
-    responseStreamSchedulingComponents.value = options.components['response-stream-scheduling'] ?? []
     return options.workflows
   })
 }
@@ -239,26 +231,6 @@ onMounted(() => { void loadWorkspace() })
                       {{ t('common.missingConfiguration', { id: form.workflow_event_output_id }) }}
                     </option>
                     <option v-for="output in workflowEventOutputs" :key="output.id" :value="output.id">{{ output.name }}</option>
-                  </select>
-                </div>
-              </section>
-            </div>
-            <div class="col-lg-4 col-md-6">
-              <section class="card h-100">
-                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="workflow-response-stream-scheduling">{{ t('workflows.fields.responseStreamScheduling') }}</label>
-                </header>
-                <div class="card-body">
-                  <select id="workflow-response-stream-scheduling" v-model="form.response_stream_scheduling_id" class="form-select">
-                    <option :value="null">{{ t('common.none') }}</option>
-                    <option
-                      v-if="form.response_stream_scheduling_id && !hasConfiguration(responseStreamSchedulingComponents, form.response_stream_scheduling_id)"
-                      disabled
-                      :value="form.response_stream_scheduling_id"
-                    >
-                      {{ t('common.missingConfiguration', { id: form.response_stream_scheduling_id }) }}
-                    </option>
-                    <option v-for="scheduling in responseStreamSchedulingComponents" :key="scheduling.id" :value="scheduling.id">{{ scheduling.name }}</option>
                   </select>
                 </div>
               </section>

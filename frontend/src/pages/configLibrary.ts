@@ -90,7 +90,6 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (category === 'mcp-connection') return { path: '/mcp/connections', query: { id } }
   if (
     category === 'workflow-event-output'
-    || category === 'response-stream-scheduling'
     || category === 'command'
   ) {
     return { path: `/workflow-components/${category}`, query: { id } }

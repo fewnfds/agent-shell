@@ -17,7 +17,7 @@ CHILD = ("thread-child", "run-child")
 
 def _policy(**updates: object) -> ResponseStreamPolicy:
     payload = ResponseStreamPolicy().model_dump(mode="json")
-    payload["queue"].update(updates)
+    payload.update(updates)
     return ResponseStreamPolicy.model_validate(payload)
 
 

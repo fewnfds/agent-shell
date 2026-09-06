@@ -39,7 +39,7 @@ Main Agent是独立Deep Agents root graph，messages和private state由其Thread
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 
-Response Stream Scheduling 是 Workflow-owned 组件。它保存 request/node invocation 输出原子、闲置让位秒数、批次软大小和最小发送间隔。作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 选择配置；未选择时运行时使用内置默认。调度语义覆盖该 Lifecycle 的公开响应，包括公开 response 封口前由入口 Run 直接或间接调用的其他 Run。字段见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
+响应流调度是 System Settings 的全局配置。每个新 Lifecycle 冻结当时的静默让位秒数、单批软大小和最小发送间隔；Workflow 与 Main Agent 共享同一套 Run-level 规则，配置不属于 Component 或 Workflow metadata。
 
 Command组件保存一个`workflow-node/command`Python扩展引用和普通config。扩展通过同步`create_command()`工厂物化`async command(state, runtime)`；callable直接返回官方`langgraph.types.Command`。画布outgoing Control Edge声明允许的目标Node ID，脚本以`goto`选择目标并以`update`修改`shared_vars`。需要Agent或另一个Workflow时，脚本调用Runtime Context中的Run facade。
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。

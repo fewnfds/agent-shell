@@ -26,6 +26,11 @@ const systemSettings: SystemSettings = {
   management_token: { configured: true },
   cors_origins: [],
   trusted_proxy_cidrs: [],
+  response_stream_scheduling: {
+    idle_timeout_seconds: 2,
+    max_batch_kb: 64,
+    send_interval_seconds: 0.05,
+  },
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -145,6 +150,9 @@ describe('SystemSettingsPage', () => {
       'debounce_ms',
       'cors_origins',
       'trusted_proxy_cidrs',
+      'response_stream_scheduling.idle_timeout_seconds',
+      'response_stream_scheduling.max_batch_kb',
+      'response_stream_scheduling.send_interval_seconds',
     ]) {
       expect(wrapper.text()).toContain(wireField)
     }

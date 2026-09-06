@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   blockAdapters,
   managedComponentTypes,
-  responseStreamSchedulingAdapter,
   agentEventOutputAdapter,
   customMiddlewareAdapter,
   customToolAdapter,
@@ -21,7 +20,6 @@ import {
   type SkillDefaults,
   type SubagentDefaults,
   type TodoListDefaults,
-  type ResponseStreamSchedulingDefaults,
   workflowEventOutputAdapter,
 } from './blocks'
 
@@ -45,14 +43,6 @@ const subagentDefaults: SubagentDefaults = {
 const todoDefaults: TodoListDefaults = {
   system_prompt: 'todo default',
   tool_description: 'write_todos default',
-}
-const responseStreamSchedulingDefaults: ResponseStreamSchedulingDefaults = {
-  queue: {
-    strategy: 'request',
-    idle_timeout_seconds: 2,
-    max_batch_kb: 64,
-    send_interval_seconds: 0.05,
-  },
 }
 function modelRecord(): ModelApiRecord {
   return {
@@ -107,33 +97,6 @@ describe('block adapters', () => {
     expect(providerDefaultSettings('openai')).toEqual(samplingDefaults)
     expect(providerDefaultSettings('deepseek')).toEqual(samplingDefaults)
     expect(providerDefaultSettings('google_vertexai')).toEqual({})
-  })
-
-  it('maps Response Stream Scheduling as a reusable Workflow component payload', () => {
-    const draft = responseStreamSchedulingAdapter.blank(responseStreamSchedulingDefaults)
-    draft.name = '  Fair stream  '
-    draft.queue.strategy = 'node_invocation'
-    draft.queue.max_batch_kb = 32
-
-    expect(responseStreamSchedulingAdapter.toPayload(draft)).toEqual({
-      name: 'Fair stream',
-      queue: {
-        strategy: 'node_invocation',
-        idle_timeout_seconds: 2,
-        max_batch_kb: 32,
-        send_interval_seconds: 0.05,
-      },
-    })
-    expect(responseStreamSchedulingAdapter.fromApi({
-      id: 'scheduling-id',
-      name: 'Stored stream',
-      queue: { strategy: 'invalid', idle_timeout_seconds: 1 },
-    }, responseStreamSchedulingDefaults).queue).toEqual({
-      strategy: 'request',
-      idle_timeout_seconds: 1,
-      max_batch_kb: 64,
-      send_interval_seconds: 0.05,
-    })
   })
 
   it('keeps the configuration extension reference and template selection mechanical', () => {

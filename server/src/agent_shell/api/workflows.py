@@ -90,17 +90,6 @@ def _save(
             message_key="errors.workflowEventOutputNotFound",
             message="The selected event output component does not exist.",
         )
-    scheduling_id = validated.get("response_stream_scheduling_id")
-    if (
-        scheduling_id is not None
-        and blocks.get_block("response-stream-scheduling", scheduling_id) is None
-    ):
-        raise management_error(
-            422,
-            code="workflow_response_stream_scheduling_not_found",
-            message_key="errors.workflowResponseStreamSchedulingNotFound",
-            message="The selected Response Stream Scheduling component does not exist.",
-        )
     try:
         store.save_item(
             item_id,

@@ -44,12 +44,14 @@ const loading = ref(true)
 const loadError = ref('')
 const langgraphSaving = ref(false)
 const limitsSaving = ref(false)
+const responseSchedulingSaving = ref(false)
 const langsmithSaving = ref(false)
 const proxySaving = ref(false)
 const apiServerSaving = ref(false)
 const validationSaving = ref(false)
 const langgraphError = ref('')
 const limitsError = ref('')
+const responseSchedulingError = ref('')
 const langsmithError = ref('')
 const proxyError = ref('')
 const apiServerError = ref('')
@@ -77,6 +79,9 @@ const validationDebounceMs = ref(1000)
 const validationDebounceMin = ref(100)
 const corsOrigins = ref('')
 const trustedProxies = ref('')
+const responseIdleTimeoutSeconds = ref(2)
+const responseMaxBatchKb = ref(64)
+const responseSendIntervalSeconds = ref(0.05)
 
 const apiKeyPlaceholder = computed(() => apiServerSettings.value?.api_key.configured
   ? t('common.configuredSecretPlaceholder')
@@ -142,8 +147,17 @@ const validationSettingsValid = computed(() => {
   const value = Number(validationDebounceMs.value)
   return Number.isInteger(value) && value >= validationDebounceMin.value
 })
+const responseSchedulingValid = computed(() => {
+  const idle = Number(responseIdleTimeoutSeconds.value)
+  const batch = Number(responseMaxBatchKb.value)
+  const interval = Number(responseSendIntervalSeconds.value)
+  return Number.isFinite(idle) && idle > 0
+    && Number.isFinite(batch) && batch > 0
+    && Number.isFinite(interval) && interval >= 0
+})
 const anySaving = computed(() => langgraphSaving.value
   || limitsSaving.value
+  || responseSchedulingSaving.value
   || langsmithSaving.value
   || proxySaving.value
   || apiServerSaving.value
@@ -171,6 +185,9 @@ function applySystemSettings(value: SystemSettings): void {
   showLangsmithApiKey.value = false
   corsOrigins.value = value.cors_origins.join('\n')
   trustedProxies.value = value.trusted_proxy_cidrs.join('\n')
+  responseIdleTimeoutSeconds.value = value.response_stream_scheduling.idle_timeout_seconds
+  responseMaxBatchKb.value = value.response_stream_scheduling.max_batch_kb
+  responseSendIntervalSeconds.value = value.response_stream_scheduling.send_interval_seconds
   managementPassword.value = ''
   showManagementPassword.value = false
 }
@@ -188,7 +205,7 @@ function applyValidationSettings(value: ConfigurationValidationSettings): void {
   validationSettingsController.apply(value)
 }
 
-type SystemSettingsSection = 'langgraph' | 'limits' | 'langsmith' | 'proxy'
+type SystemSettingsSection = 'langgraph' | 'limits' | 'response_scheduling' | 'langsmith' | 'proxy'
 
 function applySystemSettingsSection(
   value: SystemSettings,
@@ -203,6 +220,12 @@ function applySystemSettingsSection(
     nJobsPerWorker.value = value.n_jobs_per_worker
     recursionLimit.value = value.recursion_limit
     maxConcurrency.value = value.max_concurrency ?? ''
+    return
+  }
+  if (section === 'response_scheduling') {
+    responseIdleTimeoutSeconds.value = value.response_stream_scheduling.idle_timeout_seconds
+    responseMaxBatchKb.value = value.response_stream_scheduling.max_batch_kb
+    responseSendIntervalSeconds.value = value.response_stream_scheduling.send_interval_seconds
     return
   }
   if (section === 'langsmith') {
@@ -265,6 +288,13 @@ function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUp
     management_token: managementTokenUpdate,
     cors_origins: section === 'proxy' ? lines(corsOrigins.value) : saved.cors_origins,
     trusted_proxy_cidrs: section === 'proxy' ? lines(trustedProxies.value) : saved.trusted_proxy_cidrs,
+    response_stream_scheduling: section === 'response_scheduling'
+      ? {
+          idle_timeout_seconds: Number(responseIdleTimeoutSeconds.value),
+          max_batch_kb: Number(responseMaxBatchKb.value),
+          send_interval_seconds: Number(responseSendIntervalSeconds.value),
+        }
+      : saved.response_stream_scheduling,
   }
 }
 
@@ -273,6 +303,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
     ? langgraphSettingsValid.value
     : section === 'limits'
       ? limitsSettingsValid.value
+      : section === 'response_scheduling'
+        ? responseSchedulingValid.value
       : section === 'langsmith'
         ? langsmithSettingsValid.value
         : proxySettingsValid.value
@@ -280,6 +312,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
     ? langgraphSaving
     : section === 'limits'
       ? limitsSaving
+      : section === 'response_scheduling'
+        ? responseSchedulingSaving
       : section === 'langsmith'
         ? langsmithSaving
         : proxySaving
@@ -287,6 +321,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
     ? langgraphError
     : section === 'limits'
       ? limitsError
+      : section === 'response_scheduling'
+        ? responseSchedulingError
       : section === 'langsmith'
         ? langsmithError
         : proxyError
@@ -294,6 +330,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
     ? 'systemSettings.langgraphInvalid'
     : section === 'limits'
       ? 'systemSettings.runtimePolicyInvalid'
+      : section === 'response_scheduling'
+        ? 'systemSettings.responseSchedulingInvalid'
       : section === 'langsmith'
         ? 'systemSettings.langsmithInvalid'
         : 'systemSettings.proxyInvalid'
@@ -301,6 +339,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
     ? 'systemSettings.langgraphSaved'
     : section === 'limits'
       ? 'systemSettings.runtimePolicySaved'
+      : section === 'response_scheduling'
+        ? 'systemSettings.responseSchedulingSaved'
       : section === 'langsmith'
         ? 'systemSettings.langsmithSaved'
         : 'systemSettings.proxySaved'
@@ -600,6 +640,64 @@ onMounted(() => { void load() })
                 <FormField control-id="limit-concurrency" field-path="max_concurrency" label-key="systemSettings.runtimePolicy.maxConcurrency">
                   <template #default="{ describedBy }">
                     <input id="limit-concurrency" v-model.number="maxConcurrency" :aria-describedby="describedBy" class="form-control" min="1" :placeholder="t('systemSettings.runtimePolicy.officialDefault')" step="1" type="number">
+                  </template>
+                </FormField>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-12">
+        <form class="card" data-testid="system-card-response-scheduling" @submit.prevent="saveSystemCard('response_scheduling')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-shuffle me-2" aria-hidden="true" />
+              {{ t('systemSettings.responseScheduling.title') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-response-scheduling"
+              :disabled="responseSchedulingSaving || !responseSchedulingValid"
+              type="submit"
+            >
+              <span v-if="responseSchedulingSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="responseSchedulingSaving">
+            <LteAlert v-if="responseSchedulingError" theme="danger" :title="t('systemSettings.responseSchedulingSaveFailed')">
+              {{ responseSchedulingError }}
+            </LteAlert>
+            <div class="row g-3">
+              <div class="col-lg-4">
+                <FormField control-id="response-idle-timeout" field-path="response_stream_scheduling.idle_timeout_seconds" label-key="systemSettings.responseScheduling.idleTimeout">
+                  <template #default="{ describedBy }">
+                    <div class="input-group">
+                      <input id="response-idle-timeout" v-model.number="responseIdleTimeoutSeconds" :aria-describedby="describedBy" class="form-control" min="0.001" required step="any" type="number">
+                      <span class="input-group-text">s</span>
+                    </div>
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-4">
+                <FormField control-id="response-max-batch" field-path="response_stream_scheduling.max_batch_kb" label-key="systemSettings.responseScheduling.maxBatch">
+                  <template #default="{ describedBy }">
+                    <div class="input-group">
+                      <input id="response-max-batch" v-model.number="responseMaxBatchKb" :aria-describedby="describedBy" class="form-control" min="0.001" required step="any" type="number">
+                      <span class="input-group-text">KiB</span>
+                    </div>
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-4">
+                <FormField control-id="response-send-interval" field-path="response_stream_scheduling.send_interval_seconds" label-key="systemSettings.responseScheduling.sendInterval">
+                  <template #default="{ describedBy }">
+                    <div class="input-group">
+                      <input id="response-send-interval" v-model.number="responseSendIntervalSeconds" :aria-describedby="describedBy" class="form-control" min="0" required step="any" type="number">
+                      <span class="input-group-text">s</span>
+                    </div>
                   </template>
                 </FormField>
               </div>

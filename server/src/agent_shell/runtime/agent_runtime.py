@@ -12,7 +12,6 @@ from uuid import uuid4
 from agent_shell.contracts import (
     FilesystemBlock,
     McpRequirementBlock,
-    ResponseStreamSchedulingBlock,
 )
 from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
@@ -48,7 +47,6 @@ from agent_shell.runtime.response_scheduler import (
     PresentationFrame,
     ResponseFrameInput,
 )
-from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_data import WorkflowDataService
@@ -876,7 +874,6 @@ class AgentRuntime:
         command_runtime: CommandPackageRuntime | None = None,
         run_config: dict[str, Any] | None = None,
         public_output: bool = True,
-        response_stream_policy: ResponseStreamPolicy | None = None,
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
     ) -> RunExecution:
@@ -888,20 +885,12 @@ class AgentRuntime:
             )
         else:
             projector = OutputProjector(None)
-        scheduler_policy = (
-            response_stream_policy.model_copy(deep=True)
-            if response_stream_policy is not None
-            else ResponseStreamPolicy()
-        )
-        lifecycle_identity = identity.lifecycle_id
+        if public_output and response_scheduler is None:
+            raise RuntimeError(
+                "public Graph output requires the Lifecycle response scheduler"
+            )
         usage_accumulator = RunUsageAccumulator()
         origin_resolver = RunEventOriginResolver(identity)
-        effective_response_scheduler = response_scheduler
-        if effective_response_scheduler is None:
-            effective_response_scheduler = LifecycleResponseScheduler(
-                scheduler_policy,
-                lifecycle_id=lifecycle_identity,
-            )
         return RunExecution(
             graph=graph,
             input_state=input_state,
@@ -909,7 +898,7 @@ class AgentRuntime:
                 self._files,
                 request_id,
             ),
-            response_scheduler=effective_response_scheduler,
+            response_scheduler=response_scheduler,
             usage_accumulator=usage_accumulator,
             origin_resolver=origin_resolver,
             event_output_projector=projector,
@@ -997,15 +986,15 @@ class AgentRuntime:
             caller_run_id=caller_run_id,
             operation_id=operation_id,
         )
-        scheduler = response_scheduler or LifecycleResponseScheduler(
-            ResponseStreamPolicy(),
-            lifecycle_id=lifecycle_id,
-        )
+        if public_output and response_scheduler is None:
+            raise RuntimeError(
+                "public Graph output requires the Lifecycle response scheduler"
+            )
         return RunExecution(
             graph=built.graph,
             input_state={"messages": messages},
             media_response=MainAgentMediaResponse(self._files, request_id),
-            response_scheduler=scheduler,
+            response_scheduler=response_scheduler,
             origin_resolver=RunEventOriginResolver(
                 identity,
                 main_agent_names=(built.agent_name,),
@@ -1131,41 +1120,6 @@ class AgentRuntime:
         workflow_name = str(
             workflow_identity.get("name", public_model or "workflow")
         )
-
-        response_stream_policy = ResponseStreamPolicy()
-        scheduling_id = workflow_identity.get("response_stream_scheduling_id")
-        if scheduling_id is not None:
-            stored_scheduling = (
-                self._blocks.get_block_internal(
-                    "response-stream-scheduling",
-                    str(scheduling_id),
-                )
-                if self._blocks is not None
-                else None
-            )
-            if stored_scheduling is None:
-                raise AgentRuntimeError(
-                    "workflow_response_stream_scheduling_not_found",
-                    "The selected Response Stream Scheduling component does not exist.",
-                    status_code=422,
-                )
-            try:
-                scheduling = ResponseStreamSchedulingBlock.model_validate(
-                    {
-                        key: value
-                        for key, value in stored_scheduling.items()
-                        if key != "id"
-                    }
-                )
-            except Exception as exc:
-                raise AgentRuntimeError(
-                    "workflow_response_stream_scheduling_invalid",
-                    "The selected Response Stream Scheduling configuration is invalid.",
-                    status_code=422,
-                ) from exc
-            response_stream_policy = ResponseStreamPolicy(
-                queue=scheduling.queue.model_copy(deep=True)
-            )
 
         if server_context is not None:
             resolved_lifecycle_id = server_context.lifecycle_id
@@ -1399,7 +1353,6 @@ class AgentRuntime:
             ),
             public_output=public_output,
             command_runtime=command_runtime,
-            response_stream_policy=response_stream_policy,
             response_scheduler=response_scheduler,
             response_consumer=response_consumer,
         )

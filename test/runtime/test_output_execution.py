@@ -141,7 +141,7 @@ def test_execution_flushes_lifecycle_output_queued_after_content_finish() -> Non
         return "started" if event["phase"] == "start" else "finished"
 
     payload = ResponseStreamPolicy().model_dump(mode="json")
-    payload["queue"]["send_interval_seconds"] = 0.01
+    payload["send_interval_seconds"] = 0.01
     projector = OutputProjector(output, run_output=run_output)
     scheduler = response_scheduler(
         projector,

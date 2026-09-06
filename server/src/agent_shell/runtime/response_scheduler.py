@@ -210,7 +210,7 @@ class LifecycleResponseScheduler:
                 state.blocks.clear()
                 continue
             self._owner = key
-            self._owner_deadline = now + self.policy.queue.idle_timeout_seconds
+            self._owner_deadline = now + self.policy.idle_timeout_seconds
             self._drain_owner(now)
             if state.terminal:
                 self._finish_owner(now)
@@ -225,7 +225,7 @@ class LifecycleResponseScheduler:
             before = len(self._pending_frames)
             self._present(state, frame)
             if any(item.text for item in tuple(self._pending_frames)[before:]):
-                self._owner_deadline = now + self.policy.queue.idle_timeout_seconds
+                self._owner_deadline = now + self.policy.idle_timeout_seconds
 
     def _present(self, state: _RunOutput, frame: PresentationFrame) -> None:
         if frame.phase == "atomic":
@@ -389,7 +389,7 @@ class LifecycleResponseScheduler:
         if not force and deadline is not None and now < deadline:
             return []
 
-        maximum_bytes = self.policy.queue.max_batch_kb * 1024
+        maximum_bytes = self.policy.max_batch_kb * 1024
         batch: list[PresentationFrame] = []
         batch_bytes = 0
         while self._pending_frames:
@@ -408,7 +408,7 @@ class LifecycleResponseScheduler:
             return None
         if self._last_batch_at is None:
             return 0.0
-        return self._last_batch_at + self.policy.queue.send_interval_seconds
+        return self._last_batch_at + self.policy.send_interval_seconds
 
 
 __all__ = [

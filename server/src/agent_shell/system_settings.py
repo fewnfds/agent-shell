@@ -10,6 +10,7 @@ from agent_shell.langsmith_tracing import (
     validate_langsmith_connection,
 )
 from agent_shell.settings import Settings, SettingsError
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
@@ -86,13 +87,19 @@ class SystemSettingsService:
             "management_token": {
                 "configured": settings.management_token is not None,
             },
+            "response_stream_scheduling": (
+                settings.response_stream_scheduling.model_dump(mode="json")
+            ),
         }
 
     @staticmethod
     def _same(left: Settings, right: Settings) -> bool:
+        left_public = SystemSettingsService._public(left)
+        right_public = SystemSettingsService._public(right)
+        left_public.pop("response_stream_scheduling")
+        right_public.pop("response_stream_scheduling")
         return (
-            SystemSettingsService._public(left)
-            == SystemSettingsService._public(right)
+            left_public == right_public
             and _secret_value(left.management_token)
             == _secret_value(right.management_token)
             and _secret_value(left.langsmith_api_key)
@@ -104,6 +111,11 @@ class SystemSettingsService:
             **self._public(self._saved),
             "restart_required": not self._same(self._active, self._saved),
         }
+
+    def response_stream_policy(self) -> ResponseStreamPolicy:
+        """Return the saved policy used by newly created request Lifecycles."""
+
+        return self._saved.response_stream_scheduling.model_copy(deep=True)
 
     @staticmethod
     def _apply_management_password(
@@ -148,6 +160,7 @@ class SystemSettingsService:
             ),
             "cors_origins": payload["cors_origins"],
             "trusted_proxy_cidrs": payload["trusted_proxy_cidrs"],
+            "response_stream_scheduling": payload["response_stream_scheduling"],
         }
         try:
             candidate = Settings(**values)
@@ -238,6 +251,9 @@ class SystemSettingsService:
                     "langsmith_workspace_id": candidate.langsmith_workspace_id,
                     "cors_origins": list(candidate.cors_origins),
                     "trusted_proxy_cidrs": list(candidate.trusted_proxy_cidrs),
+                    "response_stream_scheduling": (
+                        candidate.response_stream_scheduling.model_dump(mode="json")
+                    ),
                 }
             set_values: dict[str, str] = {}
             remove_keys: set[str] = set()

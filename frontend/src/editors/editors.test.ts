@@ -5,7 +5,6 @@ import type { Component } from 'vue'
 
 import {
   agentEventOutputAdapter,
-  responseStreamSchedulingAdapter,
   customToolAdapter,
   exceptionRetryAdapter,
   filesystemAdapter,
@@ -22,14 +21,12 @@ import {
   type PromptCachingDefaults,
   type SkillDefaults,
   type SummarizationDefaults,
-  type ResponseStreamSchedulingDefaults,
 } from '@/domain/blocks'
 import { zhCN } from '@/locales/zh-CN'
 
 import {
   CustomToolEditor,
   AgentEventOutputEditor,
-  ResponseStreamSchedulingEditor,
   ExceptionRetryEditor,
   FilesystemEditor,
   FilesystemToolsEditor,
@@ -88,14 +85,6 @@ const exceptionRetryDefaults: ExceptionRetryDefaults = {
     retry_on: ['transport_error', 'timeout', 'rate_limit', 'server_error'],
   },
 }
-const responseStreamSchedulingDefaults: ResponseStreamSchedulingDefaults = {
-  queue: {
-    strategy: 'request',
-    idle_timeout_seconds: 2,
-    max_batch_kb: 64,
-    send_interval_seconds: 0.05,
-  },
-}
 const i18n = createI18n({
   legacy: false,
   locale: 'en',
@@ -120,36 +109,6 @@ function mountEditor(component: Component, props: Record<string, unknown>): VueW
 }
 
 describe('dedicated block editors', () => {
-  it('edits Response Stream Scheduling without owning Component CRUD', async () => {
-    const editor = mount(ResponseStreamSchedulingEditor, {
-      props: {
-        modelValue: responseStreamSchedulingAdapter.blank(
-          responseStreamSchedulingDefaults,
-        ),
-      },
-      global: { plugins: [localizedI18n] },
-    })
-
-    expect(editor.find('[data-editor="response-stream-scheduling"]').exists()).toBe(true)
-    expect(editor.find('[data-action="save"]').exists()).toBe(false)
-    expect(editor.findAll('select')).toHaveLength(1)
-    expect(editor.findAll('input[type="number"]')).toHaveLength(3)
-
-    await editor.get('#response-queue-strategy').setValue('node_invocation')
-    await editor.get('#response-idle-timeout').setValue('1.5')
-    await editor.get('#response-max-batch').setValue('32')
-    await editor.get('#response-send-interval').setValue('0.1')
-
-    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
-      queue: {
-        strategy: 'node_invocation',
-        idle_timeout_seconds: 1.5,
-        max_batch_kb: 32,
-        send_interval_seconds: 0.1,
-      },
-    })
-  })
-
   it('renders exception retry as two unnested responsive strategy cards', () => {
     const editor = mount(ExceptionRetryEditor, {
       props: {

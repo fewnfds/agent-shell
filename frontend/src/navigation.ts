@@ -74,10 +74,6 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
         labelKey: 'navigation.sections.workflowEventOutput',
       },
       {
-        path: '/workflow-components/response-stream-scheduling',
-        labelKey: 'navigation.sections.responseStreamScheduling',
-      },
-      {
         path: '/workflow-components/command',
         labelKey: 'navigation.sections.command',
       },

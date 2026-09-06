@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.settings import DEFAULT_GRAPH_MAX_CONCURRENCY
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
 
 
@@ -64,6 +65,7 @@ class SystemSettingsUpdate(BaseModel):
     management_token: ManagementPasswordUpdate
     cors_origins: list[str]
     trusted_proxy_cidrs: list[str]
+    response_stream_scheduling: ResponseStreamPolicy
 
 
 def _raise_settings_error(error: SystemSettingsError) -> NoReturn:

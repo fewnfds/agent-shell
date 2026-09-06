@@ -52,6 +52,7 @@ from agent_shell.settings import (
     DEFAULT_GRAPH_RECURSION_LIMIT,
     DEFAULT_N_JOBS_PER_WORKER,
 )
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 
 
 CONFIG_VERSION = 2
@@ -92,6 +93,9 @@ def _default_system() -> dict[str, Any]:
             "langsmith_workspace_id": None,
             "cors_origins": [],
             "trusted_proxy_cidrs": [],
+            "response_stream_scheduling": ResponseStreamPolicy().model_dump(
+                mode="json"
+            ),
         },
         "api_server": {
             "enabled": True,

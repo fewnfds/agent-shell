@@ -29,15 +29,11 @@ const workflow: Workflow = {
   description: 'Runs the research agent.',
   is_model_entry: true,
   workflow_event_output_id: null,
-  response_stream_scheduling_id: null,
   durability: 'async',
   on_disconnect: 'cancel',
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
-const responseStreamScheduling: SavedBlock = {
-  id: 'response-stream-scheduling-1', name: 'Fair response stream',
-}
 
 function mockComponentLists(workflows: Workflow[] = []) {
   const options = vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
@@ -45,7 +41,6 @@ function mockComponentLists(workflows: Workflow[] = []) {
     repository_revision: 1,
     components: {
       'workflow-event-output': [eventOutput],
-      'response-stream-scheduling': [responseStreamScheduling],
     },
     main_agents: [],
     subagents: [],
@@ -106,10 +101,8 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Edit')
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
-    expect(wrapper.text()).toContain('Response Stream Scheduling')
-    expect(wrapper.find('[data-editor="response-stream-scheduling"]').exists()).toBe(false)
     const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
-    expect(assemblyColumns).toHaveLength(5)
+    expect(assemblyColumns).toHaveLength(4)
     expect(assemblyColumns.every((column) => column.classes().includes('col-lg-4'))).toBe(true)
     expect(assemblyColumns.every((column) => column.find('.card').exists())).toBe(true)
     expect(wrapper.get('#workflow-description').element.tagName).toBe('TEXTAREA')
@@ -121,7 +114,6 @@ describe('WorkflowsPage', () => {
     await wrapper.get('textarea').setValue('New description')
     await wrapper.get('#workflow-model-entry').setValue(true)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
-    await wrapper.get('#workflow-response-stream-scheduling').setValue(responseStreamScheduling.id)
     await wrapper.get('#workflow-durability').setValue('sync')
     await wrapper.get('#workflow-on-disconnect').setValue('continue')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
@@ -132,7 +124,6 @@ describe('WorkflowsPage', () => {
       description: 'New description',
       is_model_entry: true,
       workflow_event_output_id: eventOutput.id,
-      response_stream_scheduling_id: responseStreamScheduling.id,
       durability: 'sync',
       on_disconnect: 'continue',
     })
@@ -194,7 +185,6 @@ describe('WorkflowsPage', () => {
     const configured = {
       ...workflow,
       workflow_event_output_id: eventOutput.id,
-      response_stream_scheduling_id: null,
       durability: 'exit' as const,
       on_disconnect: 'continue' as const,
     }
@@ -221,7 +211,6 @@ describe('WorkflowsPage', () => {
       description: workflow.description,
       is_model_entry: true,
       workflow_event_output_id: null,
-      response_stream_scheduling_id: null,
       durability: 'exit',
       on_disconnect: 'continue',
     })
@@ -329,7 +318,6 @@ describe('WorkflowsPage', () => {
       repository_revision: 1,
       components: {
         'workflow-event-output': [eventOutput],
-        'response-stream-scheduling': [responseStreamScheduling],
       },
       main_agents: [],
       subagents: [],
