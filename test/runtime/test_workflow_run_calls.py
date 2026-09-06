@@ -10,8 +10,7 @@ from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _OfficialRunEventStream,
 )
-from agent_shell.runtime.workflow_run_calls import relation_key
-from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
+from agent_shell.runtime.run_calls import RunCaller, relation_key
 
 
 def _relation(run_id: str, *, operation_id: str, caller_run_id: str) -> dict[str, object]:
@@ -94,10 +93,38 @@ class _Threads:
         return {"values": {"shared_vars": {"thread_id": thread_id}}}
 
 
+class _Store:
+    def __init__(self, relations: list[dict[str, object]]) -> None:
+        self._relations = relations
+
+    async def search_items(self, namespace, *, limit: int, offset: int):
+        lifecycle_id = namespace[1]
+        values = [
+            {
+                "key": relation["run_id"],
+                "value": {
+                    "lifecycle_id": relation["lifecycle_id"],
+                    "graph_kind": "workflow",
+                    "operation_id": relation["operation_id"],
+                    "caller_run_id": relation["caller_run_id"],
+                    "resource_id": relation["workflow_id"],
+                    "resource_name": relation["workflow_name"],
+                    "assistant_id": relation["assistant_id"],
+                    "thread_id": relation["thread_id"],
+                    "run_id": relation["run_id"],
+                },
+            }
+            for relation in self._relations
+            if relation["lifecycle_id"] == lifecycle_id
+        ]
+        return {"items": values[offset : offset + limit]}
+
+
 class _Client:
     def __init__(self, relations: list[dict[str, object]], statuses: dict[str, str]):
         self.runs = _Runs(relations, statuses)
         self.threads = _Threads(relations)
+        self.store = _Store(relations)
 
     async def __aenter__(self):
         return self
@@ -132,7 +159,7 @@ def test_run_commands_treat_every_lifecycle_run_as_an_equal_target() -> None:
             },
         )
         coordinator = _coordinator(client)
-        caller = WorkflowRunCaller("request-1", "lifecycle-1", "unrelated-run")
+        caller = RunCaller("request-1", "lifecycle-1", "unrelated-run")
 
         checked = await coordinator.check_workflow_runs(
             ["run-active", "run-error", "missing"],

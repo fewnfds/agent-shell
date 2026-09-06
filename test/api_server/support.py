@@ -18,7 +18,7 @@ from starlette.requests import Request
 from agent_shell.app import create_app
 from agent_shell.api.api_server import ApiServerEventHub
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.workflow_data import (
+from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
 )

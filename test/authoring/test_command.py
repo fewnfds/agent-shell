@@ -17,7 +17,7 @@ from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.state import AgentShellState
-from agent_shell.runtime.workflow_data import lifecycle_invocations_namespace
+from agent_shell.runtime.lifecycle_store import lifecycle_invocations_namespace
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.compiler import compile_workflow
 from agent_shell.workflow.topology import validate_workflow_topology

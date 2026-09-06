@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from agent_shell.runtime.workflow_run_calls import (
-    ACTIVE_WORKFLOW_RUN_STATUSES,
-    WorkflowRunCallRelation,
+from agent_shell.runtime.run_calls import (
+    ACTIVE_RUN_STATUSES,
+    GraphRunCallRelation,
     official_status,
-    search_lifecycle_runs,
+    search_lifecycle_run_relations,
 )
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
@@ -34,7 +34,7 @@ def _lifecycle_status(runs: list[Mapping[str, Any]]) -> str:
     statuses = [official_status(run) for run in runs]
     if not statuses:
         return "pending"
-    if any(status in ACTIVE_WORKFLOW_RUN_STATUSES for status in statuses):
+    if any(status in ACTIVE_RUN_STATUSES for status in statuses):
         return "running"
     if any(status in {"error", "timeout"} for status in statuses):
         return "error"
@@ -120,7 +120,7 @@ class LangGraphLifecycleService:
             "workflow_names": names,
             "run_count": len(runs),
             "active_run_count": sum(
-                status in ACTIVE_WORKFLOW_RUN_STATUSES for status in statuses
+                status in ACTIVE_RUN_STATUSES for status in statuses
             ),
             "error_run_count": sum(status in {"error", "timeout"} for status in statuses),
         }
@@ -197,8 +197,8 @@ class LangGraphLifecycleService:
         client: Any,
         lifecycle_id: str,
         run_id: str,
-    ) -> tuple[WorkflowRunCallRelation, Mapping[str, Any]]:
-        relations = await search_lifecycle_runs(client, lifecycle_id)
+    ) -> tuple[GraphRunCallRelation, Mapping[str, Any]]:
+        relations = await search_lifecycle_run_relations(client, lifecycle_id)
         relation = next((item for item in relations if item.run_id == run_id), None)
         if relation is None:
             if not await self._threads(client, lifecycle_id):
@@ -234,10 +234,10 @@ class LangGraphLifecycleService:
     async def cancel_active(self, lifecycle_id: str) -> int:
         cancelled = 0
         async with self._client_factory() as client:
-            relations = await search_lifecycle_runs(client, lifecycle_id)
+            relations = await search_lifecycle_run_relations(client, lifecycle_id)
             for relation in relations:
                 run = await client.runs.get(relation.thread_id, relation.run_id)
-                if official_status(run) in ACTIVE_WORKFLOW_RUN_STATUSES:
+                if official_status(run) in ACTIVE_RUN_STATUSES:
                     await client.runs.cancel(relation.thread_id, relation.run_id, wait=False)
                     cancelled += 1
         return cancelled
@@ -281,7 +281,7 @@ class LangGraphLifecycleService:
             if not threads:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
             runs = await self._runs(client, threads)
-            if any(official_status(run) in ACTIVE_WORKFLOW_RUN_STATUSES for run in runs):
+            if any(official_status(run) in ACTIVE_RUN_STATUSES for run in runs):
                 raise LangGraphLifecycleActive(lifecycle_id)
             for thread in threads:
                 await client.threads.delete(str(thread["thread_id"]))

@@ -18,29 +18,33 @@ from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.runtime.agent_builder import AgentBuilder
 from agent_shell.runtime.agent_assistants import main_agent_assistant_id
+from agent_shell.runtime.agent_run_calls import AgentRunHandle, AgentRunSnapshot
 from agent_shell.runtime.agent_runtime import AgentRuntime, RunExecution
-from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.runtime.errors import AgentRuntimeError, decode_server_run_error
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
 from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleService
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
-from agent_shell.runtime.workflow_data import (
-    LIFECYCLE_INPUT_KEY,
-    WorkflowDataService,
-    lifecycle_input_namespace,
-)
-from agent_shell.runtime.workflow_run_calls import (
-    ACTIVE_WORKFLOW_RUN_STATUSES,
-    WorkflowRunCallRelation,
-    WorkflowRunHandle,
-    WorkflowRunSnapshot,
-    WorkflowRunStatus,
+from agent_shell.runtime.run_calls import (
+    ACTIVE_RUN_STATUSES,
+    GraphRunCallRelation,
+    RunCaller,
+    RunStatus,
     official_status,
     relation_key,
-    search_lifecycle_runs,
-    select_relations,
+    save_lifecycle_run_relation,
+    search_lifecycle_run_relations,
+    select_run_relations,
+)
+from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_INPUT_KEY,
+    lifecycle_input_namespace,
+)
+from agent_shell.runtime.workflow_data import WorkflowDataService
+from agent_shell.runtime.workflow_run_calls import (
+    WorkflowRunHandle,
+    WorkflowRunSnapshot,
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
@@ -167,6 +171,7 @@ class _OfficialSession:
     client: Any
     stream: Any
     delete_thread_on_close: bool = False
+    delete_thread_with_lifecycle: bool = False
 
 
 @dataclass(slots=True)
@@ -236,6 +241,7 @@ class LifecycleRunCoordinator:
         init=False,
     )
     _sessions: dict[str, _OfficialSession] = field(default_factory=dict, init=False)
+    _deferred_thread_deletions: set[str] = field(default_factory=set, init=False)
 
     @property
     def lifecycle_id(self) -> str:
@@ -283,6 +289,10 @@ class LifecycleRunCoordinator:
             )
             result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
+            await save_lifecycle_run_relation(
+                client,
+                self._workflow_relation(binding),
+            )
             assert binding.execution_ready is not None
             return await binding.execution_ready
         except BaseException:
@@ -348,6 +358,10 @@ class LifecycleRunCoordinator:
             run_id, result_thread_id = self._agent_run_result_ids(result)
             if stateless:
                 binding.thread_id = result_thread_id
+                await client.threads.update(
+                    result_thread_id,
+                    metadata=self._agent_thread_metadata(binding),
+                )
                 await self._attach_agent_run_stream(
                     binding,
                     client,
@@ -358,6 +372,10 @@ class LifecycleRunCoordinator:
                     "the official Main Agent Run returned an unexpected thread_id"
                 )
             self._bind_agent_run_id(binding, run_id)
+            await save_lifecycle_run_relation(
+                client,
+                self._agent_relation(binding),
+            )
             assert binding.execution_ready is not None
             return await binding.execution_ready
         except BaseException:
@@ -470,6 +488,7 @@ class LifecycleRunCoordinator:
                 operation_id=binding.operation_id,
                 initial_shared_vars=binding.initial_shared_vars,
                 initial_workflow_task=binding.initial_workflow_task,
+                agent_run_runtime=self,
                 workflow_run_runtime=self,
                 public_output=True,
                 response_scheduler=self._response_scheduler,
@@ -499,7 +518,7 @@ class LifecycleRunCoordinator:
         target_workflow_id: str,
         *,
         operation_id: str,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
         shared_vars: Mapping[str, Any],
         workflow_task: Mapping[str, Any] | None = None,
     ) -> WorkflowRunHandle:
@@ -529,7 +548,7 @@ class LifecycleRunCoordinator:
             normalized_operation_id,
         )
         if existing is not None:
-            if existing.workflow_id != target_workflow_id:
+            if existing.resource_id != target_workflow_id:
                 raise AgentRuntimeError(
                     "workflow_run_operation_conflict",
                     "The operation_id is already bound to another Workflow.",
@@ -562,16 +581,8 @@ class LifecycleRunCoordinator:
             client, _thread_stream = await self._open_run_session(binding)
             result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
-            relation = WorkflowRunCallRelation(
-                lifecycle_id=binding.lifecycle_id,
-                operation_id=binding.operation_id,
-                caller_run_id=binding.caller_run_id,
-                workflow_id=str(target["id"]),
-                workflow_name=str(target["name"]),
-                assistant_id=binding.assistant_id,
-                thread_id=binding.thread_id,
-                run_id=binding.run_id,
-            )
+            relation = self._workflow_relation(binding)
+            await save_lifecycle_run_relation(client, relation)
             assert binding.execution_ready is not None
             execution = await binding.execution_ready
             self._detached_tasks.create(
@@ -590,11 +601,221 @@ class LifecycleRunCoordinator:
                 await self.close_official_session(binding.thread_id)
             raise
 
+    async def start_agent_run(
+        self,
+        main_agent_id: str,
+        input: object,
+        *,
+        operation_id: str,
+        caller: RunCaller,
+        thread_id: str | None = None,
+    ) -> AgentRunHandle:
+        normalized_operation_id = operation_id.strip()
+        if not normalized_operation_id:
+            raise AgentRuntimeError(
+                "agent_run_operation_id_invalid",
+                "Agent Run operation_id must not be empty.",
+                status_code=422,
+            )
+        self._validate_run_caller(caller)
+        target = self._snapshot.main_agent_by_id(main_agent_id)
+        if target is None:
+            raise AgentRuntimeError(
+                "agent_run_target_not_found",
+                "The selected Main Agent does not exist.",
+                status_code=422,
+            )
+        messages = validate_client_messages(input)
+        requested_thread_id = None
+        if thread_id is not None:
+            requested_thread_id = thread_id.strip()
+            if not requested_thread_id:
+                raise AgentRuntimeError(
+                    "agent_run_thread_id_invalid",
+                    "Agent Run thread_id must not be empty when provided.",
+                    status_code=422,
+                )
+            if target.get("checkpoint_mode") == "disabled":
+                raise AgentRuntimeError(
+                    "agent_run_thread_unsupported",
+                    "A stateless Main Agent cannot continue an existing Thread.",
+                    status_code=422,
+                )
+
+        existing = await self._relation_for_operation(
+            caller,
+            normalized_operation_id,
+            graph_kind="agent",
+        )
+        if existing is not None:
+            if (
+                existing.resource_id != main_agent_id
+                or (
+                    requested_thread_id is not None
+                    and existing.thread_id != requested_thread_id
+                )
+            ):
+                raise AgentRuntimeError(
+                    "agent_run_operation_conflict",
+                    "The operation_id is already bound to another Agent Run.",
+                    status_code=409,
+                )
+            async with self._owner.new_agent_server_client() as client:
+                run = await client.runs.get(existing.thread_id, existing.run_id)
+            return self._agent_handle(existing, run)
+
+        key = relation_key(caller.run_id, normalized_operation_id)
+        pending = self._agent_bindings.get(key)
+        if pending is not None:
+            if (
+                str(pending.main_agent["id"]) != main_agent_id
+                or (
+                    requested_thread_id is not None
+                    and pending.thread_id
+                    and pending.thread_id != requested_thread_id
+                )
+            ):
+                raise AgentRuntimeError(
+                    "agent_run_operation_conflict",
+                    "The operation_id is already bound to another Agent Run.",
+                    status_code=409,
+                )
+            assert pending.run_id_ready is not None
+            await pending.run_id_ready
+            relation = self._agent_relation(pending)
+            async with self._owner.new_agent_server_client() as client:
+                run = await client.runs.get(relation.thread_id, relation.run_id)
+            return self._agent_handle(relation, run)
+
+        loop = asyncio.get_running_loop()
+        binding = _AgentRunBinding(
+            main_agent=target,
+            messages=messages,
+            request_id=caller.request_id,
+            lifecycle_id=caller.lifecycle_id,
+            public_model=str(target["name"]),
+            caller_run_id=caller.run_id,
+            operation_id=normalized_operation_id,
+            run_id_ready=loop.create_future(),
+            execution_ready=loop.create_future(),
+        )
+        self._agent_bindings[key] = binding
+        stateless = target.get("checkpoint_mode") == "disabled"
+        client: Any | None = None
+        try:
+            client, _thread_stream = await self._open_agent_run_session(
+                binding,
+                stateless=stateless,
+                existing_thread_id=requested_thread_id,
+            )
+            result = await self._start_bound_agent_run(binding, client)
+            run_id, result_thread_id = self._agent_run_result_ids(result)
+            if stateless:
+                binding.thread_id = result_thread_id
+                await client.threads.update(
+                    result_thread_id,
+                    metadata=self._agent_thread_metadata(binding),
+                )
+                await self._attach_agent_run_stream(
+                    binding,
+                    client,
+                    delete_thread_with_lifecycle=True,
+                )
+            elif result_thread_id != binding.thread_id:
+                raise RuntimeError(
+                    "the official Main Agent Run returned an unexpected thread_id"
+                )
+            self._bind_agent_run_id(binding, run_id)
+            relation = self._agent_relation(binding)
+            await save_lifecycle_run_relation(client, relation)
+            assert binding.execution_ready is not None
+            execution = await binding.execution_ready
+            self._detached_tasks.create(
+                self._consume_spawned(execution),
+                name=f"agent-run-stream:{binding.run_id}",
+            )
+            run = await client.runs.get(binding.thread_id, binding.run_id)
+            return self._agent_handle(relation, run)
+        except BaseException:
+            self._agent_bindings.pop(key, None)
+            self._cancel_agent_binding_futures(binding)
+            if binding.thread_id and binding.run_id:
+                with suppress(Exception):
+                    await self.cancel_official_run(binding.thread_id, binding.run_id)
+            with suppress(Exception):
+                await self.close_official_session(binding.thread_id)
+            if client is not None and binding.thread_id not in self._sessions:
+                with suppress(Exception):
+                    await client.aclose()
+            raise
+
+    async def check_agent_run(
+        self,
+        thread_id: str,
+        run_id: str,
+        *,
+        caller: RunCaller,
+    ) -> AgentRunSnapshot:
+        relation = await self._agent_relation_for_identity(caller, thread_id, run_id)
+        if relation is None:
+            return AgentRunSnapshot(
+                thread_id=thread_id,
+                run_id=run_id,
+                status="not_found",
+            )
+        async with self._owner.new_agent_server_client() as client:
+            run = await client.runs.get(thread_id, run_id)
+            return await self._agent_run_snapshot(client, relation, run)
+
+    async def join_agent_run(
+        self,
+        thread_id: str,
+        run_id: str,
+        *,
+        caller: RunCaller,
+    ) -> AgentRunSnapshot:
+        relation = await self._agent_relation_for_identity(caller, thread_id, run_id)
+        if relation is None:
+            return AgentRunSnapshot(
+                thread_id=thread_id,
+                run_id=run_id,
+                status="not_found",
+            )
+        async with self._owner.new_agent_server_client() as client:
+            output = await client.runs.join(thread_id, run_id)
+            run = await client.runs.get(thread_id, run_id)
+        return self._agent_snapshot_value(
+            relation,
+            official_status(run),
+            output=output if isinstance(output, dict) else {},
+        )
+
+    async def cancel_agent_run(
+        self,
+        thread_id: str,
+        run_id: str,
+        *,
+        caller: RunCaller,
+    ) -> AgentRunSnapshot:
+        relation = await self._agent_relation_for_identity(caller, thread_id, run_id)
+        if relation is None:
+            return AgentRunSnapshot(
+                thread_id=thread_id,
+                run_id=run_id,
+                status="not_found",
+            )
+        async with self._owner.new_agent_server_client() as client:
+            run = await client.runs.get(thread_id, run_id)
+            if official_status(run) in ACTIVE_RUN_STATUSES:
+                await client.runs.cancel(thread_id, run_id, wait=True)
+                run = await client.runs.get(thread_id, run_id)
+        return self._agent_snapshot_value(relation, official_status(run))
+
     async def check_workflow_runs(
         self,
         run_ids: list[str],
         *,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
     ) -> list[WorkflowRunSnapshot]:
         relations = await self._lifecycle_relations(caller)
         by_run = {relation.run_id: relation for relation in relations}
@@ -612,8 +833,8 @@ class LifecycleRunCoordinator:
     async def list_workflow_runs(
         self,
         *,
-        caller: WorkflowRunCaller,
-        statuses: frozenset[WorkflowRunStatus] | None = None,
+        caller: RunCaller,
+        statuses: frozenset[RunStatus] | None = None,
     ) -> list[WorkflowRunSnapshot]:
         relations = await self._lifecycle_relations(caller)
         snapshots: list[WorkflowRunSnapshot] = []
@@ -629,7 +850,7 @@ class LifecycleRunCoordinator:
         self,
         run_ids: list[str],
         *,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
     ) -> list[WorkflowRunSnapshot]:
         relations = await self._selected_relations(caller, run_ids)
         by_run = {relation.run_id: relation for relation in relations}
@@ -655,7 +876,7 @@ class LifecycleRunCoordinator:
         self,
         run_ids: list[str],
         *,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
     ) -> list[WorkflowRunSnapshot]:
         relations = await self._selected_relations(caller, run_ids)
         by_run = {relation.run_id: relation for relation in relations}
@@ -681,7 +902,7 @@ class LifecycleRunCoordinator:
             return
         async with self._owner.new_agent_server_client() as client:
             run = await client.runs.get(thread_id, run_id)
-            if official_status(run) in ACTIVE_WORKFLOW_RUN_STATUSES:
+            if official_status(run) in ACTIVE_RUN_STATUSES:
                 await client.runs.cancel(thread_id, run_id)
 
     async def official_output(self, thread_id: str) -> object:
@@ -697,6 +918,8 @@ class LifecycleRunCoordinator:
         session = self._sessions.pop(thread_id, None)
         if session is None:
             return
+        if session.delete_thread_with_lifecycle:
+            self._deferred_thread_deletions.add(thread_id)
         try:
             await session.stream.close()
         finally:
@@ -705,6 +928,13 @@ class LifecycleRunCoordinator:
                     await session.client.threads.delete(thread_id)
             finally:
                 await session.client.aclose()
+        if not self._sessions and self._deferred_thread_deletions:
+            pending = tuple(self._deferred_thread_deletions)
+            self._deferred_thread_deletions.clear()
+            async with self._owner.new_agent_server_client() as client:
+                for pending_thread_id in pending:
+                    with suppress(Exception):
+                        await client.threads.delete(pending_thread_id)
         self._release_if_finished()
 
     def _new_binding(
@@ -745,7 +975,10 @@ class LifecycleRunCoordinator:
             assistant = await client.assistants.create(
                 LANGGRAPH_WORKFLOW_GRAPH_ID,
                 config={"configurable": {"workflow_id": str(binding.workflow["id"])}},
-                metadata={"workflow_id": str(binding.workflow["id"])},
+                metadata={
+                    "graph_kind": "workflow",
+                    "workflow_id": str(binding.workflow["id"]),
+                },
                 assistant_id=str(binding.workflow["id"]),
                 if_exists="do_nothing",
                 name=str(binding.workflow["name"]),
@@ -755,6 +988,7 @@ class LifecycleRunCoordinator:
                 metadata={
                     "lifecycle_id": binding.lifecycle_id,
                     "request_id": binding.request_id,
+                    "graph_kind": "workflow",
                     "workflow_id": str(binding.workflow["id"]),
                     "caller_run_id": binding.caller_run_id,
                     "operation_id": binding.operation_id,
@@ -782,6 +1016,7 @@ class LifecycleRunCoordinator:
         binding: _AgentRunBinding,
         *,
         stateless: bool = False,
+        existing_thread_id: str | None = None,
     ) -> tuple[Any, Any]:
         client = self._owner.new_agent_server_client()
         try:
@@ -797,16 +1032,32 @@ class LifecycleRunCoordinator:
             binding.assistant_id = str(assistant["assistant_id"])
             if stateless:
                 return client, None
-            thread = await client.threads.create(
-                metadata={
-                    "lifecycle_id": binding.lifecycle_id,
-                    "request_id": binding.request_id,
-                    "graph_kind": "agent",
-                    "main_agent_id": agent_id,
-                    "caller_run_id": binding.caller_run_id,
-                    "operation_id": binding.operation_id,
-                },
-            )
+            if existing_thread_id is not None:
+                if existing_thread_id in self._sessions:
+                    raise AgentRuntimeError(
+                        "agent_run_thread_busy",
+                        "The selected Main Agent Thread already has an active Run.",
+                        status_code=409,
+                    )
+                thread = await client.threads.get(existing_thread_id)
+                metadata_value = thread.get("metadata")
+                metadata = (
+                    metadata_value if isinstance(metadata_value, Mapping) else {}
+                )
+                if (
+                    metadata.get("graph_kind") != "agent"
+                    or metadata.get("main_agent_id") != agent_id
+                    or metadata.get("lifecycle_id") != binding.lifecycle_id
+                ):
+                    raise AgentRuntimeError(
+                        "agent_run_thread_mismatch",
+                        "The selected Thread does not belong to this Lifecycle and Main Agent.",
+                        status_code=409,
+                    )
+            else:
+                thread = await client.threads.create(
+                    metadata=self._agent_thread_metadata(binding),
+                )
             binding.thread_id = str(thread["thread_id"])
             stream = await self._attach_agent_run_stream(binding, client)
             return client, stream
@@ -820,6 +1071,7 @@ class LifecycleRunCoordinator:
         client: Any,
         *,
         delete_thread_on_close: bool = False,
+        delete_thread_with_lifecycle: bool = False,
     ) -> Any:
         stream = client.threads.stream(
             binding.thread_id,
@@ -835,8 +1087,20 @@ class LifecycleRunCoordinator:
             client,
             stream,
             delete_thread_on_close=delete_thread_on_close,
+            delete_thread_with_lifecycle=delete_thread_with_lifecycle,
         )
         return stream
+
+    @staticmethod
+    def _agent_thread_metadata(binding: _AgentRunBinding) -> dict[str, str]:
+        return {
+            "lifecycle_id": binding.lifecycle_id,
+            "request_id": binding.request_id,
+            "graph_kind": "agent",
+            "main_agent_id": str(binding.main_agent["id"]),
+            "caller_run_id": binding.caller_run_id,
+            "operation_id": binding.operation_id,
+        }
 
     async def _start_bound_run(self, binding: _RunBinding, client: Any) -> Mapping[str, Any]:
         configurable = {
@@ -865,6 +1129,7 @@ class LifecycleRunCoordinator:
             metadata={
                 "lifecycle_id": binding.lifecycle_id,
                 "request_id": binding.request_id,
+                "graph_kind": "workflow",
                 "workflow_id": str(binding.workflow["id"]),
                 "workflow_name": str(binding.workflow["name"]),
                 "caller_run_id": binding.caller_run_id,
@@ -976,10 +1241,12 @@ class LifecycleRunCoordinator:
 
     async def _relation_for_operation(
         self,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
         operation_id: str,
-    ) -> WorkflowRunCallRelation | None:
-        relations = await self._lifecycle_relations(caller)
+        *,
+        graph_kind: str = "workflow",
+    ) -> GraphRunCallRelation | None:
+        relations = await self._lifecycle_relations(caller, graph_kind=graph_kind)
         return next(
             (
                 relation
@@ -992,8 +1259,10 @@ class LifecycleRunCoordinator:
 
     async def _lifecycle_relations(
         self,
-        caller: WorkflowRunCaller,
-    ) -> list[WorkflowRunCallRelation]:
+        caller: RunCaller,
+        *,
+        graph_kind: str = "workflow",
+    ) -> list[GraphRunCallRelation]:
         if caller.lifecycle_id != self._lifecycle_id:
             raise AgentRuntimeError(
                 "workflow_lifecycle_mismatch",
@@ -1001,28 +1270,57 @@ class LifecycleRunCoordinator:
                 status_code=409,
             )
         async with self._owner.new_agent_server_client() as client:
-            return await search_lifecycle_runs(client, caller.lifecycle_id)
+            return await search_lifecycle_run_relations(
+                client,
+                caller.lifecycle_id,
+                graph_kind=graph_kind,
+            )
 
     async def _selected_relations(
         self,
-        caller: WorkflowRunCaller,
+        caller: RunCaller,
         run_ids: Sequence[str],
-    ) -> list[WorkflowRunCallRelation]:
+    ) -> list[GraphRunCallRelation]:
         relations = await self._lifecycle_relations(caller)
-        return select_relations(
+        return select_run_relations(
             relations,
             run_ids=run_ids,
+        )
+
+    def _validate_run_caller(self, caller: RunCaller) -> None:
+        if caller.lifecycle_id != self._lifecycle_id:
+            raise AgentRuntimeError(
+                "agent_run_lifecycle_mismatch",
+                "The Agent Run caller belongs to another Lifecycle.",
+                status_code=409,
+            )
+
+    async def _agent_relation_for_identity(
+        self,
+        caller: RunCaller,
+        thread_id: str,
+        run_id: str,
+    ) -> GraphRunCallRelation | None:
+        self._validate_run_caller(caller)
+        relations = await self._lifecycle_relations(caller, graph_kind="agent")
+        return next(
+            (
+                relation
+                for relation in relations
+                if relation.thread_id == thread_id and relation.run_id == run_id
+            ),
+            None,
         )
 
     async def _run_snapshot(
         self,
         client: Any,
-        relation: WorkflowRunCallRelation,
+        relation: GraphRunCallRelation,
         run: Mapping[str, Any],
     ) -> WorkflowRunSnapshot:
         status = official_status(run)
         output = None
-        if status not in ACTIVE_WORKFLOW_RUN_STATUSES:
+        if status not in ACTIVE_RUN_STATUSES:
             state = await client.threads.get_state(relation.thread_id)
             values = state.get("values") if isinstance(state, Mapping) else None
             output = values if isinstance(values, dict) else {}
@@ -1030,12 +1328,12 @@ class LifecycleRunCoordinator:
 
     @staticmethod
     def _handle(
-        relation: WorkflowRunCallRelation,
+        relation: GraphRunCallRelation,
         run: Mapping[str, Any],
     ) -> WorkflowRunHandle:
         return WorkflowRunHandle(
             operation_id=relation.operation_id,
-            workflow_id=relation.workflow_id,
+            workflow_id=relation.resource_id,
             assistant_id=relation.assistant_id,
             thread_id=relation.thread_id,
             run_id=relation.run_id,
@@ -1044,21 +1342,109 @@ class LifecycleRunCoordinator:
 
     @staticmethod
     def _snapshot_value(
-        relation: WorkflowRunCallRelation,
-        status: WorkflowRunStatus,
+        relation: GraphRunCallRelation,
+        status: RunStatus,
         *,
         output: dict[str, Any] | None = None,
     ) -> WorkflowRunSnapshot:
         return WorkflowRunSnapshot(
             operation_id=relation.operation_id,
             caller_run_id=relation.caller_run_id,
-            workflow_id=relation.workflow_id,
-            workflow_name=relation.workflow_name,
+            workflow_id=relation.resource_id,
+            workflow_name=relation.resource_name,
             assistant_id=relation.assistant_id,
             thread_id=relation.thread_id,
             run_id=relation.run_id,
             status=status,
             output=output,
+        )
+
+    async def _agent_run_snapshot(
+        self,
+        client: Any,
+        relation: GraphRunCallRelation,
+        run: Mapping[str, Any],
+    ) -> AgentRunSnapshot:
+        status = official_status(run)
+        output = None
+        if status not in ACTIVE_RUN_STATUSES:
+            state = await client.threads.get_state(relation.thread_id)
+            values = state.get("values") if isinstance(state, Mapping) else None
+            output = values if isinstance(values, dict) else {}
+        return self._agent_snapshot_value(relation, status, output=output)
+
+    @staticmethod
+    def _agent_handle(
+        relation: GraphRunCallRelation,
+        run: Mapping[str, Any],
+    ) -> AgentRunHandle:
+        checkpoint_mode = relation.checkpoint_mode
+        if checkpoint_mode is None:
+            raise RuntimeError("the Agent Run relation omits checkpoint_mode")
+        return AgentRunHandle(
+            operation_id=relation.operation_id,
+            main_agent_id=relation.resource_id,
+            assistant_id=relation.assistant_id,
+            thread_id=relation.thread_id,
+            run_id=relation.run_id,
+            status=official_status(run),
+            checkpoint_mode=checkpoint_mode,
+        )
+
+    @staticmethod
+    def _agent_snapshot_value(
+        relation: GraphRunCallRelation,
+        status: RunStatus,
+        *,
+        output: dict[str, Any] | None = None,
+    ) -> AgentRunSnapshot:
+        checkpoint_mode = relation.checkpoint_mode
+        if checkpoint_mode is None:
+            raise RuntimeError("the Agent Run relation omits checkpoint_mode")
+        return AgentRunSnapshot(
+            operation_id=relation.operation_id,
+            caller_run_id=relation.caller_run_id,
+            main_agent_id=relation.resource_id,
+            main_agent_name=relation.resource_name,
+            assistant_id=relation.assistant_id,
+            thread_id=relation.thread_id,
+            run_id=relation.run_id,
+            status=status,
+            checkpoint_mode=checkpoint_mode,
+            output=output,
+        )
+
+    @staticmethod
+    def _workflow_relation(binding: _RunBinding) -> GraphRunCallRelation:
+        return GraphRunCallRelation(
+            lifecycle_id=binding.lifecycle_id,
+            graph_kind="workflow",
+            operation_id=binding.operation_id,
+            caller_run_id=binding.caller_run_id,
+            resource_id=str(binding.workflow["id"]),
+            resource_name=str(binding.workflow["name"]),
+            assistant_id=binding.assistant_id,
+            thread_id=binding.thread_id,
+            run_id=binding.run_id,
+        )
+
+    @staticmethod
+    def _agent_relation(binding: _AgentRunBinding) -> GraphRunCallRelation:
+        return GraphRunCallRelation(
+            lifecycle_id=binding.lifecycle_id,
+            graph_kind="agent",
+            operation_id=binding.operation_id,
+            caller_run_id=binding.caller_run_id,
+            resource_id=str(binding.main_agent["id"]),
+            resource_name=str(binding.main_agent["name"]),
+            checkpoint_mode=(
+                "disabled"
+                if binding.main_agent.get("checkpoint_mode") == "disabled"
+                else "enabled"
+            ),
+            assistant_id=binding.assistant_id,
+            thread_id=binding.thread_id,
+            run_id=binding.run_id,
         )
 
     def _release_if_finished(self) -> None:

@@ -63,6 +63,6 @@ Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。Workflow入口的
 
 synchronous Subagent 是 Agent 内部的官方 `SubAgentMiddleware` capability，不与 outer Workflow 竞争 scheduling responsibility。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方 assembly entry，并单独处理 `graph_id`、Agent Protocol 地址、认证和官方异步任务 State。
 
-跨 Workflow 调用通过 `runtime.context.workflow_runs` 创建独立的官方 Assistant、Thread 和 Run。每个被调用 Run 由 LangGraph Dev dynamic factory 使用自己的冻结 Workflow 配置装配 `AgentRuntime`/`AgentBuilder`，并可继续调用其他 Workflow；Server-managed 路径使用 LangGraph Dev 注入的 Store 和 checkpoint owner，Canvas Agent/Deep Agent subgraph 按 LangGraph 默认继承所在 Workflow root 的持久化上下文。每个 Run 持有自己的 Middleware package runtime 和 Event Output projector；已投影事件作为平等 producer 进入当前公开 response 的 Lifecycle scheduler，Run 状态和结果通过公共 Run API 读取。
+Workflow Command可通过 `runtime.context.agent_runs` 创建独立 Main Agent Assistant/Thread/Run，通过 `workflow_runs`创建独立 Workflow Run。Main Agent默认创建新 Thread；同一 Lifecycle显式提供该 Main Agent既有 Thread可创建新 Run并延续 AgentState。每个被调用 Run由 LangGraph Dev dynamic factory使用冻结配置装配；Server-managed路径使用 LangGraph Dev注入的 Store和 checkpoint owner。每个 Run持有自己的 package runtime与 Event Output projector；状态和结果通过公共 Run API读取，Lifecycle Store只保存最小关系。
 
 更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、dictionary SubAgent field、default Middleware、same-name replacement 与 `HarnessProfile.excluded_middleware`、各 Provider Prompt Caching 变体、Codex TodoList extra Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义、StateGraph subgraph 组合和 v3 event namespace，并只为 Shell 自有转换保留行为测试。

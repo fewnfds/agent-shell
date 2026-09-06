@@ -1213,6 +1213,7 @@ class AgentRuntime:
         operation_id: str = "",
         initial_shared_vars: Mapping[str, Any] | None = None,
         initial_workflow_task: Mapping[str, Any] | None = None,
+        agent_run_runtime: Any | None = None,
         workflow_run_runtime: Any | None = None,
         public_output: bool = True,
         response_scheduler: LifecycleResponseScheduler | None = None,
@@ -1446,12 +1447,14 @@ class AgentRuntime:
             )
             context = (
                 server_context.with_runtime_bindings(
+                    agent_run_runtime=agent_run_runtime,
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
                 )
                 if server_context is not None
                 else WorkflowRuntimeContext.for_run(
                     identity=identity,
+                    agent_run_runtime=agent_run_runtime,
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
                 )

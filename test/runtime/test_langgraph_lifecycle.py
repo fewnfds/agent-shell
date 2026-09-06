@@ -78,8 +78,8 @@ class _Store:
 
     async def search_items(self, namespace, *, limit: int, offset: int):
         items = [
-            {"key": key}
-            for key in self._owner.store_items.get(tuple(namespace), {})
+            {"key": key, "value": deepcopy(value)}
+            for key, value in self._owner.store_items.get(tuple(namespace), {}).items()
         ]
         return {"items": items[offset : offset + limit]}
 
@@ -151,6 +151,30 @@ class _Client:
         }
         self.store_items = {
             ("workflow-lifecycle", "lifecycle-1", "input"): {"request": {}},
+            ("workflow-lifecycle", "lifecycle-1", "runs"): {
+                "run-entry": {
+                    "lifecycle_id": "lifecycle-1",
+                    "graph_kind": "workflow",
+                    "operation_id": "entry",
+                    "caller_run_id": "",
+                    "resource_id": "workflow-entry",
+                    "resource_name": "Entry Workflow",
+                    "assistant_id": "assistant-entry",
+                    "thread_id": "thread-entry",
+                    "run_id": "run-entry",
+                },
+                "run-peer": {
+                    "lifecycle_id": "lifecycle-1",
+                    "graph_kind": "workflow",
+                    "operation_id": "peer",
+                    "caller_run_id": "run-entry",
+                    "resource_id": "workflow-peer",
+                    "resource_name": "Peer Workflow",
+                    "assistant_id": "assistant-peer",
+                    "thread_id": "thread-peer",
+                    "run_id": "run-peer",
+                },
+            },
         }
         self.cancelled_runs: list[tuple[str, str, bool]] = []
         self.deleted_threads: list[str] = []
@@ -208,3 +232,4 @@ def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> 
     assert deleted == 2
     assert set(client.deleted_threads) == {"thread-entry", "thread-peer"}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}

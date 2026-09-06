@@ -1,6 +1,6 @@
-# 跨 Workflow Run 调用
+# 独立 Agent 与 Workflow Run 调用
 
-本章说明一个 Workflow Run 如何启动、查询、等待和取消另一个能力相同的 Workflow Run，以及 State isolation、断连策略和结果收集。
+本章说明一个 Workflow Command如何启动、查询、等待和取消独立 Main Agent或另一个 Workflow Run，以及 State isolation、断连策略和结果收集。
 
 Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时编译为 LangGraph Graph。Assistant 是 Graph 加配置后的官方执行入口；Thread 保存该执行上下文的持久化 State；Run 是对 Assistant/Graph 的一次调用。Workflow 没有静态运行角色。
 
@@ -21,17 +21,27 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 目标必须存在于本次请求已经冻结的 Configuration Repository 快照中，并且 `enabled=true`。内部调用不要求 `is_model_entry=true`；该字段只决定 Workflow 是否出现在 `/compat/openai/v1/models` 并可由 OpenAI-compatible 请求启动。
 
-需要运行单个 Main Agent 时，可以创建：
-
-```text
-Start -> Agent -> End
-```
-
-目标 Workflow 使用自己的 Graph、Agent/Component 引用、`durability` 和事件输出；全部 Run 使用实例级 `recursion_limit` 与可选 `max_concurrency`。每个 Workflow 保存自己的 `on_disconnect`，但该字段只在它作为客户端请求入口时读取，不参与内部 Run 调用。
+需要 AI执行时直接启动目标 Main Agent，不需要创建单 Agent wrapper Workflow。目标 Main Agent使用自己的 Graph、AgentState、Component引用、`durability`、checkpoint mode与 Agent Event Output；目标 Workflow使用自己的控制 Graph、`durability`与 Workflow Event Output。全部 Run使用实例级 `recursion_limit`与可选 `max_concurrency`。
 
 ## 3. Runtime command
 
-Agent Shell 在每个 Workflow Node invocation 的 `Runtime.context` 中注入 run-scoped `workflow_runs` facade。Command Node、Custom Tool、Middleware 或 executable Node 可以调用：
+Agent Shell 在每个 Workflow Node invocation的 `Runtime.context`中注入 run-scoped `agent_runs`和 `workflow_runs` facade。Command可调用：
+
+```python
+agent = await runtime.context.agent_runs.start(
+    "<Main Agent UUID>",
+    [{"role": "user", "content": "Review the supplied artifact."}],
+    operation_id="review:artifact-42",
+)
+
+status = await runtime.context.agent_runs.check(agent.thread_id, agent.run_id)
+finished = await runtime.context.agent_runs.join(agent.thread_id, agent.run_id)
+cancelled = await runtime.context.agent_runs.cancel(agent.thread_id, agent.run_id)
+```
+
+Main Agent `start()`默认创建新 Thread。checkpoint enabled Agent可在同一 Lifecycle显式传 `thread_id=...`创建新的 Run并延续该 Thread的 AgentState；checkpoint disabled Agent只创建 Stateless Run。
+
+Workflow Run facade为：
 
 ```python
 handle = await runtime.context.workflow_runs.start_workflow(
@@ -48,7 +58,9 @@ active = await runtime.context.workflow_runs.list(
 cancelled = await runtime.context.workflow_runs.cancel([handle.run_id])
 ```
 
-各命令的作用：
+Agent Run handle包含 `operation_id/main_agent_id/assistant_id/thread_id/run_id/status/checkpoint_mode`。Agent snapshot另外包含 caller与 Main Agent名称以及可空 output。`check/get`、`join`和 `cancel`都以 `(thread_id, run_id)`精确寻址。
+
+Workflow各命令的作用：
 
 - `start_workflow()` 创建或复用当前 operation 对应的官方 Assistant/Thread/Run，并立即返回 handle；
 - `check()` 通过公共 Run API 读取指定 Run；终态 Run 同时返回官方 Thread 的 current State values；

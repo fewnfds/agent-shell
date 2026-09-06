@@ -10,15 +10,17 @@ from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
 from agent_shell.command import run_command
-from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
+from agent_shell.runtime.agent_run_calls import AgentRunHandle
+from agent_shell.runtime.run_calls import RunCaller
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
 
 
 class _CommandRuntime:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, WorkflowRunCaller]] = []
-        self.starts: list[tuple[str, str, WorkflowRunCaller]] = []
+        self.calls: list[tuple[str, RunCaller]] = []
+        self.starts: list[tuple[str, str, RunCaller]] = []
+        self.agent_starts: list[tuple[str, object, str, RunCaller]] = []
 
     async def list_workflow_runs(self, *, caller, statuses=None):
         self.calls.append(("list", caller))
@@ -42,6 +44,20 @@ class _CommandRuntime:
         )
         return object()
 
+    async def start_agent_run(self, main_agent_id, input, **kwargs):
+        self.agent_starts.append(
+            (main_agent_id, input, kwargs["operation_id"], kwargs["caller"])
+        )
+        return AgentRunHandle(
+            operation_id=kwargs["operation_id"],
+            main_agent_id=main_agent_id,
+            assistant_id="assistant-agent",
+            thread_id="thread-agent",
+            run_id="run-agent",
+            status="pending",
+            checkpoint_mode="enabled",
+        )
+
 
 def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
     return WorkflowRuntimeContext.for_run(
@@ -52,6 +68,7 @@ def _context(service: _CommandRuntime) -> WorkflowRuntimeContext:
             workflow_id="workflow-1",
             workflow_name="Workflow",
         ),
+        agent_run_runtime=service,
         workflow_run_runtime=service,
     )
 
@@ -113,10 +130,16 @@ def test_command_can_start_workflow_run_and_end_without_a_target() -> None:
 
         async def command(state, runtime):
             assert runtime.context.workflow_runs is not None
+            assert runtime.context.agent_runs is not None
             await runtime.context.workflow_runs.start_workflow(
                 "workflow-1",
                 operation_id="publish-review",
                 shared_vars={"task_id": "task-1"},
+            )
+            await runtime.context.agent_runs.start(
+                "agent-1",
+                [{"role": "user", "content": "review"}],
+                operation_id="agent-review",
             )
             return {"activate": [], "update": {"shared_vars": {"published": True}}}
 
@@ -131,6 +154,12 @@ def test_command_can_start_workflow_run_and_end_without_a_target() -> None:
         assert result.update == {"shared_vars": {"published": True}}
         assert service.starts[0][:2] == ("workflow-1", "publish-review")
         assert service.starts[0][2].run_id == "run-1"
+        assert service.agent_starts[0][:3] == (
+            "agent-1",
+            [{"role": "user", "content": "review"}],
+            "agent-review",
+        )
+        assert service.agent_starts[0][3].run_id == "run-1"
 
     asyncio.run(scenario())
 

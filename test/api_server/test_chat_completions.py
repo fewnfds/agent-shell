@@ -609,7 +609,7 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
         "request-injection",
         "from langchain.agents.middleware import AgentMiddleware\n"
         "from langchain_core.messages import HumanMessage\n"
-        "from agent_shell.runtime.workflow_data import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
+        "from agent_shell.runtime.lifecycle_store import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
         "class InjectRequest(AgentMiddleware):\n"
         "    async def abefore_agent(self, state, runtime):\n"
         "        item = await runtime.store.aget(lifecycle_input_namespace(runtime.context.lifecycle_id), LIFECYCLE_INPUT_KEY)\n"

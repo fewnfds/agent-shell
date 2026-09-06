@@ -3,11 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Mapping
 
-from agent_shell.runtime.workflow_run_commands import (
-    WorkflowRunCaller,
-    WorkflowRunCommands,
-    WorkflowRunRuntime,
-)
+from agent_shell.runtime.agent_run_commands import AgentRunCommands, AgentRunRuntime
+from agent_shell.runtime.run_calls import RunCaller
+from agent_shell.runtime.workflow_run_commands import WorkflowRunCommands, WorkflowRunRuntime
 from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 from agent_shell.runtime.mcp import McpCommands
 
@@ -65,6 +63,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
     workflow_node_id: str = ""
     agent_profile_id: str = ""
     node_invocation_id: str = ""
+    agent_runs: AgentRunCommands | None = None
     workflow_runs: WorkflowRunCommands | None = None
     mcp: McpCommands | None = None
     _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
@@ -82,6 +81,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         cls,
         *,
         identity: WorkflowRunIdentity,
+        agent_run_runtime: AgentRunRuntime | None = None,
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
@@ -94,6 +94,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             operation_id=identity.operation_id,
         )
         return context.with_runtime_bindings(
+            agent_run_runtime=agent_run_runtime,
             workflow_run_runtime=workflow_run_runtime,
             mcp_commands_by_node=mcp_commands_by_node,
         )
@@ -101,6 +102,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
     def with_runtime_bindings(
         self,
         *,
+        agent_run_runtime: AgentRunRuntime | None = None,
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
@@ -108,10 +110,22 @@ class WorkflowRuntimeContext(WorkflowRunContext):
 
         return replace(
             self,
+            agent_runs=(
+                AgentRunCommands(
+                    agent_run_runtime,
+                    RunCaller(
+                        request_id=self.request_id,
+                        lifecycle_id=self.lifecycle_id,
+                        run_id=self.run_id,
+                    ),
+                )
+                if agent_run_runtime is not None
+                else None
+            ),
             workflow_runs=(
                 WorkflowRunCommands(
                     workflow_run_runtime,
-                    WorkflowRunCaller(
+                    RunCaller(
                         request_id=self.request_id,
                         lifecycle_id=self.lifecycle_id,
                         run_id=self.run_id,
@@ -129,9 +143,20 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         return replace(
             self,
             run_id=run_id,
+            agent_runs=(
+                self.agent_runs.for_caller(
+                    RunCaller(
+                        request_id=self.request_id,
+                        lifecycle_id=self.lifecycle_id,
+                        run_id=run_id,
+                    )
+                )
+                if self.agent_runs is not None
+                else None
+            ),
             workflow_runs=(
                 self.workflow_runs.for_caller(
-                    WorkflowRunCaller(
+                    RunCaller(
                         request_id=self.request_id,
                         lifecycle_id=self.lifecycle_id,
                         run_id=run_id,

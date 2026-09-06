@@ -33,7 +33,7 @@ def create_command():
 ## 输入
 
 - `state` 是当前 Workflow State 的独立可变副本，包含本次调用实际存在的 `shared_vars`、`agent_invocations` 和 `files`；
-- `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Shell Lifecycle、Workflow Run、Workflow 和 Node invocation scope 使用 `lifecycle_id`、`run_id`、`caller_run_id`、`operation_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id` 等明确字段，Store 位于 `runtime.store`，跨 Workflow Run 命令位于 `runtime.context.workflow_runs`；LangGraph 的 thread、run、checkpoint、task 和 retry/attempt 信息直接读取 `runtime.execution_info`；
+- `runtime` 是 LangGraph 注入的 `Runtime[WorkflowRuntimeContext]`。当前 Shell Lifecycle、Workflow Run、Workflow 和 Node invocation scope 使用 `lifecycle_id`、`run_id`、`caller_run_id`、`operation_id`、`workflow_id`、`workflow_node_id`、`agent_profile_id` 与 `node_invocation_id` 等明确字段，Store 位于 `runtime.store`，独立 Main Agent与 Workflow Run命令分别位于 `runtime.context.agent_runs`和 `runtime.context.workflow_runs`；LangGraph 的 thread、run、checkpoint、task 和 retry/attempt 信息直接读取 `runtime.execution_info`；
 - 脚本可以修改 `state` 副本，也可以显式返回 `update`。mutation delta 与 `update` 合并时，显式 `update` 覆盖同名顶层 channel。
 
 ## MCP

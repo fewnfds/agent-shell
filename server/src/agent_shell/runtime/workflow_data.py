@@ -7,35 +7,11 @@ from pathlib import Path
 from langgraph.store.base import BaseStore
 
 from agent_shell.contracts import FilesystemBlock
+from agent_shell.runtime.lifecycle_store import lifecycle_filesystem_namespace
 from agent_shell.storage.owned_paths import resolve_data_root_relative_path
 
 
-LIFECYCLE_NAMESPACE_ROOT = "workflow-lifecycle"
-LIFECYCLE_INPUT_KEY = "request"
 LIFECYCLE_FILESYSTEM_RECORD_VERSION = 1
-
-
-def lifecycle_input_namespace(lifecycle_id: str) -> tuple[str, str, str]:
-    if not lifecycle_id:
-        raise ValueError("lifecycle_id must not be empty")
-    return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "input")
-
-
-def lifecycle_invocations_namespace(
-    lifecycle_id: str,
-    run_id: str,
-) -> tuple[str, str, str, str]:
-    if not lifecycle_id:
-        raise ValueError("lifecycle_id must not be empty")
-    if not run_id:
-        raise ValueError("run_id must not be empty")
-    return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "invocations", run_id)
-
-
-def lifecycle_filesystem_namespace(lifecycle_id: str) -> tuple[str, str, str]:
-    if not lifecycle_id:
-        raise ValueError("lifecycle_id must not be empty")
-    return (LIFECYCLE_NAMESPACE_ROOT, lifecycle_id, "filesystem")
 
 
 class WorkflowDataService:
@@ -182,10 +158,5 @@ class WorkflowDataService:
 
 
 __all__ = [
-    "LIFECYCLE_INPUT_KEY",
-    "LIFECYCLE_NAMESPACE_ROOT",
     "WorkflowDataService",
-    "lifecycle_filesystem_namespace",
-    "lifecycle_input_namespace",
-    "lifecycle_invocations_namespace",
 ]

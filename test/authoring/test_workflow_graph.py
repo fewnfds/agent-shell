@@ -17,7 +17,7 @@ from agent_shell.runtime.agent_builder import BuiltAgent
 from agent_shell.runtime.agent_runtime import AgentRuntime
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import AgentShellState, WorkflowState
-from agent_shell.runtime.workflow_data import lifecycle_invocations_namespace
+from agent_shell.runtime.lifecycle_store import lifecycle_invocations_namespace
 from agent_shell.validation.assembly import StaticAssembly
 from agent_shell.validation import ValidationIssue, ValidationReport
 from agent_shell.workflow import (

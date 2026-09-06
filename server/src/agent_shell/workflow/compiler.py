@@ -20,7 +20,7 @@ from agent_shell.command import (
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
 from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
 from agent_shell.runtime.state import WorkflowNodeInputState, WorkflowState
-from agent_shell.runtime.workflow_data import lifecycle_invocations_namespace
+from agent_shell.runtime.lifecycle_store import lifecycle_invocations_namespace
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
