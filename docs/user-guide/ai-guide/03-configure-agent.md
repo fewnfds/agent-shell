@@ -132,6 +132,10 @@ POST /agent-shell/api/main-agents
 ```json
 {
   "name": "Primary worker",
+  "is_model_entry": false,
+  "durability": "async",
+  "on_disconnect": "cancel",
+  "checkpoint_mode": "enabled",
   "capability_refs": [
     {
       "type": "model-requirement",
@@ -159,7 +163,9 @@ POST /agent-shell/api/main-agents
 
 `tool_refs`、`middleware_refs`、`mcp_refs` 和 `subagents` 分别保存 Custom Tool、Custom Middleware、MCP Requirement 和 direct Subagent 的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
 
-创建后保存 Main Agent UUID。Agent Node 只引用这个 UUID，不在 Graph Node 内重复保存模型、Tool 或 prompt 配置。
+`is_model_entry=true` 时，Main Agent name直接成为 OpenAI-compatible model。`checkpoint_mode=enabled` 为每个直接会话建立可复用 Thread，后续交互在同一 Thread创建新 Run并延续 AgentState；`disabled` 使用官方 Stateless Run。`durability` 控制官方 Run 的 checkpoint写入时机，`on_disconnect` 控制该 Main Agent作为请求入口时客户端断开后的行为。
+
+创建后保存 Main Agent UUID。直接运行与 Agent Node引用都复用这份装配；Graph Node不重复保存模型、Tool 或 prompt 配置。
 
 ## 6. System Prompt 和 AAP
 

@@ -108,6 +108,28 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         direct_test_run,
     )
 
+    async def direct_test_agent(coordinator, main_agent, raw_messages, **kwargs):
+        """Execute the frozen Main Agent graph locally for API unit tests."""
+
+        lifecycle_id = str(uuid4())
+        coordinator._lifecycle_id = lifecycle_id
+        runtime = coordinator._snapshot.new_runtime(store=graph_store)
+        return await runtime.start_main_agent(
+            str(main_agent["id"]),
+            raw_messages,
+            request_id=str(kwargs.get("request_id", "")),
+            lifecycle_id=lifecycle_id,
+            run_id=str(uuid4()),
+            thread_id=str(uuid4()),
+            assistant_id=str(uuid4()),
+            public_model=str(kwargs.get("public_model", main_agent["name"])),
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.runtime.request_snapshot.LifecycleRunCoordinator.start_agent",
+        direct_test_agent,
+    )
+
     async def skip_external_retention(_self) -> None:
         return None
 
@@ -148,6 +170,7 @@ def create_main_agent(
     provider_settings: dict[str, object] | None = None,
     model_request_settings: dict[str, object] | None = None,
     filesystem_id: str | None = None,
+    is_model_entry: bool = False,
 ) -> dict:
     model_payload = {
         "name": "Published model",
@@ -219,6 +242,7 @@ def create_main_agent(
         "/agent-shell/api/main-agents",
         json={
             "name": "Published Main Agent",
+            "is_model_entry": is_model_entry,
             "capability_refs": capability_refs,
             "subagents": [],
         },

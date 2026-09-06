@@ -1624,6 +1624,16 @@ export const en: MessageSchema = {
     },
     mainAgent: {
       title: 'Main Agent assembly',
+      runtimeTitle: 'Run assembly',
+      fields: {
+        isModelEntry: 'Available as model entry',
+        durability: 'Durability',
+        onDisconnect: 'Client disconnect',
+        checkpointMode: 'Thread checkpoints',
+      },
+      durability: { sync: 'Sync', async: 'Async', exit: 'At exit' },
+      onDisconnect: { cancel: 'Cancel Lifecycle', continue: 'Continue in background' },
+      checkpointMode: { enabled: 'Enabled', disabled: 'Stateless Runs' },
       capabilitiesTitle: 'Capability board',
       referencesTitle: 'Subagent references',
       addReference: 'Add Subagent',

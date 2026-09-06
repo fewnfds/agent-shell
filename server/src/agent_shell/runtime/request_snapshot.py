@@ -17,6 +17,7 @@ from agent_shell.python_packages.validation import PythonPackageValidationServic
 from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.runtime.agent_builder import AgentBuilder
+from agent_shell.runtime.agent_assistants import main_agent_assistant_id
 from agent_shell.runtime.agent_runtime import AgentRuntime, RunExecution
 from agent_shell.runtime.workflow_run_commands import WorkflowRunCaller
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
@@ -55,6 +56,7 @@ from agent_shell.workflow import WorkflowGraphDocumentV1
 
 
 LANGGRAPH_WORKFLOW_GRAPH_ID = "agent-shell-workflow"
+LANGGRAPH_AGENT_GRAPH_ID = "agent-shell-agent"
 
 
 def _root_terminal_status(event: Mapping[str, object]) -> str:
@@ -164,6 +166,29 @@ class _RunBinding:
 class _OfficialSession:
     client: Any
     stream: Any
+    delete_thread_on_close: bool = False
+
+
+@dataclass(slots=True)
+class _AgentRunBinding:
+    main_agent: Mapping[str, Any]
+    messages: list[dict[str, Any]]
+    request_id: str
+    lifecycle_id: str
+    public_model: str
+    caller_run_id: str = ""
+    operation_id: str = ""
+    thread_id: str = ""
+    assistant_id: str = ""
+    run_id: str = ""
+    response_consumer: bool = False
+    run_id_ready: asyncio.Future[str] | None = None
+    execution_ready: asyncio.Future[RunExecution] | None = None
+    protocol_stream: _OfficialRunEventStream | None = None
+
+    @property
+    def key(self) -> str:
+        return relation_key(self.caller_run_id, self.operation_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,10 +196,17 @@ class RequestRuntimeSnapshot:
     """Immutable configuration catalog and runtime materialization inputs."""
 
     _workflows: WorkflowStore
+    _agents: AgentConfigStore
     _runtime_factory: Callable[[BaseStore | None], AgentRuntime]
 
     def workflow_by_name(self, name: str) -> dict[str, Any] | None:
         return self._workflows.get_item_by_name(name)
+
+    def main_agent_by_name(self, name: str) -> dict[str, Any] | None:
+        return self._agents.get_item_by_name("main_agents", name)
+
+    def main_agent_by_id(self, main_agent_id: str) -> dict[str, Any] | None:
+        return self._agents.get_item("main_agents", main_agent_id)
 
     def workflow_by_id(self, workflow_id: str) -> dict[str, Any] | None:
         return self._workflows.get_item(workflow_id)
@@ -199,6 +231,10 @@ class LifecycleRunCoordinator:
     )
     _lifecycle_id: str = field(default="", init=False)
     _bindings: dict[str, _RunBinding] = field(default_factory=dict, init=False)
+    _agent_bindings: dict[str, _AgentRunBinding] = field(
+        default_factory=dict,
+        init=False,
+    )
     _sessions: dict[str, _OfficialSession] = field(default_factory=dict, init=False)
 
     @property
@@ -254,6 +290,139 @@ class LifecycleRunCoordinator:
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             self._release_if_finished()
+            raise
+
+    async def start_agent(
+        self,
+        main_agent: Mapping[str, Any],
+        raw_messages: object,
+        **kwargs: Any,
+    ) -> RunExecution:
+        """Start one request-entry Main Agent as an official root Run."""
+
+        request_id = str(kwargs.pop("request_id", ""))
+        public_model = str(kwargs.pop("public_model", main_agent["name"]))
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs))
+            raise TypeError(f"unexpected request Run arguments: {unexpected}")
+        messages = validate_client_messages(raw_messages)
+        lifecycle_id = str(uuid4())
+        self._lifecycle_id = lifecycle_id
+        loop = asyncio.get_running_loop()
+        binding = _AgentRunBinding(
+            main_agent=main_agent,
+            messages=messages,
+            request_id=request_id,
+            lifecycle_id=lifecycle_id,
+            public_model=public_model,
+            response_consumer=True,
+            run_id_ready=loop.create_future(),
+            execution_ready=loop.create_future(),
+        )
+        self._agent_bindings[binding.key] = binding
+        self._owner.register_active_lifecycle(self)
+        stateless = main_agent.get("checkpoint_mode") == "disabled"
+        client: Any | None = None
+        try:
+            client, _thread_stream = await self._open_agent_run_session(
+                binding,
+                stateless=stateless,
+            )
+            await client.store.put_item(
+                lifecycle_input_namespace(lifecycle_id),
+                LIFECYCLE_INPUT_KEY,
+                {
+                    "messages": deepcopy(messages),
+                    "messages_sha": client_messages_sha(messages),
+                    "metadata": {
+                        "lifecycle_id": lifecycle_id,
+                        "request_id": request_id,
+                        "graph_kind": "agent",
+                        "main_agent_id": str(main_agent["id"]),
+                        "main_agent_name": str(main_agent["name"]),
+                    },
+                },
+                index=False,
+            )
+            result = await self._start_bound_agent_run(binding, client)
+            run_id, result_thread_id = self._agent_run_result_ids(result)
+            if stateless:
+                binding.thread_id = result_thread_id
+                await self._attach_agent_run_stream(
+                    binding,
+                    client,
+                    delete_thread_on_close=True,
+                )
+            elif result_thread_id != binding.thread_id:
+                raise RuntimeError(
+                    "the official Main Agent Run returned an unexpected thread_id"
+                )
+            self._bind_agent_run_id(binding, run_id)
+            assert binding.execution_ready is not None
+            return await binding.execution_ready
+        except BaseException:
+            self._cancel_agent_binding_futures(binding)
+            with suppress(Exception):
+                await self.close_official_session(binding.thread_id)
+            if client is not None and binding.thread_id not in self._sessions:
+                with suppress(Exception):
+                    await client.aclose()
+            self._release_if_finished()
+            raise
+
+    async def build_server_agent_graph(
+        self,
+        *,
+        main_agent_id: str,
+        store: BaseStore,
+        context: Any,
+    ) -> Any:
+        key = relation_key(context.caller_run_id, context.operation_id)
+        binding = self._agent_bindings.get(key)
+        if binding is None:
+            raise RuntimeError("the official Main Agent Run binding is unavailable")
+        if (
+            main_agent_id != str(binding.main_agent["id"])
+            or context.lifecycle_id != binding.lifecycle_id
+        ):
+            raise RuntimeError("the official Main Agent Run does not match its binding")
+        assert binding.run_id_ready is not None
+        assert binding.execution_ready is not None
+        try:
+            run_id = await binding.run_id_ready
+            execution = await self._snapshot.new_runtime(
+                store=store
+            ).start_main_agent(
+                main_agent_id,
+                binding.messages,
+                request_id=binding.request_id,
+                lifecycle_id=binding.lifecycle_id,
+                run_id=run_id,
+                thread_id=binding.thread_id,
+                assistant_id=binding.assistant_id,
+                public_model=binding.public_model,
+                caller_run_id=binding.caller_run_id,
+                operation_id=binding.operation_id,
+                public_output=True,
+                response_scheduler=self._response_scheduler,
+                response_consumer=binding.response_consumer,
+            )
+            protocol_stream = binding.protocol_stream
+            if protocol_stream is None:
+                raise RuntimeError("the official Main Agent event stream is unavailable")
+            graph = execution.graph
+            execution.graph = _OfficialRunEventGraph(protocol_stream)
+            execution.cancel_run = lambda: self.cancel_official_run(
+                binding.thread_id,
+                run_id,
+            )
+            if binding.response_consumer:
+                self._response_scheduler = execution.response_scheduler
+            binding.execution_ready.set_result(execution)
+            return graph
+        except BaseException as exc:
+            if not binding.execution_ready.done():
+                binding.execution_ready.set_exception(exc)
             raise
 
     async def build_server_graph(
@@ -531,7 +700,11 @@ class LifecycleRunCoordinator:
         try:
             await session.stream.close()
         finally:
-            await session.client.aclose()
+            try:
+                if session.delete_thread_on_close:
+                    await session.client.threads.delete(thread_id)
+            finally:
+                await session.client.aclose()
         self._release_if_finished()
 
     def _new_binding(
@@ -604,6 +777,67 @@ class LifecycleRunCoordinator:
             await client.aclose()
             raise
 
+    async def _open_agent_run_session(
+        self,
+        binding: _AgentRunBinding,
+        *,
+        stateless: bool = False,
+    ) -> tuple[Any, Any]:
+        client = self._owner.new_agent_server_client()
+        try:
+            agent_id = str(binding.main_agent["id"])
+            assistant = await client.assistants.create(
+                LANGGRAPH_AGENT_GRAPH_ID,
+                config={"configurable": {"main_agent_id": agent_id}},
+                metadata={"graph_kind": "agent", "main_agent_id": agent_id},
+                assistant_id=main_agent_assistant_id(agent_id),
+                if_exists="do_nothing",
+                name=str(binding.main_agent["name"]),
+            )
+            binding.assistant_id = str(assistant["assistant_id"])
+            if stateless:
+                return client, None
+            thread = await client.threads.create(
+                metadata={
+                    "lifecycle_id": binding.lifecycle_id,
+                    "request_id": binding.request_id,
+                    "graph_kind": "agent",
+                    "main_agent_id": agent_id,
+                    "caller_run_id": binding.caller_run_id,
+                    "operation_id": binding.operation_id,
+                },
+            )
+            binding.thread_id = str(thread["thread_id"])
+            stream = await self._attach_agent_run_stream(binding, client)
+            return client, stream
+        except BaseException:
+            await client.aclose()
+            raise
+
+    async def _attach_agent_run_stream(
+        self,
+        binding: _AgentRunBinding,
+        client: Any,
+        *,
+        delete_thread_on_close: bool = False,
+    ) -> Any:
+        stream = client.threads.stream(
+            binding.thread_id,
+            assistant_id=binding.assistant_id,
+        )
+        await stream.__aenter__()
+        binding.protocol_stream = _OfficialRunEventStream(
+            stream.events,
+            self,
+            binding.thread_id,
+        )
+        self._sessions[binding.thread_id] = _OfficialSession(
+            client,
+            stream,
+            delete_thread_on_close=delete_thread_on_close,
+        )
+        return stream
+
     async def _start_bound_run(self, binding: _RunBinding, client: Any) -> Mapping[str, Any]:
         configurable = {
             "workflow_id": str(binding.workflow["id"]),
@@ -639,6 +873,54 @@ class LifecycleRunCoordinator:
             durability=str(binding.workflow["durability"]),
         )
 
+    async def _start_bound_agent_run(
+        self,
+        binding: _AgentRunBinding,
+        client: Any,
+    ) -> Mapping[str, Any]:
+        agent_id = str(binding.main_agent["id"])
+        configurable = {
+            "main_agent_id": agent_id,
+            "request_id": binding.request_id,
+            "lifecycle_id": binding.lifecycle_id,
+            "caller_run_id": binding.caller_run_id,
+            "operation_id": binding.operation_id,
+        }
+        return await client.runs.create(
+            (
+                None
+                if binding.main_agent.get("checkpoint_mode") == "disabled"
+                else binding.thread_id
+            ),
+            binding.assistant_id,
+            input={"messages": deepcopy(binding.messages)},
+            config={
+                **self._owner.run_config(),
+                "configurable": configurable,
+            },
+            context={
+                "request_id": binding.request_id,
+                "lifecycle_id": binding.lifecycle_id,
+                "caller_run_id": binding.caller_run_id,
+                "operation_id": binding.operation_id,
+            },
+            metadata={
+                "lifecycle_id": binding.lifecycle_id,
+                "request_id": binding.request_id,
+                "graph_kind": "agent",
+                "main_agent_id": agent_id,
+                "main_agent_name": str(binding.main_agent["name"]),
+                "caller_run_id": binding.caller_run_id,
+                "operation_id": binding.operation_id,
+            },
+            durability=str(binding.main_agent["durability"]),
+            on_completion=(
+                "keep"
+                if binding.main_agent.get("checkpoint_mode") == "disabled"
+                else None
+            ),
+        )
+
     @staticmethod
     def _bind_official_run_id(
         binding: _RunBinding,
@@ -652,7 +934,34 @@ class LifecycleRunCoordinator:
         binding.run_id_ready.set_result(run_id)
 
     @staticmethod
+    def _agent_run_result_ids(
+        result: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        run_id = result.get("run_id")
+        thread_id = result.get("thread_id")
+        if not isinstance(run_id, str) or not run_id:
+            raise RuntimeError("the official Main Agent Run did not return run_id")
+        if not isinstance(thread_id, str) or not thread_id:
+            raise RuntimeError("the official Main Agent Run did not return thread_id")
+        return run_id, thread_id
+
+    @staticmethod
+    def _bind_agent_run_id(
+        binding: _AgentRunBinding,
+        run_id: str,
+    ) -> None:
+        binding.run_id = run_id
+        assert binding.run_id_ready is not None
+        binding.run_id_ready.set_result(run_id)
+
+    @staticmethod
     def _cancel_binding_futures(binding: _RunBinding) -> None:
+        for future in (binding.run_id_ready, binding.execution_ready):
+            if future is not None and not future.done():
+                future.cancel()
+
+    @staticmethod
+    def _cancel_agent_binding_futures(binding: _AgentRunBinding) -> None:
         for future in (binding.run_id_ready, binding.execution_ready):
             if future is not None and not future.done():
                 future.cancel()
@@ -883,6 +1192,7 @@ class RequestSnapshotRuntime:
 
         return RequestRuntimeSnapshot(
             _workflows=workflows,
+            _agents=configs,
             _runtime_factory=runtime_factory,
         )
 

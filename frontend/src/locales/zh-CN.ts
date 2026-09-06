@@ -1622,6 +1622,16 @@ export const zhCN = {
     },
     mainAgent: {
       title: 'Main Agent 装配',
+      runtimeTitle: 'Run 装配',
+      fields: {
+        isModelEntry: '作为模型入口',
+        durability: '持久化时机',
+        onDisconnect: '客户端断开',
+        checkpointMode: 'Thread checkpoint',
+      },
+      durability: { sync: '同步写入', async: '异步写入', exit: '结束时写入' },
+      onDisconnect: { cancel: '取消 Lifecycle', continue: '后台继续' },
+      checkpointMode: { enabled: '启用', disabled: '无状态 Run' },
       capabilitiesTitle: '能力选择板',
       referencesTitle: 'Subagent 引用',
       addReference: '添加 Subagent',

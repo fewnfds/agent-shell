@@ -22,6 +22,10 @@ def test_main_agent_and_subagent_copy_create_server_ids_and_preserve_sources(
         "/agent-shell/api/main-agents",
         json={
             "name": "Copy source Main Agent",
+            "is_model_entry": True,
+            "durability": "sync",
+            "on_disconnect": "continue",
+            "checkpoint_mode": "disabled",
             "capability_refs": references(required, REQUIRED_TYPES),
             "subagents": [{"subagent_id": subagent["id"]}],
         },
@@ -43,6 +47,10 @@ def test_main_agent_and_subagent_copy_create_server_ids_and_preserve_sources(
     assert UUID(main_agent_copy["id"]) and main_agent_copy["id"] != main_agent["id"]
     assert UUID(subagent_copy["id"]) and subagent_copy["id"] != subagent["id"]
     assert main_agent_copy["name"] == "Copied Main Agent"
+    assert main_agent_copy["is_model_entry"] is True
+    assert main_agent_copy["durability"] == "sync"
+    assert main_agent_copy["on_disconnect"] == "continue"
+    assert main_agent_copy["checkpoint_mode"] == "disabled"
     assert subagent_copy["component_name"] == "Copied Subagent"
     assert subagent_copy["name"] == subagent["name"]
     assert main_agent_copy["capability_refs"] == main_agent["capability_refs"]

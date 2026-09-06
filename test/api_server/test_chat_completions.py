@@ -170,7 +170,7 @@ def test_models_and_chat_require_published_model_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
+        main_agent = create_main_agent(client, is_model_entry=True)
         workflow = create_workflow(
             client,
             name="Published Workflow",
@@ -225,17 +225,17 @@ def test_models_and_chat_require_published_model_entry(
     assert models.status_code == 200
     assert [item["id"] for item in models.json()["data"]] == [
         workflow["name"],
+        main_agent["name"],
     ]
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
     assert message["content"] == "runtime reply"
-    for response in (
-        another_reply,
-        disabled_reply,
-        main_agent_name_reply,
-        main_agent_id_reply,
-    ):
+    assert main_agent_name_reply.status_code == 200, main_agent_name_reply.text
+    assert main_agent_name_reply.json()["choices"][0]["message"]["content"] == (
+        "runtime reply"
+    )
+    for response in (another_reply, disabled_reply, main_agent_id_reply):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "model_not_found"
 

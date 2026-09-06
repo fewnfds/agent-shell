@@ -16,8 +16,8 @@ from agent_shell.contracts import (
 )
 from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
-from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.context import AgentRuntimeContext, WorkflowRuntimeContext
+from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
 from agent_shell.command_packages import CommandPackageRuntime
 from agent_shell.event_output_packages import (
@@ -70,6 +70,22 @@ from langgraph.prebuilt import ToolCallTransformer
 from langgraph.store.base import BaseStore
 
 
+def _execution_stream_transformers(graph: Any) -> tuple[Any, ...]:
+    """Add Shell projections without duplicating graph-owned transformers."""
+
+    configured = tuple(getattr(graph, "stream_transformers", ()) or ())
+    has_tool_calls = any(
+        transformer is ToolCallTransformer
+        or getattr(transformer, "__name__", "") == "ToolCallTransformer"
+        for transformer in configured
+    )
+    return (
+        (RawCustomEventTransformer,)
+        if has_tool_calls
+        else (RawCustomEventTransformer, ToolCallTransformer)
+    )
+
+
 def _workflow_construction_dependencies() -> tuple[Any, Any, Any, Any]:
     from agent_shell.command import CommandBlock
     from agent_shell.workflow.catalog import AgentNodeConfig, CommandNodeConfig
@@ -116,8 +132,8 @@ class RunExecution:
     tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
     command_runtime: CommandPackageRuntime | None = None
     event_output_runtimes: tuple[EventOutputPackageRuntime, ...] = ()
-    identity: WorkflowRunIdentity | None = None
-    context: WorkflowRuntimeContext | None = None
+    identity: AgentRunIdentity | WorkflowRunIdentity | None = None
+    context: AgentRuntimeContext | WorkflowRuntimeContext | None = None
     run_config: dict[str, Any] | None = None
     runtime_diagnostics: RuntimeDiagnostics | None = None
     request_id: str = ""
@@ -140,7 +156,7 @@ class RunExecution:
         if callable(register_origin):
             register_origin(
                 self.identity.run_id,
-                self.identity.workflow_id,
+                self.identity.subject_id,
             )
 
     @property
@@ -164,9 +180,9 @@ class RunExecution:
             lifecycle_id=identity.lifecycle_id,
             run_id=identity.run_id,
             thread_id=identity.thread_id,
-            subject_kind="workflow",
-            subject_id=identity.workflow_id,
-            subject_name=identity.workflow_name,
+            subject_kind=identity.graph_kind,
+            subject_id=identity.subject_id,
+            subject_name=identity.subject_name,
         )
 
     async def cancel(self) -> None:
@@ -257,7 +273,7 @@ class RunExecution:
                 return scheduler.origin_run_id, scheduler.origin_workflow_id
             return (
                 self.identity.run_id,
-                self.identity.workflow_id,
+                self.identity.subject_id,
             )
 
         def response_accepting() -> bool:
@@ -434,10 +450,7 @@ class RunExecution:
                 stream_kwargs: dict[str, Any] = {
                     "config": config,
                     "version": "v3",
-                    "transformers": (
-                        RawCustomEventTransformer,
-                        ToolCallTransformer,
-                    ),
+                    "transformers": _execution_stream_transformers(self.graph),
                 }
                 if self.context is not None:
                     stream_kwargs["context"] = self.context
@@ -837,6 +850,44 @@ class AgentRuntime:
             await self._builder.close_failed_build()
             raise
 
+    def resolve_main_agent(self, main_agent_id: str) -> StaticAssembly:
+        """Resolve one Main Agent without opening execution-only resources."""
+
+        return self._builder.resolve(main_agent_id)
+
+    async def build_main_agent_graph(
+        self,
+        main_agent_id: str,
+        *,
+        lifecycle_id: str,
+        request_id: str = "",
+    ) -> BuiltAgent:
+        """Build a Main Agent as an Agent Server root graph."""
+
+        assembly = await self._builder.aresolve(main_agent_id)
+        mapped_directories = await self._resolved_mapped_directory_paths_by_filesystem(
+            lifecycle_id,
+            assembly,
+        )
+        mcp_runtime = await self._builder.discover_mcp(
+            tuple(
+                [*assembly.mcp_references]
+                + [
+                    reference
+                    for subagent in assembly.subagent_nodes.values()
+                    for reference in subagent.mcp_references
+                ]
+            )
+        )
+        self._builder.bind_mcp_runtime(mcp_runtime)
+        return await self.build_resolved_agent(
+            assembly,
+            [],
+            request_id=request_id,
+            mapped_directory_paths_by_filesystem=mapped_directories,
+            context_schema=AgentRuntimeContext,
+        )
+
     def _resolved_command_mcp_references(
         self,
         command_id: str,
@@ -1022,6 +1073,124 @@ class AgentRuntime:
             identity=identity,
             context=context,
             run_config=run_config,
+            runtime_diagnostics=self._runtime_diagnostics,
+            request_id=request_id,
+            public_model=public_model,
+            public_output=public_output,
+        )
+
+    async def start_main_agent(
+        self,
+        main_agent_id: str,
+        raw_messages: object,
+        *,
+        request_id: str,
+        lifecycle_id: str,
+        run_id: str,
+        thread_id: str,
+        assistant_id: str,
+        public_model: str,
+        caller_run_id: str = "",
+        operation_id: str = "",
+        public_output: bool = True,
+        response_scheduler: LifecycleResponseScheduler | None = None,
+        response_consumer: bool = True,
+    ) -> RunExecution:
+        """Materialize one Main Agent root Run around Server-owned execution."""
+
+        messages = validate_client_messages(raw_messages)
+        built: BuiltAgent | None = None
+        output_runtime: EventOutputPackageRuntime | None = None
+        try:
+            built = await self.build_main_agent_graph(
+                main_agent_id,
+                lifecycle_id=lifecycle_id,
+                request_id=request_id,
+            )
+            output_runtime = EventOutputPackageRuntime(
+                "agent",
+                request_id=request_id,
+                packages_dir=self._python_packages_dir,
+                runtime_root=self._runtime_dir,
+            )
+
+            def materialize_output() -> tuple[Any, Any]:
+                assert built is not None
+                assert output_runtime is not None
+                return (
+                    output_runtime.output_for(
+                        built.agent_id,
+                        built.event_output_id,
+                        built.event_output_reference,
+                    ),
+                    output_runtime.segment_end_for(
+                        built.agent_id,
+                        built.event_output_id,
+                        built.event_output_reference,
+                    ),
+                )
+
+            output, segment_end = await asyncio.to_thread(materialize_output)
+        except BaseException:
+            if built is not None:
+                if built.tool_runtime is not None:
+                    await built.tool_runtime.close()
+                await built.middleware_runtime.close()
+            if output_runtime is not None:
+                await output_runtime.close()
+            raise
+
+        identity = AgentRunIdentity(
+            request_id=request_id,
+            lifecycle_id=lifecycle_id,
+            run_id=run_id,
+            main_agent_id=built.agent_id,
+            main_agent_name=built.agent_name,
+            thread_id=thread_id,
+            assistant_id=assistant_id,
+            caller_run_id=caller_run_id,
+            operation_id=operation_id,
+        )
+        scheduler = response_scheduler or LifecycleResponseScheduler(
+            ResponseStreamPolicy(),
+            lifecycle_id=lifecycle_id,
+            origin_run_id=run_id,
+            origin_workflow_id=built.agent_id,
+        )
+        return RunExecution(
+            graph=built.graph,
+            input_state={"messages": messages},
+            media_response=MainAgentMediaResponse(self._files, request_id),
+            response_scheduler=scheduler,
+            origin_resolver=RunEventOriginResolver(
+                identity,
+                main_agent_names=(built.agent_name,),
+                root_agent_profile_id=built.agent_id,
+                root_subagent_profile_ids=built.subagent_profile_ids,
+            ),
+            event_output_projector=OutputProjector(
+                output,
+                segment_end=segment_end,
+            ),
+            response_consumer=response_consumer,
+            middleware_runtimes=(built.middleware_runtime,),
+            tool_runtimes=(
+                (built.tool_runtime,) if built.tool_runtime is not None else ()
+            ),
+            event_output_runtimes=(output_runtime,),
+            identity=identity,
+            context=AgentRuntimeContext.for_run(identity),
+            run_config={
+                **self._run_config,
+                "run_name": f"agent:{built.agent_name}",
+                "tags": ["agent-shell", "agent"],
+                "metadata": {
+                    "request_id": request_id,
+                    "main_agent_id": built.agent_id,
+                    "main_agent_name": built.agent_name,
+                    "messages_sha": client_messages_sha(messages),
+                },
+            },
             runtime_diagnostics=self._runtime_diagnostics,
             request_id=request_id,
             public_model=public_model,

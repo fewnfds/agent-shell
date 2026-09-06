@@ -706,6 +706,10 @@ export interface ToolReference {
 
 export interface MainAgentPayload {
   name: string
+  is_model_entry: boolean
+  durability: 'sync' | 'async' | 'exit'
+  on_disconnect: 'cancel' | 'continue'
+  checkpoint_mode: 'enabled' | 'disabled'
   capability_refs: CapabilityReference[]
   tool_refs: ToolReference[]
   middleware_refs: MiddlewareReference[]

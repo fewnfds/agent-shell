@@ -141,6 +141,51 @@ def test_workflow_runtime_options_are_managed(
         assert updated.json()["on_disconnect"] == "continue"
 
 
+def test_agent_and_workflow_model_entries_reject_the_same_public_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_root = tmp_path / "agent-save"
+    first_root.mkdir()
+    with make_client(first_root, monkeypatch) as client:
+        referenced_agent = create_main_agent(client)
+        workflow = create_workflow(
+            client,
+            name=referenced_agent["name"],
+            is_model_entry=True,
+        )
+        save_linear_workflow_graph(client, workflow, referenced_agent)
+
+        agent_payload = {
+            key: value for key, value in referenced_agent.items() if key != "id"
+        }
+        agent_payload["is_model_entry"] = True
+        conflicting_agent = client.put(
+            f"/agent-shell/api/main-agents/{referenced_agent['id']}",
+            json=agent_payload,
+        )
+        assert conflicting_agent.status_code == 409
+        assert conflicting_agent.json()["detail"]["code"] == "model_name_conflict"
+
+    second_root = tmp_path / "workflow-publish"
+    second_root.mkdir()
+    with make_client(second_root, monkeypatch) as client:
+        standalone_agent = create_main_agent(client, is_model_entry=True)
+        draft = create_workflow(
+            client,
+            name=standalone_agent["name"],
+            is_model_entry=True,
+        )
+        graph_source = create_workflow(client, name="Graph source")
+        document = save_linear_workflow_graph(client, graph_source, standalone_agent)
+        conflicting_publish = client.put(
+            f"/agent-shell/api/workflows/{draft['id']}/graph",
+            json=document,
+        )
+
+    assert conflicting_publish.status_code == 409
+    assert conflicting_publish.json()["detail"]["code"] == "model_name_conflict"
+
+
 def test_workflow_copy_preserves_graph_layout_as_a_draft(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -32,7 +32,13 @@ describe('agent authoring pages', () => {
     expect(api.getMainAgent).toHaveBeenCalledWith(id)
     expect(api.updateMainAgent).toHaveBeenCalledWith(
       id,
-      expect.objectContaining({ name: 'Shared name' }),
+      expect.objectContaining({
+        name: 'Shared name',
+        is_model_entry: true,
+        durability: 'sync',
+        on_disconnect: 'continue',
+        checkpoint_mode: 'disabled',
+      }),
     )
     expect(api.createMainAgent).not.toHaveBeenCalled()
     wrapper.unmount()

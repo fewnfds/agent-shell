@@ -4,17 +4,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypedDict
 
-from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 
 
 class EventOutputOriginDict(TypedDict):
     lifecycle_id: str
+    graph_kind: Literal["agent", "workflow"] | Literal[""]
     run_id: str
     thread_id: str
     assistant_id: str
     caller_run_id: str
     operation_id: str
     workflow_id: str
+    main_agent_id: str
     workflow_node_id: str
     node_invocation_id: str
     agent_profile_id: str
@@ -92,12 +94,14 @@ class RunEventOriginResolver:
 
     def __init__(
         self,
-        identity: WorkflowRunIdentity | None,
+        identity: AgentRunIdentity | WorkflowRunIdentity | None,
         *,
         workflow_sources: Mapping[str, WorkflowNodeSource] | None = None,
         main_agent_names: Sequence[str] = (),
         workflow_agent_names: Mapping[str, str] | None = None,
         workflow_subagent_profile_ids: Mapping[str, Mapping[str, str]] | None = None,
+        root_agent_profile_id: str = "",
+        root_subagent_profile_ids: Mapping[str, str] | None = None,
     ) -> None:
         self._identity = identity
         self._sources = dict(workflow_sources or {})
@@ -112,6 +116,11 @@ class RunEventOriginResolver:
                 for name, profile_id in profiles.items()
             }
             for node_id, profiles in (workflow_subagent_profile_ids or {}).items()
+        }
+        self._root_agent_profile_id = root_agent_profile_id
+        self._root_subagent_profile_ids = {
+            str(name): str(profile_id)
+            for name, profile_id in (root_subagent_profile_ids or {}).items()
         }
         self._active_subagents: dict[str, str] = {}
 
@@ -152,11 +161,12 @@ class RunEventOriginResolver:
         agent_profile_id = (
             source.agent_profile_id
             if source is not None
-            else ""
+            else self._root_agent_profile_id
         )
-        profiles = self._workflow_subagent_profile_ids.get(
-            workflow_node_id,
-            {},
+        profiles = (
+            self._workflow_subagent_profile_ids.get(workflow_node_id, {})
+            if workflow_node_id
+            else self._root_subagent_profile_ids
         )
         subagent_profile_id = (
             profiles.get(agent_name, "")
@@ -169,7 +179,7 @@ class RunEventOriginResolver:
             )
         elif source is not None:
             source_type = source.source_type
-        elif agent_profile_id and agent_name:
+        elif agent_profile_id:
             source_type = "agent"
         else:
             source_type = "non_agent"
@@ -238,12 +248,22 @@ class RunEventOriginResolver:
         identity = self._identity
         return {
             "lifecycle_id": identity.lifecycle_id if identity is not None else "",
+            "graph_kind": identity.graph_kind if identity is not None else "",
             "run_id": identity.run_id if identity is not None else "",
             "thread_id": identity.thread_id if identity is not None else "",
             "assistant_id": identity.assistant_id if identity is not None else "",
             "caller_run_id": identity.caller_run_id if identity is not None else "",
             "operation_id": identity.operation_id if identity is not None else "",
-            "workflow_id": identity.workflow_id if identity is not None else "",
+            "workflow_id": (
+                identity.workflow_id
+                if isinstance(identity, WorkflowRunIdentity)
+                else ""
+            ),
+            "main_agent_id": (
+                identity.main_agent_id
+                if isinstance(identity, AgentRunIdentity)
+                else agent_profile_id
+            ),
             "workflow_node_id": workflow_node_id,
             "node_invocation_id": node_invocation_id,
             "agent_profile_id": agent_profile_id,

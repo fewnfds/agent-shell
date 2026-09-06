@@ -27,6 +27,7 @@ from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.settings import Settings, bearer_token_is_valid
 from agent_shell.storage.api_server import ApiServerStore
+from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.workflows import WorkflowStore
 
 
@@ -493,6 +494,7 @@ async def _completion_result(
 def build_api_server_router(
     store: ApiServerStore,
     workflows: WorkflowStore,
+    agents: AgentConfigStore,
     runtime: RequestSnapshotRuntime,
     settings: Settings,
     events: ApiServerEventHub,
@@ -609,7 +611,14 @@ def build_api_server_router(
             for item in workflows.list_items(enabled_only=True)
             if item["is_model_entry"]
         ]
-        return JSONResponse(content={"object": "list", "data": workflow_models})
+        agent_models = [
+            _model_object(item["name"])
+            for item in agents.list_items("main_agents")
+            if item["is_model_entry"]
+        ]
+        return JSONResponse(
+            content={"object": "list", "data": [*workflow_models, *agent_models]}
+        )
 
     @compat_router.post(
         "/chat/completions",
@@ -669,14 +678,19 @@ def build_api_server_router(
             return _openai_error(
                 500,
                 "configuration_snapshot_failed",
-                "The current Workflow configuration could not be captured.",
+                "The current Graph configuration could not be captured.",
             )
         workflow = request_snapshot.workflow_by_name(model)
-        if (
-            workflow is None
-            or not workflow["enabled"]
-            or not workflow["is_model_entry"]
-        ):
+        main_agent = request_snapshot.main_agent_by_name(model)
+        workflow_entry = (
+            workflow is not None
+            and workflow["enabled"]
+            and workflow["is_model_entry"]
+        )
+        agent_entry = (
+            main_agent is not None and main_agent["is_model_entry"]
+        )
+        if not workflow_entry and not agent_entry:
             return _openai_error(
                 404,
                 "model_not_found",
@@ -687,12 +701,22 @@ def build_api_server_router(
             lifecycle_coordinator = runtime.create_lifecycle_coordinator(
                 request_snapshot
             )
-            execution = await lifecycle_coordinator.start_workflow(
-                workflow,
-                messages,
-                request_id=getattr(request.state, "request_id", ""),
-                public_model=model,
-            )
+            if agent_entry:
+                execution = await lifecycle_coordinator.start_agent(
+                    main_agent,
+                    messages,
+                    request_id=getattr(request.state, "request_id", ""),
+                    public_model=model,
+                )
+                entry = main_agent
+            else:
+                execution = await lifecycle_coordinator.start_workflow(
+                    workflow,
+                    messages,
+                    request_id=getattr(request.state, "request_id", ""),
+                    public_model=model,
+                )
+                entry = workflow
         except AgentRuntimeError as exc:
             issue = (
                 exc.validation_report.issues[0]
@@ -717,7 +741,7 @@ def build_api_server_router(
                     execution,
                     model,
                     detached_tasks=detached_tasks,
-                    on_disconnect=workflow["on_disconnect"],
+                    on_disconnect=entry["on_disconnect"],
                     cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
                 ),
                 media_type="text/event-stream",
@@ -730,7 +754,7 @@ def build_api_server_router(
             content, _usage = await _completion_result(
                 execution,
                 detached_tasks=detached_tasks,
-                on_disconnect=workflow["on_disconnect"],
+                on_disconnect=entry["on_disconnect"],
                 cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
             )
         except AgentRuntimeError as exc:

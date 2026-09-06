@@ -13,7 +13,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - 编辑会跳转到对应页面，并以记录 UUID 确定更新目标；
 - 复制会创建新 UUID，副本名称经过当前校验；Python private package 与 Skill package 按配置名称目录一起复制，manifest owner 改为新 UUID；
 - 配置 UUID 是全部 Repository 间全局唯一的小写 UUID4；Component、Main Agent、Subagent、Workflow 之间也不能复用同一 UUID；
-- Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义，并在 Workflow 同时启用且选择作为模型入口时作为公开 model ID；
+- Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义。Main Agent选择模型入口、或 Workflow同时启用并选择模型入口时，其 name作为公开 model ID；两类公开 model name不能冲突；
 - 详情显示保存的完整 payload，包括当前版本无法识别或无法运行的记录；
 - Component、Main Agent、Subagent 和 Workflow 都可以独立删除；删除目标只清理该记录及其自有 Python/Skill package，不会自动修改其他配置；
 - 引用方保留已删除目标的 UUID，Repository 校验会产生 `configuration.reference_not_found`；UUID 存在但 target type 错误时产生 `configuration.reference_type_mismatch`；

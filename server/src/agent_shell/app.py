@@ -615,6 +615,7 @@ def create_app(
         build_agent_config_router(
             config_store,
             configuration_validation,
+            workflow_store,
         )
     )
     app.include_router(
@@ -622,6 +623,7 @@ def create_app(
             workflow_store,
             block_store,
             configuration_validation,
+            config_store,
         )
     )
     app.include_router(
@@ -657,6 +659,7 @@ def create_app(
         build_api_server_router(
             api_server_store,
             workflow_store,
+            config_store,
             agent_runtime,
             settings,
             api_server_events,

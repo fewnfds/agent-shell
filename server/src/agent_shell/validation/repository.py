@@ -20,6 +20,7 @@ from agent_shell.validation.references import (
 )
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.workflows import validate_stored_workflow
+from agent_shell.configuration.identity import name_collision_key
 
 
 def _dependency_issues(config: dict) -> list[ValidationIssue]:
@@ -182,6 +183,34 @@ class RepositoryValidationService:
                 )
                 for issue in workflow_issues
             )
+        agent_model_names = {
+            name_collision_key(str(agent.get("name", "")))
+            for agent in config.get("main_agents", [])
+            if agent.get("is_model_entry")
+        }
+        for workflow in config.get("workflows", []):
+            if (
+                workflow.get("enabled")
+                and workflow.get("is_model_entry")
+                and name_collision_key(str(workflow.get("name", "")))
+                in agent_model_names
+            ):
+                issues.append(
+                    ValidationIssue(
+                        code="model_name_conflict",
+                        scope="workflow",
+                        owner_id=str(workflow.get("id", "")),
+                        owner_name=str(workflow.get("name", "")),
+                        owner_type="workflow",
+                        path="name",
+                        message=(
+                            "An enabled Workflow and Main Agent expose the same "
+                            "public model name."
+                        ),
+                        message_key="errors.modelNameConflict",
+                        message_args={},
+                    )
+                )
         issues.extend(_dependency_issues(config))
         if self._model_resources is not None:
             available = {item["id"] for item in self._model_resources.list_connections()}

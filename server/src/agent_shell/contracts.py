@@ -818,6 +818,10 @@ class ToolReference(BaseModel):
 
 
 class MainAgentProfile(StrictBlock):
+    is_model_entry: bool = False
+    durability: Literal["sync", "async", "exit"] = "async"
+    on_disconnect: Literal["cancel", "continue"] = "cancel"
+    checkpoint_mode: Literal["enabled", "disabled"] = "enabled"
     capability_refs: list[CapabilityReference] = Field(default_factory=list)
     tool_refs: list[ToolReference] = Field(default_factory=list)
     middleware_refs: list[MiddlewareReference] = Field(default_factory=list)

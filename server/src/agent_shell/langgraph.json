@@ -3,7 +3,8 @@
     "."
   ],
   "graphs": {
-    "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph"
+    "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph",
+    "agent-shell-agent": "agent_shell.langgraph_dev:agent_graph"
   },
   "auth": {
     "path": "agent_shell.langgraph_dev:auth",

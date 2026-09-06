@@ -20,6 +20,10 @@ describe('agent profile adapters', () => {
 
     expect(mainAgentPayload(draft)).toEqual({
       name: 'Repeated display name',
+      is_model_entry: false,
+      durability: 'async',
+      on_disconnect: 'cancel',
+      checkpoint_mode: 'enabled',
       capability_refs: [{
         type: 'model',
         block_id: '00000000-0000-0000-0000-000000000001',

@@ -13,8 +13,16 @@ from langgraph_sdk import Auth
 from langgraph_sdk.runtime import ServerRuntime
 
 from agent_shell.app import create_app
-from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
-from agent_shell.runtime.request_snapshot import LANGGRAPH_WORKFLOW_GRAPH_ID
+from agent_shell.runtime.context import (
+    AgentRunContext,
+    AgentRuntimeContext,
+    WorkflowRunContext,
+    WorkflowRuntimeContext,
+)
+from agent_shell.runtime.request_snapshot import (
+    LANGGRAPH_AGENT_GRAPH_ID,
+    LANGGRAPH_WORKFLOW_GRAPH_ID,
+)
 from agent_shell.security import (
     SecurityFailure,
     authenticate_bearer_token,
@@ -24,6 +32,7 @@ from agent_shell.settings import Settings
 
 
 GRAPH_ID = LANGGRAPH_WORKFLOW_GRAPH_ID
+AGENT_GRAPH_ID = LANGGRAPH_AGENT_GRAPH_ID
 
 app: FastAPI | None = None
 _settings: Settings | None = None
@@ -141,6 +150,16 @@ def _factory_inputs(config: RunnableConfig) -> tuple[str, dict[str, Any]]:
     return workflow_id, dict(configurable)
 
 
+def _agent_factory_inputs(config: RunnableConfig) -> tuple[str, dict[str, Any]]:
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        raise ValueError("Main Agent Assistant configurable values are missing")
+    main_agent_id = configurable.get("main_agent_id")
+    if not isinstance(main_agent_id, str) or not main_agent_id:
+        raise ValueError("Main Agent Assistant main_agent_id is missing")
+    return main_agent_id, dict(configurable)
+
+
 def _execution_context(
     runtime: ServerRuntime,
     *,
@@ -175,6 +194,85 @@ def _execution_context(
             values.get("operation_id") or configured.get("operation_id") or ""
         ),
     )
+
+
+def _agent_execution_context(
+    runtime: ServerRuntime,
+    *,
+    main_agent_id: str,
+    configurable: Mapping[str, Any] | None = None,
+) -> AgentRuntimeContext:
+    values: Mapping[str, Any] = {}
+    if execution_runtime := runtime.execution_runtime:
+        raw = execution_runtime.context
+        if isinstance(raw, AgentRunContext):
+            values = {
+                "request_id": raw.request_id,
+                "lifecycle_id": raw.lifecycle_id,
+                "caller_run_id": raw.caller_run_id,
+                "operation_id": raw.operation_id,
+            }
+        elif isinstance(raw, Mapping):
+            values = raw
+        elif raw is not None:
+            raise ValueError("Main Agent Run context is invalid")
+    configured = configurable or {}
+    return AgentRuntimeContext(
+        request_id=str(values.get("request_id") or configured.get("request_id") or ""),
+        lifecycle_id=str(
+            values.get("lifecycle_id") or configured.get("lifecycle_id") or ""
+        ),
+        main_agent_id=main_agent_id,
+        caller_run_id=str(
+            values.get("caller_run_id") or configured.get("caller_run_id") or ""
+        ),
+        operation_id=str(
+            values.get("operation_id") or configured.get("operation_id") or ""
+        ),
+    )
+
+
+@asynccontextmanager
+async def agent_graph(
+    config: RunnableConfig,
+    runtime: ServerRuntime,
+) -> AsyncIterator[Any]:
+    """Build one Main Agent root graph for execution or introspection."""
+
+    application = _require_app()
+    main_agent_id, configurable = _agent_factory_inputs(config)
+    context = _agent_execution_context(
+        runtime,
+        main_agent_id=main_agent_id,
+        configurable=configurable,
+    )
+    coordinator = application.state.agent_runtime.active_lifecycle(
+        context.lifecycle_id
+    )
+    if coordinator is not None:
+        graph = await coordinator.build_server_agent_graph(
+            main_agent_id=main_agent_id,
+            store=runtime.store,
+            context=context,
+        )
+        yield graph
+        return
+    snapshot = await application.state.agent_runtime.capture()
+    main_agent = snapshot.main_agent_by_id(main_agent_id)
+    if main_agent is None:
+        raise ValueError("Main Agent is absent")
+    graph_runtime = snapshot.new_runtime(store=runtime.store)
+    built = await graph_runtime.build_main_agent_graph(
+        main_agent_id,
+        lifecycle_id=context.lifecycle_id or f"inspection-{main_agent_id}",
+        request_id=context.request_id,
+    )
+    try:
+        yield built.graph
+    finally:
+        if built.tool_runtime is not None:
+            await built.tool_runtime.close()
+        await built.middleware_runtime.close()
 
 
 @asynccontextmanager
@@ -239,4 +337,12 @@ async def workflow_graph(
         await execution.close_resources()
 
 
-__all__ = ["GRAPH_ID", "app", "auth", "configure_runtime", "workflow_graph"]
+__all__ = [
+    "AGENT_GRAPH_ID",
+    "GRAPH_ID",
+    "agent_graph",
+    "app",
+    "auth",
+    "configure_runtime",
+    "workflow_graph",
+]

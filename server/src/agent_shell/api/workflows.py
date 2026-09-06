@@ -8,12 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.configuration.identity import ConfigurationName
+from agent_shell.configuration.identity import name_collision_key
 from agent_shell.api.configuration_collections import (
     configuration_collection,
     configuration_collection_requested,
     matches_configuration_query,
 )
 from agent_shell.storage.blocks import BlockStore
+from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation import report_from_validation_error
 from agent_shell.validation.models import ValidationReport, validation_failure_detail
@@ -70,10 +72,13 @@ def _save(
     payload: dict,
     *,
     expected_repository_id: str,
+    agents: AgentConfigStore | None = None,
 ) -> dict:
     existing = store.get_item(item_id)
     validated = _validated(payload)
     validated["enabled"] = existing["enabled"] if existing is not None else False
+    if validated.get("is_model_entry") and validated["enabled"]:
+        _reject_agent_model_conflict(validated, agents)
     event_output_id = validated["workflow_event_output_id"]
     if (
         event_output_id is not None
@@ -114,6 +119,27 @@ def _save(
     return item
 
 
+def _reject_agent_model_conflict(
+    workflow: dict,
+    agents: AgentConfigStore | None,
+) -> None:
+    if agents is None or not workflow.get("is_model_entry"):
+        return
+    workflow_name = name_collision_key(str(workflow["name"]))
+    conflict = any(
+        agent.get("is_model_entry")
+        and name_collision_key(str(agent["name"])) == workflow_name
+        for agent in agents.list_items("main_agents")
+    )
+    if conflict:
+        raise management_error(
+            409,
+            code="model_name_conflict",
+            message_key="errors.modelNameConflict",
+            message="A model entry with this name already exists.",
+        )
+
+
 def _parse_graph(
     payload: object,
 ) -> tuple[ValidationReport, WorkflowGraphDocumentV1 | None]:
@@ -136,6 +162,7 @@ def build_workflow_router(
     store: WorkflowStore,
     blocks: BlockStore,
     configuration_validation: ConfigurationValidationService,
+    agents: AgentConfigStore | None = None,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -176,6 +203,7 @@ def build_workflow_router(
             store.new_id(),
             payload,
             expected_repository_id=mutation_repository_id,
+            agents=agents,
         )
 
     @router.post("/workflows/{item_id}/copy")
@@ -275,6 +303,7 @@ def build_workflow_router(
             item_id,
             payload,
             expected_repository_id=mutation_repository_id,
+            agents=agents,
         )
 
     @router.get("/workflows/{item_id}/graph")
@@ -317,6 +346,7 @@ def build_workflow_router(
                 status_code=422,
                 detail=validation_failure_detail(report),
             )
+        _reject_agent_model_conflict(workflow, agents)
         if not store.save_graph_and_enabled(
             item_id,
             document,

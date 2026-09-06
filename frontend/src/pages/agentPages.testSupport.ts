@@ -125,6 +125,10 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
   const mainAgent: MainAgentProfile = {
     id: '00000000-0000-0000-0000-000000000010',
     name: 'Shared name',
+    is_model_entry: true,
+    durability: 'sync',
+    on_disconnect: 'continue',
+    checkpoint_mode: 'disabled',
     capability_refs: [],
     tool_refs: [],
     middleware_refs: [],

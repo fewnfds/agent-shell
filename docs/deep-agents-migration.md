@@ -1,10 +1,10 @@
 # Deep Agents runtime 基线
 
-Agent Shell 使用锁定的 `deepagents==0.7.11` 和 `deepagents.create_deep_agent()` 构造 Main Agent。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 只在外层 canvas Agent Node 建立 invocation identity 和 parent/child State 输入输出边界，不实现委派调度或第二套 Agent loop。
+Agent Shell 使用锁定的 `deepagents==0.7.11` 和 `deepagents.create_deep_agent()` 构造 Main Agent。返回的 `CompiledStateGraph` 直接注册为 `agent-shell-agent` root graph，也可由 Workflow 的 canvas Agent Node 调用。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给 `SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 不实现委派调度或第二套 Agent loop。
 
 ## 责任边界
 
-Agent Shell 保留 Main Agent、组件、直接 Subagent 和 Provider secret 的完整装配能力，并由 `deepagents.create_deep_agent()` 构造 compiled graph。current Workflow 的 Agent Node 引用完整 Main Agent，由 parent Graph wrapper 通过公开 `ainvoke()` 显式建立 parent/child State 输入输出边界。
+Agent Shell 保留 Main Agent、组件、直接 Subagent 和 Provider secret 的完整装配能力，并由 `deepagents.create_deep_agent()` 构造 compiled graph。Main Agent root Run 直接使用自己的 AgentState、Thread 和 Run；current Workflow 的 Agent Node 引用完整 Main Agent时，由 parent Graph wrapper 通过公开 `ainvoke()` 显式建立 parent/child State 输入输出边界。
 
 Deep Agents/LangGraph 负责模型循环、工具执行、同步委派、summarization、tool-call repair、prompt caching、
 state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
@@ -13,7 +13,8 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 
 ## 装配
 
-- `enabled=true` 且 `is_model_entry=true` 的 Workflow name 是公开 model ID；Main Agent 引用保存在 Graph Agent Node config，不在 Workflow metadata 中；
+- `enabled=true` 且 `is_model_entry=true` 的 Workflow name，以及 `is_model_entry=true` 的 Main Agent name，均可成为公开 model ID；两类 entry 的规范化名称不得冲突；
+- Main Agent root-run 配置保存 `durability=sync|async|exit`、`on_disconnect=cancel|continue` 和 `checkpoint_mode=enabled|disabled`。durability 原样进入官方 Run API；checkpoint disabled 使用官方 Stateless Run（`thread_id=None`），不把 constructor 的 `checkpointer` 参数当作产品持久化开关；
 - Main Agent 必须有模型要求与 Agent Event Output；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
 - Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别继承或替换，不能关闭 required capability，Workflow 不保存 Filesystem ref；
@@ -56,7 +57,9 @@ Agent Filesystem 的 mapped directories 可接入 Deep Agents `FilesystemBackend
 如果未来要消除该限制，应按官方建议改用 `StateBackend`、`StoreBackend` 或 sandbox backend，并另立需求，不在本次 ctx 迁移中偷偷替换。
 `LocalShellBackend` 还提供直接宿主命令执行，没有 sandbox；`virtual_mode=True` 只约束文件工具的路径解析，不能限制命令访问服务账号可达的其他文件、进程、网络或系统资源。
 
-Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。client `messages[]` 冻结在 application-level LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 root State 或自动成为 Main Agent active messages。选择 Agent Additional Prompt（AAP）Custom Middleware 时，已装配的官方 `before_agent` Hook 为 Main Agent 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取 input；Main Agent 未选择 AAP 时 initial `messages` 保持空。synchronous Subagent 默认从 delegated private `state.messages` 整理 input，不自动混入 root request。
+Main Agent root Run 直接以官方 `input.messages` 更新 AgentState。AAP 的 private checkpoint marker 使每个已装配 AAP 只在同一 Main Agent Thread 的第一次执行时初始化消息；后续 Run延续现有 messages，不重复追加。固定虚拟文件也用 private marker 每个 Thread 只播种一次。synchronous Subagent 默认从 delegated private `state.messages` 整理 input，并拥有自己的 middleware state scope。
+
+Canvas Start/End 只是 LangGraph 官方 virtual `START/END`。Workflow入口的 client `messages[]` 冻结在 application-level LangGraph Store 的 Lifecycle namespace；不会由 Start 注入、进入 Workflow root State 或自动成为 embedded Main Agent active messages。选择 AAP 时，canvas Main Agent 的官方 `before_agent` Hook 用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取 input；未选择 AAP 时 initial `messages` 保持空。
 
 synchronous Subagent 是 Agent 内部的官方 `SubAgentMiddleware` capability，不与 outer Workflow 竞争 scheduling responsibility。后续 AsyncSubAgent 使用 `create_deep_agent(subagents=[AsyncSubAgent(...)])` 的官方 assembly entry，并单独处理 `graph_id`、Agent Protocol 地址、认证和官方异步任务 State。
 

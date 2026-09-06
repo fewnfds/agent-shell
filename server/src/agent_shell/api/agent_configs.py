@@ -13,6 +13,8 @@ from agent_shell.api.configuration_collections import (
     matches_configuration_query,
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
+from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.configuration.identity import name_collision_key
 from agent_shell.validation.models import ValidationReport, validation_failure_detail
 from agent_shell.validation.service import ConfigurationValidationService
 
@@ -84,8 +86,26 @@ def _copy_component_name(payload: dict) -> str:
 def build_agent_config_router(
     config_store: AgentConfigStore,
     validation: ConfigurationValidationService,
+    workflows: WorkflowStore | None = None,
 ) -> APIRouter:
     router = management_api_router()
+
+    def reject_model_conflict(candidate: dict) -> None:
+        if workflows is None or not candidate.get("is_model_entry"):
+            return
+        candidate_name = name_collision_key(str(candidate["name"]))
+        conflict = any(
+            workflow.get("is_model_entry")
+            and name_collision_key(str(workflow["name"])) == candidate_name
+            for workflow in workflows.list_items(enabled_only=True)
+        )
+        if conflict:
+            raise management_error(
+                409,
+                code="model_name_conflict",
+                message_key="errors.modelNameConflict",
+                message="A model entry with this name already exists.",
+            )
 
     @router.get("/main-agents")
     def list_main_agents(
@@ -161,6 +181,7 @@ def build_agent_config_router(
         )
         _raise_if_invalid(report)
         assert validated is not None
+        reject_model_conflict(validated)
         item_id = config_store.new_id()
         try:
             config_store.save_item(
@@ -200,6 +221,7 @@ def build_agent_config_router(
         )
         _raise_if_invalid(report)
         assert validated is not None
+        reject_model_conflict(validated)
         copy_id = config_store.new_id()
         try:
             config_store.save_item(
@@ -234,6 +256,7 @@ def build_agent_config_router(
         )
         _raise_if_invalid(report)
         assert validated is not None
+        reject_model_conflict(validated)
         try:
             config_store.save_item(
                 MAIN_AGENT_TABLE,

@@ -8,7 +8,7 @@ from agent_shell.runtime.workflow_run_commands import (
     WorkflowRunCommands,
     WorkflowRunRuntime,
 )
-from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 from agent_shell.runtime.mcp import McpCommands
 
 
@@ -20,6 +20,35 @@ class WorkflowRunContext:
     lifecycle_id: str = ""
     caller_run_id: str = ""
     operation_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRunContext:
+    """JSON-compatible context accepted by the Main Agent root graph."""
+
+    request_id: str = ""
+    lifecycle_id: str = ""
+    caller_run_id: str = ""
+    operation_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRuntimeContext(AgentRunContext):
+    """Execution dependencies visible to Main Agent middleware and tools."""
+
+    run_id: str = ""
+    main_agent_id: str = ""
+
+    @classmethod
+    def for_run(cls, identity: AgentRunIdentity) -> "AgentRuntimeContext":
+        return cls(
+            request_id=identity.request_id,
+            lifecycle_id=identity.lifecycle_id,
+            caller_run_id=identity.caller_run_id,
+            operation_id=identity.operation_id,
+            run_id=identity.run_id,
+            main_agent_id=identity.main_agent_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,4 +179,9 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             mcp=None,
         )
 
-__all__ = ["WorkflowRunContext", "WorkflowRuntimeContext"]
+__all__ = [
+    "AgentRunContext",
+    "AgentRuntimeContext",
+    "WorkflowRunContext",
+    "WorkflowRuntimeContext",
+]

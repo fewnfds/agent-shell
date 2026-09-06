@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from typing import Any
+from typing import Annotated, Any
+from typing_extensions import NotRequired, TypedDict
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import PrivateStateAttr
 from langchain_core.messages.utils import convert_to_messages, convert_to_openai_messages
 from langgraph.runtime import Runtime
 from langgraph.types import Overwrite
@@ -109,16 +111,23 @@ async def _initial_prompt_messages(
         )
 
     context = runtime.context
-    if runtime.store is None or not context.lifecycle_id:
-        raise RuntimeError("workflow lifecycle input is unavailable")
-    item = await runtime.store.aget(
-        lifecycle_input_namespace(context.lifecycle_id),
-        LIFECYCLE_INPUT_KEY,
-    )
-    value = getattr(item, "value", None)
-    request_messages = value.get("messages") if isinstance(value, dict) else None
-    if not isinstance(request_messages, list):
-        raise RuntimeError("workflow lifecycle input is unavailable")
+    if getattr(context, "workflow_node_id", ""):
+        # Transitional embedded-Workflow path. Main Agent root graphs receive
+        # their request messages directly through AgentState.
+        if runtime.store is None or not context.lifecycle_id:
+            raise RuntimeError("workflow lifecycle input is unavailable")
+        item = await runtime.store.aget(
+            lifecycle_input_namespace(context.lifecycle_id),
+            LIFECYCLE_INPUT_KEY,
+        )
+        value = getattr(item, "value", None)
+        request_messages = value.get("messages") if isinstance(value, dict) else None
+        if not isinstance(request_messages, list):
+            raise RuntimeError("workflow lifecycle input is unavailable")
+    else:
+        request_messages = mutable_request_messages(
+            convert_to_openai_messages(state.get("messages", []))
+        )
     return await build_agent_additional_prompt_messages(
         state,
         runtime,
@@ -133,6 +142,19 @@ class AgentAdditionalPromptMiddleware(AgentMiddleware):
         self._backend = backend
         self._scope = scope
         self._name = f"AgentAdditionalPromptMiddleware_{package_id}"
+        self._state_key = (
+            "_agent_shell_aap_"
+            + package_id.replace("-", "_")
+            + "_initialized"
+        )
+        self.state_schema = TypedDict(
+            f"AgentAdditionalPromptState_{package_id.replace('-', '_')}",
+            {
+                self._state_key: NotRequired[
+                    Annotated[bool, PrivateStateAttr]
+                ]
+            },
+        )
 
     @property
     def name(self) -> str:
@@ -142,14 +164,19 @@ class AgentAdditionalPromptMiddleware(AgentMiddleware):
         self,
         state: dict[str, Any],
         runtime: Runtime[Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
+        if state.get(self._state_key):
+            return None
         messages = await _initial_prompt_messages(
             state,
             runtime,
             scope=self._scope,
             backend=self._backend,
         )
-        return {"messages": Overwrite(convert_to_messages(messages))}
+        return {
+            "messages": Overwrite(convert_to_messages(messages)),
+            self._state_key: True,
+        }
 
 
 def create_middleware(

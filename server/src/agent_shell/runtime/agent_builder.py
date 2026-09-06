@@ -61,7 +61,7 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.model_request_settings import (
     make_model_request_settings_middleware,
 )
-from agent_shell.runtime.state import AgentShellState
+from agent_shell.runtime.state import AgentInitialFilesMiddleware, AgentShellState
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.validation.assembly import StaticAssembly
@@ -578,6 +578,7 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
+        context_schema: type = WorkflowRuntimeContext,
     ) -> BuiltAgent:
         # Validate the immutable request snapshot before any selected user module
         # can be imported or any optional capability can be materialized.
@@ -592,6 +593,7 @@ class AgentBuilder:
             mapped_directory_paths_by_filesystem=(
                 mapped_directory_paths_by_filesystem
             ),
+            context_schema=context_schema,
         )
 
     async def build_resolved(
@@ -605,6 +607,7 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
+        context_schema: type = WorkflowRuntimeContext,
     ) -> BuiltAgent:
         return await asyncio.to_thread(
             self._build_resolved,
@@ -616,6 +619,7 @@ class AgentBuilder:
             mapped_directory_paths_by_filesystem=(
                 mapped_directory_paths_by_filesystem
             ),
+            context_schema=context_schema,
         )
 
     def _build_resolved(
@@ -629,6 +633,7 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
+        context_schema: type = WorkflowRuntimeContext,
     ) -> BuiltAgent:
         main_agent = assembly.main_agent
         references = assembly.references
@@ -680,7 +685,7 @@ class AgentBuilder:
             "model": materialized.model,
             "name": str(main_agent["name"]),
             "state_schema": AgentShellState,
-            "context_schema": WorkflowRuntimeContext,
+            "context_schema": context_schema,
             "store": self._store,
         }
         if materialized.system_prompt is not None:
@@ -764,6 +769,9 @@ class AgentBuilder:
             initial_files[path] = value
         if initial_files or resolved_subagents:
             input_state["files"] = initial_files
+
+        if initial_files:
+            middleware.append(AgentInitialFilesMiddleware(initial_files))
 
         try:
             if compiled_subagents:

@@ -8,7 +8,17 @@ import pytest
 from langgraph.runtime import ExecutionInfo, Runtime
 
 from agent_shell import langgraph_dev
-from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
+from agent_shell.runtime.agent_assistants import main_agent_assistant_id
+from agent_shell.runtime.context import (
+    AgentRunContext,
+    AgentRuntimeContext,
+    WorkflowRunContext,
+    WorkflowRuntimeContext,
+)
+from agent_shell.runtime.request_snapshot import (
+    LifecycleRunCoordinator,
+    _AgentRunBinding,
+)
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.compiler import _node_runtime_context, compile_workflow
@@ -77,6 +87,93 @@ def test_factory_uses_assistant_config_and_product_run_context() -> None:
         caller_run_id="caller-run-1",
         operation_id="operation-1",
     )
+
+
+def test_agent_factory_uses_stable_assistant_config_and_product_context() -> None:
+    main_agent_id = "11111111-1111-4111-8111-111111111111"
+    resolved_id, configurable = langgraph_dev._agent_factory_inputs(
+        {
+            "configurable": {
+                "main_agent_id": main_agent_id,
+                "configurable_value": "kept",
+            }
+        }
+    )
+    runtime = SimpleNamespace(
+        execution_runtime=SimpleNamespace(
+            context=AgentRunContext(
+                request_id="request-1",
+                lifecycle_id="lifecycle-1",
+                caller_run_id="caller-1",
+                operation_id="operation-1",
+            )
+        )
+    )
+
+    context = langgraph_dev._agent_execution_context(
+        runtime,
+        main_agent_id=resolved_id,
+        configurable=configurable,
+    )
+
+    assert configurable["configurable_value"] == "kept"
+    assert context == AgentRuntimeContext(
+        request_id="request-1",
+        lifecycle_id="lifecycle-1",
+        main_agent_id=main_agent_id,
+        caller_run_id="caller-1",
+        operation_id="operation-1",
+    )
+    assert main_agent_assistant_id(main_agent_id) == main_agent_assistant_id(
+        main_agent_id
+    )
+    assert main_agent_assistant_id(main_agent_id) != main_agent_id
+
+
+def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Runs:
+        async def create(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return {"run_id": "run-1", "thread_id": "thread-1"}
+
+    owner = SimpleNamespace(run_config=lambda: {"recursion_limit": 10})
+    coordinator = LifecycleRunCoordinator(
+        _owner=owner,
+        _snapshot=SimpleNamespace(),
+        _detached_tasks=SimpleNamespace(),
+    )
+
+    async def start(checkpoint_mode: str, thread_id: str) -> None:
+        binding = _AgentRunBinding(
+            main_agent={
+                "id": "agent-1",
+                "name": "Agent",
+                "durability": "exit",
+                "checkpoint_mode": checkpoint_mode,
+            },
+            messages=[{"role": "user", "content": "hello"}],
+            request_id="request-1",
+            lifecycle_id="lifecycle-1",
+            public_model="Agent",
+            assistant_id="assistant-1",
+            thread_id=thread_id,
+        )
+        await coordinator._start_bound_agent_run(
+            binding,
+            SimpleNamespace(runs=Runs()),
+        )
+
+    asyncio.run(start("enabled", "thread-stateful"))
+    asyncio.run(start("disabled", ""))
+
+    assert calls[0][0][:2] == ("thread-stateful", "assistant-1")
+    assert calls[0][1]["durability"] == "exit"
+    assert calls[0][1]["on_completion"] is None
+    assert calls[1][0][:2] == (None, "assistant-1")
+    assert calls[1][1]["durability"] == "exit"
+    assert calls[1][1]["on_completion"] == "keep"
 
 
 def test_windows_curl_blockbuster_compatibility_wraps_the_runtime_hook(
