@@ -12,6 +12,7 @@ import ConfigurationRepositoriesPage from './ConfigurationRepositoriesPage.vue'
 const api = vi.hoisted(() => ({
   getCatalog: vi.fn(),
   listConfigurationRepositories: vi.fn(),
+  createConfigurationRepository: vi.fn(),
   activateConfigurationRepository: vi.fn(),
   copyConfigurationRepository: vi.fn(),
   downloadConfigurationRepository: vi.fn(),
@@ -80,6 +81,11 @@ beforeEach(() => {
     active: true,
     restart_required: false,
     validation: { valid: true, stage: 'repository', issues: [] },
+  })
+  api.createConfigurationRepository.mockResolvedValue({
+    ...inactive,
+    id: '44444444-4444-4444-8444-444444444444',
+    name: 'Blank',
   })
   api.copyConfigurationRepository.mockResolvedValue({
     ...inactive,
@@ -166,6 +172,35 @@ describe('ConfigurationRepositoriesPage', () => {
     useConfirmation().accept()
     await flushPromises()
     expect(api.deleteConfigurationRepository).toHaveBeenCalledWith(inactive.id)
+
+    wrapper.unmount()
+  })
+
+  it('creates an empty repository from the operation beside search', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/library/configuration-repositories', component: ConfigurationRepositoriesPage }],
+    })
+    await router.push('/library/configuration-repositories')
+    await router.isReady()
+    const wrapper = mount(ConfigurationRepositoriesPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+      },
+    })
+    await flushPromises()
+
+    const createAction = wrapper.get('[data-action="new-configuration-repository"]')
+    expect(createAction.text()).toBe('New configuration')
+    await createAction.trigger('click')
+    await wrapper.get('#configuration-repository-create-form input').setValue('  Blank  ')
+    await wrapper.get('#configuration-repository-create-form').trigger('submit')
+    await flushPromises()
+
+    expect(api.createConfigurationRepository).toHaveBeenCalledWith('Blank')
+    expect(api.copyConfigurationRepository).not.toHaveBeenCalled()
+    expect(api.activateConfigurationRepository).not.toHaveBeenCalled()
+    expect(api.listConfigurationRepositories).toHaveBeenCalledTimes(2)
 
     wrapper.unmount()
   })

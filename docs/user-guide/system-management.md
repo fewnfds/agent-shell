@@ -65,7 +65,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 配置管理
 
-【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态，提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python private package、Skill package 和 repository-scoped Model/MCP Mapping，并把 Workflow 固定为 disabled；Model/MCP Connection 和 secret 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
+【配置库 / 全局 / 组件配置】列出全部 Configuration Repository 和 active 状态。搜索右侧的【新建配置】创建未激活的空 Repository；行操作提供切换、复制、下载和删除。当前 active Repository 的删除按钮不可用，后端也会拒绝该请求。复制会生成全新的 Repository 与配置 UUID，重写全部声明式引用，复制 Python private package、Skill package 和 repository-scoped Model/MCP Mapping，并把 Workflow 固定为 disabled；Model/MCP Connection 和 secret 仍由实例拥有，不进入副本或下载。详见[管理配置库](configuration-library.md)。
 
 【配置库 / 全局 / 模型连接】直接复用模型连接的通用列表，只提供查看、编辑、复制和删除，不提供下载。编辑页位于【模型 / 模型连接】；模型映射边界见[模型](models.md)。
 

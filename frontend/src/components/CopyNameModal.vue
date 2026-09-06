@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{
   busy?: boolean
   submitLabel: string
   busyLabel: string
+  submitIcon?: 'copy' | 'new'
 }>(), {
   fieldPath: 'name',
   hint: '',
@@ -25,6 +26,7 @@ const props = withDefaults(defineProps<{
   error: '',
   errorTestId: undefined,
   busy: false,
+  submitIcon: 'copy',
 })
 
 const emit = defineEmits<{
@@ -72,7 +74,11 @@ const { t } = useI18n()
         type="submit"
       >
         <span v-if="props.busy" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <i v-else class="bi bi-copy" aria-hidden="true" />
+        <i
+          v-else
+          :class="props.submitIcon === 'new' ? 'bi bi-plus-lg' : 'bi bi-copy'"
+          aria-hidden="true"
+        />
         {{ props.busy ? props.busyLabel : props.submitLabel }}
       </LteButton>
     </template>

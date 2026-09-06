@@ -1326,6 +1326,13 @@ export const en: MessageSchema = {
     },
     actions: {
       activate: 'Switch',
+      new: 'New configuration',
+    },
+    create: {
+      title: 'New configuration',
+      creating: 'Creating…',
+      nameRequired: 'Enter a name for the new configuration.',
+      succeeded: 'Empty configuration created.',
     },
     copy: {
       title: 'Copy Configuration Repository',

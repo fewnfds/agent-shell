@@ -6,7 +6,7 @@
 
 普通列表只读取 summary 和当前页，打开详情或编辑时再读取该记录的完整配置；筛选与分页由 Management API 返回 `total` 和当前 Repository revision。配置修改、Bundle、Repository 切换和运行快照仍由后端在需要时读取完整 Repository，这些原子边界不依赖浏览器持有整仓数据。
 
-Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。Model/MCP Connection 与 secret 不随 Repository 复制或下载，repository-scoped Model/MCP Mapping 会按新 Requirement UUID 复制。
+Configuration Repository 的列表和切换入口位于【配置库 / 全局 / 组件配置】。搜索右侧的【新建配置】按输入名称创建一套未激活的空 Repository，其中没有 Component、Agent、Workflow 或 package；需要使用时再执行【切换】。该表格显示 active 状态，并提供切换、复制、下载和删除；当前 active Repository 不能删除。Repository 副本使用全新配置 UUID，重写声明式引用并复制私有 Python/Skill package；Workflow 副本固定为 disabled。Model/MCP Connection 与 secret 不随 Repository 复制或下载，repository-scoped Model/MCP Mapping 会按新 Requirement UUID 复制。
 
 系统设置、secret、SQLite/LangGraph Dev 运行数据、日志、媒体、普通文件、Python Template、Skill Template、模型连接和 MCP 连接属于实例域，切换 Repository 时保持不变。模型与 MCP 映射存储也属于实例域，其中的 binding 按 Repository UUID 分区；切换后页面使用所选 Repository 自己的 binding。请求开始装配时会捕获所用 Repository 的配置、模型与 MCP 资源视图，后续切换只影响新请求。
 

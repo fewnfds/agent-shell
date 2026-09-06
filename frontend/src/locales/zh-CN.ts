@@ -1324,6 +1324,13 @@ export const zhCN = {
     },
     actions: {
       activate: '切换',
+      new: '新建配置',
+    },
+    create: {
+      title: '新建配置',
+      creating: '正在新建…',
+      nameRequired: '请输入新配置名称。',
+      succeeded: '空配置已新建。',
     },
     copy: {
       title: '复制 Configuration Repository',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LteAlert } from '@adminlte/vue'
+import { LteAlert, LteButton } from '@adminlte/vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -22,6 +22,10 @@ const managementError = useManagementError()
 const { notify } = useToasts()
 const table = ref<{ reload: () => Promise<void> } | null>(null)
 const refreshing = ref(false)
+const createOpen = ref(false)
+const createName = ref('')
+const createError = ref('')
+const creating = ref(false)
 const copySource = ref<ConfigurationRepository | null>(null)
 const copyName = ref('')
 const copyError = ref('')
@@ -45,6 +49,19 @@ function openCopy(repository: ConfigurationRepository): void {
   copySource.value = repository
   copyName.value = ''
   copyError.value = ''
+}
+
+function openCreate(): void {
+  createOpen.value = true
+  createName.value = ''
+  createError.value = ''
+}
+
+function closeCreate(): void {
+  if (creating.value) return
+  createOpen.value = false
+  createName.value = ''
+  createError.value = ''
 }
 
 function closeCopy(): void {
@@ -86,6 +103,31 @@ async function copyRepository(): Promise<void> {
     copyError.value = managementError.describe(error).display
   } finally {
     copying.value = false
+  }
+}
+
+async function createRepository(): Promise<void> {
+  if (creating.value) return
+  const name = createName.value.trim()
+  if (!name) {
+    createError.value = t('configurationRepositories.create.nameRequired')
+    return
+  }
+  creating.value = true
+  createError.value = ''
+  try {
+    await managementApi.createConfigurationRepository(name)
+    creating.value = false
+    closeCreate()
+    notify({
+      tone: 'success',
+      title: t('configurationRepositories.create.succeeded'),
+    })
+    await table.value?.reload()
+  } catch (error) {
+    createError.value = managementError.describe(error).display
+  } finally {
+    creating.value = false
   }
 }
 
@@ -201,6 +243,18 @@ onMounted(() => {
         {{ catalogError }}
       </LteAlert>
       <DataTableWorkbench ref="table" :config="tableConfig">
+        <template #filter-actions>
+          <LteButton
+            class="action-button"
+            data-action="new-configuration-repository"
+            :disabled="creating"
+            type="button"
+            @click="openCreate"
+          >
+            <i class="bi bi-plus-lg" aria-hidden="true" />
+            {{ t('configurationRepositories.actions.new') }}
+          </LteButton>
+        </template>
         <template #cell-active="{ row, value }">
           <span
             class="d-inline-flex align-items-center gap-1"
@@ -222,6 +276,22 @@ onMounted(() => {
       </template>
     </ConfigurationLibraryFrame>
   </PageShell>
+
+  <CopyNameModal
+    :busy="creating"
+    :busy-label="t('configurationRepositories.create.creating')"
+    error-test-id="configuration-repository-create-error"
+    form-id="configuration-repository-create-form"
+    :name="createName"
+    :open="createOpen"
+    submit-icon="new"
+    :submit-label="t('configurationRepositories.actions.new')"
+    :title="t('configurationRepositories.create.title')"
+    :error="createError"
+    @close="closeCreate"
+    @submit="createRepository"
+    @update:name="createName = $event"
+  />
 
   <CopyNameModal
     :busy="copying"
