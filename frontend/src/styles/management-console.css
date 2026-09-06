@@ -109,14 +109,24 @@ body {
   --bs-btn-hover-border-color: color-mix(in srgb, var(--bs-info) 85%, var(--bs-black));
 }
 
-:is(.action-button, .icon-action-button):has(.bi-x-lg, .bi-chevron-left, .bi-eye-slash),
-:is(.action-button, .icon-action-button)[data-action="cancel"] {
+:is(.action-button, .icon-action-button):has(.bi-chevron-left, .bi-eye-slash) {
   --bs-btn-color: var(--bs-body-color);
   --bs-btn-bg: var(--bs-secondary-bg);
   --bs-btn-border-color: var(--bs-secondary-color);
   --bs-btn-hover-color: var(--bs-body-color);
   --bs-btn-hover-bg: var(--bs-tertiary-bg);
   --bs-btn-hover-border-color: var(--bs-body-color);
+}
+
+:is(.action-button, .icon-action-button):has(.bi-x-lg),
+:is(.action-button, .icon-action-button)[data-action="cancel"],
+:is(.action-button, .icon-action-button)[data-action="close-modal"] {
+  --bs-btn-color: var(--bs-white);
+  --bs-btn-bg: var(--bs-secondary);
+  --bs-btn-border-color: var(--bs-secondary);
+  --bs-btn-hover-color: var(--bs-white);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--bs-secondary) 85%, var(--bs-black));
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--bs-secondary) 85%, var(--bs-black));
 }
 
 :is(.action-button, .icon-action-button):has(.bi-input-cursor-text, .bi-arrow-up, .bi-arrow-down),
