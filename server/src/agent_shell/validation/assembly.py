@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from agent_shell.validation.capability_assembly import FilesystemMode
 
@@ -37,7 +37,10 @@ class ResolvedSubagent:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedAsyncSubagent:
+    async_subagent_id: str
     main_agent_id: str
+    main_agent_name: str
+    on_disconnect: Literal["cancel", "continue"]
     name: str
     description: str
 

@@ -15,6 +15,7 @@
 | Agent Event Output | 用文件化 Python 扩展把 v3 Agent 事件投影为响应文本 | 必选 | 只用于顶层 Main Agent |
 | 异常重试 | Provider 或 ModelRetryMiddleware 重试 | 可选 | 继承、替换或关闭 |
 | Subagent Delegation | synchronous Subagent 的提示与 `task` 说明 | 可选 | 只用于 top-level Main Agent |
+| Async Subagent Middleware | 异步子代理 system prompt 与五个官方 task Tool description | 可选；还需至少一个 Async Subagent 配置引用 | 只用于 top-level Main Agent |
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
 | MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |
@@ -35,7 +36,7 @@ Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由
 
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
-Main Agent是独立Deep Agents root graph，messages和private state由其Thread checkpoint拥有。Workflow通过Command的`runtime.context.agent_runs`创建独立Main Agent Thread/Run并显式读取结果。synchronous Subagent由Deep Agents `SubAgentMiddleware`在current Agent loop内调度；Main Agent的ordered AsyncSubAgent references由官方`AsyncSubAgentMiddleware`启动独立后台Thread/Run。
+Main Agent 是独立 Deep Agents root graph，messages 和 private state 由其 Thread checkpoint 拥有。Workflow 通过 Command 的`runtime.context.agent_runs`创建独立 Main Agent Thread/Run 并显式读取结果。synchronous Subagent 由 Deep Agents`SubAgentMiddleware`在 current Agent loop 内调度。Async Subagent 是引用模板 Main Agent 的配置资源；只有父 Main Agent 显式选择 Async Subagent Middleware component 时，官方`AsyncSubAgentMiddleware`才启动独立后台 Thread/Run。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 

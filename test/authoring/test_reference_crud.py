@@ -22,6 +22,23 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     client = make_client(tmp_path, monkeypatch)
     original = create_blocks(client, "original")
     replacement = create_blocks(client, "replacement")
+    async_target_response = client.post(
+        "/agent-shell/api/main-agents",
+        json={
+            "name": "Async reference target",
+            "capability_refs": references(original, REQUIRED_TYPES),
+        },
+    )
+    assert async_target_response.status_code == 200, async_target_response.text
+    async_profile_response = client.post(
+        "/agent-shell/api/async-subagents",
+        json=async_subagent_payload(
+            "Matrix async worker",
+            async_target_response.json()["id"],
+        ),
+    )
+    assert async_profile_response.status_code == 200, async_profile_response.text
+    async_profile = async_profile_response.json()
     subagent = client.post(
         "/agent-shell/api/subagents",
         json=subagent_payload(
@@ -38,6 +55,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
             "capability_refs": references(original, MAIN_AGENT_TYPES),
             "middleware_refs": [{"middleware_id": original["custom-middleware"]["id"]}],
             "subagents": [{"subagent_id": subagent["id"]}],
+            "async_subagents": [{"async_subagent_id": async_profile["id"]}],
         },
     )
     assert response.status_code == 200, response.text
@@ -69,6 +87,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
             "capability_refs": references(replacement, MAIN_AGENT_TYPES),
             "middleware_refs": [{"middleware_id": replacement["custom-middleware"]["id"]}],
             "subagents": main_agent["subagents"],
+            "async_subagents": main_agent["async_subagents"],
         },
     )
     assert updated.status_code == 200, updated.text

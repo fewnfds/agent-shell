@@ -4,7 +4,10 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from agent_shell.capability_manifest import FILESYSTEM_TOOL_NAMES
+from agent_shell.capability_manifest import (
+    ASYNC_SUBAGENT_TOOL_NAMES,
+    FILESYSTEM_TOOL_NAMES,
+)
 from agent_shell.runtime.agent_assistants import main_agent_assistant_id
 from agent_shell.runtime.agent_compilation import (
     ProfileMaterializer,
@@ -27,15 +30,6 @@ from agent_shell.validation.assembly import (
     ResolvedSubagent,
     ResolvedSubagentEdge,
     SubagentNodeKey,
-)
-
-
-ASYNC_SUBAGENT_TOOL_NAMES = (
-    "start_async_task",
-    "check_async_task",
-    "update_async_task",
-    "cancel_async_task",
-    "list_async_tasks",
 )
 
 

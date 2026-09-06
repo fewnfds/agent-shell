@@ -282,8 +282,7 @@ async def _completion_stream(
     model: str,
     *,
     detached_tasks: DetachedTaskManager,
-    on_disconnect: Literal["cancel", "continue"],
-    cancel_lifecycle: Callable[[], Awaitable[None]],
+    disconnect_lifecycle: Callable[[], Awaitable[None]],
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
     created = int(time.time())
@@ -434,11 +433,10 @@ async def _completion_stream(
         except asyncio.QueueEmpty:
             pass
         disconnected = not producer.done()
-        if disconnected and on_disconnect == "cancel":
-            producer.cancel()
+        if disconnected:
             detached_tasks.create(
-                cancel_lifecycle(),
-                name=f"cancel-workflow-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
+                disconnect_lifecycle(),
+                name=f"disconnect-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
             )
 
 
@@ -446,8 +444,7 @@ async def _completion_result(
     execution: RunExecution,
     *,
     detached_tasks: DetachedTaskManager,
-    on_disconnect: Literal["cancel", "continue"],
-    cancel_lifecycle: Callable[[], Awaitable[None]],
+    disconnect_lifecycle: Callable[[], Awaitable[None]],
 ) -> tuple[str, dict[str, int]]:
     queue: asyncio.Queue[tuple[Literal["result", "error"], object]] = asyncio.Queue(
         maxsize=1
@@ -482,12 +479,10 @@ async def _completion_result(
         return value
     except asyncio.CancelledError:
         detached.set()
-        if on_disconnect == "cancel":
-            producer.cancel()
-            detached_tasks.create(
-                cancel_lifecycle(),
-                name=f"cancel-workflow-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
-            )
+        detached_tasks.create(
+            disconnect_lifecycle(),
+            name=f"disconnect-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
+        )
         raise
 
 
@@ -708,7 +703,6 @@ def build_api_server_router(
                     request_id=getattr(request.state, "request_id", ""),
                     public_model=model,
                 )
-                entry = main_agent
             else:
                 execution = await lifecycle_coordinator.start_workflow(
                     workflow,
@@ -716,7 +710,6 @@ def build_api_server_router(
                     request_id=getattr(request.state, "request_id", ""),
                     public_model=model,
                 )
-                entry = workflow
         except AgentRuntimeError as exc:
             issue = (
                 exc.validation_report.issues[0]
@@ -741,8 +734,7 @@ def build_api_server_router(
                     execution,
                     model,
                     detached_tasks=detached_tasks,
-                    on_disconnect=entry["on_disconnect"],
-                    cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
+                    disconnect_lifecycle=lifecycle_coordinator.disconnect,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -754,8 +746,7 @@ def build_api_server_router(
             content, _usage = await _completion_result(
                 execution,
                 detached_tasks=detached_tasks,
-                on_disconnect=entry["on_disconnect"],
-                cancel_lifecycle=lifecycle_coordinator.cancel_active_runs,
+                disconnect_lifecycle=lifecycle_coordinator.disconnect,
             )
         except AgentRuntimeError as exc:
             return _openai_error(

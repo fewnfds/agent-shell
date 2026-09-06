@@ -20,12 +20,18 @@ def test_async_main_agent_references_become_official_specs_in_order() -> None:
     specs = build_async_subagent_specs(
         (
             ResolvedAsyncSubagent(
+                async_subagent_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                 main_agent_id=first_id,
+                main_agent_name="Research Agent",
+                on_disconnect="cancel",
                 name="researcher",
                 description="Research a topic in the background.",
             ),
             ResolvedAsyncSubagent(
+                async_subagent_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
                 main_agent_id=second_id,
+                main_agent_name="Review Agent",
+                on_disconnect="continue",
                 name="reviewer",
                 description="Review a completed result.",
             ),

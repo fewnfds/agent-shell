@@ -46,6 +46,21 @@ def subagent_payload(
             "middleware_refs": [],
         },
     }
+
+
+def async_subagent_payload(
+    component_name: str,
+    main_agent_id: str,
+    *,
+    name: str = "background_worker",
+    description: str = "Handles work in an independent Thread.",
+) -> dict[str, object]:
+    return {
+        "component_name": component_name,
+        "main_agent_id": main_agent_id,
+        "name": name,
+        "description": description,
+    }
 def make_client(tmp_path: Path, monkeypatch) -> TestClient:
     monkeypatch.chdir(tmp_path)
     configure_scope_tokens(monkeypatch, tmp_path)
@@ -122,6 +137,7 @@ def block_payload(capability_type: str, name: str) -> dict:
         },
         "system-prompt": {"name": name, "system_prompt": "Fixture prompt."},
         "subagent": {"name": name},
+        "async-subagent": {"name": name},
         "todo-list": {"name": name},
         "exception-retry": {
             "name": name,

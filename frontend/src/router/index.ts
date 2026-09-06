@@ -10,6 +10,7 @@ const MainAgentPage = () => import('@/pages/MainAgentPage.vue')
 const MessageInterceptionPage = () => import('@/pages/MessageInterceptionPage.vue')
 const SystemSettingsPage = () => import('@/pages/SystemSettingsPage.vue')
 const SubagentPage = () => import('@/pages/SubagentPage.vue')
+const AsyncSubagentPage = () => import('@/pages/AsyncSubagentPage.vue')
 const TerminologyPage = () => import('@/pages/TerminologyPage.vue')
 const WorkflowsPage = () => import('@/pages/WorkflowsPage.vue')
 const WorkflowEditorPage = () => import('@/pages/WorkflowEditorPage.vue')
@@ -57,6 +58,7 @@ export const router = createRouter({
     { path: '/agents', redirect: '/agents/main' },
     { path: '/agents/main', component: MainAgentPage, meta: { titleKey: 'navigation.agents' } },
     { path: '/agents/subagents', component: SubagentPage, meta: { titleKey: 'navigation.agents' } },
+    { path: '/agents/async-subagents', component: AsyncSubagentPage, meta: { titleKey: 'navigation.agents' } },
     { path: '/agent-components', component: ComponentsPage, meta: { titleKey: 'components.title' } },
     { path: '/agent-components/:type', component: ComponentsPage, meta: { titleKey: 'components.title' } },
     {

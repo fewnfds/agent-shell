@@ -44,6 +44,7 @@ function mockComponentLists(workflows: Workflow[] = []) {
     },
     main_agents: [],
     subagents: [],
+    async_subagents: [],
     workflows,
   })
   vi.spyOn(managementApi, 'getWorkflow').mockImplementation(async (id) => {

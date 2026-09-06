@@ -14,6 +14,7 @@ from agent_shell.capability_manifest import (
 from agent_shell.contracts import (
     BLOCK_MODELS,
     MANAGED_COMPONENT_MODELS,
+    AsyncSubagentProfile,
     CapabilityReference,
     FilesystemToolConfigs,
     MainAgentProfile,
@@ -81,6 +82,7 @@ class ConfigurationValidationService:
         stored: bool = False,
         block_overrides: dict[tuple[str, str], dict[str, Any]] | None = None,
         profile_overrides: dict[str, dict[str, Any]] | None = None,
+        async_profile_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[ValidationReport, dict[str, Any] | None, StaticAssembly | None]:
         owner_name = str(payload.get("name", ""))
         try:
@@ -120,6 +122,7 @@ class ConfigurationValidationService:
             owner_id=owner_id,
             block_overrides=block_overrides,
             profile_overrides=profile_overrides,
+            async_profile_overrides=async_profile_overrides,
         )
         return report, main_agent, assembly
 
@@ -363,6 +366,63 @@ class ConfigurationValidationService:
                 )
             )
         return ValidationReport(stage=stage, issues=tuple(issues)), validated
+
+    def validate_async_subagent(
+        self,
+        payload: dict[str, Any],
+        *,
+        stage: str,
+        owner_id: str = "",
+        stored: bool = False,
+    ) -> tuple[ValidationReport, dict[str, Any] | None]:
+        owner_name = str(payload.get("component_name", ""))
+        try:
+            model = AsyncSubagentProfile.model_validate(
+                (
+                    {key: value for key, value in payload.items() if key != "id"}
+                    if stored
+                    else payload
+                )
+            )
+        except ValidationError as exc:
+            return (
+                report_from_validation_error(
+                    exc,
+                    stage=stage,
+                    scope="async_subagent",
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                ),
+                None,
+            )
+        validated = model.model_dump(mode="json")
+        target_id = str(validated["main_agent_id"])
+        issues: list[ValidationIssue] = []
+        if self._agent_configs.get_item("main_agents", target_id) is None:
+            issues.append(
+                self.reference_issue(
+                    scope="async_subagent",
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    owner_type="async_subagent",
+                    path="main_agent_id",
+                    reference_id=target_id,
+                    expected_type="main_agent",
+                )
+            )
+        report = ValidationReport(stage=stage, issues=tuple(issues))
+        if owner_id and report.valid:
+            prospective = dict(validated)
+            prospective["id"] = owner_id
+            issues.extend(
+                self._impact_issues_for_async_subagent(
+                    owner_id,
+                    prospective,
+                    stage=stage,
+                )
+            )
+            report = ValidationReport(stage=stage, issues=tuple(issues))
+        return report, validated if report.valid else None
 
     def resolve_main_agent(
         self,
@@ -950,36 +1010,96 @@ class ConfigurationValidationService:
         *,
         owner_id: str,
         owner_name: str,
+        profile_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[list[ValidationIssue], tuple[ResolvedAsyncSubagent, ...]]:
-        issues = async_subagent_reference_issues(
-            references,
-            scope="main_agent",
-            owner_id=owner_id,
-            owner_name=owner_name,
-        )
+        issues: list[ValidationIssue] = []
         resolved: list[ResolvedAsyncSubagent] = []
+        profiles: dict[str, dict[str, Any]] = {}
         for index, reference in enumerate(references):
-            target_id = str(reference.get("main_agent_id", ""))
-            if self._agent_configs.get_item("main_agents", target_id) is None:
+            profile_id = str(reference.get("async_subagent_id", ""))
+            profile = (
+                profile_overrides[profile_id]
+                if profile_overrides and profile_id in profile_overrides
+                else self._agent_configs.get_item("async_subagents", profile_id)
+            )
+            if profile is None:
                 issues.append(
                     self.reference_issue(
                         scope="main_agent",
                         owner_id=owner_id,
                         owner_name=owner_name,
                         owner_type="main_agent",
-                        path=f"async_subagents[{index}].main_agent_id",
-                        reference_id=target_id,
-                        expected_type="main_agent",
+                        path=f"async_subagents[{index}].async_subagent_id",
+                        reference_id=profile_id,
+                        expected_type="async_subagent",
                     )
                 )
                 continue
+            profile_report, validated = self.validate_async_subagent(
+                profile,
+                stage="referenced_async_subagent",
+                stored=True,
+            )
+            if not profile_report.valid or validated is None:
+                detail = (
+                    profile_report.issues[0].message
+                    if profile_report.issues
+                    else "The configuration structure is invalid."
+                )
+                component_name = str(profile.get("component_name", ""))
+                issues.append(
+                    ValidationIssue(
+                        code="assembly.async_subagent_invalid",
+                        scope="async_subagent",
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        path=f"async_subagents[{index}].async_subagent_id",
+                        message=(
+                            f"Referenced Async Subagent {component_name!r} does not "
+                            f"satisfy the current contract: {detail}"
+                        ),
+                        message_key=(
+                            "validation.issue.assembly.asyncSubagentInvalid"
+                        ),
+                        message_args={
+                            "component_name": component_name,
+                            "detail": detail,
+                        },
+                    )
+                )
+                continue
+            profiles[profile_id] = validated
+            target = self._agent_configs.get_item(
+                "main_agents",
+                str(validated["main_agent_id"]),
+            )
+            if target is None:
+                raise RuntimeError(
+                    "validated Async Subagent target Main Agent is unavailable"
+                )
             resolved.append(
                 ResolvedAsyncSubagent(
-                    main_agent_id=target_id,
-                    name=str(reference["name"]),
-                    description=str(reference["description"]),
+                    async_subagent_id=profile_id,
+                    main_agent_id=str(validated["main_agent_id"]),
+                    main_agent_name=str(target["name"]),
+                    on_disconnect=(
+                        "continue"
+                        if target.get("on_disconnect") == "continue"
+                        else "cancel"
+                    ),
+                    name=str(validated["name"]),
+                    description=str(validated["description"]),
                 )
             )
+        issues.extend(
+            async_subagent_reference_issues(
+                references,
+                profiles=profiles,
+                scope="main_agent",
+                owner_id=owner_id,
+                owner_name=owner_name,
+            )
+        )
         return issues, tuple(resolved)
 
     def _assemble_main_agent(
@@ -990,6 +1110,7 @@ class ConfigurationValidationService:
         owner_id: str,
         block_overrides: dict[tuple[str, str], dict[str, Any]] | None = None,
         profile_overrides: dict[str, dict[str, Any]] | None = None,
+        async_profile_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[ValidationReport, StaticAssembly | None]:
         owner_name = str(main_agent.get("name", ""))
         references = self._reference_map(main_agent)
@@ -1048,9 +1169,31 @@ class ConfigurationValidationService:
                 list(main_agent.get("async_subagents", [])),
                 owner_id=owner_id,
                 owner_name=owner_name,
+                profile_overrides=async_profile_overrides,
             )
         )
         issues.extend(async_subagent_issues)
+
+        async_delegation_selected = selected.get("async-subagent") is not None
+        async_references = list(main_agent.get("async_subagents", []))
+        if async_delegation_selected and not async_references:
+            issues.append(
+                ValidationIssue(
+                    code="assembly.async_subagent_reference_required",
+                    scope="main_agent",
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="async_subagents",
+                    message=(
+                        "At least one valid Async Subagent reference is required "
+                        "when Async Subagent Middleware is enabled."
+                    ),
+                    message_key=(
+                        "validation.issue.assembly.asyncSubagentReferenceRequired"
+                    ),
+                    message_args={},
+                )
+            )
 
         delegation_selected = selected.get("subagent") is not None
         root_references = list(main_agent.get("subagents", []))
@@ -1230,7 +1373,9 @@ class ConfigurationValidationService:
             tool_blocks=tool_blocks,
             middleware_blocks=middleware_blocks,
             mcp_references=mcp_references,
-            async_subagents=resolved_async_subagents,
+            async_subagents=(
+                resolved_async_subagents if async_delegation_selected else ()
+            ),
             filesystem_mode=filesystem_mode,
             disabled_capabilities=disabled_capabilities,
             subagents=resolved_subagents,
@@ -1255,6 +1400,7 @@ class ConfigurationValidationService:
         stage: str,
         block_overrides: dict[tuple[str, str], dict[str, Any]] | None = None,
         profile_overrides: dict[str, dict[str, Any]] | None = None,
+        async_profile_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> list[ValidationIssue]:
         main_agent_id = str(main_agent.get("id", ""))
         baseline, _, _ = self.validate_main_agent(
@@ -1270,6 +1416,7 @@ class ConfigurationValidationService:
             stored=True,
             block_overrides=block_overrides,
             profile_overrides=profile_overrides,
+            async_profile_overrides=async_profile_overrides,
         )
         baseline_keys = {self._issue_key(issue) for issue in baseline.issues}
         return [
@@ -1367,6 +1514,31 @@ class ConfigurationValidationService:
                     main_agent,
                     stage=stage,
                     profile_overrides={profile_id: prospective},
+                )
+            )
+        return issues
+
+    def _impact_issues_for_async_subagent(
+        self,
+        profile_id: str,
+        prospective: dict[str, Any],
+        *,
+        stage: str,
+    ) -> list[ValidationIssue]:
+        issues: list[ValidationIssue] = []
+        for main_agent in self._agent_configs.list_items("main_agents"):
+            references = main_agent.get("async_subagents", [])
+            if not isinstance(references, list) or not any(
+                isinstance(reference, dict)
+                and reference.get("async_subagent_id") == profile_id
+                for reference in references
+            ):
+                continue
+            issues.extend(
+                self._new_impact_issues(
+                    main_agent,
+                    stage=stage,
+                    async_profile_overrides={profile_id: prospective},
                 )
             )
         return issues

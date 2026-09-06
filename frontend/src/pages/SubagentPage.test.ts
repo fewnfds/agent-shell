@@ -38,6 +38,7 @@ describe('Subagent authoring page', () => {
         },
         main_agents: [],
         subagents: [],
+        async_subagents: [],
         workflows: [],
       })),
     })
@@ -103,6 +104,7 @@ describe('Subagent authoring page', () => {
         components: { model: [], 'custom-tool': [] },
         main_agents: [mainAgent],
         subagents: [subagent],
+        async_subagents: [],
         workflows: [],
       })),
       getMainAgent: vi.fn(async () => mainAgent),
@@ -141,6 +143,7 @@ describe('Subagent authoring page', () => {
         },
         main_agents: [],
         subagents: [],
+        async_subagents: [],
         workflows: [],
       })),
     })

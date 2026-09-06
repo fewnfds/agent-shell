@@ -33,7 +33,7 @@ MCP Connection
   -> Main Agent / Subagent ordered mcp_refs
 ```
 
-Main Agent还可以引用System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package、synchronous Subagent和AsyncSubAgent目标Main Agent。直接请求或Command facade启动Run时物化该Main Agent的完整assembly。
+Main Agent还可以引用System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package、synchronous Subagent 和 Async Subagent 配置。直接请求或 Command facade 启动 Run 时物化该 Main Agent 的完整 assembly。
 
 ## 2. Model Requirement
 
@@ -162,33 +162,42 @@ POST /agent-shell/api/main-agents
 }
 ```
 
-`tool_refs`、`middleware_refs`、`mcp_refs`、`subagents`和`async_subagents`分别保存Custom Tool、Custom Middleware、MCP Requirement、direct synchronous Subagent和异步目标Main Agent的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
+`tool_refs`、`middleware_refs`、`mcp_refs`、`subagents`和`async_subagents`分别保存 Custom Tool、Custom Middleware、MCP Requirement、direct synchronous Subagent 和 Async Subagent 配置的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
 
-`is_model_entry=true` 时，Main Agent name直接成为 OpenAI-compatible model。`checkpoint_mode=enabled` 为每个直接会话建立可复用 Thread，后续交互在同一 Thread创建新 Run并延续 AgentState；`disabled` 使用官方 Stateless Run。`durability` 控制官方 Run 的 checkpoint写入时机，`on_disconnect` 控制该 Main Agent作为请求入口时客户端断开后的行为。
+`is_model_entry=true` 时，Main Agent name 直接成为 OpenAI-compatible model。`checkpoint_mode=enabled`为每个直接会话建立可复用 Thread，后续交互在同一 Thread 创建新 Run 并延续 AgentState；`disabled`使用官方 Stateless Run。`durability`在界面显示为【checkpoint 保存时机】，控制官方 Run 的 checkpoint 写入时机。`on_disconnect`在界面显示为【用户断开】；每个 Main Agent Run 创建时都冻结该值，不限于请求入口。
 
 创建后保存Main Agent UUID。直接运行与Command-launched Run都复用这份装配；Workflow Graph不重复保存模型、Tool或prompt配置。
 
-### AsyncSubAgent references
+### Async Subagent 配置与引用
 
-异步引用直接写在父Main Agent中：
+先通过`POST /agent-shell/api/async-subagents`创建可复用配置资源：
+
+```json
+{
+  "component_name": "Background research",
+  "main_agent_id": "<template Main Agent UUID>",
+  "name": "researcher",
+  "description": "Research long-running questions in the background."
+}
+```
+
+再让父 Main Agent 只保存配置 UUID：
 
 ```json
 {
   "async_subagents": [
-    {
-      "main_agent_id": "<target Main Agent UUID>",
-      "name": "researcher",
-      "description": "Research long-running questions in the background."
-    }
+    {"async_subagent_id": "<Async Subagent UUID>"}
   ]
 }
 ```
 
-`name`匹配`^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一父Main Agent中按大小写不敏感语义唯一。目标是当前Repository中的另一个Main Agent，不需要`is_model_entry=true`。同一个目标可以使用不同name配置多种委派说明；self-reference会被拒绝。
+`component_name`是配置库身份，`name`是模型可见的代理角色名并匹配`^[A-Za-z_][A-Za-z0-9_-]*$`。模板是当前 Repository 中已有的 Main Agent，不需要`is_model_entry=true`。同一个配置不能重复引用；同一父 Main Agent 的有效角色名按大小写不敏感语义唯一，模板指回父 Main Agent 时会被拒绝。
 
-Deep Agents官方`AsyncSubAgentMiddleware`提供五个工具：`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch创建独立child Thread/Run并立即返回task ID；Update在同一child Thread创建新Run。父Agent的`async_tasks` channel保存task reference，所以checkpoint enabled父Thread的后续Run能继续管理任务；checkpoint disabled父Run结束后不保留reference。
+引用不会自行开启能力。父 Main Agent 还必须在`capability_refs`中显式选择`type=async-subagent`的【Async Subagent Middleware / 异步子代理中间件】组件；没有选择时引用只作为候选配置保存，不装配五个工具。组件可以设置 Middleware system prompt，并分别覆盖五个官方 Tool description；选择组件但没有有效引用时保存失败。
 
-Async child不带Shell Lifecycle metadata。其原始stream不进入父Lifecycle response，客户端断开的自动取消和父Lifecycle retention也不传播；父Agent显式check并把结果写入回复后，内容才经父Agent Event Output公开。需要自动传播取消或直接合流child stream时，应设计新的Lifecycle adapter，不要把官方task伪装成Command-launched Run。
+Deep Agents 官方`AsyncSubAgentMiddleware`提供五个工具：`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch 创建独立 child Thread/Run 并立即返回 task ID；Update 在同一 child Thread 创建新 Run。父 Agent 的`async_tasks` channel 保存 task reference，所以 checkpoint enabled 父 Thread 的后续 Run 能继续管理任务；checkpoint disabled 父 Run 结束后不保留 reference。
+
+Async child 自己不携带 Shell Lifecycle metadata；Shell 通过父 ToolRuntime 与官方 Command 返回的 child identity 建立最小 relation。child Run 创建时冻结模板 Main Agent 的【用户断开】策略，Thread checkpoint 固定启用，checkpoint 保存时机固定为官方默认`async`，并进入父 Lifecycle 的 monitoring 与 retention。其原始 stream 不进入父 Lifecycle response；父 Agent 显式 check 并把结果写入回复后，内容才经父 Agent Event Output 公开。
 
 本地并发容量按`1个父Run + active async child数量`计算`n_jobs_per_worker`；槽位不足时官方Run会排队。
 
@@ -277,7 +286,7 @@ Todo List：向 Agent 提供 `write_todos` 与对应规划提示。
 
 synchronous Subagent：Main Agent 通过 `task` Tool 同步委派给 specialist，并在取得结果后继续 Agent loop。
 
-AsyncSubAgent：Main Agent通过五个官方async task工具启动和管理独立Main Agent Thread/Run。
+Async Subagent：Main Agent 通过五个官方 async task 工具启动和管理独立 Main Agent Thread/Run。
 
 Summarization：在 Agent loop 中按配置管理 context summary。
 

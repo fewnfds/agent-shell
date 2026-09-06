@@ -209,6 +209,42 @@ Specify subagent_type to select the agent. Usage notes:
 - If an agent's description says to use it proactively, do so without waiting to be asked.
 - When only general-purpose is available, use it for any complex, context-heavy task; it has the same capabilities as the main agent."""
 
+ASYNC_SUBAGENT_EDITOR_SYSTEM_PROMPT = ""
+ASYNC_SUBAGENT_TOOL_DESCRIPTIONS = {
+    "start_async_task": """Start an async subagent on a remote server. The subagent runs in the background and returns a task ID immediately.
+
+Available async agent types:
+{available_agents}
+
+## Usage notes:
+1. This tool launches a background task and returns immediately with a task ID. Report the task ID to the user and stop — do NOT immediately check status.
+2. Use `check_async_task` only when the user asks for a status update or result.
+3. Use `update_async_task` to send new instructions to a running task.
+4. Multiple async subagents can run concurrently — launch several and let them run in the background.
+5. The subagent runs on a remote server, so it has its own tools and capabilities.""",
+    "check_async_task": (
+        "Check the status of an async subagent task. Returns the current status and, if complete, the result. "
+        "Statuses shown earlier in the conversation are always stale, so call this to get the current status "
+        "rather than reporting a status from a previous tool result."
+    ),
+    "update_async_task": (
+        "Send updated instructions to an async subagent. Interrupts the current run and starts "
+        "a new one on the same thread, so the subagent sees the full conversation history plus "
+        "your new message. The task_id remains the same."
+    ),
+    "cancel_async_task": (
+        "Cancel a running async subagent task. Use this to stop a task that is no longer needed."
+    ),
+    "list_async_tasks": (
+        "List tracked async subagent tasks with their current live statuses. "
+        "By default shows all tasks. Use `status_filter` to narrow by status "
+        "(e.g. 'running', 'success', 'error', 'cancelled'). "
+        "Use `check_async_task` to get the full result of a specific completed task. "
+        "Statuses shown earlier in the conversation are always stale, so call this to read current "
+        "statuses rather than reporting one from a previous tool result."
+    ),
+}
+
 WRITE_TODOS_SYSTEM_PROMPT = """## `write_todos`
 
 You have access to the `write_todos` tool to help you manage and plan complex objectives.
@@ -345,6 +381,10 @@ _EDITOR_DEFAULTS = {
     "subagent": {
         "system_prompt": SUBAGENT_EDITOR_SYSTEM_PROMPT,
         "tool_description": TASK_TOOL_DESCRIPTION,
+    },
+    "async_subagent": {
+        "system_prompt": ASYNC_SUBAGENT_EDITOR_SYSTEM_PROMPT,
+        "tool_descriptions": ASYNC_SUBAGENT_TOOL_DESCRIPTIONS,
     },
     "todo_list": {
         "system_prompt": WRITE_TODOS_SYSTEM_PROMPT,

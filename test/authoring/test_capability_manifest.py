@@ -34,6 +34,7 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
         "agent-event-output",
         "exception-retry",
         "subagent",
+        "async-subagent",
         "summarization",
         "prompt-caching",
     ]
@@ -58,6 +59,15 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
     assert manifests["exception-retry"].tool_names == ()
     assert manifests["subagent"].subagent_overrideable is False
     assert manifests["subagent"].subagent_policy == "top-level-only"
+    assert manifests["async-subagent"].subagent_overrideable is False
+    assert manifests["async-subagent"].subagent_policy == "top-level-only"
+    assert manifests["async-subagent"].tool_names == (
+        "start_async_task",
+        "check_async_task",
+        "update_async_task",
+        "cancel_async_task",
+        "list_async_tasks",
+    )
     assert manifests["summarization"].subagent_overrideable is True
     assert manifests["summarization"].subagent_policy == "inherit"
     assert manifests["prompt-caching"].subagent_overrideable is True
@@ -94,6 +104,10 @@ def test_editor_defaults_are_derived_from_current_authoring_contracts() -> None:
     assert filesystem["system_prompt"] == ""
     assert defaults["subagent"]["system_prompt"] == ""
     assert set(defaults["subagent"]) == {"system_prompt", "tool_description"}
+    assert set(defaults["async_subagent"]) == {
+        "system_prompt",
+        "tool_descriptions",
+    }
     assert set(defaults["todo_list"]) == {"system_prompt", "tool_description"}
     assert filesystem_tools["tool_token_limit_before_evict"] == (
         FilesystemToolsBlock.model_fields["tool_token_limit_before_evict"].default

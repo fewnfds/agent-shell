@@ -21,6 +21,7 @@ from agent_shell.validation.service import ConfigurationValidationService
 
 MAIN_AGENT_TABLE = "main_agents"
 SUBAGENT_TABLE = "subagents"
+ASYNC_SUBAGENT_TABLE = "async_subagents"
 
 
 class ConfigurationBulkDelete(BaseModel):
@@ -469,6 +470,204 @@ def build_agent_config_router(
             )
         config_store.delete_item(
             SUBAGENT_TABLE,
+            item_id,
+            expected_repository_id=mutation_repository_id,
+        )
+        return {"ok": True}
+
+    @router.get("/async-subagents")
+    def list_async_subagents(
+        request: Request,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
+        if not configuration_collection_requested(request.query_params):
+            return config_store.list_items(ASYNC_SUBAGENT_TABLE)
+        items = (
+            config_store.list_items(ASYNC_SUBAGENT_TABLE)
+            if view == "full"
+            else config_store.list_item_summaries(ASYNC_SUBAGENT_TABLE)
+        )
+        return configuration_collection(
+            items,
+            repository_context=config_store.repository_context(),
+            query=q,
+            search_fields=(
+                "component_name",
+                "name",
+                "description",
+                "main_agent_id",
+                "id",
+            ),
+            offset=offset,
+            limit=limit,
+        )
+
+    @router.post("/async-subagents/delete")
+    def delete_async_subagents(
+        payload: ConfigurationBulkDelete,
+    ) -> dict[str, int]:
+        mutation_repository_id = config_store.repository_id()
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in config_store.list_item_summaries(ASYNC_SUBAGENT_TABLE)
+                if matches_configuration_query(
+                    item,
+                    payload.q or "",
+                    (
+                        "component_name",
+                        "name",
+                        "description",
+                        "main_agent_id",
+                        "id",
+                    ),
+                )
+            ]
+        )
+        if any(
+            config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id) is None
+            for item_id in ids
+        ):
+            raise management_error(
+                404,
+                code="async_subagent_not_found",
+                message_key="errors.asyncSubagentNotFound",
+                message="An Async Subagent configuration does not exist.",
+            )
+        return {
+            "deleted": config_store.delete_items(
+                ASYNC_SUBAGENT_TABLE,
+                ids,
+                expected_repository_id=mutation_repository_id,
+            )
+        }
+
+    @router.get("/async-subagents/{item_id}")
+    def get_async_subagent(item_id: str) -> dict:
+        item = config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id)
+        if item is None:
+            raise management_error(
+                404,
+                code="async_subagent_not_found",
+                message_key="errors.asyncSubagentNotFound",
+                message="The Async Subagent configuration does not exist.",
+            )
+        return item
+
+    @router.post("/async-subagents")
+    def create_async_subagent(payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        report, validated = validation.validate_async_subagent(
+            payload,
+            stage="async_subagent_save",
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        item_id = config_store.new_id()
+        try:
+            config_store.save_item(
+                ASYNC_SUBAGENT_TABLE,
+                item_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id)
+
+    @router.post("/async-subagents/{item_id}/copy")
+    def copy_async_subagent(item_id: str, payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        component_name = _copy_component_name(payload)
+        source = config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id)
+        if source is None:
+            raise management_error(
+                404,
+                code="async_subagent_not_found",
+                message_key="errors.asyncSubagentNotFound",
+                message="The Async Subagent configuration does not exist.",
+            )
+        candidate = dict(source)
+        candidate["component_name"] = component_name
+        report, validated = validation.validate_async_subagent(
+            candidate,
+            stage="async_subagent_copy",
+            stored=True,
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        copy_id = config_store.new_id()
+        try:
+            config_store.save_item(
+                ASYNC_SUBAGENT_TABLE,
+                copy_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(ASYNC_SUBAGENT_TABLE, copy_id)
+
+    @router.put("/async-subagents/{item_id}")
+    def update_async_subagent(item_id: str, payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        if config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id) is None:
+            raise management_error(
+                404,
+                code="async_subagent_not_found",
+                message_key="errors.asyncSubagentNotFound",
+                message="The Async Subagent configuration does not exist.",
+            )
+        report, validated = validation.validate_async_subagent(
+            payload,
+            stage="async_subagent_save",
+            owner_id=item_id,
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        try:
+            config_store.save_item(
+                ASYNC_SUBAGENT_TABLE,
+                item_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id)
+
+    @router.delete("/async-subagents/{item_id}")
+    def delete_async_subagent(item_id: str) -> dict[str, bool]:
+        mutation_repository_id = config_store.repository_id()
+        if config_store.get_item(ASYNC_SUBAGENT_TABLE, item_id) is None:
+            raise management_error(
+                404,
+                code="async_subagent_not_found",
+                message_key="errors.asyncSubagentNotFound",
+                message="The Async Subagent configuration does not exist.",
+            )
+        config_store.delete_item(
+            ASYNC_SUBAGENT_TABLE,
             item_id,
             expected_repository_id=mutation_repository_id,
         )

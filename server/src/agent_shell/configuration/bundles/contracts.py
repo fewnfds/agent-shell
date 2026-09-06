@@ -39,7 +39,14 @@ class BundleRecord(BaseModel):
     def validate_component_type(self) -> "BundleRecord":
         if (self.kind == "component") != (self.component_type is not None):
             raise ValueError("type is required only for component records")
-        forbidden = {"id", "component_name" if self.kind == "subagent" else "name"}
+        forbidden = {
+            "id",
+            (
+                "component_name"
+                if self.kind in {"subagent", "async_subagent"}
+                else "name"
+            ),
+        }
         if forbidden.intersection(self.payload):
             raise ValueError("bundle record payload duplicates envelope identity")
         return self

@@ -19,7 +19,7 @@ Windows 源码 Clone 从项目根运行：
 - 【文件管理】：浏览和编辑允许开放的真实 `data/...` 目录；
 - 【模型】：模型连接编辑器与模型映射；
 - 【MCP】：MCP 连接、`mcpServers` JSON 导入与当前 Repository 的 MCP 映射；
-- 【代理】：Main Agent、可复用synchronous Subagent与Main Agent上的AsyncSubAgent references；
+- 【代理】：Main Agent、可复用 synchronous Subagent 与复用 Main Agent 模板的 Async Subagent 配置；
 - 【代理组件】：Main Agent 和 Subagent 使用的能力配置；
 - 【工作流】：统一的 Workflow 装配表单和 Vue Flow canvas；
 - 【工作流组件】：Workflow Event Output 和 Command Node 配置；

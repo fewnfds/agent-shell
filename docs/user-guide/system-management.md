@@ -83,7 +83,7 @@ LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在�
 
 Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。
 
-【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。官方AsyncSubAgent child没有父Lifecycle metadata，其独立Thread/Run也不由父Lifecycle retention清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
+【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。已由关联 Middleware 登记的 Async Subagent child 属于父 Lifecycle 的运行记录与 retention 范围。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
 Agent Shell API Server、代理设置、限制策略、响应流调度、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
 

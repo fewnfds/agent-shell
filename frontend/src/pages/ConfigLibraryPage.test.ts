@@ -139,6 +139,7 @@ const messages = {
     model: { label: 'Model' },
     'main-agent': { label: 'Main Agent' },
     'subagent-profile': { label: 'Subagent' },
+    'async-subagent-profile': { label: 'Async Subagent' },
     workflow: { label: 'Workflow' },
   },
   validation: {
@@ -596,7 +597,7 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper
       .get('[data-testid="library-agent-group"] [data-testid="section-nav"]')
       .findAll('button')
-      .map((item) => item.text())).toEqual(['Main Agent', 'Subagent'])
+      .map((item) => item.text())).toEqual(['Main Agent', 'Subagent', 'Async Subagent'])
     expect(wrapper.get('[data-testid="data-table-row"]').text()).not.toContain('block-uuid')
   })
 

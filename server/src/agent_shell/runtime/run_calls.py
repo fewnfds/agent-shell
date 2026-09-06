@@ -20,6 +20,7 @@ RunStatus = Literal[
 ]
 RunCheckStatus = RunStatus | Literal["not_found"]
 GraphKind = Literal["agent", "workflow"]
+OnDisconnect = Literal["cancel", "continue"]
 
 ACTIVE_RUN_STATUSES = frozenset({"pending", "running"})
 TERMINAL_RUN_STATUSES = frozenset(
@@ -47,6 +48,7 @@ class GraphRunCallRelation(BaseModel):
     caller_run_id: str
     resource_id: str
     resource_name: str
+    on_disconnect: OnDisconnect
     checkpoint_mode: Literal["enabled", "disabled"] | None = None
     assistant_id: str
     thread_id: str
@@ -134,6 +136,7 @@ __all__ = [
     "ACTIVE_RUN_STATUSES",
     "GraphKind",
     "GraphRunCallRelation",
+    "OnDisconnect",
     "RunCaller",
     "RunCheckStatus",
     "RunStatus",

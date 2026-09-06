@@ -6,7 +6,7 @@
 
 ## 运行监控
 
-【系统 / 运行监控】按 Lifecycle 展示本次请求启动的所有官方 LangGraph Run。Lifecycle 只是观察和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。
+【系统 / 运行监控】按 Lifecycle 展示本次请求启动的所有官方 LangGraph Run。Lifecycle 只是观察和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。官方 Async Subagent 创建的后台 child 也作为普通 Run 进入同一目录；它使用独立 Thread，父 Agent 仍通过 `async_tasks`和五个 task Tool 管理任务。
 
 目录列出：
 
@@ -26,7 +26,7 @@
 - State：Thread 的 latest persisted State；
 - history：Thread 的 checkpoint/State history。
 
-这些数据以官方 `assistant_id`、`thread_id`、`run_id` 和 status 为准。页面不重建第二套 Registry，不从 event 时间或 namespace 推测执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
+这些数据以官方 `assistant_id`、`thread_id`、`run_id` 和 status 为准。Async child 的官方 Thread 初始没有 Shell Lifecycle metadata，目录使用工具边界保存的最小 Run relation 将其纳入同一查询和删除范围；relation 不复制 child State、正文或 status。页面不重建第二套 Registry，不从 event 时间或 namespace 推测执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
 
 Lifecycle summary 将每个 Run 的 metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID 和名称。Run 选择列表按 `graph_kind` 显示 `main_agent_name` 或 `workflow_name`，身份 metadata 缺失时显示 `run_id`。
 
@@ -34,7 +34,7 @@ Lifecycle summary 将每个 Run 的 metadata 投影为统一 Graph subject；搜
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
 
-删除 Lifecycle 会删除其官方 Thread、Run/checkpoint/State 和 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
+删除 Lifecycle 会删除其入口与内部启动 Run 的官方 Thread、Run/checkpoint/State，包括已登记的 Async Subagent child，并删除 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
 
 ## API Docs、Studio 与 LangSmith
 

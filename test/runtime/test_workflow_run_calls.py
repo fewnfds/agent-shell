@@ -109,6 +109,7 @@ class _Store:
                     "caller_run_id": relation["caller_run_id"],
                     "resource_id": relation["workflow_id"],
                     "resource_name": relation["workflow_name"],
+                    "on_disconnect": "cancel",
                     "assistant_id": relation["assistant_id"],
                     "thread_id": relation["thread_id"],
                     "run_id": relation["run_id"],

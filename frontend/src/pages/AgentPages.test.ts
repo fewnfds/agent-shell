@@ -3,12 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ManagementApiError } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
-import type { MainAgentProfile, SubagentProfile, ValidationReport } from '@/domain/agents'
+import type {
+  AsyncSubagentProfile,
+  MainAgentProfile,
+  SubagentProfile,
+  ValidationReport,
+} from '@/domain/agents'
 
 import {
   buttonByText,
   deferred,
   getToastNotify,
+  mountAsyncSubagentPage,
   mountMainAgentPage,
   mountSubagentPage,
   resetAgentPageTestState,
@@ -322,6 +328,7 @@ describe('agent authoring pages', () => {
           { id: failedId, name: 'Unavailable MainAgent' },
         ],
         subagents: [],
+        async_subagents: [],
         workflows: [],
       })),
       getMainAgent: vi.fn(async (id) => {
@@ -386,19 +393,37 @@ describe('agent authoring pages', () => {
     wrapper.unmount()
   })
 
-  it('authors ordered async Main Agent references', async () => {
-    const firstId = '00000000-0000-0000-0000-000000000071'
-    const secondId = '00000000-0000-0000-0000-000000000072'
+  it('authors ordered Async Subagent references', async () => {
+    const firstTargetId = '00000000-0000-0000-0000-000000000071'
+    const secondTargetId = '00000000-0000-0000-0000-000000000072'
+    const firstProfileId = '00000000-0000-0000-0000-000000000073'
+    const secondProfileId = '00000000-0000-0000-0000-000000000074'
     const api = service({
       getConfigurationOptions: vi.fn(async () => ({
         repository_id: '00000000-0000-4000-8000-000000000099',
         repository_revision: 1,
         components: {},
         main_agents: [
-          { id: firstId, name: 'Research Agent' },
-          { id: secondId, name: 'Review Agent' },
+          { id: firstTargetId, name: 'Research Agent' },
+          { id: secondTargetId, name: 'Review Agent' },
         ],
         subagents: [],
+        async_subagents: [
+          {
+            id: firstProfileId,
+            component_name: 'Reusable research',
+            main_agent_id: firstTargetId,
+            name: 'researcher',
+            description: 'Research the request.',
+          },
+          {
+            id: secondProfileId,
+            component_name: 'Reusable review',
+            main_agent_id: secondTargetId,
+            name: 'reviewer',
+            description: 'Review the result.',
+          },
+        ],
         workflows: [],
       })),
     })
@@ -406,15 +431,9 @@ describe('agent authoring pages', () => {
 
     await wrapper.get('[data-action="add-async-subagent-reference"]').trigger('click')
     await wrapper.get('[data-action="add-async-subagent-reference"]').trigger('click')
-    const targets = wrapper.findAll('[data-testid="async-subagent-target"]')
-    const names = wrapper.findAll('[data-testid="async-subagent-name"]')
-    const descriptions = wrapper.findAll('[data-testid="async-subagent-description"]')
-    await targets[0]!.setValue(firstId)
-    await names[0]!.setValue('researcher')
-    await descriptions[0]!.setValue('Research the request.')
-    await targets[1]!.setValue(secondId)
-    await names[1]!.setValue('reviewer')
-    await descriptions[1]!.setValue('Review the result.')
+    const profiles = wrapper.findAll('[data-testid="async-subagent-profile"]')
+    await profiles[0]!.setValue(firstProfileId)
+    await profiles[1]!.setValue(secondProfileId)
     await wrapper.findAll(
       '[data-action="move-async-subagent-reference-up"]',
     )[1]!.trigger('click')
@@ -423,18 +442,43 @@ describe('agent authoring pages', () => {
 
     expect(api.createMainAgent).toHaveBeenCalledWith(expect.objectContaining({
       async_subagents: [
-        {
-          main_agent_id: secondId,
-          name: 'reviewer',
-          description: 'Review the result.',
-        },
-        {
-          main_agent_id: firstId,
-          name: 'researcher',
-          description: 'Research the request.',
-        },
+        { async_subagent_id: secondProfileId },
+        { async_subagent_id: firstProfileId },
       ],
     }))
+    wrapper.unmount()
+  })
+
+  it('edits an Async Subagent configuration as a reusable Main Agent shell', async () => {
+    const id = '00000000-0000-0000-0000-000000000030'
+    const targetId = '00000000-0000-0000-0000-000000000010'
+    const profile: AsyncSubagentProfile = {
+      id,
+      component_name: 'Background reviewer',
+      main_agent_id: targetId,
+      name: 'reviewer',
+      description: 'Review results in the background.',
+    }
+    const api = service({
+      getAsyncSubagent: vi.fn(async () => profile),
+    })
+    const { wrapper } = await mountAsyncSubagentPage(
+      api,
+      `/agents/async-subagents?id=${id}`,
+    )
+
+    expect(wrapper.get('#async-subagent-template').element).toHaveProperty('value', targetId)
+    expect(wrapper.text()).toContain('agents.asyncSubagentEntity.checkpointFixed')
+    expect(wrapper.text()).toContain('agents.asyncSubagentEntity.durabilityFixed')
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+
+    expect(api.updateAsyncSubagent).toHaveBeenCalledWith(id, {
+      component_name: 'Background reviewer',
+      main_agent_id: targetId,
+      name: 'reviewer',
+      description: 'Review results in the background.',
+    })
     wrapper.unmount()
   })
 

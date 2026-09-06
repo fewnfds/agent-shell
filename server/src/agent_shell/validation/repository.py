@@ -157,6 +157,14 @@ class RepositoryValidationService:
                 stored=True,
             )
             issues.extend(self._semantic_issues(report))
+        for profile in config.get("async_subagents", []):
+            report, _ = self._configuration_validation.validate_async_subagent(
+                profile,
+                stage=stage,
+                owner_id=str(profile.get("id", "")),
+                stored=True,
+            )
+            issues.extend(self._semantic_issues(report))
         for main_agent in config.get("main_agents", []):
             report, _, _ = self._configuration_validation.validate_main_agent(
                 main_agent,

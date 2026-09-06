@@ -91,6 +91,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'agent-event-output': () => import('@/editors/AgentEventOutputEditor.vue'),
   'exception-retry': () => import('@/editors/ExceptionRetryEditor.vue'),
   subagent: () => import('@/editors/SubagentCapabilityEditor.vue'),
+  'async-subagent': () => import('@/editors/AsyncSubagentEditor.vue'),
   summarization: () => import('@/editors/SummarizationEditor.vue'),
   'prompt-caching': () => import('@/editors/PromptCachingEditor.vue'),
   'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
@@ -301,6 +302,7 @@ const editorProps = computed<Record<string, unknown>>(() => {
     case 'todo-list':
     case 'exception-retry':
     case 'subagent':
+    case 'async-subagent':
     case 'summarization':
     case 'prompt-caching':
       return {

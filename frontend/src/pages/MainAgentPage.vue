@@ -18,12 +18,14 @@ import {
   agentAuthoringServiceKey,
   blankMainAgent,
   managementAgentAuthoringService,
+  normalizeAsyncSubagent,
   normalizeMainAgent,
   normalizeSubagent,
   mainAgentPayload,
   referenceId,
   setReference,
   type AgentAuthoringService,
+  type AsyncSubagentProfile,
   type CapabilityManifest,
   type CapabilityType,
   type StoredBlock,
@@ -101,6 +103,7 @@ const {
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
 const subagentProfiles = ref<SubagentProfile[]>([])
+const asyncSubagentProfiles = ref<AsyncSubagentProfile[]>([])
 const mcpRequirements = ref<StoredBlock[]>([])
 
 const obsoleteReferences = computed(() => {
@@ -148,6 +151,7 @@ async function loadWorkspace(): Promise<void> {
     ])
     manifests.value = catalog.block_types.filter((item) => item.agent_selectable !== false).sort((left, right) => left.order - right.order)
     subagentProfiles.value = options.subagents.map(normalizeSubagent)
+    asyncSubagentProfiles.value = options.async_subagents.map(normalizeAsyncSubagent)
     mcpRequirements.value = options.components['mcp-requirement'] ?? []
     blocks.value = Object.fromEntries(manifests.value.map((manifest) => [
       manifest.type,
@@ -433,8 +437,7 @@ onMounted(() => {
 
         <AsyncSubagentReferencesEditor
           v-model:references="form.async_subagents"
-          :main-agents="profiles"
-          :current-agent-id="form.id"
+          :profiles="asyncSubagentProfiles"
         />
       </template>
       <template #aside>

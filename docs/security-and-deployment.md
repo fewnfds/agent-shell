@@ -85,7 +85,7 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、Graph Run relation和filesystem route记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
-官方 Graph、State/history 和 Server Store可以包含prompt、消息、Tool payload、State、路径和其他业务材料。官方AsyncSubAgent child使用独立Thread/Run，并由父Agent checkpoint中的`async_tasks`保存reference；该child不自动进入父Lifecycle retention。平台不能识别用户主动写入普通文本、异常message或自定义对象表示中的任意密钥，实例所有者必须把`data/state/`和完整`data/`作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*`全部需要management Bearer，不建立新的多租户可见性边界。
+官方 Graph、State/history 和 Server Store 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。官方 Async Subagent child 使用独立 Thread/Run，并由父 Agent checkpoint 中的`async_tasks`保存 reference；Shell 在工具返回时登记最小 Lifecycle relation，因此 child 进入同一 Lifecycle 的 monitoring 与 retention，但不会把 child 正文、State 或 status 复制到 relation。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把`data/state/`和完整`data/`作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*`全部需要 management Bearer，不建立新的多租户可见性边界。
 
 ## 系统配置与变量
 

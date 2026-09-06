@@ -17,7 +17,8 @@ Main Agent root graph
        -> direct Subagent
             -> its own ordered tool_refs
             -> its own ordered middleware_refs
-       -> ordered AsyncSubAgent references
+       -> explicit Async Subagent Middleware component
+            -> ordered Async Subagent configuration references
             -> official async task tools
 ```
 
@@ -153,7 +154,7 @@ GET /agent-shell/api/subagents/<Subagent UUID>
 PUT /agent-shell/api/subagents/<Subagent UUID>
 ```
 
-每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool、同步Subagent的`task`和AsyncSubAgent的五个task工具共享模型可见Tool namespace；重复Tool name会在Agent assembly validation中返回错误。
+每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool、同步 Subagent 的`task`和 Async Subagent 的五个 task 工具共享模型可见 Tool namespace；重复 Tool name 会在 Agent assembly validation 中返回错误。
 
 ## 6. Custom Middleware factory
 

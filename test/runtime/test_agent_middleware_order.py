@@ -113,6 +113,14 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
                 "instruction_override": None,
                 "task_description_override": "Delegate work.",
             },
+            "async-subagent": {
+                "system_prompt_override": None,
+                "start_async_task_description_override": None,
+                "check_async_task_description_override": None,
+                "update_async_task_description_override": None,
+                "cancel_async_task_description_override": None,
+                "list_async_tasks_description_override": None,
+            },
         },
         filesystem_mode="composite",
         disabled_capabilities=frozenset(),
@@ -120,7 +128,10 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
         subagent_nodes={child.key: child},
         async_subagents=(
             ResolvedAsyncSubagent(
+                async_subagent_id="33333333-3333-4333-8333-333333333333",
                 main_agent_id="22222222-2222-4222-8222-222222222222",
+                main_agent_name="Async reviewer",
+                on_disconnect="cancel",
                 name="async_reviewer",
                 description="Review work in the background.",
             ),
@@ -239,3 +250,44 @@ def test_task_description_override_keeps_shell_middleware_private_state_keys(
     assert "private_value" in private_state_keys
     assert "jump_to" in private_state_keys
     assert "public_value" not in private_state_keys
+
+
+def test_async_subagent_override_keeps_official_tools_and_replaces_text() -> None:
+    replacement = subagent_middleware.make_async_subagent_middleware_override(
+        async_subagents=[
+            {
+                "name": "researcher",
+                "description": "Research in the background.",
+                "graph_id": "research-assistant",
+            }
+        ],
+        system_prompt="Use background work deliberately.",
+        description_overrides={
+            "start_async_task": "Start one of:\n{available_agents}",
+            "check_async_task": "Read current task status.",
+            "update_async_task": None,
+            "cancel_async_task": None,
+            "list_async_tasks": None,
+        },
+    )
+
+    tools = {tool.name: tool for tool in replacement.tools}
+    assert set(tools) == {
+        "start_async_task",
+        "check_async_task",
+        "update_async_task",
+        "cancel_async_task",
+        "list_async_tasks",
+    }
+    assert tools["start_async_task"].description == (
+        "Start one of:\n- researcher: Research in the background."
+    )
+    assert tools["check_async_task"].description == "Read current task status."
+    assert tools["update_async_task"].args_schema.__name__ == (
+        "UpdateAsyncTaskSchema"
+    )
+    assert replacement.system_prompt == (
+        "Use background work deliberately.\n\n"
+        "Available async subagent types:\n\n"
+        "- researcher: Research in the background."
+    )

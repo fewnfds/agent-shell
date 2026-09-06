@@ -334,6 +334,21 @@ def subagent_payload(
     }
 
 
+def async_subagent_payload(
+    component_name: str,
+    main_agent_id: str,
+    *,
+    name: str = "background_worker",
+    description: str = "Handles work in an independent Thread.",
+) -> dict[str, object]:
+    return {
+        "component_name": component_name,
+        "main_agent_id": main_agent_id,
+        "name": name,
+        "description": description,
+    }
+
+
 def _python_output_payload(
     client: TestClient,
     component_type: str,

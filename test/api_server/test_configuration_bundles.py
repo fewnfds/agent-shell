@@ -22,7 +22,12 @@ from agent_shell.configuration.bundles.errors import BundleImportError
 from agent_shell.configuration.bundles.planning import BundleImportPlanner
 from agent_shell.configuration.bundles.transactions import commit_prepared_import
 from agent_shell.storage.file_config import FileConfigRepository
-from .support import create_main_agent, create_workflow, make_client
+from .support import (
+    async_subagent_payload,
+    create_main_agent,
+    create_workflow,
+    make_client,
+)
 
 
 def _export_main_agent_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
@@ -206,13 +211,18 @@ def test_main_agent_bundle_closes_over_and_rewrites_async_agent_targets(
             f"/agent-shell/api/main-agents/{parent['id']}/copy",
             json={"name": "Portable async target"},
         ).json()
+        profile = source.post(
+            "/agent-shell/api/async-subagents",
+            json=async_subagent_payload(
+                "Portable research profile",
+                target["id"],
+                name="researcher",
+                description="Research from an independent Thread.",
+            ),
+        ).json()
         payload = {key: value for key, value in parent.items() if key != "id"}
         payload["async_subagents"] = [
-            {
-                "main_agent_id": target["id"],
-                "name": "researcher",
-                "description": "Research from an independent Thread.",
-            }
+            {"async_subagent_id": profile["id"]}
         ]
         saved = source.put(
             f"/agent-shell/api/main-agents/{parent['id']}",
@@ -233,6 +243,11 @@ def test_main_agent_bundle_closes_over_and_rewrites_async_agent_targets(
         if record["kind"] == "main_agent"
     }
     assert bundled_main_ids == {parent["id"], target["id"]}
+    assert {
+        record["source_id"]
+        for record in manifest["records"]
+        if record["kind"] == "async_subagent"
+    } == {profile["id"]}
 
     target_root = tmp_path / "async-target"
     target_root.mkdir()
@@ -284,12 +299,15 @@ def test_main_agent_bundle_closes_over_and_rewrites_async_agent_targets(
         if agent["id"] == imported["root"]["target_id"]
     )
     assert imported_parent["async_subagents"] == [
-        {
-            "main_agent_id": preview["target_ids"][target["id"]],
-            "name": "researcher",
-            "description": "Research from an independent Thread.",
-        }
+        {"async_subagent_id": preview["target_ids"][profile["id"]]}
     ]
+    imported_profile = next(
+        item
+        for item in destination_config["async_subagents"]
+        if item["id"] == preview["target_ids"][profile["id"]]
+    )
+    assert imported_profile["main_agent_id"] == preview["target_ids"][target["id"]]
+    assert imported_profile["name"] == "researcher"
 
 
 def test_bundle_import_failure_removes_staged_configuration_and_assets(

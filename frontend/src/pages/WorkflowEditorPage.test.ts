@@ -91,6 +91,7 @@ beforeEach(() => {
     components: { command: [command] },
     main_agents: [],
     subagents: [],
+    async_subagents: [],
     workflows: [],
   })
   vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(catalog)

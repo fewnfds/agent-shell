@@ -7,8 +7,17 @@ import pytest
 from deepagents import create_deep_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.agents.middleware.types import ToolCallRequest
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.runtime import ExecutionInfo
+from langgraph.types import Command
+from langchain.tools import ToolRuntime
 from pydantic import Field
+
+from agent_shell.runtime.subagent_middleware import (
+    AsyncSubagentRunMiddleware,
+    AsyncSubagentRunTarget,
+)
 
 
 class ToolCallingModel(FakeMessagesListChatModel):
@@ -179,3 +188,151 @@ def test_official_async_subagent_tools_use_one_child_thread_and_persist_parent_s
     ]
     assert any("background result" in str(message.content) for message in tool_messages)
     assert any("1 tracked task(s)" in str(message.content) for message in tool_messages)
+
+
+def _tool_request(name: str) -> ToolCallRequest:
+    return ToolCallRequest(
+        tool_call={"name": name, "args": {}, "id": "call-1", "type": "tool_call"},
+        tool=None,
+        state={"messages": []},
+        runtime=ToolRuntime(
+            state={"messages": []},
+            context=None,
+            config={},
+            stream_writer=lambda _value: None,
+            tool_call_id="call-1",
+            store=None,
+            execution_info=ExecutionInfo(
+                checkpoint_id="checkpoint-1",
+                checkpoint_ns="",
+                task_id="task-1",
+                thread_id="parent-thread",
+                run_id="parent-run",
+            ),
+        ),
+    )
+
+
+def test_async_run_middleware_records_public_command_causality() -> None:
+    class Observer:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, object]] = []
+
+        def begin_async_subagent_call(self, parent_run_id: str) -> None:
+            self.events.append(("begin", parent_run_id))
+
+        def end_async_subagent_call(self, parent_run_id: str) -> None:
+            self.events.append(("end", parent_run_id))
+
+        async def record_async_subagent_run(self, **kwargs) -> None:
+            self.events.append(("record", kwargs))
+
+        def detach_async_subagent_observation(self, *_args, **_kwargs) -> None:
+            raise AssertionError("the completed handler must not detach")
+
+    async def scenario() -> Observer:
+        observer = Observer()
+        target = AsyncSubagentRunTarget(
+            async_subagent_id="profile-1",
+            main_agent_id="agent-1",
+            main_agent_name="Research Agent",
+            on_disconnect="cancel",
+        )
+        middleware = AsyncSubagentRunMiddleware(
+            targets={"researcher": target},
+            observer=observer,
+        )
+
+        async def handler(_request):
+            return Command(
+                update={
+                    "async_tasks": {
+                        "child-thread": {
+                            "agent_name": "researcher",
+                            "thread_id": "child-thread",
+                            "run_id": "child-run",
+                        }
+                    }
+                }
+            )
+
+        result = await middleware.awrap_tool_call(
+            _tool_request("start_async_task"),
+            handler,
+        )
+        assert isinstance(result, Command)
+        return observer
+
+    observer = asyncio.run(scenario())
+    assert observer.events[0] == ("begin", "parent-run")
+    assert observer.events[1][0] == "record"
+    assert observer.events[1][1]["parent_run_id"] == "parent-run"
+    assert observer.events[1][1]["thread_id"] == "child-thread"
+    assert observer.events[1][1]["run_id"] == "child-run"
+    assert observer.events[2] == ("end", "parent-run")
+
+
+def test_cancelled_parent_tool_call_detaches_child_registration() -> None:
+    class Observer:
+        def __init__(self) -> None:
+            self.recorded = asyncio.Event()
+            self.ended = asyncio.Event()
+            self.detached: list[asyncio.Task] = []
+
+        def begin_async_subagent_call(self, _parent_run_id: str) -> None:
+            return None
+
+        def end_async_subagent_call(self, _parent_run_id: str) -> None:
+            self.ended.set()
+
+        async def record_async_subagent_run(self, **_kwargs) -> None:
+            self.recorded.set()
+
+        def detach_async_subagent_observation(self, coroutine, *, name: str) -> None:
+            self.detached.append(asyncio.create_task(coroutine, name=name))
+
+    async def scenario() -> None:
+        observer = Observer()
+        release = asyncio.Event()
+        middleware = AsyncSubagentRunMiddleware(
+            targets={
+                "researcher": AsyncSubagentRunTarget(
+                    async_subagent_id="profile-1",
+                    main_agent_id="agent-1",
+                    main_agent_name="Research Agent",
+                    on_disconnect="cancel",
+                )
+            },
+            observer=observer,
+        )
+
+        async def handler(_request):
+            await release.wait()
+            return Command(
+                update={
+                    "async_tasks": {
+                        "child-thread": {
+                            "agent_name": "researcher",
+                            "thread_id": "child-thread",
+                            "run_id": "child-run",
+                        }
+                    }
+                }
+            )
+
+        call = asyncio.create_task(
+            middleware.awrap_tool_call(
+                _tool_request("start_async_task"),
+                handler,
+            )
+        )
+        await asyncio.sleep(0)
+        call.cancel()
+        await asyncio.gather(call, return_exceptions=True)
+        assert len(observer.detached) == 1
+        release.set()
+        await asyncio.gather(*observer.detached)
+        assert observer.recorded.is_set()
+        assert observer.ended.is_set()
+
+    asyncio.run(scenario())

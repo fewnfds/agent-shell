@@ -2,6 +2,8 @@ import type { InjectionKey } from 'vue'
 
 import { managementApi } from '@/api'
 import type {
+  AsyncSubagent,
+  AsyncSubagentPayload as ApiAsyncSubagentPayload,
   AsyncSubagentReference as ApiAsyncSubagentReference,
   BlockType,
   CapabilityManifest as ApiCapabilityManifest,
@@ -53,6 +55,8 @@ interface OverrideSelection {
 export interface SubagentProfile extends Omit<Subagent, 'settings'> {
   settings: Subagent['settings']
 }
+export type AsyncSubagentProfile = AsyncSubagent
+type AsyncSubagentPayload = ApiAsyncSubagentPayload
 type SubagentPayload = ApiSubagentPayload
 export type ValidationReport = ApiValidationReport
 export type DraftValidationRequest = ApiDraftValidationRequest
@@ -70,6 +74,11 @@ export interface AgentAuthoringService {
   updateSubagent(id: string, payload: SubagentPayload): Promise<SubagentProfile>
   copySubagent(id: string, componentName: string): Promise<SubagentProfile>
   deleteSubagent(id: string): Promise<{ ok: boolean }>
+  getAsyncSubagent(id: string): Promise<AsyncSubagentProfile>
+  createAsyncSubagent(payload: AsyncSubagentPayload): Promise<AsyncSubagentProfile>
+  updateAsyncSubagent(id: string, payload: AsyncSubagentPayload): Promise<AsyncSubagentProfile>
+  copyAsyncSubagent(id: string, componentName: string): Promise<AsyncSubagentProfile>
+  deleteAsyncSubagent(id: string): Promise<{ ok: boolean }>
   validateDraft(request: DraftValidationRequest): Promise<ValidationReport>
 }
 
@@ -88,6 +97,11 @@ export const managementAgentAuthoringService: AgentAuthoringService = {
   updateSubagent: (id, payload) => managementApi.saveSubagent({ id, ...payload }),
   copySubagent: (id, componentName) => managementApi.copySubagent(id, componentName),
   deleteSubagent: (id) => managementApi.deleteSubagent(id),
+  getAsyncSubagent: (id) => managementApi.getAsyncSubagent(id),
+  createAsyncSubagent: (payload) => managementApi.saveAsyncSubagent(payload),
+  updateAsyncSubagent: (id, payload) => managementApi.saveAsyncSubagent({ id, ...payload }),
+  copyAsyncSubagent: (id, componentName) => managementApi.copyAsyncSubagent(id, componentName),
+  deleteAsyncSubagent: (id) => managementApi.deleteAsyncSubagent(id),
   validateDraft: (request) => managementApi.validateDraft(request),
 }
 
@@ -118,11 +132,7 @@ export function normalizeSubagentReference(value: unknown): SubagentReference {
 
 export function normalizeAsyncSubagentReference(value: unknown): AsyncSubagentReference {
   const source = record(value)
-  return {
-    main_agent_id: text(source.main_agent_id),
-    name: text(source.name),
-    description: text(source.description),
-  }
+  return { async_subagent_id: text(source.async_subagent_id) }
 }
 
 export function blankMainAgent(): MainAgentProfile {
@@ -197,9 +207,7 @@ export function mainAgentPayload(value: MainAgentProfile): MainAgentPayload {
       subagent_id: reference.subagent_id,
     })),
     async_subagents: value.async_subagents.map((reference) => ({
-      main_agent_id: reference.main_agent_id,
-      name: reference.name.trim(),
-      description: reference.description.trim(),
+      async_subagent_id: reference.async_subagent_id,
     })),
   }
 }
@@ -306,5 +314,37 @@ export function subagentPayload(value: SubagentProfile): SubagentPayload {
       })),
       mcp_refs: value.settings.mcp_refs.map(mcpReferencePayload),
     },
+  }
+}
+
+export function blankAsyncSubagent(): AsyncSubagentProfile {
+  return {
+    id: '',
+    component_name: '',
+    main_agent_id: '',
+    name: '',
+    description: '',
+  }
+}
+
+export function normalizeAsyncSubagent(value: unknown): AsyncSubagentProfile {
+  const source = record(value)
+  return {
+    id: text(source.id),
+    component_name: text(source.component_name),
+    main_agent_id: text(source.main_agent_id),
+    name: text(source.name),
+    description: text(source.description),
+  }
+}
+
+export function asyncSubagentPayload(
+  value: AsyncSubagentProfile,
+): AsyncSubagentPayload {
+  return {
+    component_name: value.component_name.trim(),
+    main_agent_id: value.main_agent_id,
+    name: value.name.trim(),
+    description: value.description.trim(),
   }
 }

@@ -71,6 +71,9 @@ import type {
   Subagent,
   SubagentSummary,
   SubagentPayload,
+  AsyncSubagent,
+  AsyncSubagentSummary,
+  AsyncSubagentPayload,
   SystemLogSettings,
   SystemSettings,
   SystemSettingsUpdate,
@@ -753,6 +756,53 @@ export const managementApi = {
 
   deleteSubagentsMatching(query: string): Promise<{ deleted: number }> {
     return managementRequest('/subagents/delete', jsonBody({ q: query }))
+  },
+
+  listAsyncSubagentSummaries(
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<AsyncSubagentSummary>> {
+    return managementRequest(`/async-subagents${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
+  },
+
+  getAsyncSubagent(id: string): Promise<AsyncSubagent> {
+    return managementRequest(recordPath('/async-subagents', id))
+  },
+
+  saveAsyncSubagent(
+    data: AsyncSubagentPayload | AsyncSubagent,
+  ): Promise<AsyncSubagent> {
+    const id = 'id' in data ? data.id : ''
+    return managementRequest(
+      id ? recordPath('/async-subagents', id) : '/async-subagents',
+      {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(withoutId(data)),
+      },
+    )
+  },
+
+  copyAsyncSubagent(id: string, componentName: string): Promise<AsyncSubagent> {
+    return managementRequest(
+      `${recordPath('/async-subagents', id)}/copy`,
+      jsonBody({ component_name: componentName }),
+    )
+  },
+
+  deleteAsyncSubagent(id: string): Promise<{ ok: boolean }> {
+    return managementRequest(recordPath('/async-subagents', id), { method: 'DELETE' })
+  },
+
+  deleteAsyncSubagents(ids: string[]): Promise<{ deleted: number }> {
+    return managementRequest('/async-subagents/delete', jsonBody({ ids }))
+  },
+
+  deleteAsyncSubagentsMatching(query: string): Promise<{ deleted: number }> {
+    return managementRequest('/async-subagents/delete', jsonBody({ q: query }))
   },
 
   getApiServer(): Promise<ApiServerSettings> {

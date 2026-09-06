@@ -34,10 +34,10 @@ Main Agent页面装配：
 - 可选capability refs；
 - ordered Custom Tool、Custom Middleware和MCP refs；
 - ordered同步Subagent refs；
-- ordered AsyncSubAgent Main Agent refs；
+- ordered Async Subagent configuration refs；
 - root-run设置：`is_model_entry`、`checkpoint_mode`、`durability`和`on_disconnect`。
 
-Main Agent UUID确定稳定Assistant ID。`checkpoint_mode=enabled`时，同一Thread上的后续新Run延续AgentState；`disabled`使用stateless Run，不承诺跨Run消息或private marker连续性。`durability=sync|async|exit`直接传给官方Run，决定checkpoint写入时机。
+Main Agent UUID 确定稳定 Assistant ID。`checkpoint_mode=enabled`时，同一 Thread 上的后续新 Run 延续 AgentState；`disabled`使用 stateless Run，不承诺跨 Run 消息或 private marker 连续性。`durability=sync|async|exit`直接传给官方 Run，界面名称为【checkpoint 保存时机】。每个 Run 创建时还会冻结该 Main Agent 的【用户断开】策略。
 
 每次用户交互都是新Run。续聊复用Thread，不复用已结束的Run ID。
 
@@ -47,13 +47,15 @@ Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middlewar
 
 同步Subagent属于Main Agent内部agent loop，不是Workflow Node，也不建立独立Shell archive wrapper。多阶段确定性控制由Workflow和Command表达。
 
-## AsyncSubAgent
+## Async Subagent
 
-Main Agent可以按顺序引用其他Main Agent作为官方AsyncSubAgent。每条引用选择目标Main Agent，并填写父Agent中唯一的tool-facing name和description。目标不需要设置`is_model_entry=true`，但必须是当前Repository中可物化的Main Agent；当前Main Agent不能引用自己。
+【代理 / Async Subagent】创建可复用配置资源：填写配置名称，选择模板 Main Agent，并填写模型可见的代理角色名和说明。该资源只是引用外壳，不复制模板装配，也不创建第二个 Agent Graph。Main Agent 的`async_subagents`按顺序只保存这些资源的 UUID；同一资源不能重复引用，模板不能指回引用方，所有有效角色名按大小写不敏感语义唯一。
 
-Deep Agents为装配了异步引用的父Agent提供`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch立即返回task ID并在同一Agent Server中创建独立child Thread/Run；Update在该child Thread上创建新Run。目标使用稳定Assistant ID，ASGI transport不需要另配URL或认证。
+Main Agent 必须另外显式选择【Async Subagent Middleware / 异步子代理中间件】组件，引用才会成为有效装配。没有选择组件时，引用只作为候选配置保存，不提供异步工具；选择组件但没有引用时保存失败。组件可以覆盖 Middleware system prompt 与五个官方 Tool description，并继续复用官方工具实现、参数 schema 和`async_tasks` State contract。
 
-父Agent的`async_tasks` channel保存task reference。checkpoint enabled父Thread的后续Run可以继续check、update或cancel；checkpoint disabled父Run结束后不保留这些reference。async child不加入父Lifecycle的公开输出、自动断开取消或retention；父Agentcheck结果并写入自己的回复后，结果才经父Agent Event Output返回。一个父Run和每个active child分别占用一个`n_jobs_per_worker`槽位。
+Deep Agents 为有效装配提供`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。Launch 立即返回 task ID，并在同一 Agent Server 中创建独立 child Thread/Run；Update 在该 child Thread 上创建新 Run。目标使用模板 Main Agent 的稳定 Assistant ID，ASGI transport 不需要另配 URL 或认证。
+
+父 Agent 的`async_tasks` channel 保存 task reference。checkpoint enabled 父 Thread 的后续 Run 可以继续 check、update 或 cancel；checkpoint disabled 父 Run 结束后不保留这些 reference。child 自己的 Thread checkpoint 固定启用，checkpoint 保存时机固定使用官方默认`async`；child Run 创建时冻结模板 Main Agent 的【用户断开】策略，并进入父 Lifecycle 的 monitoring 与 retention。child 原始 stream 不加入父 Lifecycle 公开输出；父 Agent check 结果并写入自己的回复后，结果才经父 Agent Event Output 返回。一个父 Run 和每个 active child 分别占用一个`n_jobs_per_worker`槽位。
 
 ## Agent Additional Prompt
 

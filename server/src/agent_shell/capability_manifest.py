@@ -21,6 +21,14 @@ FILESYSTEM_TOOL_NAMES = (
     "execute",
 )
 
+ASYNC_SUBAGENT_TOOL_NAMES = (
+    "start_async_task",
+    "check_async_task",
+    "update_async_task",
+    "cancel_async_task",
+    "list_async_tasks",
+)
+
 # Deep Agents installs these middleware slots even when Agent Shell has no
 # corresponding capability reference. The runtime uses this catalog to keep
 # an explicit "not attached" selection from falling back to those defaults.
@@ -119,12 +127,18 @@ CAPABILITY_MANIFESTS = (
         subagent_overrideable=False, required=False, subagent_policy="top-level-only",
     ),
     CapabilityManifest(
-        "summarization", "summarization", "上下文摘要", 12,
+        "async-subagent", "async-subagent-middleware", "异步子代理中间件", 12,
+        "clock", "async_subagent",
+        subagent_overrideable=False, required=False, subagent_policy="top-level-only",
+        tool_names=ASYNC_SUBAGENT_TOOL_NAMES,
+    ),
+    CapabilityManifest(
+        "summarization", "summarization", "上下文摘要", 13,
         "file-text", "summarization",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
     CapabilityManifest(
-        "prompt-caching", "prompt-caching", "Prompt 缓存", 13,
+        "prompt-caching", "prompt-caching", "Prompt 缓存", 14,
         "database", "prompt_caching",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),

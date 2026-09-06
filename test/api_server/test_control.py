@@ -104,4 +104,4 @@ def test_start_stop_and_known_workflow_runs_after_restart(
     assert started.json()["enabled"] is True
     assert [item["id"] for item in models.json()["data"]] == [workflow["name"]]
     assert completion.status_code == 200
-    assert completion.json()["choices"][0]["message"]["content"] == "runtime reply"
+    assert completion.json()["choices"][0]["message"]["content"] == ""

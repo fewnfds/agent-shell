@@ -145,13 +145,13 @@ Workflow root State只有`shared_vars`一个正式channel。
 
 如果 caller 在公开 response 封口前没有等待被调用 Run，后者可以继续执行，但之后产生的文本没有可写入的原 response。要求把完整事件流交付给同一 response 时，caller 必须在自己结束前 `join()` 对应 Run。
 
-## 9. 取消与客户端断开
+## 9. 取消与用户断开
 
 `cancel()` 主动取消指定的直接调用 Run，并等待公共 Run API 返回终态。官方取消终态是 `interrupted`。
 
 普通 Run 的成功、失败或主动取消不会触发隐式连锁取消。用户代码需要业务级联时，应使用已保存的 Run ID 显式调用 `cancel()`。
 
-Main Agent与Workflow分别保存`on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口Graph的设置：`cancel`取消同一Lifecycle的全部active Run，`continue`让全部Run后台继续。该规则不沿caller→spawned relation传播。
+Main Agent 与 Workflow 分别保存`on_disconnect=cancel|continue`。每个 Run 创建时冻结目标资源的值；某次用户连接提前断开时，`cancel`只取消这个 active Run，`continue`只让这个 Run 后台继续。该规则不沿 caller → spawned relation 传播，断开后登记的 Run 也使用自己的冻结值。
 
 ## 10. 观测与交付检查
 
@@ -164,6 +164,6 @@ Main Agent与Workflow分别保存`on_disconnect=cancel|continue`。某次客户�
 - 需要后续控制的 `run_id` 已保存，官方状态没有复制为第二套 State；
 - `join()`、`check()` 或 fire-and-forget 符合预期结果交付方式；
 - 大型结果通过 Store/Filesystem reference 交付；
-- 请求入口Main Agent或Workflow的`on_disconnect`符合客户端断开后的预期；
+- 每个可能参与 Lifecycle 的 Main Agent、Workflow 与 Async Subagent 模板都配置了符合预期的`on_disconnect`；
 - 循环有业务退出条件；
 - 要进入同一公开 response 的输出在请求入口 Run 结束前完成收集。

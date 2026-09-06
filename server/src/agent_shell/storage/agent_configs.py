@@ -8,7 +8,11 @@ from agent_shell.storage.file_config import FileConfigRepository
 
 
 class AgentConfigStore:
-    _IDENTITY_COLUMNS = {"main_agents": "name", "subagents": "component_name"}
+    _IDENTITY_COLUMNS = {
+        "main_agents": "name",
+        "subagents": "component_name",
+        "async_subagents": "component_name",
+    }
 
     def __init__(self, repository: FileConfigRepository, event_logger: SecurityEventLogger | None = None) -> None:
         self._repository = repository
@@ -33,11 +37,17 @@ class AgentConfigStore:
     def list_item_summaries(self, table: str) -> list[dict]:
         table = self._table(table)
         identity = self._identity_column(table)
-        fields = (
-            ("id", "name")
-            if table == "main_agents"
-            else ("id", "component_name", "name", "description")
-        )
+        fields = {
+            "main_agents": ("id", "name"),
+            "subagents": ("id", "component_name", "name", "description"),
+            "async_subagents": (
+                "id",
+                "component_name",
+                "main_agent_id",
+                "name",
+                "description",
+            ),
+        }[table]
         return sorted(
             self._repository.list_records(table, fields=fields),
             key=lambda value: (
@@ -92,7 +102,11 @@ class AgentConfigStore:
         emit_configuration_events(
             self._events,
             action="updated" if existing is not None else "created",
-            entity="main-agent" if table == "main_agents" else "subagent",
+            entity={
+                "main_agents": "main-agent",
+                "subagents": "subagent",
+                "async_subagents": "async-subagent",
+            }[table],
             entity_id=item_id,
         )
 
@@ -126,7 +140,11 @@ class AgentConfigStore:
             emit_configuration_events(
                 self._events,
                 action="deleted",
-                entity="main-agent" if table == "main_agents" else "subagent",
+                entity={
+                    "main_agents": "main-agent",
+                    "subagents": "subagent",
+                    "async_subagents": "async-subagent",
+                }[table],
                 entity_id=item_id,
             )
         return len(removed)

@@ -72,6 +72,7 @@ def _default_config() -> dict[str, Any]:
         "components": {},
         "main_agents": [],
         "subagents": [],
+        "async_subagents": [],
         "workflows": [],
     }
 
@@ -176,7 +177,9 @@ class FileConfigRepository:
     """Persistent configuration repository backed by layered YAML files."""
 
     _COMPONENT_DIR = "components"
-    _RECORD_SECTIONS = frozenset({"main_agents", "subagents", "workflows"})
+    _RECORD_SECTIONS = frozenset(
+        {"main_agents", "subagents", "async_subagents", "workflows"}
+    )
 
     def __init__(
         self,
@@ -298,7 +301,16 @@ class FileConfigRepository:
                 records.append(record)
             config["components"][directory.name] = records
 
-        for category, key, identity in (("main", "main_agents", "name"), ("subagent", "subagents", "component_name")):
+        for category, key, identity, kind in (
+            ("main", "main_agents", "name", "main_agent"),
+            ("subagent", "subagents", "component_name", "subagent"),
+            (
+                "async-subagent",
+                "async_subagents",
+                "component_name",
+                "async_subagent",
+            ),
+        ):
             directory = self.agents_root / category
             records: list[dict[str, Any]] = []
             if directory.exists():
@@ -307,7 +319,7 @@ class FileConfigRepository:
                     item_id, payload = _configuration_document(
                         path,
                         document,
-                        kind="main_agent" if category == "main" else "subagent",
+                        kind=kind,
                         identity_field=identity,
                     )
                     records.append(
@@ -338,6 +350,7 @@ class FileConfigRepository:
         config.setdefault("components", {})
         config.setdefault("main_agents", [])
         config.setdefault("subagents", [])
+        config.setdefault("async_subagents", [])
         config.setdefault("workflows", [])
         components = config["components"]
         if not isinstance(components, dict):
@@ -434,6 +447,8 @@ class FileConfigRepository:
                 config["main_agents"].append(record)
             elif entity.kind == "subagent":
                 config["subagents"].append(record)
+            elif entity.kind == "async_subagent":
+                config["async_subagents"].append(record)
             else:
                 config["workflows"].append(record)
         return config
@@ -715,7 +730,7 @@ class FileConfigRepository:
             for item in records
             if isinstance(item, dict) and item.get("id")
         }
-        for key in ("main_agents", "subagents", "workflows"):
+        for key in ("main_agents", "subagents", "async_subagents", "workflows"):
             ids.update(
                 str(item.get("id"))
                 for item in config.get(key, [])
@@ -1048,7 +1063,16 @@ class FileConfigRepository:
                     path.unlink(missing_ok=True)
 
     def _write_agents(self, config: dict[str, Any], expected: set[Path]) -> None:
-        for category, key, identity, kind in (("main", "main_agents", "name", "main_agent"), ("subagent", "subagents", "component_name", "subagent")):
+        for category, key, identity, kind in (
+            ("main", "main_agents", "name", "main_agent"),
+            ("subagent", "subagents", "component_name", "subagent"),
+            (
+                "async-subagent",
+                "async_subagents",
+                "component_name",
+                "async_subagent",
+            ),
+        ):
             directory = self.agents_root / category
             directory.mkdir(parents=True, exist_ok=True)
             for record in config.get(key, []):

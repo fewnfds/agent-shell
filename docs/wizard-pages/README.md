@@ -1,6 +1,6 @@
 # 组件说明
 
-本目录是配置编辑页的字段索引：13 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 2 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
+本目录是配置编辑页的字段索引：14 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 2 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
 
 | 所属 / 顺序 | 页面 | 类型 |
 | --- | --- | --- |
@@ -15,13 +15,14 @@
 | Agent / 9 | [Agent Event Output](agent-event-output-config.md) | `agent-event-output` |
 | Agent / 10 | [Exception Retry](exception-retry-config.md) | `exception-retry` |
 | Agent / 11 | [Subagent Delegation](subagent-config.md) | `subagent` |
-| Agent / 12 | [Summarization](summarization-config.md) | `summarization` |
-| Agent / 13 | [Prompt Caching](prompt-caching-config.md) | `prompt-caching` |
+| Agent / 12 | [Async Subagent Middleware](async-subagent-config.md) | `async-subagent` |
+| Agent / 13 | [Summarization](summarization-config.md) | `summarization` |
+| Agent / 14 | [Prompt Caching](prompt-caching-config.md) | `prompt-caching` |
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |
 | Workflow | [Workflow Event Output](workflow-event-output-config.md) | `workflow-event-output` |
 | Workflow | [Command Node](command-config.md) | `command` |
 
-Agent / 1..13 是 Agent capability 的固定 catalog order，Resource 与 Workflow 行不参与该 order。`agent_selectable=false` 的 Skill Component 不出现在 Main Agent 或 Subagent 的 capability picker；`mcp-requirement` 通过独立 ordered `mcp_refs` 装配，不进入 capability picker。
+Agent / 1..14 是 Agent capability 的固定 catalog order，Resource 与 Workflow 行不参与该 order。`agent_selectable=false` 的 Skill Component 不出现在 Main Agent 或 Subagent 的 capability picker；`mcp-requirement` 通过独立 ordered `mcp_refs` 装配，不进入 capability picker。
 
 模型要求、Filesystem Backend、Filesystem Tools 和 Agent Event Output 是 Main Agent 必选组件。前三者在 Subagent 侧必须继承或替换、不可关闭；Agent Event Output 仅属于顶层 Main Agent，Subagent 事件复用所属 Main Agent 的输出组件，不单独覆写。模型连接在实例“模型”页面维护并通过模型映射绑定。
 

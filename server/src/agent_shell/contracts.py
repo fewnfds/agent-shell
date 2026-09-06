@@ -720,6 +720,40 @@ class SubagentBlock(StrictBlock):
         return self
 
 
+class AsyncSubagentBlock(StrictBlock):
+    system_prompt_override: PromptOverrideText | None = None
+    start_async_task_description_override: PromptOverrideText | None = None
+    check_async_task_description_override: PromptOverrideText | None = None
+    update_async_task_description_override: PromptOverrideText | None = None
+    cancel_async_task_description_override: PromptOverrideText | None = None
+    list_async_tasks_description_override: PromptOverrideText | None = None
+
+    @model_validator(mode="after")
+    def validate_tool_descriptions(self) -> "AsyncSubagentBlock":
+        start = self.start_async_task_description_override
+        if start is not None:
+            _validate_format_template(
+                start,
+                allowed_fields=TASK_DESCRIPTION_FIELDS,
+                label="Async Subagent start_async_task description",
+            )
+        for field in (
+            "check_async_task_description_override",
+            "update_async_task_description_override",
+            "cancel_async_task_description_override",
+            "list_async_tasks_description_override",
+        ):
+            value = getattr(self, field)
+            if value is not None:
+                _validate_format_template(
+                    value,
+                    allowed_fields=(),
+                    required_fields=(),
+                    label=f"Async Subagent {field.removesuffix('_description_override')} description",
+                )
+        return self
+
+
 SummarizationThresholdType = Literal["auto", "fraction", "tokens", "messages"]
 
 
@@ -782,6 +816,13 @@ class SubagentReference(BaseModel):
 class AsyncSubagentReference(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    async_subagent_id: RequiredReference
+
+
+class AsyncSubagentProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    component_name: BlockName
     main_agent_id: RequiredReference
     name: Annotated[
         str,
@@ -941,6 +982,7 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "agent-event-output": AgentEventOutputBlock,
     "exception-retry": ExceptionRetryBlock,
     "subagent": SubagentBlock,
+    "async-subagent": AsyncSubagentBlock,
     "summarization": SummarizationBlock,
     "prompt-caching": PromptCachingBlock,
 }

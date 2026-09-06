@@ -38,7 +38,11 @@ class IdentityPlan:
 
 
 def _source_entity(record: Any) -> ConfigurationEntity:
-    identity = "component_name" if record.kind == "subagent" else "name"
+    identity = (
+        "component_name"
+        if record.kind in {"subagent", "async_subagent"}
+        else "name"
+    )
     payload = {
         identity: record.name,
         **deepcopy(record.payload),
@@ -218,7 +222,11 @@ def plan_identities(
         suggested = _next_name(entity, used)
         requires_confirmation = suggested != entity.name
         selected = supplied.get(entity.id, suggested)
-        path = "component_name" if entity.kind == "subagent" else "name"
+        path = (
+            "component_name"
+            if entity.kind in {"subagent", "async_subagent"}
+            else "name"
+        )
         if requires_confirmation and require_resolved and entity.id not in supplied:
             errors.append(
                 bundle_issue(
@@ -269,7 +277,11 @@ def transform_bundle_records(
     for source in records.entities:
         rewritten = rewrite_configuration_references(source, identities.target_ids)
         rewritten["id"] = identities.target_ids[source.id]
-        identity = "component_name" if source.kind == "subagent" else "name"
+        identity = (
+            "component_name"
+            if source.kind in {"subagent", "async_subagent"}
+            else "name"
+        )
         rewritten[identity] = identities.names[source.id]
         if source.kind == "component":
             rewritten.update(component_payloads[source.id])

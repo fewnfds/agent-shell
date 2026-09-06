@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   blankMainAgent,
   blankSubagent,
+  normalizeAsyncSubagentReference,
   normalizeSubagentReference,
   overrideSelection,
   mainAgentPayload,
@@ -18,9 +19,7 @@ describe('agent profile adapters', () => {
     setReference(draft, 'model', '00000000-0000-0000-0000-000000000001')
     draft.subagents.push({ subagent_id: '00000000-0000-0000-0000-000000000020' })
     draft.async_subagents.push({
-      main_agent_id: '00000000-0000-0000-0000-000000000030',
-      name: ' researcher ',
-      description: ' Research a topic. ',
+      async_subagent_id: '00000000-0000-0000-0000-000000000030',
     })
 
     expect(mainAgentPayload(draft)).toEqual({
@@ -38,9 +37,7 @@ describe('agent profile adapters', () => {
       mcp_refs: [],
       subagents: [{ subagent_id: '00000000-0000-0000-0000-000000000020' }],
       async_subagents: [{
-        main_agent_id: '00000000-0000-0000-0000-000000000030',
-        name: 'researcher',
-        description: 'Research a topic.',
+        async_subagent_id: '00000000-0000-0000-0000-000000000030',
       }],
     })
   })
@@ -84,6 +81,12 @@ describe('agent profile adapters', () => {
       name: 'legacy field',
     })).toEqual({
       subagent_id: '00000000-0000-0000-0000-000000000020',
+    })
+    expect(normalizeAsyncSubagentReference({
+      async_subagent_id: '00000000-0000-0000-0000-000000000030',
+      name: 'ignored',
+    })).toEqual({
+      async_subagent_id: '00000000-0000-0000-0000-000000000030',
     })
   })
 })

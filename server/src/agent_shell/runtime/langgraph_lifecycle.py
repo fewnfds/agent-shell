@@ -63,6 +63,26 @@ def _run_subject(run: Mapping[str, Any]) -> dict[str, str] | None:
     }
 
 
+def _relation_metadata(relation: GraphRunCallRelation) -> dict[str, str]:
+    metadata = {
+        "lifecycle_id": relation.lifecycle_id,
+        "graph_kind": relation.graph_kind,
+        "caller_run_id": relation.caller_run_id,
+        "operation_id": relation.operation_id,
+    }
+    if relation.graph_kind == "agent":
+        metadata.update(
+            main_agent_id=relation.resource_id,
+            main_agent_name=relation.resource_name,
+        )
+    else:
+        metadata.update(
+            workflow_id=relation.resource_id,
+            workflow_name=relation.resource_name,
+        )
+    return metadata
+
+
 class LangGraphLifecycleService:
     """Project Lifecycle views from LangGraph's public Thread and Run APIs."""
 
@@ -109,6 +129,33 @@ class LangGraphLifecycleService:
                     break
                 offset += len(page)
         return runs
+
+    async def _lifecycle_data(
+        self,
+        client: Any,
+        lifecycle_id: str,
+        threads: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Include relation-owned Runs whose official Thread has no Shell metadata."""
+
+        relations = await search_lifecycle_run_relations(client, lifecycle_id)
+        known_thread_ids = {str(thread.get("thread_id") or "") for thread in threads}
+        for thread_id in dict.fromkeys(relation.thread_id for relation in relations):
+            if thread_id not in known_thread_ids:
+                threads.append(dict(await client.threads.get(thread_id)))
+                known_thread_ids.add(thread_id)
+
+        runs = await self._runs(client, threads)
+        relations_by_run = {relation.run_id: relation for relation in relations}
+        for run in runs:
+            relation = relations_by_run.get(str(run.get("run_id") or ""))
+            if relation is None:
+                continue
+            run["metadata"] = {
+                **_relation_metadata(relation),
+                **_metadata(run.get("metadata")),
+            }
+        return threads, runs
 
     @staticmethod
     def _summary(
@@ -170,7 +217,11 @@ class LangGraphLifecycleService:
                     grouped.setdefault(lifecycle_id, []).append(thread)
             summaries: list[dict[str, Any]] = []
             for lifecycle_id, lifecycle_threads in grouped.items():
-                runs = await self._runs(client, lifecycle_threads)
+                lifecycle_threads, runs = await self._lifecycle_data(
+                    client,
+                    lifecycle_id,
+                    lifecycle_threads,
+                )
                 summaries.append(self._summary(lifecycle_id, lifecycle_threads, runs))
 
         normalized_query = query.strip().casefold()
@@ -224,7 +275,7 @@ class LangGraphLifecycleService:
             threads = await self._threads(client, lifecycle_id)
             if not threads:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
-            runs = await self._runs(client, threads)
+            threads, runs = await self._lifecycle_data(client, lifecycle_id, threads)
         return {
             **self._summary(lifecycle_id, threads, runs),
             "threads": threads,
@@ -319,7 +370,7 @@ class LangGraphLifecycleService:
             threads = await self._threads(client, lifecycle_id)
             if not threads:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
-            runs = await self._runs(client, threads)
+            threads, runs = await self._lifecycle_data(client, lifecycle_id, threads)
             if any(official_status(run) in ACTIVE_RUN_STATUSES for run in runs):
                 raise LangGraphLifecycleActive(lifecycle_id)
             for thread in threads:

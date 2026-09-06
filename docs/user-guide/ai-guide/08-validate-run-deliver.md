@@ -95,7 +95,7 @@ GET /agent-shell/api/workflows/<workflow UUID>/graph
 
 ## 5. Model Mapping
 
-Workflow不装配模型。只要本次交付包含直接入口Main Agent、Command-launched Agent、synchronous Subagent或AsyncSubAgent目标，就检查对应Model Mapping。
+Workflow 不装配模型。只要本次交付包含直接入口 Main Agent、Command-launched Agent、synchronous Subagent 或 Async Subagent 目标，就检查对应 Model Mapping。
 
 读取：
 
@@ -104,7 +104,7 @@ GET /agent-shell/api/model-requirements
 GET /agent-shell/api/model-connections
 ```
 
-检查每个直接运行或被引用的Main Agent，以及其synchronous Subagent使用的Model Requirement。AsyncSubAgent目标是另一份完整Main Agent assembly，也需要自己的有效binding。
+检查每个直接运行或被引用的 Main Agent，以及其 synchronous Subagent 使用的 Model Requirement。Async Subagent 目标是另一份完整 Main Agent assembly，也需要自己的有效 binding。
 
 用户先建立满足能力要求的 Model Connection。AI 根据 Requirement description 检查 tool calling、structured output、context window、multimodal input 和其他真实要求。
 
@@ -243,7 +243,7 @@ Content-Type: application/json
 测试输入必须覆盖本次任务的主要路径：
 
 - Main Agent：确认AAP或其他输入owner把目标材料交给正确Agent，并得到Agent Event Output；
-- AsyncSubAgent：确认父Agent能start并返回完整task ID，后续同一父Thread的新Run能check/list；需要时覆盖update或cancel，并确认child结果只在父Agent复述后进入公开response；
+- Async Subagent：确认父 Agent 能 start 并返回完整 task ID，后续同一父 Thread 的新 Run 能 check/list；需要时覆盖 update 或 cancel，并确认 child 结果只在父 Agent 复述后进入公开 response；
 - Command Workflow：确认预期State update、目标Node ID、独立Run调用、downstream completion和termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
 - 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败、主动取消以及 result handoff；
@@ -265,7 +265,7 @@ Content-Type: application/json
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-运行监控页面按Lifecycle浏览本次请求已登记的全部官方Run；选择Run后可查看原始Run对象、Assistant Graph、Thread latest State和最近State history。官方AsyncSubAgent child没有父Lifecycle metadata，因此通过父Agent的`async_tasks`与五个task工具观测。页面通过刷新按钮重新读取公共API，不从日志推演Edge、Node attempt或跨资源Timeline。运行失败继续结合调用方structured error和日志中心诊断定位。
+运行监控页面按 Lifecycle 浏览本次请求已登记的全部官方 Run，包括由关联 Middleware 登记的 Async Subagent child；选择 Run 后可查看原始 Run 对象、Assistant Graph、Thread latest State 和最近 State history。父 Agent 仍通过`async_tasks`与五个 task 工具管理 child。页面通过刷新按钮重新读取公共 API，不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
 
 常见 HTTP 范围：
 

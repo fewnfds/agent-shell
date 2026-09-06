@@ -34,6 +34,7 @@ export function workflowCanvasProblems(
   nodes: WorkflowCanvasNode[],
   _edges: WorkflowCanvasEdge[],
 ): WorkflowCanvasProblem[] {
+  void _edges
   const problems: WorkflowCanvasProblem[] = []
 
   nodes.forEach((node, index) => {

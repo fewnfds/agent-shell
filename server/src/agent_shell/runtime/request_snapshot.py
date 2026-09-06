@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -38,6 +38,7 @@ from agent_shell.runtime.run_calls import (
     search_lifecycle_run_relations,
     select_run_relations,
 )
+from agent_shell.runtime.subagent_middleware import AsyncSubagentRunTarget
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
@@ -237,6 +238,11 @@ class RequestRuntimeSnapshot:
     def main_agent_by_id(self, main_agent_id: str) -> dict[str, Any] | None:
         return self._agents.get_item("main_agents", main_agent_id)
 
+    def async_subagent_by_id(
+        self, async_subagent_id: str
+    ) -> dict[str, Any] | None:
+        return self._agents.get_item("async_subagents", async_subagent_id)
+
     def workflow_by_id(self, workflow_id: str) -> dict[str, Any] | None:
         return self._workflows.get_item(workflow_id)
 
@@ -269,6 +275,13 @@ class LifecycleRunCoordinator:
     )
     _sessions: dict[str, _OfficialSession] = field(default_factory=dict, init=False)
     _deferred_thread_deletions: set[str] = field(default_factory=set, init=False)
+    _relations: dict[str, GraphRunCallRelation] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _detached_run_ids: set[str] = field(default_factory=set, init=False)
+    _async_observation_count: int = field(default=0, init=False)
+    _disconnected: bool = field(default=False, init=False)
 
     @property
     def lifecycle_id(self) -> str:
@@ -325,7 +338,7 @@ class LifecycleRunCoordinator:
             )
             result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
-            await save_lifecycle_run_relation(
+            await self._record_relation(
                 client,
                 self._workflow_relation(binding),
             )
@@ -408,7 +421,7 @@ class LifecycleRunCoordinator:
                     "the official Main Agent Run returned an unexpected thread_id"
                 )
             self._bind_agent_run_id(binding, run_id)
-            await save_lifecycle_run_relation(
+            await self._record_relation(
                 client,
                 self._agent_relation(binding),
             )
@@ -613,7 +626,7 @@ class LifecycleRunCoordinator:
             result = await self._start_bound_run(binding, client)
             self._bind_official_run_id(binding, result)
             relation = self._workflow_relation(binding)
-            await save_lifecycle_run_relation(client, relation)
+            await self._record_relation(client, relation)
             assert binding.execution_ready is not None
             execution = await binding.execution_ready
             self._detached_tasks.create(
@@ -758,7 +771,7 @@ class LifecycleRunCoordinator:
                 )
             self._bind_agent_run_id(binding, run_id)
             relation = self._agent_relation(binding)
-            await save_lifecycle_run_relation(client, relation)
+            await self._record_relation(client, relation)
             assert binding.execution_ready is not None
             execution = await binding.execution_ready
             self._detached_tasks.create(
@@ -923,10 +936,99 @@ class LifecycleRunCoordinator:
                 snapshots.append(self._snapshot_value(relation, official_status(run)))
         return snapshots
 
-    async def cancel_active_runs(self) -> None:
+    async def disconnect(self) -> None:
+        """Apply each active Run's frozen policy to one user disconnect event."""
+
         if not self._lifecycle_id:
             return
-        await self._owner.langgraph_lifecycles.cancel_active(self._lifecycle_id)
+        self._disconnected = True
+        async with self._owner.new_agent_server_client() as client:
+            for relation in tuple(self._relations.values()):
+                if relation.on_disconnect != "cancel":
+                    continue
+                with suppress(Exception):
+                    run = await client.runs.get(relation.thread_id, relation.run_id)
+                    if official_status(run) in ACTIVE_RUN_STATUSES:
+                        await client.runs.cancel(
+                            relation.thread_id,
+                            relation.run_id,
+                            wait=False,
+                        )
+
+    def retain_async_observations(self, count: int = 1) -> None:
+        if count < 1:
+            raise ValueError("observation retention count must be positive")
+        self._async_observation_count += count
+
+    def release_async_observation(self) -> None:
+        if self._async_observation_count < 1:
+            raise RuntimeError("Async Subagent observation retention is unbalanced")
+        self._async_observation_count -= 1
+        self._release_if_finished()
+
+    async def register_async_subagent_run(
+        self,
+        *,
+        parent_run_id: str,
+        target: AsyncSubagentRunTarget,
+        thread_id: str,
+        run_id: str,
+    ) -> None:
+        """Persist an official Async Subagent child as a normal Lifecycle relation."""
+
+        if run_id in self._relations:
+            return
+        relation = GraphRunCallRelation(
+            lifecycle_id=self._lifecycle_id,
+            graph_kind="agent",
+            operation_id=f"async:{target.async_subagent_id}:{run_id}",
+            caller_run_id=parent_run_id,
+            resource_id=target.main_agent_id,
+            resource_name=target.main_agent_name,
+            on_disconnect=target.on_disconnect,
+            checkpoint_mode="enabled",
+            assistant_id=main_agent_assistant_id(target.main_agent_id),
+            thread_id=thread_id,
+            run_id=run_id,
+        )
+        async with self._owner.new_agent_server_client() as client:
+            await self._record_relation(client, relation, detached=True)
+
+    async def _record_relation(
+        self,
+        client: Any,
+        relation: GraphRunCallRelation,
+        *,
+        detached: bool = False,
+    ) -> None:
+        existing = self._relations.get(relation.run_id)
+        if existing is not None:
+            if existing != relation:
+                raise RuntimeError("one official Run has conflicting Lifecycle relations")
+            return
+        await save_lifecycle_run_relation(client, relation)
+        self._relations[relation.run_id] = relation
+        if detached:
+            self._detached_run_ids.add(relation.run_id)
+            self._detached_tasks.create(
+                self._watch_detached_run(relation),
+                name=f"lifecycle-run-retention:{relation.run_id}",
+            )
+        await self._owner.register_run_relation(self, relation)
+        if self._disconnected and relation.on_disconnect == "cancel":
+            await self.cancel_official_run(relation.thread_id, relation.run_id)
+
+    async def _watch_detached_run(self, relation: GraphRunCallRelation) -> None:
+        try:
+            async with self._owner.new_agent_server_client() as client:
+                await client.runs.join(relation.thread_id, relation.run_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+        finally:
+            self._detached_run_ids.discard(relation.run_id)
+            self._release_if_finished()
 
     async def cancel_official_run(self, thread_id: str, run_id: str) -> None:
         if not thread_id or not run_id:
@@ -1110,13 +1212,27 @@ class LifecycleRunCoordinator:
         pending: list[Mapping[str, Any]] = [main_agent]
         while pending:
             owner = pending.pop(0)
+            capability_refs = owner.get("capability_refs", [])
+            if not isinstance(capability_refs, list) or not any(
+                isinstance(item, Mapping) and item.get("type") == "async-subagent"
+                for item in capability_refs
+            ):
+                continue
             references = owner.get("async_subagents", [])
             if not isinstance(references, list):
                 continue
             for reference in references:
                 if not isinstance(reference, Mapping):
                     continue
-                target_id = str(reference.get("main_agent_id", ""))
+                profile_id = str(reference.get("async_subagent_id", ""))
+                profile = self._snapshot.async_subagent_by_id(profile_id)
+                if profile is None:
+                    raise AgentRuntimeError(
+                        "configuration.reference_not_found",
+                        "An Async Subagent configuration does not exist.",
+                        status_code=409,
+                    )
+                target_id = str(profile.get("main_agent_id", ""))
                 if not target_id or target_id in seen:
                     continue
                 seen.add(target_id)
@@ -1489,6 +1605,11 @@ class LifecycleRunCoordinator:
             caller_run_id=binding.caller_run_id,
             resource_id=str(binding.workflow["id"]),
             resource_name=str(binding.workflow["name"]),
+            on_disconnect=(
+                "continue"
+                if binding.workflow.get("on_disconnect") == "continue"
+                else "cancel"
+            ),
             assistant_id=binding.assistant_id,
             thread_id=binding.thread_id,
             run_id=binding.run_id,
@@ -1503,6 +1624,11 @@ class LifecycleRunCoordinator:
             caller_run_id=binding.caller_run_id,
             resource_id=str(binding.main_agent["id"]),
             resource_name=str(binding.main_agent["name"]),
+            on_disconnect=(
+                "continue"
+                if binding.main_agent.get("on_disconnect") == "continue"
+                else "cancel"
+            ),
             checkpoint_mode=(
                 "disabled"
                 if binding.main_agent.get("checkpoint_mode") == "disabled"
@@ -1514,7 +1640,11 @@ class LifecycleRunCoordinator:
         )
 
     def _release_if_finished(self) -> None:
-        if not self._sessions:
+        if (
+            not self._sessions
+            and not self._detached_run_ids
+            and self._async_observation_count == 0
+        ):
             self._owner.release_active_lifecycle(self)
 
 
@@ -1557,6 +1687,12 @@ class RequestSnapshotRuntime:
         self._agent_server_url = agent_server_url
         self._agent_server_headers = {"Authorization": f"Bearer {agent_server_token}"}
         self._active_lifecycles: dict[str, LifecycleRunCoordinator] = {}
+        self._run_lifecycles: dict[str, LifecycleRunCoordinator] = {}
+        self._pending_async_runs: dict[
+            str,
+            dict[str, tuple[AsyncSubagentRunTarget, str]],
+        ] = {}
+        self._async_observation_counts: dict[str, int] = {}
         self._langgraph_lifecycles = LangGraphLifecycleService(
             self.new_agent_server_client,
             workflow_lifecycle_settings,
@@ -1581,6 +1717,78 @@ class RequestSnapshotRuntime:
             raise RuntimeError("the active Workflow Lifecycle identity is invalid")
         self._active_lifecycles[lifecycle_id] = coordinator
 
+    async def register_run_relation(
+        self,
+        coordinator: LifecycleRunCoordinator,
+        relation: GraphRunCallRelation,
+    ) -> None:
+        existing = self._run_lifecycles.get(relation.run_id)
+        if existing is not None and existing is not coordinator:
+            raise RuntimeError("one official Run belongs to multiple Lifecycles")
+        self._run_lifecycles[relation.run_id] = coordinator
+        observation_count = self._async_observation_counts.get(relation.run_id, 0)
+        if observation_count:
+            coordinator.retain_async_observations(observation_count)
+        pending = tuple(
+            self._pending_async_runs.pop(relation.run_id, {}).items()
+        )
+        for child_run_id, (target, thread_id) in pending:
+            await coordinator.register_async_subagent_run(
+                parent_run_id=relation.run_id,
+                target=target,
+                thread_id=thread_id,
+                run_id=child_run_id,
+            )
+
+    def begin_async_subagent_call(self, parent_run_id: str) -> None:
+        count = self._async_observation_counts.get(parent_run_id, 0) + 1
+        self._async_observation_counts[parent_run_id] = count
+        coordinator = self._run_lifecycles.get(parent_run_id)
+        if coordinator is not None:
+            coordinator.retain_async_observations()
+
+    def end_async_subagent_call(self, parent_run_id: str) -> None:
+        count = self._async_observation_counts.get(parent_run_id, 0)
+        if count < 1:
+            raise RuntimeError("Async Subagent observation ownership is unbalanced")
+        if count == 1:
+            self._async_observation_counts.pop(parent_run_id, None)
+        else:
+            self._async_observation_counts[parent_run_id] = count - 1
+        coordinator = self._run_lifecycles.get(parent_run_id)
+        if coordinator is not None:
+            coordinator.release_async_observation()
+
+    async def record_async_subagent_run(
+        self,
+        *,
+        parent_run_id: str,
+        target: AsyncSubagentRunTarget,
+        thread_id: str,
+        run_id: str,
+    ) -> None:
+        coordinator = self._run_lifecycles.get(parent_run_id)
+        if coordinator is None:
+            self._pending_async_runs.setdefault(parent_run_id, {})[run_id] = (
+                target,
+                thread_id,
+            )
+            return
+        await coordinator.register_async_subagent_run(
+            parent_run_id=parent_run_id,
+            target=target,
+            thread_id=thread_id,
+            run_id=run_id,
+        )
+
+    def detach_async_subagent_observation(
+        self,
+        coroutine: Coroutine[Any, Any, None],
+        *,
+        name: str,
+    ) -> None:
+        self._detached_tasks.create(coroutine, name=name)
+
     def active_lifecycle(self, lifecycle_id: str) -> LifecycleRunCoordinator | None:
         return self._active_lifecycles.get(lifecycle_id)
 
@@ -1588,6 +1796,9 @@ class RequestSnapshotRuntime:
         lifecycle_id = coordinator.lifecycle_id
         if self._active_lifecycles.get(lifecycle_id) is coordinator:
             self._active_lifecycles.pop(lifecycle_id, None)
+            for run_id, owner in tuple(self._run_lifecycles.items()):
+                if owner is coordinator:
+                    self._run_lifecycles.pop(run_id, None)
             self._detached_tasks.create(
                 self.enforce_lifecycle_retention(),
                 name="langgraph-lifecycle-retention",
@@ -1634,6 +1845,7 @@ class RequestSnapshotRuntime:
                     model_resources=model_resources,
                     mcp_resources=mcp_resources,
                     repository_id=repository_id,
+                    async_subagent_run_observer=self,
                 ),
                 self._files,
                 python_packages_dir=python_packages_dir,

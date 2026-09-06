@@ -178,10 +178,14 @@ class _Detached:
 def _coordinator(profile: dict) -> tuple[LifecycleRunCoordinator, _Client, _Detached]:
     client = _Client()
     detached = _Detached()
+    async def register_run_relation(_coordinator, _relation) -> None:
+        return None
+
     owner = SimpleNamespace(
         new_agent_server_client=lambda: client,
         run_config=lambda: {"recursion_limit": 100},
         release_active_lifecycle=lambda _coordinator: None,
+        register_run_relation=register_run_relation,
     )
     coordinator = LifecycleRunCoordinator(
         _owner=owner,

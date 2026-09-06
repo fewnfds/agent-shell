@@ -65,7 +65,7 @@ Model Connection 是当前实例私有资源。Model Requirement 是可迁移的
 
 MCP Connection 也是当前实例私有资源。Repository-owned MCP Requirement 保存稳定 namespace，MCP Mapping 把它绑定到本机 MCP Connection；Main Agent、Subagent 和 Command 再通过各自的 ordered `mcp_refs` 选择可用 Tool。
 
-Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop，并可通过 ordered AsyncSubAgent references 启动独立后台 Thread/Run。Component 为 Agent、Command 或 output projection 提供配置。
+Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop，并可在显式选择 Async Subagent Middleware component 后，通过 ordered Async Subagent 配置引用启动独立后台 Thread/Run。Component 为 Agent、Command 或 output projection 提供配置。
 
 ## 4. 开始前形成任务记录
 
@@ -115,7 +115,7 @@ Workflow Graph 决定 Command super-step、State transition 和结束条件。Ma
 
 创建或修改 Command、Agent Event Output、Workflow Event Output 或其他 Python-backed component 时读[编写 Python extension](06-python-extensions.md)。该章同时说明五类 Python package 共用的文件与 dependency contract。
 
-需要从 current Workflow Run 启动另一个独立 Main Agent或Workflow Run时读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。Main Agent使用官方AsyncSubAgent时同时阅读[配置Agent](03-configure-agent.md)中的异步委派边界。
+需要从 current Workflow Run 启动另一个独立 Main Agent 或 Workflow Run 时读[跨 Workflow Run 调用](07-cross-workflow-runs.md)。Main Agent 使用官方 Async Subagent 时同时阅读[配置 Agent](03-configure-agent.md)中的异步委派边界。
 
 所有任务最后读[验证、运行与交付](08-validate-run-deliver.md)。
 
@@ -169,7 +169,7 @@ Workflow Graph 决定 Command super-step、State transition 和结束条件。Ma
 - Model Connection、Model Requirement、Model Mapping；
 - MCP Connection、MCP Requirement、MCP Mapping、MCP Tool；
 - Main Agent、Subagent、Agent Thread与Run；
-- synchronous Subagent、AsyncSubAgent、`async_tasks`；
+- synchronous Subagent、Async Subagent、`async_tasks`；
 - Agent Event Output、Workflow Event Output；
 - System Prompt、Agent Additional Prompt（AAP）；
 - Command、Custom Tool、Custom Middleware；

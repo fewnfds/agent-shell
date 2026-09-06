@@ -219,6 +219,9 @@ def test_stable_assistant_updates_only_when_its_name_changed() -> None:
 def test_parent_materializes_reachable_async_target_assistants_before_its_run() -> None:
     target_id = "22222222-2222-4222-8222-222222222222"
     nested_id = "33333333-3333-4333-8333-333333333333"
+    target_profile_id = "44444444-4444-4444-8444-444444444444"
+    nested_profile_id = "55555555-5555-4555-8555-555555555555"
+    cycle_profile_id = "66666666-6666-4666-8666-666666666666"
     created: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
     class Assistants:
@@ -236,12 +239,11 @@ def test_parent_materializes_reachable_async_target_assistants_before_its_run() 
                 {
                     "id": target_id,
                     "name": "Async target",
+                    "capability_refs": [
+                        {"type": "async-subagent", "block_id": "component"}
+                    ],
                     "async_subagents": [
-                        {
-                            "main_agent_id": nested_id,
-                            "name": "nested",
-                            "description": "Run a nested background task.",
-                        }
+                        {"async_subagent_id": nested_profile_id}
                     ],
                 }
                 if requested_id == target_id
@@ -249,35 +251,43 @@ def test_parent_materializes_reachable_async_target_assistants_before_its_run() 
                     {
                         "id": nested_id,
                         "name": "Nested async target",
+                        "capability_refs": [
+                            {"type": "async-subagent", "block_id": "component"}
+                        ],
                         "async_subagents": [
-                            {
-                                "main_agent_id": target_id,
-                                "name": "cycle",
-                                "description": "Exercise cycle-safe materialization.",
-                            }
+                            {"async_subagent_id": cycle_profile_id}
                         ],
                     }
                     if requested_id == nested_id
                     else None
                 )
-            )
+            ),
+            async_subagent_by_id=lambda profile_id: {
+                target_profile_id: {
+                    "id": target_profile_id,
+                    "main_agent_id": target_id,
+                },
+                nested_profile_id: {
+                    "id": nested_profile_id,
+                    "main_agent_id": nested_id,
+                },
+                cycle_profile_id: {
+                    "id": cycle_profile_id,
+                    "main_agent_id": target_id,
+                },
+            }.get(profile_id),
         ),
         _detached_tasks=SimpleNamespace(),
     )
     parent = {
         "id": "11111111-1111-4111-8111-111111111111",
         "name": "Parent",
+        "capability_refs": [
+            {"type": "async-subagent", "block_id": "component"}
+        ],
         "async_subagents": [
-            {
-                "main_agent_id": target_id,
-                "name": "researcher",
-                "description": "Research in the background.",
-            },
-            {
-                "main_agent_id": target_id,
-                "name": "reviewer",
-                "description": "Review in the background.",
-            },
+            {"async_subagent_id": target_profile_id},
+            {"async_subagent_id": target_profile_id},
         ],
     }
 

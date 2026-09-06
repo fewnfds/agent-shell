@@ -33,11 +33,9 @@ class InspectingFakeChatModel(ToolCompatibleFakeListChatModel):
             yield chunk
 
 
-@pytest.mark.parametrize("on_disconnect", ("cancel", "continue"))
-def test_completion_stream_applies_workflow_disconnect_policy(
+def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    on_disconnect: str,
 ) -> None:
     class Execution:
         identity = None
@@ -69,15 +67,14 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             execution = Execution()
             lifecycle_cancelled = asyncio.Event()
 
-            async def cancel_lifecycle() -> None:
+            async def disconnect_lifecycle() -> None:
                 lifecycle_cancelled.set()
 
             stream = api_server._completion_stream(
                 execution,
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
-                on_disconnect=on_disconnect,
-                cancel_lifecycle=cancel_lifecycle,
+                disconnect_lifecycle=disconnect_lifecycle,
             )
             first = await anext(stream)
             assert '"role":"assistant"' in first
@@ -86,21 +83,19 @@ def test_completion_stream_applies_workflow_disconnect_policy(
             pending.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await pending
-            if on_disconnect == "cancel":
-                await asyncio.wait_for(execution.cancelled.wait(), timeout=1)
-                await asyncio.wait_for(lifecycle_cancelled.wait(), timeout=1)
-            else:
-                execution.release.set()
-                await asyncio.wait_for(execution.completed.wait(), timeout=1)
+            await asyncio.wait_for(lifecycle_cancelled.wait(), timeout=1)
+            assert execution.cancelled.is_set() is False
+            execution.release.set()
+            await asyncio.wait_for(execution.completed.wait(), timeout=1)
             return execution.cancelled.is_set(), execution.completed.is_set()
 
         cancelled, completed = portal.call(scenario)
 
-    assert cancelled is (on_disconnect == "cancel")
-    assert completed is (on_disconnect == "continue")
+    assert cancelled is False
+    assert completed is True
 
 
-def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
+def test_completion_stream_does_not_wait_for_disconnect_cleanup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -112,26 +107,20 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
 
         def __init__(self) -> None:
             self.started = asyncio.Event()
-            self.cleanup_started = asyncio.Event()
-            self.cleanup_release = asyncio.Event()
             self.cancel_started = asyncio.Event()
             self.cancel_release = asyncio.Event()
             self.cancel_recorded = asyncio.Event()
+            self.stream_release = asyncio.Event()
 
-        async def cancel_lifecycle(self) -> None:
+        async def disconnect_lifecycle(self) -> None:
             self.cancel_started.set()
             await self.cancel_release.wait()
             self.cancel_recorded.set()
 
         async def stream_text(self):
             self.started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                self.cleanup_started.set()
-                await self.cleanup_release.wait()
-                raise
-            yield "unreachable"
+            await self.stream_release.wait()
+            yield "unobserved"
 
     with make_client(tmp_path, monkeypatch) as client:
         portal = client.portal
@@ -143,20 +132,18 @@ def test_completion_stream_does_not_wait_for_graph_cancellation_cleanup(
                 execution,
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
-                on_disconnect="cancel",
-                cancel_lifecycle=execution.cancel_lifecycle,
+                disconnect_lifecycle=execution.disconnect_lifecycle,
             )
             await anext(stream)
             pending = asyncio.create_task(anext(stream))
             await execution.started.wait()
             pending.cancel()
-            await execution.cleanup_started.wait()
             await execution.cancel_started.wait()
             for _ in range(3):
                 await asyncio.sleep(0)
             response_closed = pending.done()
             execution.cancel_release.set()
-            execution.cleanup_release.set()
+            execution.stream_release.set()
             await asyncio.wait_for(execution.cancel_recorded.wait(), timeout=1)
             await asyncio.gather(pending, return_exceptions=True)
             return response_closed, execution.cancel_recorded.is_set()

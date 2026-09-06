@@ -14,7 +14,7 @@
 | Graph 方向 | `source Node`、`target Node`、`upstream Node`、`downstream Node` | 与 Edge、routing 和 artifact 因果方向一致 |
 | Node类别 | `system Node`、`Command Node` | Start/End是system Node；Command是executable Node |
 | Edge类别 | `Control Edge` | 连接Catalog endpoint；Command outgoing Edge声明允许的goto目标 |
-| Agent 角色 | `Main Agent`、`synchronous Subagent`、`AsyncSubAgent`、`target Agent` | `Main Agent` 和同步`Subagent`是产品实体；AsyncSubAgent是指向Main Agent Assistant的官方运行模式 |
+| Agent 角色 | `Main Agent`、`synchronous Subagent`、`Async Subagent`、`template Main Agent` | 三者都是产品配置资源；Async Subagent 是引用模板 Main Agent 并投影为官方`AsyncSubAgent` spec 的外壳 |
 | 配置与扩展 | `Configuration Repository`、`Model Connection`、`Model Requirement`、`Custom Tool`、`Custom Middleware` | 与 API、catalog type 和源码 owner 对齐 |
 | Filesystem 选择 | `Filesystem Backend`、`Filesystem Tools`、`effective Filesystem` | 分别表示后端配置、工具配置，以及继承或替换解析后的最终组合 |
 | Graph 发布状态 | `candidate Graph`、`publishable Graph`、`published Graph` | 分别表示待校验文档、满足发布条件的文档，以及已通过 `PUT /graph` 原子保存并令 Workflow `enabled=true` 的文档 |
@@ -33,10 +33,11 @@
 | Endpoint | Node Catalog声明的输入/输出控制流端点 |
 | Edge | 从source endpoint到target endpoint的Control Edge；Start Edge静态激活，Command Edge声明goto目标 |
 | Subagent | 具有组件配置名、路由名、说明和 settings，可由 parent Agent 通过 `task` 同步调用的实体 |
+| Async Subagent / 异步子代理 | 具有配置名称、模板 Main Agent、代理角色名和说明的可复用配置资源；不会创建第二个 Agent Graph |
 | 代理组件 | 可被 Agent 按 UUID 引用的能力配置 |
 | 工作流组件 | 被 Workflow metadata 或 canvas Node 引用的固定类型配置 |
 | Subagent reference | Main Agent 保存的 `subagent_id`，运行时投影为官方 dictionary-based SubAgent |
-| AsyncSubAgent reference | Main Agent保存的目标`main_agent_id`、tool-facing `name`和`description`，运行时以稳定Assistant ID投影为官方`AsyncSubAgent.graph_id` |
+| Async Subagent reference | Main Agent 保存的`async_subagent_id`；运行时解析配置资源并以模板稳定 Assistant ID 投影为官方`AsyncSubAgent.graph_id` |
 | Skill | 含 `SKILL.md` 的按需说明目录 |
 | Skill Template / 技能模板 | `data/skills-template/` 中可被选择并复制的 public Skill 素材，以规范相对路径区分同名模板 |
 | Skill package / Skill 独立包 | Skill Component 创建后按配置名称保存、由 Component UUID 拥有的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
