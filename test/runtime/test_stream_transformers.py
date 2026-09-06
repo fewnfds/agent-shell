@@ -10,7 +10,7 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
 from agent_shell.runtime.agent_runtime import RunExecution
-from agent_shell.runtime.output_projection import OutputProjector, WorkflowOutputProjector
+from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from .support import (
     noop_media_response,
@@ -102,10 +102,7 @@ def test_agent_execution_projects_real_stream_writer_custom_event() -> None:
             return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
         return str(data or "")
 
-    projector = WorkflowOutputProjector(
-        {},
-        workflow_output=workflow_output,
-    )
+    projector = OutputProjector(workflow_output)
     execution = RunExecution(
         graph=graph,
         input_state={},

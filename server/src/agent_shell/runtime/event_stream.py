@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage
 
@@ -9,10 +9,7 @@ from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.event_origin import ResolvedEventOrigin
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.message_state import MessageRunRegistry
-from agent_shell.runtime.response_presentation import (
-    ResponseEvent,
-    ResponseModelCallBoundary,
-)
+from agent_shell.runtime.response_presentation import PresentationFrame
 from agent_shell.runtime.usage import RunUsageAccumulator
 
 
@@ -20,23 +17,13 @@ from agent_shell.runtime.usage import RunUsageAccumulator
 class _MessageBlock:
     message_id: str
     block_type: str
-    origin: ResolvedEventOrigin
+    segment_end_text: str
 
 
-def _message_text(message: object) -> str:
-    text = getattr(message, "text", None)
-    if isinstance(text, str):
-        return text
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            str(item.get("text", ""))
-            for item in content
-            if isinstance(item, Mapping) and item.get("type") == "text"
-        )
-    return str(content) if content is not None else ""
+@dataclass(frozen=True, slots=True)
+class EventStreamProjection:
+    frames: tuple[PresentationFrame, ...] = ()
+    media: tuple[MediaContentBlock, ...] = ()
 
 
 def _message_parts(data: object) -> tuple[object, Mapping[str, object]] | None:
@@ -50,136 +37,114 @@ def _message_parts(data: object) -> tuple[object, Mapping[str, object]] | None:
 
 
 class RunEventStream:
-    """Consume raw v3 channels into Run state and scheduler-private signals."""
+    """Project one root Run's raw v3 events into presentation frames.
 
-    def __init__(
-        self,
-        usage: RunUsageAccumulator,
-    ) -> None:
+    The Event Output extension remains the only text/visibility owner. This
+    class only recognizes official text/reasoning block boundaries, tracks
+    usage and media, and suppresses the whole-message duplicate emitted after
+    an already streamed message.
+    """
+
+    def __init__(self, usage: RunUsageAccumulator) -> None:
         self._usage = usage
         self._messages = MessageRunRegistry()
         self._blocks: dict[tuple[str, int], _MessageBlock] = {}
-        self._signal_sequence = 0
+        self._frame_sequence = 0
+
+    @staticmethod
+    def is_streaming_start(envelope: Mapping[str, object]) -> bool:
+        params = envelope.get("params")
+        if str(envelope.get("method") or "") != "messages" or not isinstance(
+            params, Mapping
+        ):
+            return False
+        parts = _message_parts(params.get("data"))
+        if parts is None or not isinstance(parts[0], Mapping):
+            return False
+        payload = parts[0]
+        content = payload.get("content")
+        return bool(
+            payload.get("event") == "content-block-start"
+            and isinstance(content, Mapping)
+            and content.get("type") in {"text", "reasoning"}
+        )
 
     def consume(
         self,
         envelope: Mapping[str, object],
         origin: ResolvedEventOrigin,
-    ) -> tuple[
-        tuple[ResponseEvent | ResponseModelCallBoundary | MediaContentBlock, ...],
-        bool,
-    ]:
-        """Return private signals and whether projected raw text stays visible."""
-
+        *,
+        text: str,
+        segment_end_text: str = "",
+    ) -> EventStreamProjection:
         params = envelope.get("params")
         if not isinstance(params, Mapping):
-            return (), True
-        method = str(envelope.get("method") or "")
-        data = params.get("data")
-        raw_seq = envelope.get("seq")
-        raw_seq = raw_seq if isinstance(raw_seq, int) and raw_seq >= 0 else 0
-        if method == "messages":
-            suppress_output = self._is_streamed_whole_message(data, origin)
-            return (
-                tuple(self._message_events(data, raw_seq=raw_seq, origin=origin)),
-                not suppress_output,
-            )
-        if method == "tools":
-            return tuple(self._tool_events(data, origin=origin)), True
-        if method == "lifecycle":
-            return tuple(self._lifecycle_events(data, origin=origin)), True
-        return (), True
-
-    def close(self) -> None:
-        run_keys = self._messages.active_main_runs | {key[0] for key in self._blocks}
-        for run_key in tuple(run_keys):
-            self._discard_message(run_key)
-
-    def media_notification(
-        self,
-        origin: ResolvedEventOrigin,
-        block: MediaContentBlock,
-    ) -> ResponseEvent:
-        return self._signal(
+            return self._atomic_projection(text)
+        if str(envelope.get("method") or "") != "messages":
+            return self._atomic_projection(text)
+        return self._message_projection(
+            params.get("data"),
             origin,
-            kind="content",
-            phase="end",
-            data=block.content,
-            stream_id=block.stream_id,
+            text=text,
+            segment_end_text=segment_end_text,
         )
 
-    def atomic(self, origin: ResolvedEventOrigin, data: object) -> ResponseEvent:
-        return self._signal(origin, kind="event", phase="end", data=data)
+    def atomic(self, text: str) -> PresentationFrame:
+        return self._frame("atomic", text)
 
-    def _message_events(
+    def close(self) -> None:
+        self._blocks.clear()
+        for run_key in self._messages.active_main_runs:
+            self._messages.discard(run_key)
+
+    def _message_projection(
         self,
         data: object,
-        *,
-        raw_seq: int,
         origin: ResolvedEventOrigin,
-    ) -> list[ResponseEvent | ResponseModelCallBoundary | MediaContentBlock]:
+        *,
+        text: str,
+        segment_end_text: str,
+    ) -> EventStreamProjection:
         parts = _message_parts(data)
         if parts is None:
-            return []
+            return self._atomic_projection(text)
         payload, metadata = parts
         run_id = str(metadata.get("run_id") or "")
         run_key = run_id or self._fallback_run_key(origin)
 
         if not isinstance(payload, Mapping):
             if not isinstance(payload, AIMessage):
-                return []
+                return self._atomic_projection(text)
             usage = payload.usage_metadata
-            usage_data = usage if isinstance(usage, Mapping) else {}
-            self._usage.merge(run_key, usage_data)
-            if not origin.is_public_agent:
-                return []
-            boundary = self._boundary(origin, run_key, raw_seq=raw_seq)
+            self._usage.merge(run_key, usage if isinstance(usage, Mapping) else {})
             if self._messages.was_streamed(run_key):
-                return [boundary, replace(boundary, phase="end")]
-            blocks = payload.content_blocks
-            if not isinstance(blocks, list):
-                text = _message_text(payload)
-                blocks = [{"type": "text", "text": text}] if text else []
-            events: list[
-                ResponseEvent | ResponseModelCallBoundary | MediaContentBlock
-            ] = [boundary]
-            message_id = str(payload.id or "")
-            for index, content in enumerate(blocks):
-                if isinstance(content, Mapping):
-                    events.extend(
-                        self._finished_block(
-                            dict(content),
-                            message_id=message_id,
-                            block_index=index,
-                            stream_id=f"{run_key}:{index}",
-                            origin=origin,
-                        )
-                    )
-            events.append(replace(boundary, phase="end"))
-            return events
+                return EventStreamProjection()
+            media = tuple(self._whole_message_media(payload, run_key=run_key))
+            return EventStreamProjection(
+                frames=self._atomic_frames(text),
+                media=media,
+            )
 
         event_name = str(payload.get("event") or "")
         if event_name == "message-start":
             message_id = str(payload.get("id") or payload.get("message_id") or "")
-            is_ai = str(payload.get("role") or "ai") == "ai"
+            is_ai = str(payload.get("role") or "ai") in {"ai", "assistant"}
             self._messages.begin(
                 run_key,
                 message_id=message_id,
                 main_agent_ai=origin.is_main_agent and is_ai,
                 public_ai=origin.is_public_agent and is_ai,
             )
-            return [self._boundary(origin, run_key, raw_seq=raw_seq)] if (
-                origin.is_public_agent and is_ai
-            ) else []
+            return self._atomic_projection(text)
+
         if event_name == "message-finish":
             usage = payload.get("usage")
             self._usage.merge(run_key, usage if isinstance(usage, Mapping) else {})
-            message = self._messages.get(run_key)
-            is_public = message.public_ai if message is not None else origin.is_public_agent
-            self._discard_message(run_key)
-            return [
-                self._boundary(origin, run_key, raw_seq=raw_seq, phase="end")
-            ] if is_public else []
+            frames = self._close_message_blocks(run_key)
+            frames.extend(self._atomic_frames(text))
+            self._messages.discard(run_key)
+            return EventStreamProjection(frames=tuple(frames))
+
         if event_name == "error":
             message = self._messages.get(run_key)
             is_main = message.main_agent_ai if message is not None else origin.is_main_agent
@@ -190,53 +155,40 @@ class RunEventStream:
                     "The model response stream failed.",
                     status_code=502,
                 )
-            return []
+            return self._atomic_projection(text)
 
         message = self._messages.get(run_key)
-        if not (message.public_ai if message is not None else origin.is_public_agent):
-            return []
+        public_ai = message.public_ai if message is not None else origin.is_public_agent
         index = payload.get("index")
-        if not isinstance(index, int):
-            return []
+        if not public_ai or not isinstance(index, int):
+            return self._atomic_projection(text)
         key = (run_key, index)
         message_id = message.message_id if message is not None else ""
-        stream_id = f"{run_key}:{index}"
+        block_id = f"{run_key}:{index}"
 
         if event_name == "content-block-start":
             content = payload.get("content")
             if not isinstance(content, Mapping):
-                return []
+                return self._atomic_projection(text)
             block_type = str(content.get("type") or "")
+            if block_type not in {"text", "reasoning"}:
+                return self._atomic_projection(text)
             self._blocks[key] = _MessageBlock(
                 message_id=message_id,
                 block_type=block_type,
-                origin=origin,
+                segment_end_text=segment_end_text,
             )
-            if block_type in {"text", "reasoning"}:
-                return [
-                    self._signal(
-                        origin,
-                        kind="content",
-                        phase="start",
-                        data=content,
-                        stream_id=stream_id,
-                    )
-                ]
-            if block_type in {
-                "tool_call",
-                "server_tool_call",
-                "tool_call_chunk",
-                "server_tool_call_chunk",
-            }:
-                return [
-                    self._tool_call(
-                        dict(content),
-                        phase="start",
-                        stream_id=stream_id,
-                        origin=origin,
-                    )
-                ]
-            return []
+            return EventStreamProjection(
+                frames=(
+                    self._frame(
+                        "start",
+                        text,
+                        block_id=block_id,
+                        segment_end_text=segment_end_text,
+                    ),
+                )
+            )
+
         if event_name == "content-block-delta":
             block = self._blocks.get(key)
             delta = payload.get("delta")
@@ -245,287 +197,110 @@ class RunEventStream:
                 or not isinstance(delta, Mapping)
                 or block.block_type not in {"text", "reasoning"}
             ):
-                return []
-            return [
-                self._signal(
-                    block.origin,
-                    kind="content",
-                    phase="delta",
-                    data=delta,
-                    stream_id=stream_id,
-                )
-            ]
+                return self._atomic_projection(text)
+            frames = (self._frame("delta", text, block_id=block_id),) if text else ()
+            return EventStreamProjection(frames=frames)
+
         if event_name == "content-block-finish":
             content = payload.get("content")
             if not isinstance(content, Mapping):
-                return []
+                return self._atomic_projection(text)
             block = self._blocks.pop(key, None)
-            return self._finished_block(
-                dict(content),
-                message_id=(block.message_id if block is not None else message_id),
-                block_index=index,
-                stream_id=stream_id,
-                origin=(block.origin if block is not None else origin),
-                started_type=(block.block_type if block is not None else ""),
-            )
-        return []
+            content_type = str(content.get("type") or "")
+            if block is not None and block.block_type in {"text", "reasoning"}:
+                return EventStreamProjection(
+                    frames=(
+                        self._frame(
+                            "finish",
+                            text or block.segment_end_text,
+                            block_id=block_id,
+                        ),
+                    )
+                )
+            if content_type in {"image", "audio", "video", "file"}:
+                return EventStreamProjection(
+                    frames=self._atomic_frames(text),
+                    media=(
+                        MediaContentBlock(
+                            message_id=message_id,
+                            block_index=index,
+                            content=dict(content),
+                            stream_id=block_id,
+                        ),
+                    ),
+                )
+            # A completed text/reasoning block without a preceding start is the
+            # non-streaming form and is rendered in one atomic frame.
+            return self._atomic_projection(text)
 
-    def _finished_block(
-        self,
-        content: dict[str, object],
-        *,
-        message_id: str,
-        block_index: int,
-        stream_id: str,
-        origin: ResolvedEventOrigin,
-        started_type: str = "",
-    ) -> list[ResponseEvent | MediaContentBlock]:
-        block_type = started_type or str(content.get("type") or "")
-        final_type = str(content.get("type") or "")
-        if block_type in {"text", "reasoning"}:
-            return [
-                self._signal(
-                    origin,
-                    kind="content",
-                    phase="end",
-                    data=content,
-                    stream_id=stream_id,
-                )
-            ]
-        if final_type in {"image", "audio", "video", "file"}:
-            return [
-                MediaContentBlock(
-                    message_id=message_id,
-                    block_index=block_index,
-                    content=content,
-                    stream_id=stream_id,
-                )
-            ]
-        if final_type in {"tool_call", "server_tool_call"}:
-            return [
-                self._tool_call(
-                    content,
-                    phase="end",
-                    stream_id=stream_id,
-                    origin=origin,
-                )
-            ]
-        call_id = str(content.get("id") or content.get("tool_call_id") or "")
-        if final_type in {
-            "tool_call_chunk",
-            "server_tool_call_chunk",
-            "invalid_tool_call",
-        }:
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase="error",
-                    data=content,
-                    stream_id=stream_id,
-                    tool_kind="error",
-                    tool_call_id=call_id,
-                )
-            ]
-        if final_type == "server_tool_result":
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase=("error" if str(content.get("status") or "") == "error" else "end"),
-                    data=content.get("output"),
-                    stream_id=stream_id,
-                    tool_kind=("error" if str(content.get("status") or "") == "error" else "result"),
-                    tool_call_id=call_id,
-                )
-            ]
-        return []
+        return self._atomic_projection(text)
 
-    def _tool_call(
+    def _whole_message_media(
         self,
-        content: dict[str, object],
+        message: AIMessage,
         *,
-        phase: str,
-        stream_id: str,
-        origin: ResolvedEventOrigin,
-    ) -> ResponseEvent:
-        call_id = str(content.get("id") or "")
-        return self._signal(
-            origin,
-            kind="tool",
-            phase=phase,
-            data=content,
-            stream_id=stream_id,
-            tool_kind="call",
-            tool_call_id=call_id,
-        )
-
-    def _tool_events(
-        self,
-        data: object,
-        *,
-        origin: ResolvedEventOrigin,
-    ) -> list[ResponseEvent]:
-        if not isinstance(data, Mapping) or not origin.is_public_agent:
+        run_key: str,
+    ) -> list[MediaContentBlock]:
+        blocks = message.content_blocks
+        if not isinstance(blocks, list):
             return []
-        lifecycle = str(data.get("event") or "")
-        call_id = str(data.get("tool_call_id") or "")
-        if lifecycle == "tool-started":
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase="start",
-                    data=data,
-                    tool_kind="progress",
-                    tool_call_id=call_id,
-                )
-            ]
-        if lifecycle == "tool-output-delta":
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase="delta",
-                    data=data,
-                    tool_kind="progress",
-                    tool_call_id=call_id,
-                )
-            ]
-        if lifecycle == "tool-finished":
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase="end",
-                    data=data.get("output"),
-                    tool_kind="result",
-                    tool_call_id=call_id,
-                )
-            ]
-        if "fail" in lifecycle or "error" in lifecycle:
-            return [
-                self._signal(
-                    origin,
-                    kind="tool",
-                    phase="error",
-                    data=None,
-                    tool_kind="error",
-                    tool_call_id=call_id,
-                )
-            ]
-        return []
-
-    def _lifecycle_events(
-        self,
-        data: object,
-        *,
-        origin: ResolvedEventOrigin,
-    ) -> list[ResponseEvent]:
-        if not isinstance(data, Mapping):
-            return []
-        status = str(data.get("event") or "running")
-        phase = (
-            "start"
-            if status == "started"
-            else "error"
-            if status in {
-                "failed",
-                "error",
-                "interrupted",
-                "cancelled",
-                "timeout",
-                "timed_out",
-            }
-            else "end"
-        )
-        is_node_lifecycle = origin.source_type in {"agent", "script"}
+        message_id = str(message.id or "")
         return [
-            self._signal(
-                origin,
-                kind=("lifecycle" if is_node_lifecycle else "event"),
-                phase=phase,
-                data=data,
-                terminal=(
-                    is_node_lifecycle
-                    and bool(origin.workflow_node_id)
-                    and phase in {"end", "error"}
-                ),
+            MediaContentBlock(
+                message_id=message_id,
+                block_index=index,
+                content=dict(content),
+                stream_id=f"{run_key}:{index}",
             )
+            for index, content in enumerate(blocks)
+            if isinstance(content, Mapping)
+            and content.get("type") in {"image", "audio", "video", "file"}
         ]
 
-    def _signal(
-        self,
-        origin: ResolvedEventOrigin,
-        *,
-        kind: str,
-        phase: str,
-        data: object = None,
-        stream_id: str = "",
-        tool_kind: str = "",
-        tool_call_id: str = "",
-        terminal: bool = False,
-    ) -> ResponseEvent:
-        self._signal_sequence += 1
-        return ResponseEvent(
-            kind=kind,  # type: ignore[arg-type]
-            phase=phase,
-            sequence=self._signal_sequence,
-            namespace=origin.namespace,
-            source_type=origin.source_type,
-            workflow_node_id=origin.workflow_node_id,
-            agent_profile_id=origin.agent_profile_id,
-            subagent_profile_id=origin.subagent_profile_id,
-            data=data,
-            stream_id=stream_id,
-            cycle_key=origin.cycle_key,
-            tool_kind=tool_kind,  # type: ignore[arg-type]
-            tool_call_id=tool_call_id,
-            terminal=terminal,
-        )
-
-    @staticmethod
-    def _boundary(
-        origin: ResolvedEventOrigin,
-        run_key: str,
-        *,
-        raw_seq: int,
-        phase: str = "start",
-    ) -> ResponseModelCallBoundary:
-        return ResponseModelCallBoundary(
-            run_key=run_key,
-            source_type=origin.source_type,
-            workflow_node_id=origin.workflow_node_id,
-            agent_profile_id=origin.agent_profile_id,
-            subagent_profile_id=origin.subagent_profile_id,
-            cycle_key=origin.cycle_key,
-            raw_seq=raw_seq,
-            phase="end" if phase == "end" else "start",
-        )
-
-    @staticmethod
-    def _fallback_run_key(origin: ResolvedEventOrigin) -> str:
-        return "|".join((*origin.correlation_source, origin.cycle_key))
+    def _close_message_blocks(self, run_key: str) -> list[PresentationFrame]:
+        frames: list[PresentationFrame] = []
+        for key in tuple(key for key in self._blocks if key[0] == run_key):
+            block = self._blocks.pop(key)
+            frames.append(
+                self._frame(
+                    "finish",
+                    block.segment_end_text,
+                    block_id=f"{key[0]}:{key[1]}",
+                )
+            )
+        return frames
 
     def _discard_message(self, run_key: str) -> None:
         for key in tuple(key for key in self._blocks if key[0] == run_key):
             self._blocks.pop(key, None)
         self._messages.discard(run_key)
 
-    def _is_streamed_whole_message(
+    def _atomic_projection(self, text: str) -> EventStreamProjection:
+        return EventStreamProjection(frames=self._atomic_frames(text))
+
+    def _atomic_frames(self, text: str) -> tuple[PresentationFrame, ...]:
+        return (self._frame("atomic", text),) if text else ()
+
+    def _frame(
         self,
-        data: object,
-        origin: ResolvedEventOrigin,
-    ) -> bool:
-        parts = _message_parts(data)
-        if parts is None:
-            return False
-        payload, metadata = parts
-        if isinstance(payload, Mapping) or not isinstance(payload, AIMessage):
-            return False
-        run_id = str(metadata.get("run_id") or "")
-        run_key = run_id or self._fallback_run_key(origin)
-        return self._messages.was_streamed(run_key)
+        phase: str,
+        text: str,
+        *,
+        block_id: str = "",
+        segment_end_text: str = "",
+    ) -> PresentationFrame:
+        self._frame_sequence += 1
+        return PresentationFrame(
+            phase=phase,  # type: ignore[arg-type]
+            text=text,
+            block_id=block_id,
+            segment_end_text=segment_end_text,
+            sequence=self._frame_sequence,
+        )
+
+    @staticmethod
+    def _fallback_run_key(origin: ResolvedEventOrigin) -> str:
+        return f"{origin.source_type}|{origin.subagent_profile_id}|{origin.namespace}"
 
 
-__all__ = ["RunEventStream"]
+__all__ = ["EventStreamProjection", "RunEventStream"]

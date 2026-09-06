@@ -8,6 +8,8 @@ from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdenti
 
 
 class EventOutputOriginDict(TypedDict):
+    """Stable Shell identity passed to one root Graph's Event Output."""
+
     lifecycle_id: str
     graph_kind: Literal["agent", "workflow"] | Literal[""]
     run_id: str
@@ -17,32 +19,17 @@ class EventOutputOriginDict(TypedDict):
     operation_id: str
     workflow_id: str
     main_agent_id: str
-    workflow_node_id: str
-    node_invocation_id: str
     agent_profile_id: str
     subagent_profile_id: str
 
 
 @dataclass(frozen=True, slots=True)
-class WorkflowNodeSource:
-    """Frozen product identity for one compiled Workflow node."""
-
-    source_type: Literal["agent", "script"]
-    workflow_node_id: str
-    agent_profile_id: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class ResolvedEventOrigin:
-    """One raw event's Shell identity and private scheduling source."""
+    """Root Graph identity plus optional Deep Agents subagent attribution."""
 
     output: EventOutputOriginDict
     namespace: str
-    cycle_key: str
-    source_type: Literal["agent", "subagent", "script", "non_agent"]
-    workflow_node_id: str = ""
-    node_invocation_id: str = ""
-    agent_profile_id: str = ""
+    source_type: Literal["agent", "subagent", "workflow"]
     subagent_profile_id: str = ""
 
     @property
@@ -52,15 +39,6 @@ class ResolvedEventOrigin:
     @property
     def is_main_agent(self) -> bool:
         return self.source_type == "agent"
-
-    @property
-    def correlation_source(self) -> tuple[str, str, str, str]:
-        return (
-            self.source_type,
-            self.workflow_node_id,
-            self.agent_profile_id,
-            self.subagent_profile_id,
-        )
 
 
 def _namespace_parts(value: object) -> tuple[str, ...]:
@@ -90,33 +68,23 @@ def _message_metadata(data: object) -> Mapping[str, object]:
 
 
 class RunEventOriginResolver:
-    """Resolve product identity once from a raw v3 ProtocolEvent."""
+    """Resolve product identity once from a raw v3 ProtocolEvent.
+
+    Workflow events always retain Workflow root identity. Main Agent events may
+    additionally expose a configured synchronous Deep Agents subagent profile;
+    this attribution is presentation metadata and never a scheduler identity.
+    """
 
     def __init__(
         self,
         identity: AgentRunIdentity | WorkflowRunIdentity | None,
         *,
-        workflow_sources: Mapping[str, WorkflowNodeSource] | None = None,
         main_agent_names: Sequence[str] = (),
-        workflow_agent_names: Mapping[str, str] | None = None,
-        workflow_subagent_profile_ids: Mapping[str, Mapping[str, str]] | None = None,
         root_agent_profile_id: str = "",
         root_subagent_profile_ids: Mapping[str, str] | None = None,
     ) -> None:
         self._identity = identity
-        self._sources = dict(workflow_sources or {})
         self._main_agent_names = tuple(str(name) for name in main_agent_names if name)
-        self._workflow_agent_names = {
-            str(node_id): str(name)
-            for node_id, name in (workflow_agent_names or {}).items()
-        }
-        self._workflow_subagent_profile_ids = {
-            str(node_id): {
-                str(name): str(profile_id)
-                for name, profile_id in profiles.items()
-            }
-            for node_id, profiles in (workflow_subagent_profile_ids or {}).items()
-        }
         self._root_agent_profile_id = root_agent_profile_id
         self._root_subagent_profile_ids = {
             str(name): str(profile_id)
@@ -136,75 +104,39 @@ class RunEventOriginResolver:
             if lifecycle_parts:
                 parts = lifecycle_parts
         namespace = _namespace_text(parts)
-        cycle_key = _namespace_scope(namespace)
+        scope = _namespace_scope(namespace)
 
-        metadata = _message_metadata(data) if method == "messages" else {}
-        node = str(metadata.get("langgraph_node") or params.get("node") or "")
-        workflow_node_id, node_invocation_id = self._workflow_node(parts, node)
-        source = self._sources.get(workflow_node_id)
-        workflow_agent_name = self._workflow_agent_names.get(workflow_node_id, "")
-
-        active_subagent = self._active_subagent(namespace)
-        graph_name = (
-            str(lifecycle_data.get("graph_name") or "")
-            if lifecycle_data is not None
-            else ""
+        identity = self._identity
+        is_agent_graph = isinstance(identity, AgentRunIdentity) or bool(
+            self._root_agent_profile_id
         )
-        agent_name = str(metadata.get("lc_agent_name") or "")
-        agent_name = (
-            agent_name
-            or active_subagent
-            or graph_name
-            or workflow_agent_name
-        )
-
-        agent_profile_id = (
-            source.agent_profile_id
-            if source is not None
-            else self._root_agent_profile_id
-        )
-        profiles = (
-            self._workflow_subagent_profile_ids.get(workflow_node_id, {})
-            if workflow_node_id
-            else self._root_subagent_profile_ids
-        )
-        subagent_profile_id = (
-            profiles.get(agent_name, "")
-            if agent_name and agent_name not in self._main_agent_names
-            else ""
-        )
-        if subagent_profile_id:
-            source_type: Literal["agent", "subagent", "script", "non_agent"] = (
-                "subagent"
+        subagent_profile_id = ""
+        source_type: Literal["agent", "subagent", "workflow"] = "workflow"
+        if is_agent_graph:
+            metadata = _message_metadata(data) if method == "messages" else {}
+            active_subagent = self._active_subagent(namespace)
+            graph_name = (
+                str(lifecycle_data.get("graph_name") or "")
+                if lifecycle_data is not None
+                else ""
             )
-        elif source is not None:
-            source_type = source.source_type
-        elif agent_profile_id:
-            source_type = "agent"
-        else:
-            source_type = "non_agent"
+            agent_name = str(metadata.get("lc_agent_name") or "")
+            agent_name = agent_name or active_subagent or graph_name
+            if agent_name and agent_name not in self._main_agent_names:
+                subagent_profile_id = self._root_subagent_profile_ids.get(agent_name, "")
+            source_type = "subagent" if subagent_profile_id else "agent"
 
-        if lifecycle_data is not None:
-            status = str(lifecycle_data.get("event") or "")
-            if status == "started" and subagent_profile_id:
-                self._active_subagents[cycle_key] = agent_name
-            elif status != "started":
-                self._active_subagents.pop(cycle_key, None)
+            if lifecycle_data is not None:
+                status = str(lifecycle_data.get("event") or "")
+                if status == "started" and subagent_profile_id:
+                    self._active_subagents[scope] = agent_name
+                elif status != "started":
+                    self._active_subagents.pop(scope, None)
 
-        output = self._output_origin(
-            workflow_node_id=workflow_node_id,
-            node_invocation_id=node_invocation_id,
-            agent_profile_id=agent_profile_id,
-            subagent_profile_id=subagent_profile_id,
-        )
         return ResolvedEventOrigin(
-            output=output,
+            output=self._output_origin(subagent_profile_id=subagent_profile_id),
             namespace=namespace,
-            cycle_key=cycle_key,
             source_type=source_type,
-            workflow_node_id=workflow_node_id,
-            node_invocation_id=node_invocation_id,
-            agent_profile_id=agent_profile_id,
             subagent_profile_id=subagent_profile_id,
         )
 
@@ -213,19 +145,6 @@ class RunEventOriginResolver:
 
     def close(self) -> None:
         self._active_subagents.clear()
-
-    def _workflow_node(
-        self,
-        parts: Sequence[str],
-        node: str,
-    ) -> tuple[str, str]:
-        if node in self._sources:
-            return node, ""
-        for segment in reversed(parts):
-            name, separator, invocation_id = segment.partition(":")
-            if name in self._sources:
-                return name, invocation_id if separator else ""
-        return "", ""
 
     def _active_subagent(self, namespace: str) -> str:
         scope = _namespace_scope(namespace)
@@ -240,33 +159,35 @@ class RunEventOriginResolver:
     def _output_origin(
         self,
         *,
-        workflow_node_id: str = "",
-        node_invocation_id: str = "",
-        agent_profile_id: str = "",
         subagent_profile_id: str = "",
     ) -> EventOutputOriginDict:
         identity = self._identity
+        main_agent_id = (
+            identity.main_agent_id
+            if isinstance(identity, AgentRunIdentity)
+            else self._root_agent_profile_id
+        )
         return {
             "lifecycle_id": identity.lifecycle_id if identity is not None else "",
-            "graph_kind": identity.graph_kind if identity is not None else "",
+            "graph_kind": (
+                identity.graph_kind
+                if identity is not None
+                else "agent"
+                if main_agent_id
+                else ""
+            ),
             "run_id": identity.run_id if identity is not None else "",
             "thread_id": identity.thread_id if identity is not None else "",
             "assistant_id": identity.assistant_id if identity is not None else "",
             "caller_run_id": identity.caller_run_id if identity is not None else "",
             "operation_id": identity.operation_id if identity is not None else "",
             "workflow_id": (
-                identity.workflow_id
-                if isinstance(identity, WorkflowRunIdentity)
-                else ""
+                identity.workflow_id if isinstance(identity, WorkflowRunIdentity) else ""
             ),
-            "main_agent_id": (
-                identity.main_agent_id
-                if isinstance(identity, AgentRunIdentity)
-                else agent_profile_id
-            ),
-            "workflow_node_id": workflow_node_id,
-            "node_invocation_id": node_invocation_id,
-            "agent_profile_id": agent_profile_id,
+            "main_agent_id": main_agent_id,
+            # Event Output profile aliases for the root Agent and its configured
+            # synchronous subagents. Scheduler identity never depends on them.
+            "agent_profile_id": main_agent_id,
             "subagent_profile_id": subagent_profile_id,
         }
 
@@ -275,5 +196,4 @@ __all__ = [
     "EventOutputOriginDict",
     "ResolvedEventOrigin",
     "RunEventOriginResolver",
-    "WorkflowNodeSource",
 ]

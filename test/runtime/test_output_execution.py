@@ -85,7 +85,7 @@ def test_execution_yields_each_completed_semantic_event_once() -> None:
 
     assert parts == [
         "[R]partial[/R]",
-        "[T]answer[/T][C]working[/C]",
+        "[C]working[/C][T]answer[/T]",
     ]
     assert usage == {"input_tokens": 2, "output_tokens": 4, "total_tokens": 6}
 

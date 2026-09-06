@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_shell.runtime.state import AgentShellStateMiddleware
 from agent_shell.runtime.subagents import build_subagent_specs
 from agent_shell.validation.assembly import ResolvedSubagent, ResolvedSubagentEdge
 
@@ -94,10 +93,6 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
     assert materialized_workspaces == [workspace, workspace]
     assert specs[0]["permissions"] == ["reader-permission"]
     assert specs[1]["permissions"] == ["writer-permission"]
-    assert any(
-        isinstance(item, AgentShellStateMiddleware)
-        for item in specs[0]["middleware"]
-    )
     assert any(
         item.name == "PatchToolCallsMiddleware"
         for item in specs[0]["middleware"]

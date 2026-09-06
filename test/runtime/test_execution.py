@@ -203,12 +203,16 @@ def test_lifecycle_response_consumer_wakes_for_registered_spawned_run_output() -
         spawned_workflow_id = "spawned-workflow"
         output = OutputProjector(output_renderer())
         scheduler = LifecycleResponseScheduler(
-            ResponseStreamPolicy(),
+            ResponseStreamPolicy.model_validate({
+                "queue": {
+                    "strategy": "request",
+                    "idle_timeout_seconds": 0.01,
+                    "max_batch_kb": 64,
+                    "send_interval_seconds": 0,
+                }
+            }),
             lifecycle_id=lifecycle_id,
-            origin_run_id=entry_run_id,
-            origin_workflow_id=entry_workflow_id,
         )
-        scheduler.register_origin(spawned_run_id, spawned_workflow_id)
         quiet_run = QuietRun()
         entry_identity = WorkflowRunIdentity(
             request_id="request",

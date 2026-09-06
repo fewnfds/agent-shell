@@ -81,75 +81,7 @@ class OutputProjector:
             raise EventOutputError() from exc
 
 
-class WorkflowOutputProjector:
-    """Select the configured Agent or Workflow package from Shell origin."""
-
-    def __init__(
-        self,
-        outputs_by_node: Mapping[str, EventOutputCallable],
-        *,
-        segment_ends_by_node: Mapping[str, EventSegmentEndCallable] | None = None,
-        workflow_output: EventOutputCallable | None = None,
-        workflow_segment_end: EventSegmentEndCallable | None = None,
-        workflow_run_output: EventRunOutputCallable | None = None,
-    ) -> None:
-        segment_ends = segment_ends_by_node or {}
-        self._projectors = {
-            node_id: OutputProjector(
-                output,
-                segment_end=segment_ends.get(node_id),
-            )
-            for node_id, output in outputs_by_node.items()
-        }
-        self._workflow_projector = OutputProjector(
-            workflow_output,
-            segment_end=workflow_segment_end,
-        )
-        self._workflow_run_projector = (
-            OutputProjector(None, run_output=workflow_run_output)
-            if workflow_run_output is not None
-            else None
-        )
-
-    def _for(self, origin: EventOutputOrigin) -> OutputProjector | None:
-        if origin.get("agent_profile_id") or origin.get("subagent_profile_id"):
-            workflow_node_id = str(origin.get("workflow_node_id") or "")
-            if not workflow_node_id:
-                return None
-            return self._projectors.get(workflow_node_id)
-        return self._workflow_projector
-
-    def enabled(self, origin: EventOutputOrigin) -> bool:
-        projector = self._for(origin)
-        return projector.enabled() if projector is not None else False
-
-    def render(self, event: Mapping[str, object], origin: EventOutputOrigin) -> str:
-        projector = self._for(origin)
-        return projector.render(event, origin) if projector is not None else ""
-
-    def render_segment_end(
-        self,
-        event: Mapping[str, object],
-        origin: EventOutputOrigin,
-    ) -> str:
-        projector = self._for(origin)
-        return (
-            projector.render_segment_end(event, origin)
-            if projector is not None
-            else ""
-        )
-
-    def render_run(
-        self,
-        event: Mapping[str, object],
-        origin: EventOutputOrigin,
-    ) -> str:
-        projector = self._workflow_run_projector
-        return projector.render_run(event, origin) if projector is not None else ""
-
-
 __all__ = [
     "EventOutputError",
     "OutputProjector",
-    "WorkflowOutputProjector",
 ]

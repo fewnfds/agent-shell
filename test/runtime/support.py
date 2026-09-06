@@ -12,7 +12,7 @@ from agent_shell.runtime.agent_builder import _build_chat_model
 from agent_shell.runtime.agent_runtime import RunExecution
 
 from agent_shell.runtime.errors import AgentRuntimeError
-from agent_shell.runtime.event_origin import RunEventOriginResolver, WorkflowNodeSource
+from agent_shell.runtime.event_origin import RunEventOriginResolver
 from agent_shell.runtime.output_projection import OutputProjector
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
@@ -131,9 +131,8 @@ def response_scheduler(
     scheduler = LifecycleResponseScheduler(
         policy or ResponseStreamPolicy(),
         lifecycle_id="",
-        origin_run_id="",
-        origin_workflow_id="",
     )
+    scheduler.register_run("", "", now=0)
     return scheduler
 
 
@@ -142,11 +141,8 @@ def event_origin_resolver(
 ) -> RunEventOriginResolver:
     return RunEventOriginResolver(
         None,
-        workflow_sources={
-            "agent-a": WorkflowNodeSource("agent", "agent-a", "test-agent-profile")
-        },
         main_agent_names=(main_agent_name,),
-        workflow_agent_names={"agent-a": main_agent_name},
+        root_agent_profile_id="test-agent-profile",
     )
 
 

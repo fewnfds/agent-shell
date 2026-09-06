@@ -33,9 +33,7 @@ from agent_shell.runtime.diagnostics import (
     RuntimeDiagnostics,
 )
 from agent_shell.runtime.event_origin import (
-    ResolvedEventOrigin,
     RunEventOriginResolver,
-    WorkflowNodeSource,
 )
 from agent_shell.runtime.event_stream import RunEventStream
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
@@ -43,18 +41,12 @@ from agent_shell.runtime.media_response import MainAgentMediaResponse
 from agent_shell.runtime.output_projection import (
     EventOutputError,
     OutputProjector,
-    WorkflowOutputProjector,
 )
-from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.usage import RunUsageAccumulator
 from agent_shell.runtime.response_scheduler import (
     LifecycleResponseScheduler,
     PresentationFrame,
-    ResponseEventInput,
-)
-from agent_shell.runtime.response_presentation import (
-    ResponseEvent,
-    ResponseModelCallBoundary,
+    ResponseFrameInput,
 )
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
@@ -126,7 +118,7 @@ class RunExecution:
     usage_accumulator: RunUsageAccumulator = field(default_factory=RunUsageAccumulator)
     event_stream: RunEventStream = field(init=False)
     origin_resolver: RunEventOriginResolver | None = None
-    event_output_projector: OutputProjector | WorkflowOutputProjector | None = None
+    event_output_projector: OutputProjector | None = None
     response_consumer: bool = True
     middleware_runtimes: tuple[MiddlewarePackageRuntime, ...] = ()
     tool_runtimes: tuple[ToolPackageRuntime, ...] = ()
@@ -152,12 +144,14 @@ class RunExecution:
             or self.response_scheduler is None
         ):
             return
-        register_origin = getattr(self.response_scheduler, "register_origin", None)
-        if callable(register_origin):
-            register_origin(
-                self.identity.run_id,
-                self.identity.subject_id,
-            )
+        identity = self.identity
+        thread_id = identity.thread_id if identity is not None else ""
+        run_id = identity.run_id if identity is not None else ""
+        try:
+            now = asyncio.get_running_loop().time()
+        except RuntimeError:
+            now = 0.0
+        self.response_scheduler.register_run(thread_id, run_id, now=now)
 
     @property
     def usage(self) -> dict[str, int]:
@@ -265,22 +259,19 @@ class RunExecution:
             text = "".join(frame.text for frame in frames if frame.text)
             return [text] if text else []
 
-        def response_origin() -> tuple[str, str]:
+        def response_identity() -> tuple[str, str]:
             scheduler = self.response_scheduler
             assert scheduler is not None
             if self.identity is None:
-                return scheduler.origin_run_id, scheduler.origin_workflow_id
-            return (
-                self.identity.run_id,
-                self.identity.subject_id,
-            )
+                return "", ""
+            return self.identity.thread_id, self.identity.run_id
 
         def response_accepting() -> bool:
             scheduler = self.response_scheduler
             if not self.public_output or scheduler is None:
                 return False
-            origin_run_id, origin_workflow_id = response_origin()
-            return scheduler.accepting(origin_run_id, origin_workflow_id)
+            thread_id, run_id = response_identity()
+            return scheduler.accepting(thread_id, run_id)
 
         def take_response_output() -> list[str]:
             scheduler = self.response_scheduler
@@ -288,27 +279,20 @@ class RunExecution:
                 return []
             return frame_text(scheduler.take_published())
 
-        def project_input(
-            event: ResponseEvent | ResponseModelCallBoundary,
-            *,
-            text: str = "",
-            segment_end_text: str = "",
-        ) -> list[str]:
+        def project_input(frame: PresentationFrame) -> list[str]:
             if not self.public_output:
                 return []
             scheduler = self.response_scheduler
             assert scheduler is not None
-            origin_run_id, origin_workflow_id = response_origin()
-            if not scheduler.accepting(origin_run_id, origin_workflow_id):
+            thread_id, run_id = response_identity()
+            if not scheduler.accepting(thread_id, run_id):
                 return []
             scheduler.publish(
-                ResponseEventInput(
+                ResponseFrameInput(
                     lifecycle_id=scheduler.lifecycle_id,
-                    origin_run_id=origin_run_id,
-                    origin_workflow_id=origin_workflow_id,
-                    event=event,
-                    text=text,
-                    segment_end_text=segment_end_text,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    frame=frame,
                 ),
                 now=loop.time(),
             )
@@ -325,8 +309,8 @@ class RunExecution:
                 return []
             scheduler = self.response_scheduler
             assert scheduler is not None
-            origin_run_id, origin_workflow_id = response_origin()
-            if not scheduler.accepting(origin_run_id, origin_workflow_id):
+            thread_id, run_id = response_identity()
+            if not scheduler.accepting(thread_id, run_id):
                 return []
             run_event: dict[str, object] = {
                 "type": "agent_shell.workflow_run",
@@ -343,22 +327,16 @@ class RunExecution:
                 if projector is not None
                 else ""
             )
-            scheduler.publish(
-                ResponseEventInput(
-                    lifecycle_id=scheduler.lifecycle_id,
-                    origin_run_id=origin_run_id,
-                    origin_workflow_id=origin_workflow_id,
-                    event=ResponseEvent(
-                        kind="lifecycle",
-                        phase=phase,
-                        namespace="root",
-                        source_type="non_agent",
-                        data=run_event,
+            if text:
+                scheduler.publish(
+                    ResponseFrameInput(
+                        lifecycle_id=scheduler.lifecycle_id,
+                        thread_id=thread_id,
+                        run_id=run_id,
+                        frame=self.event_stream.atomic(text),
                     ),
-                    text=text,
-                ),
-                now=loop.time(),
-            )
+                    now=loop.time(),
+                )
             return take_response_output()
 
         def event_origin(
@@ -400,10 +378,9 @@ class RunExecution:
             if self.origin_resolver is not None:
                 self.origin_resolver.close()
             scheduler = self.response_scheduler
+            if not self.public_output or scheduler is None:
+                return []
             parts: list[str] = []
-            if self.public_output and scheduler is not None:
-                if self.response_consumer:
-                    parts.extend(frame_text(scheduler.abort()))
             try:
                 parts.extend(project_run_event(
                     "error",
@@ -412,28 +389,17 @@ class RunExecution:
                     error_code=error_code,
                 ))
             except Exception:
-                # A broken user lifecycle projector must not replace the safe
-                # runtime error that is already crossing the public boundary.
-                if scheduler is not None:
-                    if self.response_consumer:
-                        scheduler.discard()
-                    else:
-                        origin_run_id, origin_workflow_id = response_origin()
-                        scheduler.abort_origin(
-                            origin_run_id,
-                            origin_workflow_id,
-                            now=loop.time(),
-                        )
-            if self.public_output and scheduler is not None:
-                if self.response_consumer:
-                    scheduler.discard()
-                else:
-                    origin_run_id, origin_workflow_id = response_origin()
-                    scheduler.abort_origin(
-                        origin_run_id,
-                        origin_workflow_id,
-                        now=loop.time(),
-                    )
+                # A broken optional Run projector must not replace the stable
+                # runtime error already crossing the public boundary.
+                pass
+            thread_id, run_id = response_identity()
+            scheduler.finish_run(
+                thread_id,
+                run_id,
+                now=loop.time(),
+                aborted=True,
+            )
+            parts.extend(take_response_output())
             return parts
 
         try:
@@ -526,73 +492,37 @@ class RunExecution:
                                 else:
                                     next_event_task = asyncio.create_task(anext(envelopes))
                                     origin = event_origin(envelope)
-                                    (
-                                        stream_events,
-                                        publish_raw_output,
-                                    ) = self.event_stream.consume(envelope, origin)
-                                    raw_text = ""
-                                    if self.public_output:
-                                        raw_text = render_protocol_event(
-                                            envelope,
-                                            origin,
-                                        )
-                                        if not publish_raw_output:
-                                            raw_text = ""
-                                    text_attached = False
-                                    for event in stream_events:
-                                        if isinstance(event, ResponseModelCallBoundary):
-                                            projected = project_input(event)
-                                        elif isinstance(event, MediaContentBlock):
-                                            notification = (
-                                                await self.media_response.project(event)
-                                                if response_accepting()
-                                                else None
-                                            )
-                                            projected = (
-                                                project_input(
-                                                    self.event_stream.media_notification(
-                                                        origin,
-                                                        event,
-                                                    ),
-                                                    text=notification,
-                                                )
-                                                if notification is not None
-                                                else []
-                                            )
-                                        else:
-                                            event_text = (
-                                                raw_text if not text_attached else ""
-                                            )
-                                            text_attached = text_attached or bool(raw_text)
-                                            segment_end_text = (
-                                                render_protocol_segment_end(
-                                                    envelope,
-                                                    origin,
-                                                )
-                                                if event.kind == "content"
-                                                and event.phase == "start"
-                                                else ""
-                                            )
-                                            projected = project_input(
-                                                event,
-                                                text=event_text,
-                                                segment_end_text=segment_end_text,
-                                            )
-                                        for rendered in projected:
+                                    raw_text = (
+                                        render_protocol_event(envelope, origin)
+                                        if self.public_output
+                                        else ""
+                                    )
+                                    segment_end_text = (
+                                        render_protocol_segment_end(envelope, origin)
+                                        if self.public_output
+                                        and self.event_stream.is_streaming_start(envelope)
+                                        else ""
+                                    )
+                                    projection = self.event_stream.consume(
+                                        envelope,
+                                        origin,
+                                        text=raw_text,
+                                        segment_end_text=segment_end_text,
+                                    )
+                                    for frame in projection.frames:
+                                        for rendered in project_input(frame):
                                             yield rendered
-                                    if raw_text and not text_attached:
-                                        params = envelope.get("params")
-                                        data = (
-                                            params.get("data")
-                                            if isinstance(params, Mapping)
+                                    for media in projection.media:
+                                        notification = (
+                                            await self.media_response.project(media)
+                                            if response_accepting()
                                             else None
                                         )
-                                        projected = project_input(
-                                            self.event_stream.atomic(origin, data),
-                                            text=raw_text,
-                                        )
-                                        for rendered in projected:
-                                            yield rendered
+                                        if notification is not None:
+                                            for rendered in project_input(
+                                                self.event_stream.atomic(notification)
+                                            ):
+                                                yield rendered
 
                             if deadline_task is not None and deadline_task in done:
                                 for rendered in project_deadline():
@@ -624,48 +554,48 @@ class RunExecution:
                     yield rendered
             if self.public_output and self.response_scheduler is not None:
                 scheduler = self.response_scheduler
-                origin_run_id, origin_workflow_id = response_origin()
-                scheduler.finish_origin(
-                    origin_run_id,
-                    origin_workflow_id,
+                thread_id, run_id = response_identity()
+                scheduler.finish_run(
+                    thread_id,
+                    run_id,
                     now=loop.time(),
                 )
                 if self.response_consumer:
-                    final_frames = scheduler.take_published()
-                    final_frames.extend(scheduler.finish(now=loop.time()))
-                    for rendered in frame_text(final_frames):
+                    while True:
+                        for rendered in take_response_output():
+                            if rendered:
+                                yield rendered
+                        scheduler.clear_wakeup()
+                        if scheduler.response_complete:
+                            break
+                        deadline = scheduler.next_deadline()
+                        if deadline is None:
+                            await scheduler.wait_for_wakeup()
+                        else:
+                            delay = max(0.0, deadline - loop.time())
+                            try:
+                                await asyncio.wait_for(
+                                    scheduler.wait_for_wakeup(),
+                                    timeout=min(delay, 60.0),
+                                )
+                            except TimeoutError:
+                                pass
+                        scheduler.advance_published(now=loop.time())
+                    for rendered in frame_text(scheduler.finish(now=loop.time())):
                         if rendered:
                             yield rendered
-            while (
-                self.public_output
-                and self.response_consumer
-                and self.response_scheduler is not None
-                and self.response_scheduler.has_pending_output
-            ):
-                deadline = self.response_scheduler.next_deadline()
-                if deadline is None:
-                    break
-                delay = max(0.0, deadline - loop.time())
-                if delay:
-                    await asyncio.sleep(delay)
-                for rendered in frame_text(
-                    self.response_scheduler.advance(now=loop.time())
-                ):
-                    if rendered:
-                        yield rendered
         except asyncio.CancelledError:
             self.event_stream.close()
             if self.origin_resolver is not None:
                 self.origin_resolver.close()
             if self.response_scheduler is not None:
-                if self.response_consumer:
-                    self.response_scheduler.discard()
-                elif self.public_output:
-                    origin_run_id, origin_workflow_id = response_origin()
-                    self.response_scheduler.abort_origin(
-                        origin_run_id,
-                        origin_workflow_id,
+                if self.public_output:
+                    thread_id, run_id = response_identity()
+                    self.response_scheduler.finish_run(
+                        thread_id,
+                        run_id,
                         now=loop.time(),
+                        aborted=True,
                     )
             await self.cancel()
             raise
@@ -937,7 +867,6 @@ class AgentRuntime:
         input_state: dict[str, Any],
         identity: WorkflowRunIdentity,
         context: WorkflowRuntimeContext,
-        workflow_node_kinds: Mapping[str, str],
         request_id: str = "",
         public_model: str = "",
         workflow_event_output: EventOutputCallable | None = None,
@@ -951,43 +880,27 @@ class AgentRuntime:
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
     ) -> RunExecution:
-        workflow_sources: dict[str, WorkflowNodeSource] = {}
         if public_output:
-            projector = WorkflowOutputProjector(
-                {},
-                workflow_output=workflow_event_output,
-                workflow_segment_end=workflow_event_segment_end,
-                workflow_run_output=workflow_run_output,
+            projector = OutputProjector(
+                workflow_event_output,
+                segment_end=workflow_event_segment_end,
+                run_output=workflow_run_output,
             )
         else:
             projector = OutputProjector(None)
-        node_kinds = dict(workflow_node_kinds)
-        for node_id, node_type in node_kinds.items():
-            if node_type == "command":
-                workflow_sources[node_id] = WorkflowNodeSource(
-                    source_type="script",
-                    workflow_node_id=node_id,
-                )
         scheduler_policy = (
             response_stream_policy.model_copy(deep=True)
             if response_stream_policy is not None
             else ResponseStreamPolicy()
         )
         lifecycle_identity = identity.lifecycle_id
-        run_identity = identity.run_id
-        workflow_identity = identity.workflow_id
         usage_accumulator = RunUsageAccumulator()
-        origin_resolver = RunEventOriginResolver(
-            identity,
-            workflow_sources=workflow_sources,
-        )
+        origin_resolver = RunEventOriginResolver(identity)
         effective_response_scheduler = response_scheduler
         if effective_response_scheduler is None:
             effective_response_scheduler = LifecycleResponseScheduler(
                 scheduler_policy,
                 lifecycle_id=lifecycle_identity,
-                origin_run_id=run_identity,
-                origin_workflow_id=workflow_identity,
             )
         return RunExecution(
             graph=graph,
@@ -1087,8 +1000,6 @@ class AgentRuntime:
         scheduler = response_scheduler or LifecycleResponseScheduler(
             ResponseStreamPolicy(),
             lifecycle_id=lifecycle_id,
-            origin_run_id=run_id,
-            origin_workflow_id=built.agent_id,
         )
         return RunExecution(
             graph=built.graph,
@@ -1479,11 +1390,6 @@ class AgentRuntime:
             ),
             identity=identity,
             context=context,
-            workflow_node_kinds={
-                node.id: node.type
-                for node in document.definition.nodes
-                if node.type == "command"
-            },
             run_config=_workflow_run_config(
                 request_id=request_id,
                 workflow_id=workflow_id,
