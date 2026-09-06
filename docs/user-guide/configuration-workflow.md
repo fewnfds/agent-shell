@@ -1,91 +1,67 @@
 # Workflow、Main Agent 与 Subagent
 
+## 两类 root graph
+
+Agent Shell 在同一个 Agent Server deployment 中注册两类独立 Graph：
+
+- Main Agent：完整 Deep Agents graph，拥有 AgentState、messages、Thread、Run、checkpoint 和 Agent Event Output。
+- Workflow：Start/Command/End control graph，拥有只含 `shared_vars` 的 Workflow State、自己的 Thread/Run/checkpoint 和 Workflow Event Output。
+
+两者都可以设置为 OpenAI-compatible model 入口。Workflow 需要 AI 时，由 Command 通过 `runtime.context.agent_runs` 启动 Main Agent，不把 Agent 嵌入 Canvas。
+
 ## Workflow
 
-【Workflow】使用一个装配页面管理全部 Workflow。装配页选择已有 Workflow，或新建并保存名称、说明、`is_model_entry`（【作为模型入口】，默认关闭）、可选 Workflow Event Output 与 Response Stream Scheduling 组件引用、`durability`（默认 `async`）、`on_disconnect`（默认 `cancel`）和一份 current Graph definition/layout。Graph 的 `recursion_limit` 与 `max_concurrency` 由实例级【系统 / 系统配置 / 限制策略】统一传入 LangGraph 官方运行配置。
-`enabled` 是同一 Workflow 的草稿/正式状态，只由 Graph 草稿保存或正式保存切换，metadata 表单不能直接切换。
-`enabled=true` 且 `is_model_entry=true` 的 Workflow 出现在 `/compat/openai/v1/models`。任何 enabled Workflow 都可以作为跨 Workflow 调用目标，无需开启模型入口。新记录保存并获得 UUID 后才能进入【编辑 Flow】；通用列表和 Bundle 操作集中在【配置库】，装配页也提供复制和删除。
+Workflow metadata 保存 name、description、`is_model_entry`、`durability`、`on_disconnect` 和可选 Workflow Event Output。Graph document 只允许：
 
-Response Stream Scheduling 是【工作流组件】中的可复用配置，进入现有配置库统一管理。组件只包含输出原子、空闲让位时间、批次软大小和最小发送间隔。作为请求入口的 Workflow 通过可空 `response_stream_scheduling_id` 为本次 response 选择组件；未装配时使用内置默认调度。公开 response 封口前，由该请求入口 Run 直接或间接启动的 Run 都向同一个 Lifecycle scheduler 提交已投影文本。各 Run 先由自己的 Agent Event Output 或 Workflow Event Output 决定事件是否公开及其文本修饰；调度器按 Run identity 隔离 lane 和 transaction。字段与 API 示例见[响应流调度](../wizard-pages/response-stream-scheduling-config.md)。
+- Start：映射 LangGraph `START`；
+- Command：执行配置独占的 async Python，并返回官方 `Command(update, goto)`；
+- End：映射 LangGraph `END`；
+- Control Edge：连接 Catalog 声明的 `next -> in` endpoint。
 
-默认输出原子是 `request`：同一 AI model request 的 reasoning、assistant text和已完成 Tool transaction使用同一排队身份。当前原子每收到一个由 Event Output 产生的非空公开文本项都会重新开始空闲让位倒计时；脚本返回空字符串的 reasoning、assistant text或其他普通事件不会取得 writer，也不会延长已有 writer lease。持续产生公开文本时保持 writer，静默超过配置时间后让出，迟到事件从队尾恢复。`message-finish`只关闭模型正文 block，后续 Tool outcome仍可属于同一 request；同一 invocation 的下一次 model request开始或所属 Node terminal时，前一个request已有输出排完后立即让位。慢 Tool不会被timeout取消，Tool call与terminal outcome仍作为不可插队的一个输出项。没有稳定 AI request身份的Command、Workflow或其他非 AI事件各自形成singleton atom。
+Command 的 outgoing Edge 声明允许的目标 Node ID。运行时由脚本返回 `goto="<node-id>"` 选择目标；compiler不会为Command再注册static Edge。Start outgoing Edge才编译为`add_edge(START, target)`。
 
-选择 `node_invocation` 时，同一次 Node实际执行产生的事件使用同一输出原子；相同 Node循环重入或再次启动会得到新的 invocation身份。Node terminal会关闭该invocation尚未结束的公开content segment，并在已有输出排完后立即释放writer；运行中没有新的非空公开文本超过配置时间也会让位。两种策略都不改变LangGraph执行、Provider或Tool timeout。
+Workflow State只有`shared_vars`。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
 
-【批次软大小】按 Event Output 已投影的 UTF-8正文计算。每个排水批次至少发送一个完整输出项，单项自身超过软大小时仍完整发送；其余情况下尽量合并更多已经完成 single-writer排序的输出项。一个传输批次可以跨越相邻输出原子，但只会在调度顺序已经确定后合并，不会造成多来源字符交错；合并结果作为一个 OpenAI `delta.content`发送。首个正文批次立即发送，后续批次遵守【最小发送间隔】。
+完整Graph与Command契约见[Workflow Graph Canvas Contract](../../.docs/architecture/workflow-graph-canvas-contract.md)和[Command Node](../wizard-pages/command-config.md)。
 
-每个 canvas Agent Node 使用私有 `messages` 运行自己的 Agent graph。Agent 完成后，wrapper 把完整 reduced conversation 作为不可变 artifact 写入 Lifecycle/Run Store；Workflow State 的 `agent_invocations` 保存 `invocation_id`、Workflow/Node/Agent identity、`invoked_at` 和 `result_ref`。Command-dispatched Agent 的 State reference 携带 task identity。Agent Additional Prompt 可以从 Workflow State 选择当前因果可见的 reference，再通过 `runtime.store` 读取、校验和转换完整 artifact。
+## Main Agent
 
-并行分支读取同一个 LangGraph Super-step snapshot，以不同 invocation ID 返回引用，不按开始时间、结束时间或 mapping 插入顺序解释先后。direct Agent Node invocation 的 State index 按 canvas Node 保留最新逻辑槽，dispatch invocation 按 Command Node + task ID 保留最新逻辑槽；旧 artifact 保留到 Lifecycle 清场，因此 State history 中的旧引用仍可读取。
+Main Agent页面装配：
 
-跨 Workflow 调用由 `langgraph dev` 的官方 Assistant、Thread 和 Run 执行。Agent Shell 通过 LangGraph `Runtime.context` 为每个 Run 注入 `workflow_runs` 命令对象，Command Node、Custom Tool、Middleware 或 executable Node 可以在自己的 invocation 内调用 `start_workflow()`、`check()`、`list()`、`join()` 和 `cancel()`。启动命令立即返回官方身份 handle；`check()` 查询状态和终态 State，`join()` 等待终态并收集输出。调用方只把后续确实需要的 `run_id`、业务阶段或结果引用写入 `shared_vars`，无需复制一份 Run 状态机。目标必须是当前请求冻结配置中的 enabled Workflow；需要运行单个 Agent 时创建 `Start -> Agent -> End` Workflow。
+- 一个Model Requirement；
+- Agent Event Output；
+- Filesystem Backend与Filesystem Tools；
+- 可选capability refs；
+- ordered Custom Tool、Custom Middleware和MCP refs；
+- ordered同步Subagent refs；
+- root-run设置：`is_model_entry`、`checkpoint_mode`、`durability`和`on_disconnect`。
 
-启动参数包含稳定且非空的 `operation_id`。相同 caller Run 内因 Node retry 或重新执行而再次调用同一 operation 时返回原 handle，不会重复派遣；同一 operation 绑定不同 target 时返回 409，需要重派到新目标时使用新的 operation ID。
-`operation_id` 的幂等范围是 current caller Run；业务重派使用新的 operation ID。被调用 Run 的公开事件在 response 开放期间进入 Lifecycle scheduler；`check()` 与 `join()` 返回官方 Thread State 的输出。需要跨 Run 长期交付的大型业务结果时，调用方仍应通过 Store 或 mapped Filesystem reference 显式读取和编排。
+Main Agent UUID确定稳定Assistant ID。`checkpoint_mode=enabled`时，同一Thread上的后续新Run延续AgentState；`disabled`使用stateless Run，不承诺跨Run消息或private marker连续性。`durability=sync|async|exit`直接传给官方Run，决定checkpoint写入时机。
 
-【系统 / 运行监控】通过 LangGraph Dev 公共 Thread/Run API 按一次客户端请求聚合 Lifecycle，显示涉及的 Workflow、状态、active/total Run 和 error Run 数量。页面提供目录、搜索、分页、删除和详情入口；详情可选择任意 Run，并读取官方 Run 对象、Assistant Graph、Thread latest State 与最近 State history。
+每次用户交互都是新Run。续聊复用Thread，不复用已结束的Run ID。
 
-运行监控页面的【监控设定】Card 提供 `retained_lifecycles`，默认 `20`，只计算 terminal Lifecycle；active Lifecycle 不占保留数量。`0` 表示不保留已结束 Lifecycle。显式删除 active Lifecycle 返回冲突；删除 terminal Lifecycle 会通过公共 API 删除其 Thread、Run/checkpoint/State 和 Agent Shell-owned Server Store 前缀，文件、生成媒体和 mapped directory 由用户自行管理。
+## 同步 Subagent
 
-每个 Workflow 独立保存 `on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。Run 的正常完成、失败或主动取消不触发隐式连锁取消；`caller_run_id` 只表达调用关系。
+Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middleware。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和effective Filesystem。
 
-【编辑 Flow】进入独立全屏 Vue Flow 页面。左右各有一条始终保留的工具图标轨；点击 active 图标只收起功能 panel，图标轨不会消失。左侧提供组件库、元素追踪和问题：组件库提供当前角色允许的 Agent 和 Command，可以点击或拖到画布；元素追踪列出当前全部 Node，
-点击条目会保持当前缩放、把 Node 平滑移到视口中心并打开右侧属性；存在问题时问题图标显示红色数量角标，点击后在左侧列出当前问题。右侧属性使用紧凑的 `key : value/control` 行，编辑所选 Node 或 Edge；空白点击会清除选择并收起属性，平移、缩放和拖动不会触发收起，重新打开空选择属性时显示 Workflow 名称和 State contract。
+同步Subagent属于Main Agent内部agent loop，不是Workflow Node，也不建立独立Shell archive wrapper。多阶段确定性控制由Workflow和Command表达。
 
-选中连线后，可以选择两端共同支持的 Edge 类型、具体 source/target endpoint，也可以删除连线。Normal、Branch 与 Dispatch Edge 都使用 Bezier 曲线；Branch/Dispatch key 在 Edge 属性中填写并保存，不显示在线段上，两种dynamic Edge 仍以不同虚线、动画、箭头和端点名称区别。
-问题列表显示 current candidate Graph 的全部正式问题；点击问题可以选中对应 Node、Edge 或 Workflow，画布底部不承载问题 UI。Graph 不设置 Node、Edge 数量或 document 字节数的领域配额；实际可用规模取决于浏览器、请求、存储、LangGraph 和本机资源。同一个 Main Agent 可以被多个 Agent Node 重复引用；normal 端点可以连接 `Start -> Agent`、
-`Agent -> Agent` 和 `Agent -> End`，并允许一个 endpoint 连接多个 activation direction。同一个有向 `source Node ID -> target Node ID` 组合只能保存一条 Edge；重复 Agent invocation 由一条 Dispatch Edge 上的多个 `Send` 表达。保存直接覆盖 current Graph，重新打开时恢复 Node、Edge、position 和 viewport。草稿保存执行 wire validation 并原子设置 `enabled=false`；正式保存执行完整静态校验，通过后原子写入 Graph 并设置 `enabled=true`。current canvas revision 的预校验请求失败时，正式保存保持禁用并显示重新校验操作；正式失败不落盘。
+## Agent Additional Prompt
 
-画布中的 Node、Edge、position 或 viewport 发生变化后，切换 Workflow、返回配置页、关闭或刷新浏览器都会触发未保存确认。确认离开后，编辑器按地址中的 Workflow UUID 重新读取 metadata 与 current Graph；尚未完成的旧加载、校验或保存响应不会写入新 Workflow 页面。草稿保存或正式保存成功后，当前 Graph 成为新的已保存基线。
+客户端messages作为Main Agent Run input进入AgentState，并作为Lifecycle输入快照保存在Server Store。AAP Custom Middleware在Thread首次运行时整理这份AgentState输入。
 
-保存入口允许不完整 draft。publishable Graph 恰有一个 system Start 和一个 system End，且 Start 至少有一条合法 outgoing Edge；`Start -> End` 可以 publish，End 可以没有 incoming Edge。LangGraph runtime 允许 reachable leaf Node 在没有 successor message 时自然结束。每个 executable Node 都从 Start 可达；不满足 topology fact、Edge paradigm 或 LangGraph compile requirement 时，在 Agent assembly 和 Graph compile 前返回 422。
+AAP使用checkpointed private initialization marker：一个stateful Agent Thread第一次运行时注入一次；同一Thread后续Run延续既有messages，不重复附加。Stateless Run没有跨Runmarker，因此每次独立执行都初始化。
 
-普通可达叶子可以自然结束。多条路径集中结束时，路径显式汇聚到实际执行的 Node（例如 Command Node），再由该 Node 连接 End。End 表示逻辑终点；all-of fan-in 在全部声明的 source Node 完成后激活 target。互斥分支适合作为独立叶子或分别连接 End。
+Subagent默认使用Deep Agents delegated messages；是否增加其他材料由该Subagent自己的ordered Middleware决定。详见[Agent Additional Prompt](agent-additional-prompt.md)。
 
-canvas Start/End 分别映射 LangGraph 官方虚拟 `START/END`，不编译成 Shell 函数节点；Start 的初始激活不参与普通 all-of fan-in，
-所以 `Start -> A` 与后续 `B -> A` 可以直接表达循环入口。End 是系统提供的固定逻辑终点。
-Agent Node 引用的 `main_agent_id` 保存在 Graph definition 中。`normal` 是 Node endpoint type；从 normal output endpoint 画到 normal input endpoint 的线表达 successor Node 的 activation direction。Node endpoint 来自后端 Catalog 的 input/output arrays，保存时记录 `source_handle`/`target_handle`。多条 Normal Edge 按 LangGraph 官方 Graph API 激活多个 successor Node；Workflow State 由后端 contract 管理。
+## 事件输出
 
-Command Node 引用一份 `workflow-node/command` 配置独占 Python 包。它可以在一次调用中同时更新 State、激活 Branch Edge，并从 current Workflow State/Runtime Context 生成运行时数量的任务。compiler 把 Branch target 与 LangGraph `Send` 一起写入官方 `Command.goto`。同一个 Agent Node 可被不同 payload 多次调用，或由不同 `dispatch_key` 路由到不同 Agent Node。每次 dispatch invocation 都在 private Agent State 的 `workflow_task` 中得到任务，完成记录也保存该 task identity。完整配置与 item/rainfall 示例见[Command Node](../wizard-pages/command-config.md)。
+Main Agent只使用自身装配的Agent Event Output；Workflow只使用自己的Workflow Event Output。Event Output读取原始LangGraph v3 ProtocolEvent与Shell origin，返回空字符串表示隐藏，返回文本表示进入公开response。
 
-Command 配置还可以保存独立的 ordered `mcp_refs`。每条引用选择一个 MCP Requirement，并允许服务器全部 Tool 或一组服务器原始 Tool name；运行时只把该 Command 的装配投影为 `runtime.context.mcp` 窄 facade。Command 可以调用选定 Tool，也可以读取已装配服务器的 Resource/Prompt，但不能取得底层 MCP client、session、Connection 或 secret。配置与调用示例见 [MCP 连接、映射与调用](mcp.md)。
-
-## Main Agent 与 Subagent
-
-在【代理 / Main Agent】选择模型要求和 Agent Event Output 等 capability。Main Agent 是完整 Agent 装配，由 Workflow 的 Agent Node 引用。需要同步委派时，先创建 Subagent 实体，再由 Main Agent 按顺序保存 `subagent_id` 引用并选择委派 capability。
-
-Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。Backend 在 CompositeBackend 和 LocalShellBackend 中二选一；Tools 独立控制文件 Tool visibility、description 与参数。Subagent 对两者分别继承或替换，required capability 不能关闭；Workflow metadata 不保存 Filesystem。
-
-CompositeBackend 的每条映射或虚拟来源直接保存 `read-write|read-only|no-access` 权限，并可通过 `skill_package_id` 引用 Skill 独立包。Skill 引用、路径与权限随 Backend 一起被 Subagent 继承。LocalShellBackend 只使用固定真实工作区，不接受 Skill 包或 Composite 来源；`execute` 只有在 Tools 开启且 Backend 为 LocalShellBackend 时可见。
-
-Subagent settings 定义身份、说明、capability 覆写和自己的 ordered Middleware 引用。当前委派结构为一层同步 `Main -> Subagent`，运行时使用 Deep Agents 官方 dictionary-based CompiledSubAgent。Agent 内部通过 `SubAgentMiddleware`/`task` 委派；外层 Workflow 的节点和边负责多阶段、并行、条件和 join。
-
-Main Agent 与 Subagent 各自保存 ordered `mcp_refs`，MCP 不参与 capability inherit/replace。每条引用可开放服务器全部 Tool 或只开放原始 Tool name allowlist；运行时把发现到的 Tool 作为标准 LangChain `BaseTool` 加入对应 Agent。Requirement namespace 决定 Agent 可见前缀，同一服务器可被不同 Agent 使用不同 allowlist。Connection 和本机 binding 的配置方式见 [MCP 连接、映射与调用](mcp.md)。
-
-## Custom Middleware
-
-Summarization 与 Prompt Caching 是两个独立组件。Main Agent 可以分别选择或不选择，Subagent 按 capability 的继承/替换/关闭规则得到自己的最终配置；后端为每个身份显式物化官方 middleware，不依赖声明式 Subagent 自动继承 Main Agent 的 middleware 实例。
-
-每个 Custom Middleware 组件定义一个 Middleware。Main Agent 和 Subagent 各自保存有序 `middleware_refs`，列表顺序就是多个用户 Middleware 的装配顺序。Shell 加载扩展包并把官方 `AgentMiddleware` 实例交给 `create_deep_agent()`；运行行为由 LangChain Middleware hook 提供。
-
-客户端 `messages[]` 是外围不可变请求事实，不会自动成为 Main Agent 活动消息。需要消息策略时，由 Middleware 在 `before_agent`/`abefore_agent` 中读取官方 state/context，按 Agent 身份整理后返回官方 state update。Main Agent 可用 `runtime.context.lifecycle_id` 从 `runtime.store` 读取冻结的 Lifecycle 输入；Subagent 默认保留 Deep Agents delegated messages，不自动附加根请求。格式见[Custom Middleware 包](middleware-packages.md)。
-
-### Agent Additional Prompt Middleware
-
-Agent Additional Prompt（AAP）通过 Custom Middleware 的 `abefore_agent` 构造 current Agent 私有初始提示词。从 `内置示例-agent-additional-prompt` 创建配置后，由需要它的 Main Agent 或 Subagent 通过有序 `middleware_refs` 选择并排序。
-Main Agent 可以从 Lifecycle Store 读取不可变请求快照，Subagent template 默认使用 delegated messages；upstream Agent 输出和 Workflow 文件由当前 AAP 代码选择。完整约定见 [Agent Additional Prompt](agent-additional-prompt.md)。
-
-AAP 可以读取 `state["workflow_task"]`，把当前任务材料编排进 Agent 的私有 `messages`。动态任务集合由 Command 在一个确定的 LangGraph Node invocation 中生成。
-
-### 事件输出
-
-Workflow 可绑定零或一个事件输出组件。它处理 `custom`、`lifecycle`、`values`、`updates`、`tasks` 等 Workflow-owned non-Agent v3 事件；
-每类事件由配置独占 Python package 中的同步 `output(event, origin)` 处理，直接读取 LangGraph v3 原始 envelope 和其中的 Python `data` 对象；`origin` 只提供 Shell Lifecycle、Run、Workflow、Node 与 Agent 身份。不绑定时这些事件不进入 OpenAI 响应。Agent Node 事件仍使用对应 Main Agent 的 Agent Event Output。完整字段见[事件输出](../wizard-pages/workflow-event-output-config.md)。
-
-Agent Event Output 与 Workflow Event Output 是公开响应的唯一输出模式。每个原始 ProtocolEvent 先执行所属 `output(event, origin)`；空字符串不进入公开输出队列，非空字符串携带 origin 进入响应流调度。Shell 合成的 Workflow Run 状态由 Workflow Event Output 的可选 `run_output(run_event, origin)` 处理。调度器只能排序、保持 Tool transaction 原子和按批次排水。
+Event Output不修改State、checkpoint或Graph routing。公开文本的调度只排列已批准的输出。
 
 ## 校验与生效
 
-Main Agent 与 Subagent 编辑页继续提交完整草稿给后端预校验，保存时再次校验。`PUT /agent-shell/api/workflows/{id}/draft` 只做 wire 解析并停用；
-`POST /agent-shell/api/workflows/{id}/validate` 返回正式静态问题；`PUT /agent-shell/api/workflows/{id}/graph` 重复完整校验并正式启用，metadata PUT 保留既有 enabled。真实 Chat 请求从一次文件配置快照读取 Workflow current Graph、
-Main Agent、Subagent、各自 Filesystem Backend、Filesystem Tools、组件和 Provider secret view，完成 Agent 构造后关闭配置快照。
+Main Agent/Subagent编辑页提交完整草稿并由后端校验装配。Workflow draft保存只保证wire可解析并设置`enabled=false`；正式保存执行引用、topology、Command package与compile校验后设置`enabled=true`。
+
+Chat请求冻结一次Repository与实例资源快照。运行中的配置修改只影响后续Lifecycle。

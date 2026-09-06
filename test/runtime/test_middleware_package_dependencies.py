@@ -205,12 +205,23 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
                 "definition": {
                     "nodes": [
                         {
-                            "id": "agent",
-                            "type": "agent",
-                            "config": {"main_agent_id": main_agent_id},
+                            "id": "start",
+                            "type": "start",
+                            "config": {},
+                        },
+                        {
+                            "id": "end",
+                            "type": "end",
+                            "config": {},
+                        },
+                    ],
+                    "edges": [
+                        {
+                            "id": "start-end",
+                            "source": "start",
+                            "target": "end",
                         }
                     ],
-                    "edges": [],
                 },
                 "layout": {},
             }

@@ -351,28 +351,28 @@ describe('WorkflowsPage', () => {
     const document: WorkflowGraphDocument = {
       definition: {
         schema_version: 1,
-        state_contract: 'agent-shell.workflow.agent-invocations.v1',
+        state_contract: 'agent-shell.workflow.control.v1',
         nodes: [
           { id: 'start', type: 'start', type_version: 1, config: {} },
           {
-            id: 'agent',
-            type: 'agent',
+            id: 'command',
+            type: 'command',
             type_version: 1,
-            config: { main_agent_id: '11111111-1111-4111-8111-111111111111' },
+            config: { command_id: '11111111-1111-4111-8111-111111111111' },
           },
           { id: 'end', type: 'end', type_version: 1, config: {} },
         ],
         edges: [
           {
-            id: 'edge-start-agent',
+            id: 'edge-start-command',
             source: 'start',
             source_handle: 'next',
-            target: 'agent',
+            target: 'command',
             target_handle: 'in',
           },
           {
-            id: 'edge-agent-end',
-            source: 'agent',
+            id: 'edge-command-end',
+            source: 'command',
             source_handle: 'next',
             target: 'end',
             target_handle: 'in',
@@ -382,7 +382,7 @@ describe('WorkflowsPage', () => {
       layout: {
         nodes: {
           start: { x: 80, y: 180 },
-          agent: { x: 360, y: 180 },
+          command: { x: 360, y: 180 },
           end: { x: 680, y: 180 },
         },
         viewport: { x: 25, y: 40, zoom: 1.25 },
@@ -401,9 +401,9 @@ describe('WorkflowsPage', () => {
         output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
       },
       {
-        type: 'agent',
+        type: 'command',
         type_version: 1,
-        runtime_kind: 'agent_wrapper',
+        runtime_kind: 'command_node',
         title_key: '',
         description_key: '',
         config_schema: {},

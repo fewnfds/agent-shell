@@ -34,7 +34,7 @@ def run_output(event, origin):
 
 Shell Run 开始、完成、失败状态不是官方 ProtocolEvent。需要显示这些产品状态时，在同一个 package 中提供可选同步 `run_output(run_event, origin)`；它接收 `type="agent_shell.workflow_run"` 的小型产品事件。不要把该状态写回 `event`。
 
-Workflow 通过 `workflow_event_output_id` 绑定零或一个组件。可达 channel 的原始 Python payload 可直接读取；是否进入历史、checkpoint 或 debug journal 由各自观测边界决定。canvas Agent Node 的 ProtocolEvent 由 Agent Event Output 处理，Workflow-owned non-Agent event 由本组件处理。
+Workflow通过`workflow_event_output_id`绑定零或一个组件。可达channel的原始Python payload可直接读取；是否进入history、checkpoint或debug journal由各自观测边界决定。Workflow Run只使用本组件；Main Agent Run使用其自身Agent Event Output。
 
 内置 `all-events` 示例将每个当前事件和 Workflow Run start/end/error 分派给独立函数，以默认展开的 `<details open>` 显示正文，并在独立的低对比度小号灰字行中显示 `key=value | key=value` metadata。它只对 assistant text 和 reasoning 使用 start/delta/end 流式输出。
 

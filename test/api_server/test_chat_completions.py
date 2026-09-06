@@ -230,7 +230,7 @@ def test_models_and_chat_require_published_model_entry(
     assert workflow_reply.status_code == 200, workflow_reply.text
     message = workflow_reply.json()["choices"][0]["message"]
     assert message["role"] == "assistant"
-    assert message["content"] == "runtime reply"
+    assert message["content"] == ""
     assert main_agent_name_reply.status_code == 200, main_agent_name_reply.text
     assert main_agent_name_reply.json()["choices"][0]["message"]["content"] == (
         "runtime reply"
@@ -356,7 +356,6 @@ def test_incomplete_saved_workflow_draft_is_not_a_public_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
         workflow = create_workflow(
             client,
             name="Incomplete Workflow",
@@ -367,15 +366,9 @@ def test_incomplete_saved_workflow_draft_is_not_a_public_model(
             json={
                 "definition": {
                     "schema_version": 1,
-                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "state_contract": "agent-shell.workflow.control.v1",
                     "nodes": [
                         {"id": "start", "type": "start", "type_version": 1, "config": {}},
-                        {
-                            "id": "agent",
-                            "type": "agent",
-                            "type_version": 1,
-                            "config": {"main_agent_id": main_agent["id"]},
-                        },
                         {"id": "end", "type": "end", "type_version": 1, "config": {}},
                     ],
                     "edges": [],
@@ -409,14 +402,14 @@ def test_chat_materializes_command_package_before_compiling_workflow(
     )
     package_dir.mkdir(parents=True)
     (package_dir / "main.py").write_text(
+        "from langgraph.types import Command\n"
         "def create_command():\n"
         "    async def route(state, runtime):\n"
-        "        return {'activate': ['run'], 'update': {}}\n"
+        "        return Command(goto='end')\n"
         "    return route\n",
         encoding="utf-8",
     )
     with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
         selected = client.get(
             "/agent-shell/api/python-package-templates/command"
         ).json()["catalog"][0]
@@ -442,7 +435,7 @@ def test_chat_materializes_command_package_before_compiling_workflow(
             json={
                 "definition": {
                     "schema_version": 1,
-                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "state_contract": "agent-shell.workflow.control.v1",
                     "nodes": [
                         {"id": "start", "type": "start", "type_version": 1, "config": {}},
                         {
@@ -451,19 +444,11 @@ def test_chat_materializes_command_package_before_compiling_workflow(
                             "type_version": 1,
                             "config": {"command_id": router.json()["id"]},
                         },
-                        {
-                            "id": "agent",
-                            "type": "agent",
-                            "type_version": 1,
-                            "config": {"main_agent_id": main_agent["id"]},
-                        },
                         {"id": "end", "type": "end", "type_version": 1, "config": {}},
                     ],
                     "edges": [
                         {"id": "start-router", "source": "start", "source_handle": "next", "target": "router", "target_handle": "in"},
-                        {"id": "run", "source": "router", "source_handle": "branch", "target": "agent", "target_handle": "in", "branch_key": "run"},
-                        {"id": "finish", "source": "router", "source_handle": "branch", "target": "end", "target_handle": "in", "branch_key": "finish"},
-                        {"id": "agent-end", "source": "agent", "source_handle": "next", "target": "end", "target_handle": "in"},
+                        {"id": "finish", "source": "router", "source_handle": "next", "target": "end", "target_handle": "in"},
                     ],
                 },
                 "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
@@ -479,7 +464,7 @@ def test_chat_materializes_command_package_before_compiling_workflow(
 
     assert graph.status_code == 200, graph.text
     assert response.status_code == 200, response.text
-    assert response.json()["choices"][0]["message"]["content"] == "runtime reply"
+    assert response.json()["choices"][0]["message"]["content"] == ""
 
 
 def test_chat_completion_stream_runs_current_graph(
@@ -512,7 +497,7 @@ def test_chat_completion_stream_runs_current_graph(
     content = "".join(
         chunk["choices"][0]["delta"].get("content", "") for chunk in chunks
     )
-    assert content == "runtime reply"
+    assert content == ""
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
 
 
@@ -599,7 +584,7 @@ def test_message_interception_returns_openai_stream_without_running_workflow(
     }
 
 
-def test_workflow_agent_middleware_injects_frozen_client_messages(
+def test_root_agent_middleware_injects_frozen_client_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     InspectingFakeChatModel.seen_messages = []
@@ -607,14 +592,15 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
     write_middleware_template(
         tmp_path,
         "request-injection",
-        "from langchain.agents.middleware import AgentMiddleware\n"
-        "from langchain_core.messages import HumanMessage\n"
-        "from agent_shell.runtime.lifecycle_store import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
+            "from langchain.agents.middleware import AgentMiddleware\n"
+            "from langchain_core.messages import HumanMessage\n"
+            "from langgraph.types import Overwrite\n"
+            "from agent_shell.runtime.lifecycle_store import LIFECYCLE_INPUT_KEY, lifecycle_input_namespace\n"
         "class InjectRequest(AgentMiddleware):\n"
         "    async def abefore_agent(self, state, runtime):\n"
         "        item = await runtime.store.aget(lifecycle_input_namespace(runtime.context.lifecycle_id), LIFECYCLE_INPUT_KEY)\n"
         "        content = item.value['messages'][-1]['content']\n"
-        "        return {'messages': [HumanMessage(content=content)]}\n"
+            "        return {'messages': Overwrite([HumanMessage(content=content)])}\n"
         "def create_middleware(agent):\n"
         "    return InjectRequest()\n",
     )
@@ -624,7 +610,7 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
             "agent_shell.runtime.agent_builder._build_chat_model",
             lambda _block, _credential, _http_clients: model,
         )
-        main_agent = create_main_agent(client)
+        main_agent = create_main_agent(client, is_model_entry=True)
         selected = client.get(
             "/agent-shell/api/python-package-templates/middleware"
         ).json()["catalog"][0]
@@ -644,22 +630,17 @@ def test_workflow_agent_middleware_injects_frozen_client_messages(
             f"/agent-shell/api/main-agents/{main_agent['id']}",
             json={
                 "name": main_agent["name"],
+                "is_model_entry": True,
                 "capability_refs": main_agent["capability_refs"],
                 "middleware_refs": [{"middleware_id": custom.json()["id"]}],
                 "subagents": [],
             },
         )
         assert updated.status_code == 200, updated.text
-        workflow = create_workflow(
-            client,
-            name="Middleware Workflow",
-            is_model_entry=True,
-        )
-        save_linear_workflow_graph(client, workflow, updated.json())
         response = client.post(
             "/compat/openai/v1/chat/completions",
             json={
-                "model": workflow["name"],
+                "model": updated.json()["name"],
                 "messages": [{"role": "user", "content": "frozen client input"}],
             },
         )

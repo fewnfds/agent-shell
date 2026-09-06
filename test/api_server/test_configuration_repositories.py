@@ -225,12 +225,7 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
             f"/agent-shell/api/workflows/{copied_workflow['id']}/graph"
         ).json()
         assert copied_graph["layout"] == source_graph["layout"]
-        copied_agent_node = next(
-            node
-            for node in copied_graph["definition"]["nodes"]
-            if node["type"] == "agent"
-        )
-        assert copied_agent_node["config"]["main_agent_id"] == copied_agent["id"]
+        assert copied_graph["definition"] == source_graph["definition"]
         copied_binding = next(
             item
             for item in client.get("/agent-shell/api/model-requirements").json()

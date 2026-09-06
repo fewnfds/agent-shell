@@ -31,13 +31,6 @@ class WorkflowConfigurationValidator(Protocol):
         check_dependencies: bool = True,
     ) -> ValidationReport: ...
 
-    def resolve_main_agent(
-        self,
-        main_agent_id: str,
-        *,
-        stage: str = "request_assembly",
-    ) -> tuple[ValidationReport, object | None]: ...
-
     def reference_issue(
         self,
         *,
@@ -224,16 +217,8 @@ def workflow_executable_report(
                     )
                 )
                 commands[node.id] = object()
-    def validate_main_agent(main_agent_id: str) -> ValidationReport:
-        report, _ = configuration_validation.resolve_main_agent(
-            main_agent_id,
-            stage=WORKFLOW_EXECUTABLE_STAGE,
-        )
-        return report
-
     executable = validate_workflow_executable(
         document,
-        validate_main_agent=validate_main_agent,
         commands=commands,
     )
     return ValidationReport(

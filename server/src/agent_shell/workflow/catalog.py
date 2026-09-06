@@ -6,16 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from agent_shell.configuration.identity import ConfigurationId
+
+
 class EmptyNodeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class AgentNodeConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    main_agent_id: ConfigurationId
-    # Reserved execution policy for LangGraph's deferred node scheduling.
-    defer: bool = False
 
 
 class CommandNodeConfig(BaseModel):
@@ -52,7 +46,6 @@ class NodeTypeSpec:
     runtime_kind: Literal[
         "graph_entry",
         "graph_exit",
-        "agent_wrapper",
         "command_node",
     ]
     title_key: str
@@ -74,18 +67,8 @@ class NodeTypeSpec:
         }
 
 
-_IN = (
-    NodeHandleSpec("in", accepted_edge_types=("normal", "branch")),
-)
-_AGENT_IN = (
-    NodeHandleSpec(
-        "in",
-        accepted_edge_types=("normal", "branch", "dispatch"),
-    ),
-)
+_IN = (NodeHandleSpec("in"),)
 _NEXT = (NodeHandleSpec("next"),)
-_BRANCH = (NodeHandleSpec("branch", edge_type="branch"),)
-_DISPATCH = (NodeHandleSpec("dispatch", edge_type="dispatch"),)
 
 NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
     NodeTypeSpec(
@@ -99,16 +82,6 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         output_handles=_NEXT,
     ),
     NodeTypeSpec(
-        type="agent",
-        type_version=1,
-        runtime_kind="agent_wrapper",
-        title_key="workflow.nodes.agent.title",
-        description_key="workflow.nodes.agent.description",
-        config_model=AgentNodeConfig,
-        input_handles=_AGENT_IN,
-        output_handles=_NEXT,
-    ),
-    NodeTypeSpec(
         type="command",
         type_version=1,
         runtime_kind="command_node",
@@ -116,7 +89,7 @@ NODE_CATALOG: tuple[NodeTypeSpec, ...] = (
         description_key="workflow.nodes.command.description",
         config_model=CommandNodeConfig,
         input_handles=_IN,
-        output_handles=_BRANCH + _DISPATCH,
+        output_handles=_NEXT,
     ),
     NodeTypeSpec(
         type="end",
@@ -152,7 +125,6 @@ def node_catalog_payload() -> list[dict[str, object]]:
 
 
 __all__ = [
-    "AgentNodeConfig",
     "CommandNodeConfig",
     "EmptyNodeConfig",
     "NODE_CATALOG",

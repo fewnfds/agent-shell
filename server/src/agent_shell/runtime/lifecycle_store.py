@@ -15,15 +15,6 @@ def lifecycle_input_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return _namespace(lifecycle_id, "input")
 
 
-def lifecycle_invocations_namespace(
-    lifecycle_id: str,
-    run_id: str,
-) -> tuple[str, str, str, str]:
-    if not run_id:
-        raise ValueError("run_id must not be empty")
-    return _namespace(lifecycle_id, "invocations", run_id)
-
-
 def lifecycle_filesystem_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return _namespace(lifecycle_id, "filesystem")
 
@@ -37,6 +28,5 @@ __all__ = [
     "LIFECYCLE_NAMESPACE_ROOT",
     "lifecycle_filesystem_namespace",
     "lifecycle_input_namespace",
-    "lifecycle_invocations_namespace",
     "lifecycle_runs_namespace",
 ]

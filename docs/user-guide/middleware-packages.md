@@ -87,38 +87,26 @@ YAML 保存配置字段和私有包引用；源码、requirements 与 manifest �
 Command 使用 `family: workflow-node`、`adapter: command`。同步工厂返回固定签名的 async callable：
 
 ```python
+from langgraph.types import Command
+
+
 def create_command():
     threshold = 80
 
     async def command(state, runtime):
         risk = state.get("shared_vars", {}).get("risk", 0)
-        items = state.get("shared_vars", {}).get("items", [])
-        branch = "review" if risk >= threshold else "continue"
-        return {
-            "activate": [branch],
-            "dispatch": [
-                {
-                    "task_id": f"item:{item['id']}",
-                    "dispatch_key": "item",
-                    "payload": {"item": item},
-                }
-                for item in items
-            ],
-            "update": {
-                "shared_vars": {
-                    "dispatched_count": len(items),
-                }
-            },
-        }
+        target = "review" if risk >= threshold else "continue"
+        return Command(
+            update={"shared_vars": {"selected_target": target}},
+            goto=target,
+        )
 
     return command
 ```
 
-`command(state, runtime)` 返回 `activate`、`dispatch` 和 `update`，三个字段都可以为空。`activate` 选择零个或多个 Branch Edge key；`dispatch` 包含零个或多个 Agent worker task；`update` 是 Workflow State 的 partial update。Branch 与 Dispatch 可以在同一次 invocation 中同时产生。
+`command(state, runtime)`直接返回官方`langgraph.types.Command`。现行contract只使用`update`与`goto`：`update`是只含已声明channel的Workflow State partial update，`goto`是当前Command outgoing Edge已经声明的目标Canvas Node ID。package不接触Edge ID、handle或layout，不使用`Send`、`resume`或跨graph routing。
 
-每个 dispatch item 使用同批唯一的 `task_id`、与同源 Dispatch Edge 完全匹配的 `dispatch_key`，以及 strict JSON object `payload`。payload 拒绝 Python 对象和非有限数。compiler 为每项构造 Shell-owned `WorkflowTaskContext`，再映射为 LangGraph `Send`；目标 Agent subgraph 通过 private State 的 `workflow_task` 读取 `command_node_id`、`command_invocation_id`、`task_id`、`dispatch_key` 和 `payload`。同批 `update` 在 parent State reducer 中提交，不会自动进入这些 `Send` 的私有 State，因此 worker 当批需要的材料应直接放入 payload 或通过 reference 读取。
-
-画布 compiler 把完整结果映射为一个 LangGraph `Command`。package 不接触 Edge ID、target Node ID 或 topology，也不直接返回 LangGraph `Command`/`Send`。完整规则与内置示例见 [Command](../wizard-pages/command-config.md)。
+需要Agent执行时，Command通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run；child State不会自动合并进Workflow。完整规则与内置示例见[Command](../wizard-pages/command-config.md)。
 
 ## Custom Middleware
 

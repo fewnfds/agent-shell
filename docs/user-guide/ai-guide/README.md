@@ -105,7 +105,7 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 
 所有任务先读[发现当前实例事实](01-discover-current-instance.md)，再读[设计 Workflow](02-design-workflow.md)。
 
-如果 Graph 包含 Agent Node，再读[配置 Agent](03-configure-agent.md)。纯 Command Workflow 可以跳过 Agent 章节。
+如果任务需要Main Agent，再读[配置Agent](03-configure-agent.md)。纯Command Workflow可以跳过Agent章节。
 
 创建或修改 Custom Tool、Custom Middleware 时读[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。
 
@@ -166,12 +166,12 @@ Workflow Graph 决定 Node activation、State transition 和结束条件。Main 
 - Configuration Repository、Configuration Bundle；
 - Model Connection、Model Requirement、Model Mapping；
 - MCP Connection、MCP Requirement、MCP Mapping、MCP Tool；
-- Main Agent、Subagent、Agent Node、Agent invocation；
+- Main Agent、Subagent、Agent Thread与Run；
 - Agent Event Output、Workflow Event Output；
 - System Prompt、Agent Additional Prompt（AAP）；
 - Command、Custom Tool、Custom Middleware；
 - Workflow Graph、Node、Edge、handle、State、Runtime、Store；
 - Lifecycle、请求入口 Run、被调用 Run、Thread、checkpoint 与 State history；
-- Normal Edge、Branch Edge、Dispatch Edge、Super-step、fan-out、fan-in。
+- Control Edge、`Command.goto`、Super-step、fan-out和loop。
 
 详细字段说明位于 `docs/user-guide/` 和 `docs/wizard-pages/`。本目录负责 AI 的选择入口、操作顺序、运行语义和验收路径，不复制完整字段参考。

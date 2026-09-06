@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 
 from pydantic import ValidationError
 
@@ -18,7 +18,6 @@ from agent_shell.workflow.topology import validate_workflow_topology
 WORKFLOW_ADMISSION_STAGE = "workflow_draft"
 WORKFLOW_EXECUTABLE_STAGE = "workflow_publish"
 
-MainAgentValidator = Callable[[str], ValidationReport]
 MessageArgs = dict[str, str | int | float | bool | None]
 
 
@@ -240,7 +239,6 @@ def admit_workflow_document(
 def validate_workflow_executable(
     document: WorkflowGraphDocumentV1,
     *,
-    validate_main_agent: MainAgentValidator,
     commands: Mapping[str, object] | None = None,
 ) -> ValidationReport:
     admission, normalized = admit_workflow_document(document)
@@ -256,41 +254,10 @@ def validate_workflow_executable(
             commands=commands,
         )
     )
-    node_index = {
-        node.id: index for index, node in enumerate(normalized.definition.nodes)
-    }
-    agent_reports: dict[str, ValidationReport] = {}
-    for node in normalized.definition.nodes:
-        if node.type != "agent":
-            continue
-        main_agent_id = str(node.config["main_agent_id"])
-        report = agent_reports.get(main_agent_id)
-        if report is None:
-            report = validate_main_agent(main_agent_id)
-            agent_reports[main_agent_id] = report
-        for referenced in report.issues:
-            issues.append(
-                ValidationIssue(
-                    code=referenced.code,
-                    scope="workflow",
-                    owner_id=node.id,
-                    owner_name=node.id,
-                    owner_type="agent",
-                    path=(
-                        f"definition.nodes[{node_index[node.id]}].config.main_agent_id"
-                    ),
-                    message=referenced.message,
-                    message_key=referenced.message_key,
-                    message_args=referenced.message_args,
-                    severity=referenced.severity,
-                )
-            )
-
     return ValidationReport(stage=WORKFLOW_EXECUTABLE_STAGE, issues=tuple(issues))
 
 
 __all__ = [
-    "MainAgentValidator",
     "WORKFLOW_ADMISSION_STAGE",
     "WORKFLOW_EXECUTABLE_STAGE",
     "admit_workflow_document",

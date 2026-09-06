@@ -25,7 +25,7 @@ def runtime_workflow_document() -> WorkflowGraphDocumentV1:
         {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {
                         "id": "start",

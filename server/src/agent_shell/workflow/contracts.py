@@ -6,12 +6,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from agent_shell.command import BranchKey, DispatchKey
 from agent_shell.workflow_identifiers import NodeId
 
 
 WORKFLOW_SCHEMA_VERSION = 1
-WORKFLOW_STATE_CONTRACT = "agent-shell.workflow.agent-invocations.v1"
+WORKFLOW_STATE_CONTRACT = "agent-shell.workflow.control.v1"
 
 NodeType = Annotated[
     str,
@@ -40,15 +39,13 @@ class WorkflowEdgeV1(BaseModel):
     source_handle: HandleId
     target: NodeId
     target_handle: HandleId
-    branch_key: BranchKey | None = None
-    dispatch_key: DispatchKey | None = None
 
 
 class WorkflowGraphDefinitionV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1] = WORKFLOW_SCHEMA_VERSION
-    state_contract: Literal["agent-shell.workflow.agent-invocations.v1"] = (
+    state_contract: Literal["agent-shell.workflow.control.v1"] = (
         WORKFLOW_STATE_CONTRACT
     )
     nodes: list[WorkflowNodeV1] = Field(default_factory=list)

@@ -18,7 +18,6 @@ class WorkflowRunRuntime(Protocol):
         operation_id: str,
         caller: RunCaller,
         shared_vars: Mapping[str, Any],
-        workflow_task: Mapping[str, Any] | None = None,
     ) -> WorkflowRunHandle: ...
 
     async def check_workflow_runs(
@@ -74,14 +73,12 @@ class WorkflowRunCommands:
         *,
         operation_id: str,
         shared_vars: Mapping[str, Any] | None = None,
-        workflow_task: Mapping[str, Any] | None = None,
     ) -> WorkflowRunHandle:
         return await self._runtime.start_workflow_run(
             target_workflow_id,
             operation_id=operation_id,
             caller=self._caller,
             shared_vars=shared_vars or {},
-            workflow_task=workflow_task,
         )
 
     async def check(self, run_ids: Sequence[str]) -> list[WorkflowRunSnapshot]:

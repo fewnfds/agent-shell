@@ -14,8 +14,6 @@ const { t } = useI18n()
 
 function endpointTypeLabel(endpoint: WorkflowNodeHandleSpec): string {
   if (endpoint.edge_type === 'normal') return t('workflows.editor.normalEdge')
-  if (endpoint.edge_type === 'branch') return t('workflows.editor.branchEdge')
-  if (endpoint.edge_type === 'dispatch') return t('workflows.editor.dispatchEdge')
   return endpoint.edge_type
 }
 

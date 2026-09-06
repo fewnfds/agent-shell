@@ -261,13 +261,7 @@ def _workflow_references(
         if not isinstance(config, dict):
             continue
         node_type = node.get("type")
-        if node_type == "agent":
-            field, target_kind, component_type = (
-                "main_agent_id",
-                "main_agent",
-                "",
-            )
-        elif node_type == "command":
+        if node_type == "command":
             field, target_kind, component_type = (
                 "command_id",
                 "component",

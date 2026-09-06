@@ -6,7 +6,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 ## 1. 何时创建另一个 Run
 
-使用 current Run 内的普通 Node、异步 Python、Command dispatch 或 synchronous Subagent，当工作仍属于同一张 Graph、同一份 Workflow State 和同一个 Run。
+使用current Run内的普通Command或synchronous Subagent，当工作仍属于同一张Graph、同一份State和同一个Run。
 
 在以下条件下使用跨 Workflow Run 调用：
 
@@ -97,7 +97,7 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 5. 输入与 State isolation
 
-`start_workflow()` 接受 initial `shared_vars` 和可选 `workflow_task`。输入在创建时深拷贝，不与 caller State 保持可变引用。
+`start_workflow()`接受initial `shared_vars`。输入在创建时深拷贝，不与caller State保持可变引用。
 
 被调用 Run 拥有独立：
 
@@ -110,7 +110,7 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 6. 保存控制状态
 
-Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三个正式 channel，没有跨 Run task 状态 channel。
+Workflow root State只有`shared_vars`一个正式channel。
 
 后续 Node 需要继续操作某个 Run 时，只把必要的 `run_id` 和业务控制信息写入 caller 拥有的 `shared_vars`：
 
@@ -151,7 +151,7 @@ Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三�
 
 普通 Run 的成功、失败或主动取消不会触发隐式连锁取消。用户代码需要业务级联时，应使用已保存的 Run ID 显式调用 `cancel()`。
 
-每个 Workflow 独立保存 `on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口 Workflow 的设置：`cancel` 取消同一 Lifecycle 的全部 active Run，`continue` 让全部 Run 后台继续。该规则不监控请求入口 Run 的终态，也不沿 caller→spawned relation 传播。
+Main Agent与Workflow分别保存`on_disconnect=cancel|continue`。某次客户端请求提前断开时，只读取该请求入口Graph的设置：`cancel`取消同一Lifecycle的全部active Run，`continue`让全部Run后台继续。该规则不沿caller→spawned relation传播。
 
 ## 10. 观测与交付检查
 
@@ -164,6 +164,6 @@ Workflow root State 只有 `shared_vars`、`agent_invocations` 和 `files` 三�
 - 需要后续控制的 `run_id` 已保存，官方状态没有复制为第二套 State；
 - `join()`、`check()` 或 fire-and-forget 符合预期结果交付方式；
 - 大型结果通过 Store/Filesystem reference 交付；
-- 请求入口 Workflow 的 `on_disconnect` 符合客户端断开后的预期；
+- 请求入口Main Agent或Workflow的`on_disconnect`符合客户端断开后的预期；
 - 循环有业务退出条件；
 - 要进入同一公开 response 的输出在请求入口 Run 结束前完成收集。

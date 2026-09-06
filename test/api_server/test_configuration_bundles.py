@@ -22,10 +22,10 @@ from agent_shell.configuration.bundles.errors import BundleImportError
 from agent_shell.configuration.bundles.planning import BundleImportPlanner
 from agent_shell.configuration.bundles.transactions import commit_prepared_import
 from agent_shell.storage.file_config import FileConfigRepository
-from .support import create_main_agent, create_workflow, make_client, save_linear_workflow_graph
+from .support import create_main_agent, create_workflow, make_client
 
 
-def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
+def _export_main_agent_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
     source_root.mkdir()
     mapped = source_root / "shared-workspace"
     mapped.mkdir()
@@ -48,78 +48,25 @@ def _export_workflow_bundle(source_root: Path, monkeypatch: pytest.MonkeyPatch):
             source,
             filesystem_id=filesystem_response.json()["id"],
         )
-        subagent = source.post(
-            "/agent-shell/api/subagents",
-            json={
-                "component_name": "Portable Worker",
-                "name": "portable_worker",
-                "description": "Handles portable delegated work.",
-                "settings": {},
-            },
-        )
-        assert subagent.status_code == 200, subagent.text
         requirement_id = next(
             reference["block_id"]
             for reference in main_agent["capability_refs"]
             if reference["type"] == "model-requirement"
         )
-        for root in (
-            {"kind": "component", "type": "model-requirement", "source_id": requirement_id},
-            {"kind": "subagent", "source_id": subagent.json()["id"]},
-            {"kind": "main_agent", "source_id": main_agent["id"]},
-        ):
-            root_export = source.post(
-                "/agent-shell/api/configuration-bundles/export",
-                json=root,
-            )
-            assert root_export.status_code == 200, root_export.text
-        workflow = create_workflow(source, name="Portable Workflow")
-        scheduling_response = source.post(
-            "/agent-shell/api/blocks/response-stream-scheduling",
-            json={
-                "name": "Portable response scheduling",
-                "queue": {
-                    "strategy": "node_invocation",
-                    "idle_timeout_seconds": 1.5,
-                    "max_batch_kb": 48,
-                    "send_interval_seconds": 0.1,
-                },
-            },
-        )
-        assert scheduling_response.status_code == 200, scheduling_response.text
-        configured_workflow = source.put(
-            f"/agent-shell/api/workflows/{workflow['id']}",
-            json={
-                **{
-                    key: workflow[key]
-                    for key in (
-                        "name",
-                        "description",
-                        "workflow_event_output_id",
-                        "on_disconnect",
-                    )
-                },
-                "durability": "sync",
-                "response_stream_scheduling_id": scheduling_response.json()["id"],
-            },
-        )
-        assert configured_workflow.status_code == 200, configured_workflow.text
-        workflow = configured_workflow.json()
-        save_linear_workflow_graph(source, workflow, main_agent)
         exported = source.post(
             "/agent-shell/api/configuration-bundles/export",
-            json={"kind": "workflow", "source_id": workflow["id"]},
+            json={"kind": "main_agent", "source_id": main_agent["id"]},
         )
         assert exported.status_code == 200, exported.text
         source_config = FileConfigRepository(source_root / "data").config()
-    return exported.content, workflow, source_config
+    return exported.content, main_agent, source_config
 
 
-def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
+def test_main_agent_bundle_import_remaps_identity_and_requires_path_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bundle, workflow, source_config = _export_workflow_bundle(
+    bundle, main_agent, source_config = _export_main_agent_bundle(
         tmp_path / "source",
         monkeypatch,
     )
@@ -161,7 +108,6 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
             "model_requirement_unbound",
             "trusted_python_package",
             "opaque_python_runtime_target",
-            "workflow_imported_disabled",
         }.issubset(warning_codes)
         assert len(preview["plan_token"]) == 64
 
@@ -210,28 +156,8 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
     source_ids = set(preview["target_ids"])
     target_ids = set(preview["target_ids"].values())
     assert source_ids.isdisjoint(target_ids)
-    assert imported["root"]["target_id"] == preview["target_ids"][workflow["id"]]
-    imported_workflow = next(
-        item
-        for item in target_config["workflows"]
-        if item["id"] == imported["root"]["target_id"]
-    )
-    assert imported_workflow["enabled"] is False
-    assert imported_workflow["durability"] == "sync"
-    assert imported_workflow["response_stream_scheduling_id"] in target_ids
-    imported_scheduling = target_config["components"][
-        "response-stream-scheduling"
-    ][0]
-    assert imported_workflow["response_stream_scheduling_id"] == (
-        imported_scheduling["id"]
-    )
-    assert imported_scheduling["queue"]["strategy"] == "node_invocation"
-    imported_main_id = next(
-        node["config"]["main_agent_id"]
-        for node in imported_workflow["definition"]["nodes"]
-        if node["type"] == "agent"
-    )
-    assert imported_main_id in target_ids
+    assert imported["root"]["target_id"] == preview["target_ids"][main_agent["id"]]
+    imported_main_id = imported["root"]["target_id"]
     imported_main = next(
         item for item in target_config["main_agents"] if item["id"] == imported_main_id
     )
@@ -265,14 +191,14 @@ def test_workflow_bundle_import_remaps_identity_and_requires_path_binding(
         path.name.startswith(".agent-shell-import-owner-")
         for path in package_folder.iterdir()
     )
-    assert len(source_config["workflows"]) == 1
+    assert len(source_config["main_agents"]) == 1
 
 
 def test_bundle_import_failure_removes_staged_configuration_and_assets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bundle, _workflow, _source_config = _export_workflow_bundle(
+    bundle, _main_agent, _source_config = _export_main_agent_bundle(
         tmp_path / "source-failure",
         monkeypatch,
     )

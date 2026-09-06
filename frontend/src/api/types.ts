@@ -631,7 +631,6 @@ export interface LangGraphHistoryResponse {
 
 export type WorkflowNodeType =
   | 'start'
-  | 'agent'
   | 'command'
   | 'end'
 
@@ -649,7 +648,6 @@ export interface WorkflowNodeCatalogItem {
   runtime_kind:
     | 'graph_entry'
     | 'graph_exit'
-    | 'agent_wrapper'
     | 'command_node'
   title_key: string
   description_key: string
@@ -663,9 +661,7 @@ export interface WorkflowGraphNode {
   type: WorkflowNodeType
   type_version: 1
   config: {
-    main_agent_id?: string
     command_id?: string
-    defer?: boolean
   }
 }
 
@@ -675,14 +671,12 @@ export interface WorkflowGraphEdge {
   source_handle: string
   target: string
   target_handle: string
-  branch_key?: string | null
-  dispatch_key?: string | null
 }
 
 export interface WorkflowGraphDocument {
   definition: {
     schema_version: 1
-    state_contract: 'agent-shell.workflow.agent-invocations.v1'
+    state_contract: 'agent-shell.workflow.control.v1'
     nodes: WorkflowGraphNode[]
     edges: WorkflowGraphEdge[]
   }

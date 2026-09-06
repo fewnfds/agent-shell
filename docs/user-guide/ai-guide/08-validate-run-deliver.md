@@ -89,14 +89,14 @@ GET /agent-shell/api/workflows/<workflow UUID>/graph
 - `enabled=true`；
 - runtime metadata；
 - Node `id`、`type`、`type_version` 和 `config`；
-- Edge handle、`branch_key` 和 `dispatch_key`；
+- Edge ID、source/target和两端handle；
 - layout Node key 与 Node ID 对应。
 
 如果用户要求保持 draft，不调用 publish，并在交付中明确 `enabled=false` 和未执行真实 `/compat/openai/v1` invocation 的原因。
 
 ## 5. Model Mapping
 
-Graph 没有 Agent Node 时跳过本节。
+Workflow不装配模型。只有本次交付包含Main Agent或Command-launched Agent时才检查Model Mapping。
 
 读取：
 
@@ -244,8 +244,8 @@ Content-Type: application/json
 
 测试输入必须覆盖本次任务的主要路径：
 
-- Agent Workflow：确认 AAP 或其他输入 owner 把目标材料交给正确 Agent，并得到 Agent Event Output；
-- Command Workflow：确认预期 branch、State update、task 生成、worker input、routing key、downstream completion 和 termination；
+- Main Agent：确认AAP或其他输入owner把目标材料交给正确Agent，并得到Agent Event Output；
+- Command Workflow：确认预期State update、目标Node ID、独立Run调用、downstream completion和termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
 - 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败、主动取消以及 result handoff；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。

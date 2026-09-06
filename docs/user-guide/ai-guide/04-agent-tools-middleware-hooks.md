@@ -6,11 +6,10 @@
 
 ## 1. 装配关系
 
-Workflow Graph 的 Agent Node 引用一个 Main Agent UUID。Main Agent assembly 在 request materialization 时加载自己的 Custom Tool、Custom Middleware 和 direct Subagent：
+Main Agent是独立root graph。直接请求或Workflow Command启动其Run时，request materialization加载自己的Custom Tool、Custom Middleware和direct Subagent：
 
 ```text
-Agent Node
-  -> Main Agent
+Main Agent root graph
        -> ordered tool_refs
             -> create_tool() -> BaseTool
        -> ordered middleware_refs
@@ -29,7 +28,7 @@ Main Agent 和 Subagent 分别维护 `tool_refs` 与 `middleware_refs`。这两�
 | Custom Tool | model 选择 Tool 后执行 | `create_tool()` 返回一个 `BaseTool` |
 | Custom Middleware | Agent lifecycle、model call 或 Tool call 周围执行 | `create_middleware(...)` 返回一个 `AgentMiddleware` |
 | Agent Additional Prompt（AAP） | `abefore_agent` | 构造 current Agent 私有初始 `messages` |
-| Command | Workflow Node invocation | 更新 Workflow State、选择 Branch Edge 并生成运行时 Agent task |
+| Command | Workflow Node invocation | 返回官方`Command(update, goto)`，并可启动独立Graph Run |
 | Agent/Workflow Event Output | event projection | 把 event 投影为公开字符串 |
 
 Command 和 Event Output 的代码 contract 见[编写 Python extension](06-python-extensions.md)。
@@ -107,7 +106,7 @@ def create_tool() -> BaseTool:
 `ToolRuntime` 是 LangChain 注入参数，不进入发送给模型的 Tool input schema。它提供：
 
 - `runtime.state`：current Agent State；
-- `runtime.context`：current `WorkflowRuntimeContext`，包含明确命名的 Lifecycle、Workflow Run、canvas Agent Node、Agent profile 和 Node invocation identity；
+- `runtime.context`：current runtime context，包含明确命名的Lifecycle、root Graph、Run和Agent profile identity；
 - `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；
 - `runtime.store`：current Lifecycle 可访问的 LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
@@ -274,7 +273,7 @@ Subagent 把相同形状保存在 `settings.middleware_refs`。LangChain 按以�
 
 ## 9. Agent Additional Prompt
 
-Agent Additional Prompt 是内置 Custom Middleware template。它在 `abefore_agent` 中读取 current Agent 可访问的 request、delegated messages、`workflow_task`、Workflow State snapshot、Store artifact 与 Filesystem，然后返回该 Agent 私有的初始 `messages`。
+Agent Additional Prompt是内置Custom Middleware template。它在`abefore_agent`中读取current Agent可访问的request或delegated messages，以及显式选择的Store artifact与Filesystem，然后返回该Agent私有的初始`messages`和checkpointed initialization marker。
 
 创建入口：
 
@@ -283,7 +282,7 @@ GET /agent-shell/api/python-package-templates/middleware
 key == "内置示例-agent-additional-prompt"
 ```
 
-AAP 使用 `Overwrite(convert_to_messages(...))` 设置 invocation 的初始 `messages`，从而建立清晰的消息边界。材料选择、upstream result lookup、Main Agent 与 Subagent 的输入差异见[Agent Additional Prompt](../agent-additional-prompt.md)。
+AAP首次运行时使用`Overwrite(convert_to_messages(...))`设置Thread初始`messages`；同一stateful Thread后续Run看到private marker后不再附加。材料选择、Main Agent与Subagent的输入差异见[Agent Additional Prompt](../agent-additional-prompt.md)。
 
 ## 10. Package 与 dependency
 

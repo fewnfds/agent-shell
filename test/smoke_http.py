@@ -261,7 +261,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '        return ""\n'
         '    params = event.get("params")\n'
         '    data = params.get("data") if isinstance(params, dict) else None\n'
-        '    if not isinstance(data, dict) or "files" not in data:\n'
+        '    if not isinstance(data, dict) or "shared_vars" not in data:\n'
         '        return ""\n'
         '    return "workflow values\\n"\n'
         'def run_output(event, origin):\n'
@@ -280,6 +280,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     command_template.mkdir(parents=True, exist_ok=True)
     (command_template / "main.py").write_text(
         'from pathlib import Path\n'
+        'from langgraph.types import Command\n'
         '\n'
         'def create_command():\n'
         '    target_workflow_id = Path(__file__).with_name("target.txt").read_text(encoding="utf-8").strip()\n'
@@ -292,11 +293,11 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '            operation_id="smoke-spawn",\n'
         '        )\n'
         '        joined = await runs.join([handle.run_id])\n'
-        '        return {"activate": ["done"], "update": {"shared_vars": {\n'
+        '        return Command(goto="end", update={"shared_vars": {\n'
         '            "spawned_run_id": handle.run_id,\n'
         '            "spawned_status": joined[0].status,\n'
         '            "spawned_output": joined[0].output,\n'
-        '        }}}\n'
+        '        }})\n'
         '    return command\n',
         encoding="utf-8",
     )
@@ -522,7 +523,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             json_body={
                 "definition": {
                     "schema_version": 1,
-                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "state_contract": "agent-shell.workflow.control.v1",
                     "nodes": [
                         {"id": "start", "type": "start", "type_version": 1, "config": {}},
                         {"id": "end", "type": "end", "type_version": 1, "config": {}},
@@ -589,7 +590,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             json_body={
                 "definition": {
                     "schema_version": 1,
-                    "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                    "state_contract": "agent-shell.workflow.control.v1",
                     "nodes": [
                         {
                             "id": "start",
@@ -621,10 +622,9 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                         {
                             "id": "command-end",
                             "source": "command",
-                            "source_handle": "branch",
+                            "source_handle": "next",
                             "target": "end",
                             "target_handle": "in",
-                            "branch_key": "done",
                         }
                     ],
                 },

@@ -80,7 +80,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 4. `GET /agent-shell/api/configuration-options`，取得当前 Repository 的引用摘要；
 5. 读取准备复用、修改或排查的完整对象；
 6. 需要 Python-backed component 时，读取对应 template catalog；
-7. 需要 Agent Node 时，读取 Model Requirement、Model Connection 和 binding 状态；Agent、Subagent 或 Command 使用 MCP 时，同时读取 MCP Requirement、MCP Connection 和 binding 状态；
+7. 需要Main Agent时，读取Model Requirement、Model Connection和binding状态；Agent、Subagent或Command使用MCP时，同时读取MCP Requirement、MCP Connection和binding状态；
 8. `GET /agent-shell/api/validation/repository`，记录写入前已有的 error 和 warning。
 
 不要根据模型记忆猜测 Catalog key、template revision、UUID、Node handle 或 active Repository。

@@ -89,11 +89,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                 "definition": {
                     "nodes": [
                         {
-                            "id": "agent",
-                            "type": "agent",
-                            "config": {"main_agent_id": ids["main"]},
-                        },
-                        {
                             "id": "command",
                             "type": "command",
                             "config": {"command_id": ids["command"]},
@@ -171,14 +166,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         ),
         (
             "workflow",
-            "definition.nodes[0].config.main_agent_id",
-            "main_agent",
-            "",
-            ids["main"],
-        ),
-        (
-            "workflow",
-            "definition.nodes[1].config.command_id",
+            "definition.nodes[0].config.command_id",
             "component",
             "command",
             ids["command"],

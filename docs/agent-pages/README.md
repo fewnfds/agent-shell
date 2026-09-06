@@ -1,6 +1,6 @@
 # Agent 配置
 
-- [Main Agent](main-agents.md)：选择组件，作为 Workflow 的 Agent Node 装配。
+- [Main Agent](main-agents.md)：选择组件，形成可直接运行或由Command启动的root graph。
 - [Subagent](subagents.md)：定义可复用的 synchronous Subagent entity 和 capability policy；只允许 Main Agent 直接引用。
 - [词库](terminology.md)：管理台常用中英文名称。
 

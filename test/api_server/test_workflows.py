@@ -382,17 +382,12 @@ def test_workflow_model_entry_is_persisted_and_required_for_public_model_list(
             stored_document = client.get(
                 f"/agent-shell/api/workflows/{workflow['id']}/graph"
             ).json()
-            agent_node = next(
-                node
-                for node in stored_document["definition"]["nodes"]
-                if node["type"] == "agent"
-            )
-            assert agent_node["config"]["main_agent_id"] == main_agent["id"]
-            issues = repository_reference_issues(client, owner_id=workflow["id"])
-            assert any(
-                issue["message_args"]["reference_id"] == main_agent["id"]
-                for issue in issues
-            )
+            assert [
+                node["type"] for node in stored_document["definition"]["nodes"]
+            ] == ["start", "end"]
+            assert repository_reference_issues(
+                client, owner_id=workflow["id"]
+            ) == []
 
         disabled = client.put(
             f"/agent-shell/api/workflows/{created['id']}/draft",
@@ -463,7 +458,7 @@ def test_repository_validation_includes_disabled_workflow_references(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    missing_main_agent_id = "00000000-0000-4000-8000-000000000077"
+    missing_command_id = "00000000-0000-4000-8000-000000000077"
     with make_client(tmp_path, monkeypatch) as client:
         main_agent = create_main_agent(client)
         wrong_type_id = capability_reference_id(main_agent, "model-requirement")
@@ -471,19 +466,19 @@ def test_repository_validation_includes_disabled_workflow_references(
         document = {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {
                         "id": "missing",
-                        "type": "agent",
+                        "type": "command",
                         "type_version": 1,
-                        "config": {"main_agent_id": missing_main_agent_id},
+                        "config": {"command_id": missing_command_id},
                     },
                     {
                         "id": "wrong-type",
-                        "type": "agent",
+                        "type": "command",
                         "type_version": 1,
-                        "config": {"main_agent_id": wrong_type_id},
+                        "config": {"command_id": wrong_type_id},
                     },
                 ],
                 "edges": [],
@@ -506,11 +501,11 @@ def test_repository_validation_includes_disabled_workflow_references(
     assert issues == {
         (
             "configuration.reference_not_found",
-            "definition.nodes[0].config.main_agent_id",
+            "definition.nodes[0].config.command_id",
         ),
         (
             "configuration.reference_type_mismatch",
-            "definition.nodes[1].config.main_agent_id",
+            "definition.nodes[1].config.command_id",
         ),
     }
 
@@ -553,23 +548,23 @@ def test_repository_validation_includes_workflow_graph_admission(
     )
 
 
-def test_workflow_validation_reports_a_workflow_uuid_as_the_wrong_agent_type(
+def test_workflow_validation_reports_a_workflow_uuid_as_the_wrong_command_type(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client, name="Wrong Agent target")
+        workflow = create_workflow(client, name="Wrong Command target")
         other_workflow = create_workflow(client, name="Actual Workflow target")
         document = {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {
-                        "id": "agent",
-                        "type": "agent",
+                        "id": "command",
+                        "type": "command",
                         "type_version": 1,
-                        "config": {"main_agent_id": other_workflow["id"]},
+                        "config": {"command_id": other_workflow["id"]},
                     }
                 ],
                 "edges": [],
@@ -586,12 +581,12 @@ def test_workflow_validation_reports_a_workflow_uuid_as_the_wrong_agent_type(
     issue = next(
         item
         for item in report.json()["issues"]
-        if item["path"] == "definition.nodes[0].config.main_agent_id"
+        if item["path"] == "definition.nodes[0].config.command_id"
     )
     assert issue["code"] == "configuration.reference_type_mismatch"
     assert issue["message_args"] == {
         "actual_type": "workflow",
-        "expected_type": "main_agent",
+        "expected_type": "command",
         "reference_id": other_workflow["id"],
     }
 
@@ -617,15 +612,6 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
         assert metadata.json()["enabled"] is True
 
         invalid = deepcopy(published)
-        invalid["definition"]["nodes"].insert(
-            2,
-            {
-                "id": "agent-two",
-                "type": "agent",
-                "type_version": 1,
-                "config": {"main_agent_id": main_agent["id"]},
-            },
-        )
         invalid["definition"]["edges"] = []
         rejected = client.put(
             f"/agent-shell/api/workflows/{workflow['id']}/graph",
@@ -651,8 +637,6 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
     assert report.json()["valid"] is False
     assert [issue["code"] for issue in report.json()["issues"]] == [
         "workflow.start_outgoing_required",
-        "workflow.node_unreachable_from_start",
-        "workflow.node_unreachable_from_start",
     ]
     assert draft.status_code == 200, draft.text
     assert draft.json() == invalid
@@ -671,13 +655,13 @@ def test_workflow_draft_accepts_graphs_beyond_removed_size_limits(
         ]
         edges = []
         for index in range(5000):
-            node_id = f"agent{index}"
+            node_id = f"command{index}"
             nodes.append(
                 {
                     "id": node_id,
-                    "type": "agent",
+                    "type": "command",
                     "type_version": 1,
-                    "config": {"main_agent_id": "11111111-1111-4111-8111-111111111111"},
+                    "config": {"command_id": "11111111-1111-4111-8111-111111111111"},
                 }
             )
             edges.append(
@@ -692,7 +676,7 @@ def test_workflow_draft_accepts_graphs_beyond_removed_size_limits(
         document = {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": nodes,
                 "edges": edges,
             },
@@ -757,7 +741,7 @@ def test_workflow_publish_reports_broken_router_package_without_missing_referenc
         document = {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
                     {
@@ -770,7 +754,7 @@ def test_workflow_publish_reports_broken_router_package_without_missing_referenc
                 ],
                 "edges": [
                     {"id": "start-router", "source": "start", "source_handle": "next", "target": "router", "target_handle": "in"},
-                    {"id": "command-end", "source": "router", "source_handle": "branch", "target": "end", "target_handle": "in", "branch_key": "finish"},
+                    {"id": "command-end", "source": "router", "source_handle": "next", "target": "end", "target_handle": "in"},
                 ],
             },
             "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
@@ -821,7 +805,6 @@ def test_workflow_graph_catalog_save_and_reload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        main_agent = create_main_agent(client)
         workflow = create_workflow(client, name="Canvas Workflow")
         graph_url = f"/agent-shell/api/workflows/{workflow['id']}/graph"
 
@@ -830,45 +813,24 @@ def test_workflow_graph_catalog_save_and_reload(
         document = {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
-                    {
-                        "id": "agent",
-                        "type": "agent",
-                        "type_version": 1,
-                        "config": {
-                            "main_agent_id": main_agent["id"],
-                            "defer": False,
-                        },
-                    },
                     {"id": "end", "type": "end", "type_version": 1, "config": {}},
                 ],
                 "edges": [
                     {
-                        "id": "start-agent",
+                        "id": "start-end",
                         "source": "start",
-                        "source_handle": "next",
-                        "target": "agent",
-                        "target_handle": "in",
-                        "branch_key": None,
-                        "dispatch_key": None,
-                    },
-                    {
-                        "id": "agent-end",
-                        "source": "agent",
                         "source_handle": "next",
                         "target": "end",
                         "target_handle": "in",
-                        "branch_key": None,
-                        "dispatch_key": None,
                     },
                 ],
             },
             "layout": {
                 "nodes": {
                     "start": {"x": 80, "y": 160},
-                    "agent": {"x": 360, "y": 160},
                     "end": {"x": 640, "y": 160},
                 },
                 "viewport": {"x": 10, "y": 20, "zoom": 1.25},
@@ -888,7 +850,6 @@ def test_workflow_graph_catalog_save_and_reload(
     assert empty.json()["definition"]["nodes"] == []
     assert [item["type"] for item in catalog.json()] == [
         "start",
-        "agent",
         "command",
         "end",
     ]
@@ -896,7 +857,6 @@ def test_workflow_graph_catalog_save_and_reload(
     assert saved.json() == document
     assert metadata.status_code == 200, metadata.text
     assert reloaded.json() == document
-
 
 def test_graph_save_rejects_background_action_as_node(
     tmp_path: Path,
@@ -924,7 +884,7 @@ def test_graph_save_rejects_background_action_as_node(
                 "id": "background-agent",
                 "source": "background-start",
                 "source_handle": "next",
-                "target": "agent",
+                "target": "end",
                 "target_handle": "in",
             },
         )

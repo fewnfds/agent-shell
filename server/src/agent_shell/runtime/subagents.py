@@ -21,7 +21,6 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.model_request_settings import (
     make_model_request_settings_middleware,
 )
-from agent_shell.runtime.state import AgentShellStateMiddleware
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
     ResolvedSubagentEdge,
@@ -95,7 +94,6 @@ def _build_subagent_spec(
                 )
             initial_files[path] = value
     middleware: list[Any] = [
-        AgentShellStateMiddleware(),
         ToolErrorBoundaryMiddleware(),
         *child.middleware,
         materialize_patch_tool_calls_middleware(),

@@ -86,12 +86,12 @@ def _execution_stream_transformers(graph: Any) -> tuple[Any, ...]:
     )
 
 
-def _workflow_construction_dependencies() -> tuple[Any, Any, Any, Any]:
+def _workflow_construction_dependencies() -> tuple[Any, Any, Any]:
     from agent_shell.command import CommandBlock
-    from agent_shell.workflow.catalog import AgentNodeConfig, CommandNodeConfig
+    from agent_shell.workflow.catalog import CommandNodeConfig
     from agent_shell.workflow.compiler import compile_workflow
 
-    return AgentNodeConfig, CommandNodeConfig, CommandBlock, compile_workflow
+    return CommandNodeConfig, CommandBlock, compile_workflow
 
 
 def _workflow_run_config(
@@ -184,7 +184,6 @@ class RunExecution:
             subject_id=identity.subject_id,
             subject_name=identity.subject_name,
         )
-
     async def cancel(self) -> None:
         """Cancel this official Run when local stream consumption is interrupted."""
 
@@ -745,45 +744,9 @@ class AgentRuntime:
     ) -> Any:
         """Compile topology and schemas without opening execution resources."""
 
-        from types import SimpleNamespace
-
         from agent_shell.command import CommandBlock
-        from agent_shell.workflow.catalog import AgentNodeConfig, CommandNodeConfig
+        from agent_shell.workflow.catalog import CommandNodeConfig
         from agent_shell.workflow.compiler import compile_workflow
-
-        assemblies: dict[str, StaticAssembly] = {}
-
-        def validate_main_agent(main_agent_id: str) -> ValidationReport:
-            try:
-                if main_agent_id not in assemblies:
-                    assemblies[main_agent_id] = self._builder.resolve(main_agent_id)
-            except AgentRuntimeError as exc:
-                if exc.validation_report is not None:
-                    return exc.validation_report
-                raise
-            return ValidationReport(stage="workflow_publish")
-
-        structural_agents: dict[str, Any] = {}
-        for node in document.definition.nodes:
-            if node.type != "agent":
-                continue
-            main_agent_id = str(
-                AgentNodeConfig.model_validate(node.config).main_agent_id
-            )
-            report = validate_main_agent(main_agent_id)
-            if not report.valid:
-                issue = report.issues[0]
-                raise AgentRuntimeError(
-                    issue.code,
-                    issue.message,
-                    status_code=409,
-                    validation_report=report,
-                )
-            assembly = assemblies[main_agent_id]
-            structural_agents[node.id] = SimpleNamespace(
-                agent_id=str(assembly.main_agent["id"]),
-                input_state={},
-            )
 
         async def unavailable_command(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError(
@@ -819,7 +782,6 @@ class AgentRuntime:
 
         executable = validate_workflow_executable(
             document,
-            validate_main_agent=validate_main_agent,
             commands=validation_commands,
         )
         if not executable.valid:
@@ -832,7 +794,6 @@ class AgentRuntime:
             )
         return compile_workflow(
             document,
-            node_agents=structural_agents,
             commands=structural_commands,
             store=self._graph_store,
             runtime_context=server_context,
@@ -974,14 +935,11 @@ class AgentRuntime:
         *,
         graph: Any,
         input_state: dict[str, Any],
-        workflow_built: tuple[tuple[str, BuiltAgent], ...],
         identity: WorkflowRunIdentity,
         context: WorkflowRuntimeContext,
         workflow_node_kinds: Mapping[str, str],
         request_id: str = "",
         public_model: str = "",
-        agent_event_outputs: Mapping[str, EventOutputCallable] | None = None,
-        agent_event_segment_ends: Mapping[str, EventSegmentEndCallable] | None = None,
         workflow_event_output: EventOutputCallable | None = None,
         workflow_event_segment_end: EventSegmentEndCallable | None = None,
         workflow_run_output: EventRunOutputCallable | None = None,
@@ -993,19 +951,10 @@ class AgentRuntime:
         response_scheduler: LifecycleResponseScheduler | None = None,
         response_consumer: bool = True,
     ) -> RunExecution:
-        workflow_agents = workflow_built
-        workflow_sources = {
-            node_id: WorkflowNodeSource(
-                source_type="agent",
-                workflow_node_id=node_id,
-                agent_profile_id=agent.agent_id,
-            )
-            for node_id, agent in workflow_agents
-        }
+        workflow_sources: dict[str, WorkflowNodeSource] = {}
         if public_output:
             projector = WorkflowOutputProjector(
-                agent_event_outputs or {},
-                segment_ends_by_node=agent_event_segment_ends,
+                {},
                 workflow_output=workflow_event_output,
                 workflow_segment_end=workflow_event_segment_end,
                 workflow_run_output=workflow_run_output,
@@ -1031,14 +980,6 @@ class AgentRuntime:
         origin_resolver = RunEventOriginResolver(
             identity,
             workflow_sources=workflow_sources,
-            main_agent_names=tuple(agent.agent_name for _, agent in workflow_agents),
-            workflow_agent_names={
-                node_id: agent.agent_name for node_id, agent in workflow_agents
-            },
-            workflow_subagent_profile_ids={
-                node_id: agent.subagent_profile_ids
-                for node_id, agent in workflow_agents
-            },
         )
         effective_response_scheduler = response_scheduler
         if effective_response_scheduler is None:
@@ -1060,14 +1001,6 @@ class AgentRuntime:
             origin_resolver=origin_resolver,
             event_output_projector=projector,
             response_consumer=response_consumer,
-            middleware_runtimes=tuple(
-                agent.middleware_runtime for _, agent in workflow_agents
-            ),
-            tool_runtimes=tuple(
-                agent.tool_runtime
-                for _, agent in workflow_agents
-                if agent.tool_runtime is not None
-            ),
             command_runtime=command_runtime,
             event_output_runtimes=event_output_runtimes,
             identity=identity,
@@ -1212,7 +1145,6 @@ class AgentRuntime:
         caller_run_id: str = "",
         operation_id: str = "",
         initial_shared_vars: Mapping[str, Any] | None = None,
-        initial_workflow_task: Mapping[str, Any] | None = None,
         agent_run_runtime: Any | None = None,
         workflow_run_runtime: Any | None = None,
         public_output: bool = True,
@@ -1221,61 +1153,24 @@ class AgentRuntime:
         server_context: WorkflowRuntimeContext | None = None,
     ) -> RunExecution:
         (
-            AgentNodeConfig,
             CommandNodeConfig,
             CommandBlock,
             compile_workflow,
         ) = await asyncio.to_thread(_workflow_construction_dependencies)
 
-        agent_nodes = [
-            node for node in document.definition.nodes if node.type == "agent"
-        ]
         command_nodes = [
-            node
-            for node in document.definition.nodes
-            if node.type == "command"
+            node for node in document.definition.nodes if node.type == "command"
         ]
         server_managed = server_context is not None
         messages = (
-            []
-            if server_managed and not agent_nodes
-            else validate_client_messages(raw_messages)
+            [] if server_managed else validate_client_messages(raw_messages)
         )
         messages_sha = client_messages_sha(messages)
-        assemblies: dict[str, StaticAssembly] = {}
-        assembly_reports: dict[str, ValidationReport] = {}
-
-        for agent_node in agent_nodes:
-            main_agent_id = agent_node.config.get("main_agent_id")
-            if (
-                not isinstance(main_agent_id, str)
-                or main_agent_id in assemblies
-                or main_agent_id in assembly_reports
-            ):
-                continue
-            try:
-                assemblies[main_agent_id] = await self._builder.aresolve(
-                    main_agent_id
-                )
-            except AgentRuntimeError as exc:
-                if exc.validation_report is None:
-                    raise
-                assembly_reports[main_agent_id] = exc.validation_report
-
-        def validate_main_agent(main_agent_id: str) -> ValidationReport:
-            report = assembly_reports.get(main_agent_id)
-            if report is not None:
-                return report
-            if main_agent_id not in assemblies:
-                raise RuntimeError("the Workflow Agent configuration was not resolved")
-            return ValidationReport(stage="workflow_publish")
 
         command_blocks: dict[str, tuple[str, CommandBlock]] = {}
         for command_node in command_nodes:
             command_id = str(
-                CommandNodeConfig.model_validate(
-                    command_node.config
-                ).command_id
+                CommandNodeConfig.model_validate(command_node.config).command_id
             )
             stored_command = (
                 self._blocks.get_block_internal("command", command_id)
@@ -1288,7 +1183,11 @@ class AgentRuntime:
                 command_blocks[command_node.id] = (
                     command_id,
                     CommandBlock.model_validate(
-                        {key: value for key, value in stored_command.items() if key != "id"}
+                        {
+                            key: value
+                            for key, value in stored_command.items()
+                            if key != "id"
+                        }
                     ),
                 )
             except Exception as exc:
@@ -1298,13 +1197,12 @@ class AgentRuntime:
                     status_code=422,
                 ) from exc
 
-        resolved_command_nodes: dict[str, Any] = {
-            node_id: block for node_id, (_command_id, block) in command_blocks.items()
-        }
         executable = validate_workflow_executable(
             document,
-            validate_main_agent=validate_main_agent,
-            commands=resolved_command_nodes,
+            commands={
+                node_id: block
+                for node_id, (_command_id, block) in command_blocks.items()
+            },
         )
         if not executable.valid:
             issue = executable.issues[0]
@@ -1314,15 +1212,15 @@ class AgentRuntime:
                 status_code=422,
                 validation_report=executable,
             )
+
         runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
         workflow_identity = dict(workflow_snapshot or {})
-        resolved_run_id = (
-            run_id or ("" if server_managed else str(uuid4()))
-        )
+        resolved_run_id = run_id or ("" if server_managed else str(uuid4()))
         workflow_id = str(workflow_identity.get("id", ""))
         workflow_name = str(
             workflow_identity.get("name", public_model or "workflow")
         )
+
         response_stream_policy = ResponseStreamPolicy()
         scheduling_id = workflow_identity.get("response_stream_scheduling_id")
         if scheduling_id is not None:
@@ -1357,9 +1255,13 @@ class AgentRuntime:
             response_stream_policy = ResponseStreamPolicy(
                 queue=scheduling.queue.model_copy(deep=True)
             )
+
         if server_context is not None:
             resolved_lifecycle_id = server_context.lifecycle_id
-            if server_context.workflow_id and server_context.workflow_id != workflow_id:
+            if (
+                server_context.workflow_id
+                and server_context.workflow_id != workflow_id
+            ):
                 raise AgentRuntimeError(
                     "workflow.identity_mismatch",
                     "The Server Run context does not match the selected Workflow.",
@@ -1367,6 +1269,7 @@ class AgentRuntime:
                 )
         else:
             resolved_lifecycle_id = lifecycle_id or str(uuid4())
+
         identity = WorkflowRunIdentity(
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
@@ -1378,7 +1281,7 @@ class AgentRuntime:
             caller_run_id=caller_run_id,
             operation_id=operation_id,
         )
-        assembly_diagnostic_context = RuntimeDiagnosticContext(
+        diagnostic_context = RuntimeDiagnosticContext(
             request_id=request_id,
             lifecycle_id=resolved_lifecycle_id,
             run_id=resolved_run_id,
@@ -1387,54 +1290,31 @@ class AgentRuntime:
             subject_id=workflow_id,
             subject_name=workflow_name,
         )
-        built_agents: list[tuple[str, BuiltAgent]] = []
-        workflow_initial_files: dict[str, Any] = {}
-        agent_event_output_runtime: EventOutputPackageRuntime | None = None
+
+        command_runtime: CommandPackageRuntime | None = None
         workflow_event_output_runtime: EventOutputPackageRuntime | None = None
-        agent_event_outputs: dict[str, EventOutputCallable] = {}
-        agent_event_segment_ends: dict[str, EventSegmentEndCallable] = {}
         workflow_event_output: EventOutputCallable | None = None
         workflow_event_segment_end: EventSegmentEndCallable | None = None
         workflow_run_output: EventRunOutputCallable | None = None
-        command_runtime: CommandPackageRuntime | None = None
         commands: dict[str, Any] = {}
-        mcp_runtime = None
-        workspace = None
 
-        async def close_workflow_package_runtimes() -> None:
+        async def close_package_runtimes() -> None:
             if command_runtime is not None:
                 await command_runtime.close()
-            if agent_event_output_runtime is not None:
-                await agent_event_output_runtime.close()
             if workflow_event_output_runtime is not None:
                 await workflow_event_output_runtime.close()
 
         try:
-            resolved_agents: list[tuple[Any, StaticAssembly]] = []
-            for agent_node in agent_nodes:
-                main_agent_id = str(
-                    AgentNodeConfig.model_validate(agent_node.config).main_agent_id
-                )
-                resolved_agents.append(
-                    (
-                        agent_node,
-                        assemblies[main_agent_id],
-                    )
-                )
             command_mcp_references = {
                 node_id: self._resolved_command_mcp_references(command_id, block)
                 for node_id, (command_id, block) in command_blocks.items()
             }
-            all_mcp_references: list[ResolvedMcpReference] = []
-            for _agent_node, assembly in resolved_agents:
-                all_mcp_references.extend(assembly.mcp_references)
-                for subagent in assembly.subagent_nodes.values():
-                    all_mcp_references.extend(subagent.mcp_references)
-            for references in command_mcp_references.values():
-                all_mcp_references.extend(references)
-            mcp_runtime = await self._builder.discover_mcp(
-                tuple(all_mcp_references)
+            all_mcp_references = tuple(
+                reference
+                for references in command_mcp_references.values()
+                for reference in references
             )
+            mcp_runtime = await self._builder.discover_mcp(all_mcp_references)
             self._builder.bind_mcp_runtime(mcp_runtime)
             mcp_commands_by_node = (
                 {
@@ -1460,27 +1340,18 @@ class AgentRuntime:
                 )
             )
 
-            output_id = (workflow_snapshot or {}).get("workflow_event_output_id")
-            if (
-                command_blocks
-                or (public_output and (resolved_agents or output_id is not None))
-            ):
+            output_id = workflow_identity.get("workflow_event_output_id")
+            if command_blocks or (public_output and output_id is not None):
                 if self._python_packages_dir is None or self._runtime_dir is None:
                     raise AgentRuntimeError(
                         "workflow.python_package_runtime_unavailable",
                         "The Python package runtime is not configured.",
                         status_code=500,
                     )
-            if public_output and resolved_agents:
+
+            if command_blocks:
                 assert self._python_packages_dir is not None
                 assert self._runtime_dir is not None
-                agent_event_output_runtime = EventOutputPackageRuntime(
-                    "agent",
-                    request_id=request_id,
-                    packages_dir=self._python_packages_dir,
-                    runtime_root=self._runtime_dir,
-                )
-            if command_blocks:
                 command_runtime = CommandPackageRuntime(
                     request_id=request_id,
                     packages_dir=self._python_packages_dir,
@@ -1499,6 +1370,7 @@ class AgentRuntime:
                     }
 
                 commands = await asyncio.to_thread(materialize_commands)
+
             if public_output and output_id is not None:
                 stored_output = (
                     self._blocks.get_block_internal(
@@ -1510,7 +1382,7 @@ class AgentRuntime:
                 if stored_output is None:
                     raise AgentRuntimeError(
                         "workflow_event_output_not_found",
-                        "The selected event output component does not exist.",
+                        "The selected Workflow event output component does not exist.",
                         status_code=422,
                     )
                 try:
@@ -1538,7 +1410,7 @@ class AgentRuntime:
 
                 def materialize_workflow_event_output() -> tuple[Any, Any, Any]:
                     assert workflow_event_output_runtime is not None
-                    binding_id = str(workflow_identity.get("id", "")) or "workflow"
+                    binding_id = workflow_id or "workflow"
                     reference = output_block.python_package.model_dump(mode="json")
                     return (
                         workflow_event_output_runtime.output_for(
@@ -1564,77 +1436,18 @@ class AgentRuntime:
                     workflow_run_output,
                 ) = await asyncio.to_thread(materialize_workflow_event_output)
 
-            for agent_node, assembly in resolved_agents:
-                mapped_directory_paths_by_filesystem = (
-                    await self._resolved_mapped_directory_paths_by_filesystem(
-                        resolved_lifecycle_id,
-                        assembly,
-                    )
-                )
-                built = await self.build_resolved_agent(
-                    assembly,
-                    messages,
-                    request_id=request_id,
-                    workflow_node_id=agent_node.id,
-                    workspace=workspace,
-                    mapped_directory_paths_by_filesystem=(
-                        mapped_directory_paths_by_filesystem
-                    ),
-                )
-                built_agents.append((agent_node.id, built))
-                if agent_event_output_runtime is not None:
-                    def materialize_agent_event_output() -> tuple[Any, Any]:
-                        assert agent_event_output_runtime is not None
-                        return (
-                            agent_event_output_runtime.output_for(
-                                agent_node.id,
-                                built.event_output_id,
-                                built.event_output_reference,
-                            ),
-                            agent_event_output_runtime.segment_end_for(
-                                agent_node.id,
-                                built.event_output_id,
-                                built.event_output_reference,
-                            ),
-                        )
-
-                    output, segment_end = await asyncio.to_thread(
-                        materialize_agent_event_output
-                    )
-                    agent_event_outputs[agent_node.id] = output
-                    if segment_end is not None:
-                        agent_event_segment_ends[agent_node.id] = segment_end
-                if workspace is None:
-                    workspace = built.workspace
-                for path, value in built.input_state.get("files", {}).items():
-                    previous = workflow_initial_files.get(path)
-                    if previous is not None and previous != value:
-                        raise AgentRuntimeError(
-                            "filesystem_virtual_source_conflict",
-                            f"Workflow Agent virtual sources conflict at {path!r}.",
-                            status_code=422,
-                        )
-                    workflow_initial_files[path] = value
             graph = await asyncio.to_thread(
                 compile_workflow,
                 document,
-                node_agents=dict(built_agents),
                 commands=commands,
                 store=self._graph_store,
                 runtime_context=(context if server_managed else None),
-                initial_files=(workflow_initial_files if server_managed else None),
             )
         except asyncio.CancelledError:
-            for _, agent in built_agents:
-                await agent.tool_runtime.close()
-                await agent.middleware_runtime.close()
-            await close_workflow_package_runtimes()
+            await close_package_runtimes()
             raise
         except Exception as exc:
-            for _, agent in built_agents:
-                await agent.tool_runtime.close()
-                await agent.middleware_runtime.close()
-            await close_workflow_package_runtimes()
+            await close_package_runtimes()
             error_code = (
                 exc.code
                 if isinstance(exc, AgentRuntimeError)
@@ -1645,43 +1458,31 @@ class AgentRuntime:
                     exc,
                     code=error_code,
                     component="workflow_runtime",
-                    context=assembly_diagnostic_context,
+                    context=diagnostic_context,
                 )
             raise
-        input_state: dict[str, Any] = {
-            "shared_vars": deepcopy(dict(initial_shared_vars or {})),
-            "agent_invocations": {},
-        }
-        if initial_workflow_task is not None:
-            input_state["workflow_task"] = deepcopy(dict(initial_workflow_task))
-        if workflow_initial_files:
-            input_state["files"] = workflow_initial_files
 
         return self._workflow_execution(
             graph=graph,
-            input_state=input_state,
-            workflow_built=tuple(built_agents),
+            input_state={
+                "shared_vars": deepcopy(dict(initial_shared_vars or {})),
+            },
             request_id=request_id,
             public_model=public_model,
-            agent_event_outputs=agent_event_outputs,
-            agent_event_segment_ends=agent_event_segment_ends,
             workflow_event_output=workflow_event_output,
             workflow_event_segment_end=workflow_event_segment_end,
             workflow_run_output=workflow_run_output,
-            event_output_runtimes=tuple(
-                runtime
-                for runtime in (
-                    agent_event_output_runtime,
-                    workflow_event_output_runtime,
-                )
-                if runtime is not None
+            event_output_runtimes=(
+                (workflow_event_output_runtime,)
+                if workflow_event_output_runtime is not None
+                else ()
             ),
             identity=identity,
             context=context,
             workflow_node_kinds={
                 node.id: node.type
                 for node in document.definition.nodes
-                if node.type in {"agent", "command"}
+                if node.type == "command"
             },
             run_config=_workflow_run_config(
                 request_id=request_id,

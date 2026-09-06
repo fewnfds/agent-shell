@@ -73,18 +73,14 @@ def validate_workflow_topology(
     nodes = document.definition.nodes
     edges = document.definition.edges
     node_by_id = {node.id: node for node in nodes}
-    specs: dict[str, NodeTypeSpec] = {}
-    for node in nodes:
-        spec = node_type_spec(node.type, node.type_version)
-        assert spec is not None
-        specs[node.id] = spec
+    specs = {
+        node.id: node_type_spec(node.type, node.type_version) for node in nodes
+    }
+    assert all(spec is not None for spec in specs.values())
 
     issues: list[ValidationIssue] = []
     connections: set[tuple[str, str]] = set()
-    routed_branches: dict[str, dict[str, int]] = {}
-    routed_dispatches: dict[str, dict[str, int]] = {}
-    incoming_edge_types: dict[str, set[str]] = {}
-    endpoint_compatible_sources: set[str] = set()
+    valid_outgoing_sources: set[str] = set()
 
     for index, edge in enumerate(edges):
         source = node_by_id.get(edge.source)
@@ -113,14 +109,17 @@ def validate_workflow_topology(
                     message_args={"node_id": edge.target},
                 )
             )
+
+        source_spec = specs.get(edge.source)
+        target_spec = specs.get(edge.target)
         source_handle = (
-            _handle(specs[source.id], edge.source_handle, output=True)
-            if source is not None
+            _handle(source_spec, edge.source_handle, output=True)
+            if source_spec is not None
             else None
         )
         target_handle = (
-            _handle(specs[target.id], edge.target_handle, output=False)
-            if target is not None
+            _handle(target_spec, edge.target_handle, output=False)
+            if target_spec is not None
             else None
         )
         if source is not None and source_handle is None:
@@ -147,33 +146,26 @@ def validate_workflow_topology(
                     message_args={"handle": edge.target_handle},
                 )
             )
-        if (
-            source_handle is not None
-            and target_handle is not None
-            and source_handle.edge_type
-            not in (target_handle.accepted_edge_types or (target_handle.edge_type,))
-        ):
-            issues.append(
-                _edge_issue(
-                    edge.id,
-                    index,
-                    "workflow.edge_type_mismatch",
-                    "",
-                    "The Workflow edge connects incompatible endpoint types.",
-                    "validation.issue.workflow.edgeTypeMismatch",
-                    message_args={
-                        "source_type": source_handle.edge_type,
-                        "target_type": target_handle.edge_type,
-                    },
+        if source_handle is not None and target_handle is not None:
+            accepted = target_handle.accepted_edge_types or (target_handle.edge_type,)
+            if source_handle.edge_type not in accepted:
+                issues.append(
+                    _edge_issue(
+                        edge.id,
+                        index,
+                        "workflow.edge_type_mismatch",
+                        "",
+                        "The Workflow edge connects incompatible endpoint types.",
+                        "validation.issue.workflow.edgeTypeMismatch",
+                        message_args={
+                            "source_type": source_handle.edge_type,
+                            "target_type": target_handle.edge_type,
+                        },
+                    )
                 )
-            )
-        elif (
-            source is not None
-            and target is not None
-            and source_handle is not None
-            and target_handle is not None
-        ):
-            endpoint_compatible_sources.add(source.id)
+            else:
+                valid_outgoing_sources.add(edge.source)
+
         connection = (edge.source, edge.target)
         if connection in connections:
             issues.append(
@@ -189,120 +181,10 @@ def validate_workflow_topology(
         else:
             connections.add(connection)
 
-        if source_handle is not None and target is not None:
-            incoming_edge_types.setdefault(target.id, set()).add(
-                source_handle.edge_type
-            )
-
-        if source_handle is not None and source_handle.edge_type == "branch":
-            if edge.dispatch_key is not None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.dispatch_key_not_allowed",
-                        "dispatch_key",
-                        "A branch Workflow edge cannot declare a dispatch key.",
-                        "validation.issue.workflow.dispatchKeyNotAllowed",
-                    )
-                )
-            if edge.branch_key is None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.branch_key_required",
-                        "branch_key",
-                        "A branch edge requires an explicit branch key.",
-                        "validation.issue.workflow.branchKeyRequired",
-                    )
-                )
-            else:
-                by_key = routed_branches.setdefault(edge.source, {})
-                if edge.branch_key in by_key:
-                    issues.append(
-                        _edge_issue(
-                            edge.id,
-                            index,
-                            "workflow.branch_key_duplicate",
-                            "branch_key",
-                            "A Command branch can connect to only one target.",
-                            "validation.issue.workflow.branchKeyDuplicate",
-                            message_args={"branch_key": edge.branch_key},
-                        )
-                    )
-                else:
-                    by_key[edge.branch_key] = index
-        elif source_handle is not None and source_handle.edge_type == "dispatch":
-            if edge.branch_key is not None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.branch_key_not_allowed",
-                        "branch_key",
-                        "A dispatch Workflow edge cannot declare a branch key.",
-                        "validation.issue.workflow.branchKeyNotAllowed",
-                    )
-                )
-            if edge.dispatch_key is None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.dispatch_key_required",
-                        "dispatch_key",
-                        "A dispatch edge requires an explicit dispatch key.",
-                        "validation.issue.workflow.dispatchKeyRequired",
-                    )
-                )
-            else:
-                by_key = routed_dispatches.setdefault(edge.source, {})
-                if edge.dispatch_key in by_key:
-                    issues.append(
-                        _edge_issue(
-                            edge.id,
-                            index,
-                            "workflow.dispatch_key_duplicate",
-                            "dispatch_key",
-                            "A task dispatch key can connect to only one target.",
-                            "validation.issue.workflow.dispatchKeyDuplicate",
-                            message_args={"dispatch_key": edge.dispatch_key},
-                        )
-                    )
-                else:
-                    by_key[edge.dispatch_key] = index
-        elif source_handle is not None:
-            if edge.branch_key is not None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.branch_key_not_allowed",
-                        "branch_key",
-                        "A normal Workflow edge cannot declare a branch key.",
-                        "validation.issue.workflow.branchKeyNotAllowed",
-                    )
-                )
-            if edge.dispatch_key is not None:
-                issues.append(
-                    _edge_issue(
-                        edge.id,
-                        index,
-                        "workflow.dispatch_key_not_allowed",
-                        "dispatch_key",
-                        "A normal Workflow edge cannot declare a dispatch key.",
-                        "validation.issue.workflow.dispatchKeyNotAllowed",
-                    )
-                )
-
     if commands is not None:
-        node_indexes = {node.id: index for index, node in enumerate(nodes)}
+        indexes = {node.id: index for index, node in enumerate(nodes)}
         for node in nodes:
-            spec = specs[node.id]
-            if spec.runtime_kind != "command_node":
-                continue
-            if node.id not in commands:
+            if node.type == "command" and node.id not in commands:
                 issues.append(
                     reference_not_found_issue(
                         scope="workflow",
@@ -310,36 +192,17 @@ def validate_workflow_topology(
                         owner_name=node.id,
                         owner_type=node.type,
                         path=(
-                            f"definition.nodes[{node_indexes[node.id]}].config."
-                            "command_id"
+                            f"definition.nodes[{indexes[node.id]}].config.command_id"
                         ),
                         reference_id=str(node.config.get("command_id", "")),
                         expected_type="command",
                     )
                 )
-                continue
-    node_indexes = {node.id: index for index, node in enumerate(nodes)}
-    for node_id, edge_types in incoming_edge_types.items():
-        if "dispatch" not in edge_types or len(edge_types) == 1:
-            continue
-        node = node_by_id[node_id]
-        issues.append(
-            _issue(
-                "workflow.task_worker_input_mixed",
-                f"definition.nodes[{node_indexes[node_id]}]",
-                "A task worker cannot mix dispatch and ordinary incoming edges.",
-                "validation.issue.workflow.taskWorkerInputMixed",
-                owner_id=node_id,
-                owner_type=node.type,
-            )
-        )
 
+    node_indexes = {node.id: index for index, node in enumerate(nodes)}
     start_ids = {node.id for node in nodes if node.type == "start"}
     end_ids = {node.id for node in nodes if node.type == "end"}
-    for node_type, ids in (
-        ("start", start_ids),
-        ("end", end_ids),
-    ):
+    for node_type, ids in (("start", start_ids), ("end", end_ids)):
         if not ids:
             issues.append(
                 _issue(
@@ -364,7 +227,7 @@ def validate_workflow_topology(
 
     if len(start_ids) == 1:
         start_id = next(iter(start_ids))
-        if start_id not in endpoint_compatible_sources:
+        if start_id not in valid_outgoing_sources:
             issues.append(
                 _issue(
                     "workflow.start_outgoing_required",
@@ -381,24 +244,19 @@ def validate_workflow_topology(
         for edge in edges:
             if edge.source in node_by_id and edge.target in node_by_id:
                 outgoing[edge.source].add(edge.target)
-
-        reachable_from_start = set(start_ids)
+        reachable = set(start_ids)
         pending = list(start_ids)
         while pending:
             for target in outgoing[pending.pop()]:
-                if target not in reachable_from_start:
-                    reachable_from_start.add(target)
+                if target not in reachable:
+                    reachable.add(target)
                     pending.append(target)
-
         for node in nodes:
-            index = node_indexes[node.id]
-            if node.type == "end":
-                continue
-            if node.id not in reachable_from_start:
+            if node.type != "end" and node.id not in reachable:
                 issues.append(
                     _issue(
                         "workflow.node_unreachable_from_start",
-                        f"definition.nodes[{index}]",
+                        f"definition.nodes[{node_indexes[node.id]}]",
                         "The Workflow node is not reachable from a Start node.",
                         "validation.issue.workflow.nodeUnreachableFromStart",
                         owner_id=node.id,

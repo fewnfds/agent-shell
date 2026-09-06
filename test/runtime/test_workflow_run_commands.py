@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
+from langgraph.types import Command
 
 from agent_shell.command import run_command
 from agent_shell.runtime.agent_run_calls import AgentRunHandle
@@ -83,35 +84,25 @@ def test_commands_receive_the_official_runtime_commands() -> None:
             seen.append(runtime)
             assert runtime.context.workflow_runs is not None
             await runtime.context.workflow_runs.list()
-            return {"activate": [], "update": {}}
+            return Command()
 
-        async def dispatching_command(state, runtime):
+        async def checking_command(state, runtime):
             seen.append(runtime)
             assert runtime.context.workflow_runs is not None
             await runtime.context.workflow_runs.check(["run-2"])
-            return {
-                "dispatch": [
-                    {
-                        "task_id": "task-1",
-                        "dispatch_key": "work",
-                        "payload": {},
-                    }
-                ],
-                "update": {},
-            }
+            return Command()
 
         await run_command(
             command,
-            state={"shared_vars": {}, "agent_invocations": {}, "files": {}},
+            state={"shared_vars": {}},
             runtime=official_runtime,
-            allowed_branches=set(),
+            target_map={},
         )
         await run_command(
-            dispatching_command,
-            state={"shared_vars": {}, "agent_invocations": {}, "files": {}},
+            checking_command,
+            state={"shared_vars": {}},
             runtime=official_runtime,
-            allowed_branches=set(),
-            allowed_dispatch_keys={"work"},
+            target_map={},
         )
 
         assert seen == [official_runtime, official_runtime]
@@ -141,16 +132,16 @@ def test_command_can_start_workflow_run_and_end_without_a_target() -> None:
                 [{"role": "user", "content": "review"}],
                 operation_id="agent-review",
             )
-            return {"activate": [], "update": {"shared_vars": {"published": True}}}
+            return Command(update={"shared_vars": {"published": True}})
 
         result = await run_command(
             command,
-            state={"shared_vars": {}, "agent_invocations": {}, "files": {}},
+            state={"shared_vars": {}},
             runtime=official_runtime,
-            allowed_branches=set(),
+            target_map={},
         )
 
-        assert result.activate == []
+        assert result.goto == ()
         assert result.update == {"shared_vars": {"published": True}}
         assert service.starts[0][:2] == ("workflow-1", "publish-review")
         assert service.starts[0][2].run_id == "run-1"
@@ -237,7 +228,6 @@ def test_spawned_workflow_has_its_own_identity_and_command_caller() -> None:
             node_invocation_id="command-invocation-1",
         )
 
-        assert context.agent_profile_id == ""
         assert context.workflow_node_id == "command-1"
         assert context.node_invocation_id == "command-invocation-1"
         assert context.workflow_runs is not None

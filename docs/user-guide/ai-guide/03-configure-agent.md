@@ -1,6 +1,6 @@
 # 配置 Agent
 
-只有 Workflow Graph 包含 Agent Node 时才读本章。Command、Start 和 End 不需要 Main Agent 或模型。
+创建可直接运行的Main Agent，或让Workflow Command启动独立Agent Run时读本章。Start、End和纯控制Command本身不需要模型。
 
 完成结果是一个满足目标行为的 Main Agent，以及已经记录或完成的 Model Mapping；使用 MCP 时还包括 MCP Requirement、consumer Tool selection 与 MCP Mapping。
 
@@ -20,7 +20,7 @@
 ```text
 Model Requirement ----+
 Filesystem Backend ---+
-Filesystem Tools -----+-> Main Agent -> Agent Node
+Filesystem Tools -----+-> Main Agent root graph
 Agent Event Output ---+
 
 Model Connection
@@ -33,7 +33,7 @@ MCP Connection
   -> Main Agent / Subagent ordered mcp_refs
 ```
 
-Main Agent 还可以引用 System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 Subagent。Agent Node 每次执行时物化该 Main Agent 的完整 assembly。
+Main Agent还可以引用System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package和Subagent。直接请求或Command facade启动Run时物化该Main Agent的完整assembly。
 
 ## 2. Model Requirement
 
@@ -165,7 +165,7 @@ POST /agent-shell/api/main-agents
 
 `is_model_entry=true` 时，Main Agent name直接成为 OpenAI-compatible model。`checkpoint_mode=enabled` 为每个直接会话建立可复用 Thread，后续交互在同一 Thread创建新 Run并延续 AgentState；`disabled` 使用官方 Stateless Run。`durability` 控制官方 Run 的 checkpoint写入时机，`on_disconnect` 控制该 Main Agent作为请求入口时客户端断开后的行为。
 
-创建后保存 Main Agent UUID。直接运行与 Agent Node引用都复用这份装配；Graph Node不重复保存模型、Tool 或 prompt 配置。
+创建后保存Main Agent UUID。直接运行与Command-launched Run都复用这份装配；Workflow Graph不重复保存模型、Tool或prompt配置。
 
 ## 6. System Prompt 和 AAP
 
@@ -191,7 +191,7 @@ POST /agent-shell/api/blocks/system-prompt
 }
 ```
 
-当前 request、Command dispatch task、Workflow State snapshot、上游 Agent result 或运行时文件属于动态材料。需要这些材料时使用 AAP 或其他明确的 Custom Middleware，不把它们硬编码进 System Prompt。
+current request、显式Store artifact或运行时文件属于动态材料。需要这些材料时使用AAP或其他明确的Custom Middleware，不把它们硬编码进System Prompt，也不读取Workflow State中的Agent副本。
 
 AAP 是可选 Custom Middleware template。先读取：
 
@@ -226,7 +226,7 @@ POST /agent-shell/api/blocks/custom-middleware
 }
 ```
 
-AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapshot`、upstream invocation、Runtime Store 和 Agent Filesystem。每份 AAP 为目标 Agent 定义材料范围、裁剪、排序和 role 编排，并保留输入消息的 `system`、`user`、`assistant` role 语义。
+AAP可以读取request `messages[]`、有明确namespace的Runtime Store artifact和Agent Filesystem。它使用private checkpointed marker，只在stateful Thread第一次执行时注入；同一Thread后续Run延续AgentState而不重复附加。每份AAP为目标Agent定义材料范围、裁剪、排序和role编排，并保留输入消息的`system`、`user`、`assistant`语义。
 
 多个 Middleware 的顺序具有运行意义。LangChain `before_*` hook 正序执行，`after_*` hook 逆序执行，`wrap_*` 按列表嵌套。多个 Middleware 修改 `messages` 时，先明确组合顺序，再保存 `middleware_refs`。
 
@@ -236,7 +236,7 @@ AAP 可以读取 request `messages[]`、`workflow_task`、`workflow_state_snapsh
 
 System Prompt：保存适用于每次 invocation 的稳定角色和固定规则。
 
-AAP 或 Custom Middleware：根据当前 request、task、State 或 Store 构造动态输入，或者在 Agent lifecycle、model call、Tool call hook 中运行代码。
+AAP或Custom Middleware：根据current request、Agent State、Store或Filesystem构造动态输入，或者在Agent lifecycle、model call、Tool call hook中运行代码。
 
 Custom Tool：向 model-tool loop 提供由模型选择和调用的能力。
 
@@ -379,7 +379,7 @@ Custom Tool、Custom Middleware 和 MCP Requirement 由 Subagent 自己的 order
 
 进入 Graph 构建前确认：
 
-- Agent Node 引用了目标 Main Agent UUID；
+- Main Agent能够作为root graph直接运行，或由目标Command通过UUID启动；
 - Model Requirement 描述能力，不包含实例 credential；
 - Agent Event Output 来自当前 template `key + revision`；
 - Main Agent 引用了当前 Catalog 要求的全部 required capability；

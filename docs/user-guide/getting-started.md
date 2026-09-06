@@ -53,7 +53,7 @@ OpenAI-compatible 当前提供 `GET /compat/openai/v1/models` 与 `POST /compat/
    `内置示例-agent-additional-prompt`，需要注入 Agent 初始提示词时在 Main Agent 的 `middleware_refs` 中装配。
 3. 在【模型 / 模型映射】为 Model Requirement 选择 Model Connection；未绑定时页面显示 warning，必须完成 binding 后才能运行。然后在【工作流】新建记录，需要被 OpenAI-compatible API 发现和启动时开启【作为模型入口】。需要调整响应流时，在【工作流组件 / 响应流调度】创建配置，再由请求入口 Workflow 装配；未装配时使用内置默认。事件可见性与文本修饰在 Agent/Workflow Event Output 中编写。点击【编辑】进入 Workflow canvas。
    需要 MCP 时，在【代理组件 / MCP 要求】创建 portable Requirement，在【MCP / MCP 连接】创建或导入实例 Connection，在【MCP / MCP 映射】完成 binding，最后由 Main Agent、Subagent 或 Command 的 MCP Card 选择 Requirement 与 Tool 范围。
-4. 添加 Agent Node，选择 Main Agent，连接 `Start -> Agent -> End` 后点击【保存草稿】（草稿保持 disabled）。
-5. 点击【正式保存 Workflow】通过校验后启用 Workflow；已启用且开启【作为模型入口】的 Workflow 出现在 `/compat/openai/v1/models`。所有 enabled Workflow 都可以被其他 Run 调用。
+4. 只需Agent loop时，在Main Agent开启【作为模型入口】。需要确定性控制时，在Workflow canvas添加Command，连接`Start -> Command -> End`；Command通过`runtime.context.agent_runs`启动目标Main Agent。先点击【保存草稿】（草稿保持disabled）。
+5. 点击【正式保存 Workflow】通过校验后启用Workflow；`is_model_entry=true`的Main Agent和已启用且开启【作为模型入口】的Workflow都出现在`/compat/openai/v1/models`。所有enabled Workflow都可以被其他Run调用。
 6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/compat/openai/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认 Workflow 名称后以
    `{"model":"<workflow-name>","messages":[...]}` 调用 `/compat/openai/v1/chat/completions`。

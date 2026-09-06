@@ -715,7 +715,6 @@ class AgentBuilder:
             )
         input_state: dict[str, Any] = {
             "messages": [],
-            "shared_vars": {},
         }
 
         compiled_subagents: list[dict[str, Any]] = []

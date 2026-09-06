@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { WorkflowGraphDocument, WorkflowNodeCatalogItem } from '@/api'
 import {
   workflowCanvasEdgeVisual,
   workflowCanvasToDocument,
@@ -7,30 +8,20 @@ import {
   type WorkflowCanvasEdge,
   type WorkflowCanvasNode,
 } from './workflowGraph'
-import type { WorkflowGraphDocument, WorkflowNodeCatalogItem } from '@/api'
 
-describe('workflow edge visual projection', () => {
-  it('uses End red before Start green while preserving protocol styling', () => {
-    const startBranch = workflowCanvasEdgeVisual('branch', 'start', 'agent')
-    expect(startBranch.class).toBe('workflow-edge--branch workflow-edge--start')
-    expect(startBranch.markerEnd).toMatchObject({ color: 'var(--bs-success)' })
-    expect(startBranch.animated).toBe(true)
-
+describe('Workflow control graph projection', () => {
+  it('renders one normal Edge with terminal color precedence', () => {
     const startEnd = workflowCanvasEdgeVisual('normal', 'start', 'end')
     expect(startEnd.class).toBe('workflow-edge--start workflow-edge--end')
     expect(startEnd.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
-
-    const dispatchEnd = workflowCanvasEdgeVisual('dispatch', 'command', 'end')
-    expect(dispatchEnd.class).toBe('workflow-edge--dispatch workflow-edge--end')
-    expect(dispatchEnd.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
-    expect(dispatchEnd.animated).toBe(true)
+    expect(startEnd.animated).toBe(false)
   })
 
-  it('reprojects terminal precedence when loading a saved graph', () => {
-    const document = {
+  it('loads and saves only the control graph wire fields', () => {
+    const document: WorkflowGraphDocument = {
       definition: {
         schema_version: 1,
-        state_contract: 'agent-shell.workflow.agent-invocations.v1',
+        state_contract: 'agent-shell.workflow.control.v1',
         nodes: [
           { id: 'start', type: 'start', type_version: 1, config: {} },
           { id: 'end', type: 'end', type_version: 1, config: {} },
@@ -44,7 +35,7 @@ describe('workflow edge visual projection', () => {
         }],
       },
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
-    } as WorkflowGraphDocument
+    }
     const catalog = [
       {
         type: 'start',
@@ -58,35 +49,34 @@ describe('workflow edge visual projection', () => {
       },
     ] as WorkflowNodeCatalogItem[]
 
-    const [edge] = workflowDocumentToCanvas(document, catalog).edges
-    expect(edge.class).toBe('workflow-edge--start workflow-edge--end')
-    expect(edge.markerEnd).toMatchObject({ color: 'var(--bs-danger)' })
+    const canvas = workflowDocumentToCanvas(document, catalog)
+    expect(canvas.edges[0]).toMatchObject({ data: { edgeType: 'normal' } })
+    const saved = workflowCanvasToDocument(canvas.nodes, canvas.edges, canvas.viewport)
+    expect(saved.definition).toEqual(document.definition)
+    expect(saved.layout.viewport).toEqual(document.layout.viewport)
+    expect(Object.keys(saved.layout.nodes)).toEqual(['start', 'end'])
   })
 
-  it('keeps editor terminal defaults unless a read-only consumer disables them', () => {
+  it('adds editor terminals only for an empty editable document', () => {
     const emptyDocument = {
       definition: {
         schema_version: 1,
-        state_contract: 'agent-shell.workflow.agent-invocations.v1',
+        state_contract: 'agent-shell.workflow.control.v1',
         nodes: [],
         edges: [],
       },
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     } as WorkflowGraphDocument
-
     expect(workflowDocumentToCanvas(emptyDocument, []).nodes.map((node) => node.id))
       .toEqual(['start', 'end'])
-    expect(workflowDocumentToCanvas(
-      emptyDocument,
-      [],
-      { addDefaultTerminals: false },
-    ).nodes).toEqual([])
+    expect(workflowDocumentToCanvas(emptyDocument, [], { addDefaultTerminals: false }).nodes)
+      .toEqual([])
   })
 
-  it('does not serialize renderer classes, animation, or markers', () => {
+  it('does not serialize Vue Flow presentation fields', () => {
     const nodes = [
-      { id: 'start', data: { nodeType: 'start', mainAgentId: '' }, position: { x: 0, y: 0 } },
-      { id: 'end', data: { nodeType: 'end', mainAgentId: '' }, position: { x: 100, y: 0 } },
+      { id: 'start', data: { nodeType: 'start' }, position: { x: 0, y: 0 } },
+      { id: 'end', data: { nodeType: 'end' }, position: { x: 100, y: 0 } },
     ] as WorkflowCanvasNode[]
     const edges = [{
       id: 'edge-1',
@@ -95,18 +85,10 @@ describe('workflow edge visual projection', () => {
       target: 'end',
       targetHandle: 'in',
       class: 'workflow-edge--start workflow-edge--end',
-      animated: true,
       markerEnd: { type: 'arrowclosed', color: 'var(--bs-danger)' },
       data: { edgeType: 'normal' },
     }] as WorkflowCanvasEdge[]
-
-    const wire = workflowCanvasToDocument(nodes, edges, { x: 0, y: 0, zoom: 1 })
-    expect(wire.definition.edges).toEqual([{
-      id: 'edge-1',
-      source: 'start',
-      source_handle: 'next',
-      target: 'end',
-      target_handle: 'in',
-    }])
+    expect(workflowCanvasToDocument(nodes, edges, { x: 0, y: 0, zoom: 1 }).definition.edges)
+      .toEqual([{ id: 'edge-1', source: 'start', source_handle: 'next', target: 'end', target_handle: 'in' }])
   })
 })

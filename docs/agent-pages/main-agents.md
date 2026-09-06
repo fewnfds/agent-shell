@@ -1,12 +1,16 @@
 # Main Agent
 
-Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中的 Agent Node 通过 `main_agent_id` 引用完整 Main Agent assembly，同一 Main Agent 可以被多个 Node 重复引用；OpenAI `model` 对应 `enabled=true` 且 `is_model_entry=true` 的 Workflow name。
+Main Agent是完整、可复用的Deep Agents assembly和Agent Server root graph。它可以通过`is_model_entry=true`直接发布为OpenAI-compatible model，也可以由Workflow Command通过`runtime.context.agent_runs`启动独立Thread/Run。
 
 每条 Main Agent 记录保存：
 
 ```json
 {
   "name": "Research coordinator",
+  "is_model_entry": true,
+  "checkpoint_mode": "enabled",
+  "durability": "async",
+  "on_disconnect": "cancel",
   "capability_refs": [
     {"type": "model-requirement", "block_id": "model-requirement-uuid"},
     {"type": "filesystem", "block_id": "filesystem-uuid"},
@@ -36,4 +40,4 @@ Main Agent 是完整、可复用的 Deep Agents assembly。Workflow canvas 中�
 
 Todo List、Summarization 与 Prompt Caching 通过 `capability_refs` 独立选择，并分别物化为 official Middleware；未选择时使用同名无行为 replacement，使最终 stack 保持显式。Custom Tool 通过有序 `tool_refs` 装配，Custom Middleware 通过有序 `middleware_refs` 装配；MCP Requirement 通过有序 `mcp_refs` 装配，并为每条引用保存 `all|include` 原始 Tool name 选择。每个列表内 ID 唯一。Agent 生命周期使用 LangChain Middleware hook。
 
-`capability_refs` 引用 `type=subagent` 的委派组件且 `subagents` 至少包含一个有效实体时，Main Agent 获得 Deep Agents 官方 `task` 工具。当前委派结构为一层同步 `Main -> Subagent`，用于 Agent Node 内部委派；外层 Workflow 单独定义运行拓扑。
+`capability_refs`引用`type=subagent`的委派组件且`subagents`至少包含一个有效实体时，Main Agent获得Deep Agents官方`task`工具。当前直接Subagent用于Main Agent内部同步委派；Workflow单独定义确定性控制拓扑。

@@ -4,18 +4,14 @@ import asyncio
 from types import SimpleNamespace
 from typing import Annotated
 
-from deepagents import create_deep_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import PrivateStateAttr
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langgraph.store.memory import InMemoryStore
 from typing_extensions import TypedDict
 
 from agent_shell.runtime import agent_builder, subagent_middleware
 from agent_shell.runtime.agent_builder import AgentBuilder
 from agent_shell.runtime.agent_compilation import MaterializedAgentProfile
-from agent_shell.runtime.context import WorkflowRuntimeContext
-from agent_shell.runtime.run_identity import WorkflowRunIdentity
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
@@ -23,28 +19,6 @@ from agent_shell.validation.assembly import (
     StaticAssembly,
 )
 from agent_shell.validation.models import ValidationReport
-
-class _ToolCapableFakeModel(FakeListChatModel):
-    def bind_tools(self, tools, **kwargs):
-        return self
-
-
-class _ScopeReadingMiddleware(AgentMiddleware):
-    def before_agent(self, state, runtime):
-        return {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (
-                        f"private={len(state['messages'])};"
-                        f"parent={len(state['workflow_state_snapshot']['agent_invocations'])};"
-                        f"node={runtime.context.workflow_node_id};"
-                        f"invocation={runtime.context.node_invocation_id}"
-                    ),
-                }
-            ]
-        }
-
 
 def _middleware(name: str, *, state_schema: object | None = None) -> SimpleNamespace:
     return SimpleNamespace(name=name, tools=(), state_schema=state_schema)
@@ -74,45 +48,6 @@ def _profile(
         skill_sources=(),
         permissions=(),
         workspace=SimpleNamespace(initial_files={}),
-    )
-
-
-def test_custom_middleware_reads_private_agent_state_and_parent_workflow_snapshot() -> None:
-    middleware = _ScopeReadingMiddleware()
-    agent = create_deep_agent(
-        model=_ToolCapableFakeModel(responses=["answer"]),
-        middleware=[middleware],
-        state_schema=AgentShellState,
-    )
-    context = WorkflowRuntimeContext.for_run(
-        identity=WorkflowRunIdentity(
-            request_id="request-1",
-            lifecycle_id="lifecycle-1",
-            run_id="run-1",
-            workflow_id="workflow-1",
-            workflow_name="Workflow",
-            thread_id="thread-1",
-        ),
-    ).for_workflow_agent(
-        workflow_node_id="agent-current",
-        agent_profile_id="agent-id",
-        node_invocation_id="invocation-current",
-    )
-
-    result = agent.invoke(
-        {
-            "messages": [],
-            "workflow_state_snapshot": {
-                "agent_invocations": {
-                    "prior": {"workflow_node_id": "agent-prior"}
-                }
-            },
-        },
-        context=context,
-    )
-
-    assert result["messages"][0].content == (
-        "private=0;parent=1;node=agent-current;invocation=invocation-current"
     )
 
 

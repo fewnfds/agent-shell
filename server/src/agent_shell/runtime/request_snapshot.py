@@ -155,7 +155,6 @@ class _RunBinding:
     assistant_id: str = ""
     run_id: str = ""
     initial_shared_vars: Mapping[str, Any] = field(default_factory=dict)
-    initial_workflow_task: Mapping[str, Any] | None = None
     response_consumer: bool = False
     run_id_ready: asyncio.Future[str] | None = None
     execution_ready: asyncio.Future[RunExecution] | None = None
@@ -487,7 +486,6 @@ class LifecycleRunCoordinator:
                 caller_run_id=binding.caller_run_id,
                 operation_id=binding.operation_id,
                 initial_shared_vars=binding.initial_shared_vars,
-                initial_workflow_task=binding.initial_workflow_task,
                 agent_run_runtime=self,
                 workflow_run_runtime=self,
                 public_output=True,
@@ -520,7 +518,6 @@ class LifecycleRunCoordinator:
         operation_id: str,
         caller: RunCaller,
         shared_vars: Mapping[str, Any],
-        workflow_task: Mapping[str, Any] | None = None,
     ) -> WorkflowRunHandle:
         normalized_operation_id = operation_id.strip()
         if not normalized_operation_id:
@@ -566,9 +563,6 @@ class LifecycleRunCoordinator:
             caller_run_id=caller.run_id,
             operation_id=normalized_operation_id,
             initial_shared_vars=deepcopy(dict(shared_vars)),
-            initial_workflow_task=(
-                deepcopy(dict(workflow_task)) if workflow_task is not None else None
-            ),
         )
         if binding.key in self._bindings:
             raise AgentRuntimeError(
@@ -947,7 +941,6 @@ class LifecycleRunCoordinator:
         caller_run_id: str = "",
         operation_id: str = "",
         initial_shared_vars: Mapping[str, Any] | None = None,
-        initial_workflow_task: Mapping[str, Any] | None = None,
         response_consumer: bool = False,
     ) -> _RunBinding:
         document = self._snapshot.workflow_document(str(workflow["id"]))
@@ -963,7 +956,6 @@ class LifecycleRunCoordinator:
             caller_run_id=caller_run_id,
             operation_id=operation_id,
             initial_shared_vars=initial_shared_vars or {},
-            initial_workflow_task=initial_workflow_task,
             response_consumer=response_consumer,
             run_id_ready=loop.create_future(),
             execution_ready=loop.create_future(),
@@ -1115,12 +1107,6 @@ class LifecycleRunCoordinator:
             binding.assistant_id,
             input={
                 "shared_vars": deepcopy(dict(binding.initial_shared_vars)),
-                "agent_invocations": {},
-                **(
-                    {"workflow_task": deepcopy(dict(binding.initial_workflow_task))}
-                    if binding.initial_workflow_task is not None
-                    else {}
-                ),
             },
             config={
                 **self._owner.run_config(),

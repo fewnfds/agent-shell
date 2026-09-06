@@ -884,36 +884,10 @@ pre code {
   box-shadow: 0 0 0 1px var(--bs-primary);
 }
 
-.workflow-port[data-edge-type='branch'] {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--bs-body-bg);
-  background: var(--bs-warning);
-  box-shadow: 0 0 0 1px var(--bs-warning);
-}
-
-.workflow-port[data-edge-type='dispatch'] {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--bs-body-bg);
-  background: var(--bs-info);
-  box-shadow: 0 0 0 1px var(--bs-info);
-}
-
 .workflow-canvas-flow .vue-flow__connection-path,
 .workflow-canvas-flow .vue-flow__edge-path {
   stroke: var(--bs-primary);
   stroke-width: 2;
-}
-
-.workflow-canvas-flow .vue-flow__edge.workflow-edge--branch .vue-flow__edge-path {
-  stroke: var(--bs-warning);
-  stroke-dasharray: 7 5;
-}
-
-.workflow-canvas-flow .vue-flow__edge.workflow-edge--dispatch .vue-flow__edge-path {
-  stroke: var(--bs-info);
-  stroke-dasharray: 3 4;
 }
 
 .workflow-canvas-flow .vue-flow__edge.workflow-edge--start .vue-flow__edge-path {

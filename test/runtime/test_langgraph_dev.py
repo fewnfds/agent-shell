@@ -29,7 +29,7 @@ def _start_end_document():
         {
             "definition": {
                 "schema_version": 1,
-                "state_contract": "agent-shell.workflow.agent-invocations.v1",
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
                     {"id": "end", "type": "end", "type_version": 1, "config": {}},
@@ -203,7 +203,6 @@ def test_windows_curl_blockbuster_compatibility_wraps_the_runtime_hook(
 def test_server_graph_context_schema_does_not_duplicate_official_identity() -> None:
     graph = compile_workflow(
         _start_end_document(),
-        node_agents={},
         runtime_context=WorkflowRuntimeContext(workflow_id="workflow-1"),
     )
 
@@ -226,9 +225,8 @@ def test_server_node_binds_run_id_from_execution_info() -> None:
             operation_id,
             caller,
             shared_vars,
-            workflow_task=None,
         ):
-            del operation_id, shared_vars, workflow_task
+            del operation_id, shared_vars
             self.caller = caller
             return WorkflowRunHandle(
                 operation_id="operation-1",
@@ -275,15 +273,12 @@ def test_server_node_binds_run_id_from_execution_info() -> None:
     assert run_runtime.caller.run_id == "official-run-1"
 
 
-def test_server_graph_seeds_assembled_files_into_initial_state() -> None:
-    initial_files = {"/reference.txt": {"content": ["reference"]}}
+def test_server_graph_preserves_the_control_input_state() -> None:
     graph = compile_workflow(
         _start_end_document(),
-        node_agents={},
         runtime_context=WorkflowRuntimeContext(workflow_id="workflow-1"),
-        initial_files=initial_files,
     )
 
-    result = graph.invoke({"shared_vars": {}, "agent_invocations": {}})
+    result = graph.invoke({"shared_vars": {"request": "ready"}})
 
-    assert result["files"] == initial_files
+    assert result == {"shared_vars": {"request": "ready"}}

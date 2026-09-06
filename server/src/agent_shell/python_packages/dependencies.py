@@ -332,7 +332,6 @@ def prepare_windows_dependencies(
     config = repository.config()
     components = config.get("components", {})
 
-    active_main_agent_ids: set[str] = set()
     active_command_ids: set[str] = set()
     active_workflow_event_output_ids: set[str] = set()
     for workflow in config.get("workflows", []):
@@ -348,13 +347,10 @@ def prepare_windows_dependencies(
             node_config = node.get("config", {})
             if not isinstance(node_config, dict):
                 continue
-            if node.get("type") == "agent":
-                active_main_agent_ids.add(str(node_config.get("main_agent_id", "")))
-            elif node.get("type") == "command":
+            if node.get("type") == "command":
                 active_command_ids.add(
                     str(node_config.get("command_id", ""))
                 )
-    active_main_agent_ids.discard("")
     active_command_ids.discard("")
 
     main_agents = {
@@ -362,6 +358,9 @@ def prepare_windows_dependencies(
         for item in config.get("main_agents", [])
         if isinstance(item, dict)
     }
+    # Main Agents are independent root graphs and may be selected directly or
+    # dynamically by a Command, so startup prepares every configured profile.
+    active_main_agent_ids = set(main_agents)
     subagents = {
         str(item.get("id", "")): item
         for item in config.get("subagents", [])

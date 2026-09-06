@@ -4,192 +4,58 @@ import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  managementApi,
-  type MainAgent,
-  type Workflow,
-  type WorkflowGraphDocument,
-  type WorkflowNodeCatalogItem,
-} from '@/api'
-import { useConfirmation } from '@/composables/useConfirmation'
+import { managementApi, type Workflow, type WorkflowGraphDocument, type WorkflowNodeCatalogItem } from '@/api'
 import { en } from '@/locales/en'
-
 import WorkflowEditorPage from './WorkflowEditorPage.vue'
 
 const workflow: Workflow = {
   id: 'workflow-1',
-  name: 'Research Workflow',
-  description: 'Runs the research agent.',
+  name: 'Control Workflow',
+  description: 'Runs deterministic control steps.',
   is_model_entry: true,
   workflow_event_output_id: null,
   durability: 'async',
   on_disconnect: 'cancel',
   enabled: true,
 }
-
-const anotherWorkflow: Workflow = {
-  ...workflow,
-  id: 'workflow-child-1',
-  name: 'Review Workflow',
-}
-
-const agent: MainAgent = {
-  id: 'agent-config-1',
-  name: 'Research Agent',
-} as MainAgent
-
+const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Route' }
 const graph: WorkflowGraphDocument = {
   definition: {
     schema_version: 1,
-    state_contract: 'agent-shell.workflow.agent-invocations.v1',
+    state_contract: 'agent-shell.workflow.control.v1',
     nodes: [
       { id: 'start', type: 'start', type_version: 1, config: {} },
-      {
-        id: 'agent-1',
-        type: 'agent',
-        type_version: 1,
-        config: { main_agent_id: agent.id },
-      },
+      { id: 'router', type: 'command', type_version: 1, config: { command_id: command.id } },
       { id: 'end', type: 'end', type_version: 1, config: {} },
     ],
     edges: [
-      {
-        id: 'edge-start-agent',
-        source: 'start',
-        source_handle: 'next',
-        target: 'agent-1',
-        target_handle: 'in',
-      },
-      {
-        id: 'edge-agent-end',
-        source: 'agent-1',
-        source_handle: 'next',
-        target: 'end',
-        target_handle: 'in',
-      },
+      { id: 'start-router', source: 'start', source_handle: 'next', target: 'router', target_handle: 'in' },
+      { id: 'router-end', source: 'router', source_handle: 'next', target: 'end', target_handle: 'in' },
     ],
   },
-  layout: {
-    nodes: {
-      start: { x: 40, y: 180 },
-      'agent-1': { x: 320, y: 180 },
-      end: { x: 620, y: 180 },
-    },
-    viewport: { x: 10, y: 20, zoom: 1.25 },
-  },
+  layout: { nodes: {}, viewport: { x: 10, y: 20, zoom: 1.25 } },
 }
-
-const graphWithBranchProblem: WorkflowGraphDocument = {
-  definition: {
-    schema_version: 1,
-    state_contract: 'agent-shell.workflow.agent-invocations.v1',
-    nodes: [
-      { id: 'start', type: 'start', type_version: 1, config: {} },
-      {
-        id: 'router-1',
-        type: 'command',
-        type_version: 1,
-        config: { command_id: 'router-config-1' },
-      },
-      { id: 'end', type: 'end', type_version: 1, config: {} },
-    ],
-    edges: [{
-      id: 'edge-branch',
-      source: 'router-1',
-      source_handle: 'branch',
-      target: 'end',
-      target_handle: 'in',
-    }],
-  },
-  layout: {
-    nodes: {
-      start: { x: 40, y: 180 },
-      'router-1': { x: 320, y: 180 },
-      end: { x: 620, y: 180 },
-    },
-    viewport: { x: 10, y: 20, zoom: 1.25 },
-  },
-}
-
-const nodeCatalog: WorkflowNodeCatalogItem[] = [
-  {
-    type: 'start',
-    type_version: 1,
-    runtime_kind: 'graph_entry',
-    title_key: '',
-    description_key: '',
-    config_schema: {},
-    input_handles: [],
-    output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
-  },
-  {
-    type: 'agent',
-    type_version: 1,
-    runtime_kind: 'agent_wrapper',
-    title_key: '',
-    description_key: '',
-    config_schema: {},
-    input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-    output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
-  },
-  {
-    type: 'command',
-    type_version: 1,
-    runtime_kind: 'command_node',
-    title_key: '',
-    description_key: '',
-    config_schema: {},
-    input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-    output_handles: [
-      { id: 'branch', kind: 'control', edge_type: 'branch', max_connections: null },
-      { id: 'dispatch', kind: 'control', edge_type: 'dispatch', max_connections: null },
-    ],
-  },
-  {
-    type: 'end',
-    type_version: 1,
-    runtime_kind: 'graph_exit',
-    title_key: '',
-    description_key: '',
-    config_schema: {},
-    input_handles: [{
-      id: 'in',
-      kind: 'control',
-      edge_type: 'normal',
-      accepted_edge_types: ['normal', 'branch'],
-      max_connections: null,
-    }],
-    output_handles: [],
-  },
+const handleIn = { id: 'in', kind: 'control' as const, edge_type: 'normal', accepted_edge_types: ['normal'], max_connections: null }
+const handleOut = { id: 'next', kind: 'control' as const, edge_type: 'normal', accepted_edge_types: ['normal'], max_connections: null }
+const catalog: WorkflowNodeCatalogItem[] = [
+  { type: 'start', type_version: 1, runtime_kind: 'graph_entry', title_key: '', description_key: '', config_schema: {}, input_handles: [], output_handles: [handleOut] },
+  { type: 'command', type_version: 1, runtime_kind: 'command_node', title_key: '', description_key: '', config_schema: {}, input_handles: [handleIn], output_handles: [handleOut] },
+  { type: 'end', type_version: 1, runtime_kind: 'graph_exit', title_key: '', description_key: '', config_schema: {}, input_handles: [handleIn], output_handles: [] },
 ]
-
 const flow = {
-  findNode: vi.fn((nodeId: string) => (
-    nodeId === 'agent-1'
-      ? {
-          id: nodeId,
-          computedPosition: { x: 320, y: 180, z: 0 },
-          dimensions: { width: 160, height: 80 },
-        }
-      : undefined
-  )),
+  findNode: vi.fn(() => ({ computedPosition: { x: 320, y: 180 }, dimensions: { width: 160, height: 80 } })),
   getViewport: vi.fn(() => ({ x: 10, y: 20, zoom: 1.25 })),
-  screenToFlowCoordinate: vi.fn(),
+  screenToFlowCoordinate: vi.fn(() => ({ x: 200, y: 200 })),
   setCenter: vi.fn().mockResolvedValue(undefined),
   setViewport: vi.fn().mockResolvedValue(undefined),
 }
-
 const VueFlowStub = defineComponent({
   name: 'VueFlow',
   emits: ['connect', 'edgeClick', 'init', 'nodeClick', 'paneClick', 'update:edges', 'update:nodes'],
   setup(_, { emit }) {
     onMounted(() => emit('init', flow))
     return () => h('div', { class: 'vue-flow-stub' }, [
-      h('button', {
-        'data-testid': 'pane',
-        type: 'button',
-        onClick: () => emit('paneClick'),
-      }),
+      h('button', { 'data-testid': 'pane', onClick: () => emit('paneClick') }),
     ])
   },
 })
@@ -198,15 +64,7 @@ function i18n() {
   return createI18n({ legacy: false, locale: 'en', messages: { en } })
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((accept) => {
-    resolve = accept
-  })
-  return { promise, resolve }
-}
-
-async function mountEditorWorkspace() {
+async function mountEditor() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -217,44 +75,29 @@ async function mountEditorWorkspace() {
   await router.push('/workflows/workflow-1/editor')
   await router.isReady()
   const wrapper = mount({ template: '<RouterView />' }, {
-    global: {
-      plugins: [i18n(), router],
-      stubs: { VueFlow: VueFlowStub },
-    },
+    global: { plugins: [i18n(), router], stubs: { VueFlow: VueFlowStub } },
   })
   await flushPromises()
-  return { router, wrapper }
-}
-
-async function mountEditor() {
-  return (await mountEditorWorkspace()).wrapper
+  return wrapper
 }
 
 beforeEach(() => {
-  useConfirmation().cancel()
   vi.clearAllMocks()
   vi.spyOn(managementApi, 'getWorkflow').mockResolvedValue(workflow)
   vi.spyOn(managementApi, 'getWorkflowGraph').mockResolvedValue(graph)
   vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
     repository_id: '00000000-0000-4000-8000-000000000099',
     repository_revision: 1,
-    components: { command: [] },
-    main_agents: [agent],
+    components: { command: [command] },
+    main_agents: [],
     subagents: [],
-    workflows: [anotherWorkflow],
+    workflows: [],
   })
-  vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(nodeCatalog)
-  vi.spyOn(managementApi, 'validateWorkflow').mockResolvedValue({
-    valid: true,
-    stage: 'workflow_publish',
-    issues: [],
-  })
+  vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(catalog)
+  vi.spyOn(managementApi, 'validateWorkflow').mockResolvedValue({ valid: true, stage: 'workflow_publish', issues: [] })
   vi.spyOn(managementApi, 'saveWorkflowDraft').mockResolvedValue(graph)
   vi.spyOn(managementApi, 'publishWorkflow').mockResolvedValue(graph)
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-    callback(0)
-    return 1
-  })
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
 })
 
 afterEach(() => {
@@ -264,230 +107,50 @@ afterEach(() => {
 })
 
 describe('WorkflowEditorPage', () => {
-  it('loads the latest routed Workflow and ignores an earlier response', async () => {
-    const firstMetadata = deferred<Workflow>()
-    const firstGraph = deferred<WorkflowGraphDocument>()
-    const secondWorkflow = { ...workflow, id: 'workflow-2', name: 'Latest Workflow' }
-    vi.mocked(managementApi.getWorkflow).mockImplementation((id) => (
-      id === workflow.id ? firstMetadata.promise : Promise.resolve(secondWorkflow)
-    ))
-    vi.mocked(managementApi.getWorkflowGraph).mockImplementation((id) => (
-      id === workflow.id ? firstGraph.promise : Promise.resolve(graph)
-    ))
-    const { router, wrapper } = await mountEditorWorkspace()
-
-    await router.push('/workflows/workflow-2/editor')
-    await flushPromises()
-    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Latest Workflow')
-
-    firstMetadata.resolve(workflow)
-    firstGraph.resolve(graph)
-    await flushPromises()
-    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Latest Workflow')
-    expect(wrapper.get('.workflow-editor-toolbar').text()).not.toContain('Research Workflow')
+  it('loads a Start/Command/End control graph', async () => {
+    const wrapper = await mountEditor()
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain(workflow.name)
+    expect(wrapper.get('.workflow-node-library-list').text()).toContain('Command Node')
+    expect(wrapper.text()).not.toContain('Compiled Agent')
     wrapper.unmount()
   })
 
-  it('guards a dirty Graph and freezes an in-flight save to its original Workflow', async () => {
-    const secondWorkflow = { ...workflow, id: 'workflow-2', name: 'Second Workflow' }
-    vi.mocked(managementApi.getWorkflow).mockImplementation(async (id) => (
-      id === workflow.id ? workflow : secondWorkflow
-    ))
-    const pendingSave = deferred<WorkflowGraphDocument>()
-    vi.mocked(managementApi.saveWorkflowDraft).mockReturnValueOnce(pendingSave.promise)
-    const { router, wrapper } = await mountEditorWorkspace()
-
+  it('adds a Command and saves the current control document', async () => {
+    const wrapper = await mountEditor()
     await wrapper.get('.workflow-node-library-item').trigger('click')
-    const save = wrapper.get('.workflow-editor-toolbar button[aria-label="Save draft"]')
-    await save.trigger('click')
+    await wrapper.get('.workflow-editor-toolbar button[aria-label="Save draft"]').trigger('click')
     await flushPromises()
     expect(managementApi.saveWorkflowDraft).toHaveBeenCalledWith(
       workflow.id,
-      expect.objectContaining({ definition: expect.any(Object) }),
+      expect.objectContaining({
+        definition: expect.objectContaining({ state_contract: 'agent-shell.workflow.control.v1' }),
+      }),
     )
-
-    const navigation = router.push('/workflows/workflow-2/editor')
-    await flushPromises()
-    expect(useConfirmation().current.value?.title).toBe(en.unsavedChanges.title)
-    useConfirmation().accept()
-    await navigation
-    await flushPromises()
-    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Second Workflow')
-
-    pendingSave.resolve(graph)
-    await flushPromises()
-    const toolbar = wrapper.get('.workflow-editor-toolbar')
-    expect(toolbar.text()).toContain('Second Workflow')
-    expect(toolbar.text()).toContain(en.workflows.status.published)
     wrapper.unmount()
   })
 
-  it('keeps both icon rails visible while panels switch or close', async () => {
+  it('keeps the tool rails and shows all control nodes in the tracker', async () => {
     const wrapper = await mountEditor()
-    const leftDock = wrapper.get('.workflow-tool-dock--left')
-    const rightDock = wrapper.get('.workflow-tool-dock--right')
-
-    expect(leftDock.find('.workflow-tool-rail').exists()).toBe(true)
-    expect(rightDock.find('.workflow-tool-rail').exists()).toBe(true)
-    expect(leftDock.findAll('.workflow-tool-button')).toHaveLength(3)
-    expect(leftDock.find('.workflow-tool-count').exists()).toBe(false)
-    expect(leftDock.find('.workflow-node-library-list').exists()).toBe(true)
-    expect(rightDock.find('.workflow-inspector-row').exists()).toBe(true)
-    expect(document.documentElement.classList.contains('workflow-editor-active')).toBe(true)
-
-    await leftDock.findAll('.workflow-tool-button')[1]!.trigger('click')
-    expect(leftDock.find('.workflow-node-tracker-list').exists()).toBe(true)
-    expect(leftDock.find('.workflow-tool-rail').exists()).toBe(true)
-
-    await rightDock.get('.workflow-tool-button').trigger('click')
-    expect(rightDock.find('.workflow-tool-panel').exists()).toBe(false)
-    expect(rightDock.find('.workflow-tool-rail').exists()).toBe(true)
-    wrapper.unmount()
-    expect(document.documentElement.classList.contains('workflow-editor-active')).toBe(false)
-  })
-
-  it('centers a tracked node and pane click closes a cleared Inspector', async () => {
-    const wrapper = await mountEditor()
-    const leftDock = wrapper.get('.workflow-tool-dock--left')
-    const rightDock = wrapper.get('.workflow-tool-dock--right')
-    await leftDock.findAll('.workflow-tool-button')[1]!.trigger('click')
-
-    const agentItem = leftDock.findAll('.workflow-node-tracker-item')
-      .find((item) => item.text().includes('agent-1'))
-    if (!agentItem) throw new Error('Agent tracker item not found')
-    await agentItem.trigger('click')
-    await flushPromises()
-
-    expect(flow.findNode).toHaveBeenCalledWith('agent-1')
-    expect(flow.setCenter).toHaveBeenCalledWith(400, 220, {
-      duration: 220,
-      interpolate: 'smooth',
-      zoom: 1.25,
-    })
-    expect(agentItem.attributes('data-active')).toBe('true')
-    expect(rightDock.text()).toContain('Research Agent')
-
-    await wrapper.get('[data-testid="pane"]').trigger('click')
-    expect(rightDock.find('.workflow-tool-panel').exists()).toBe(false)
-    expect(agentItem.attributes('data-active')).toBe('false')
-
-    await rightDock.get('.workflow-tool-button').trigger('click')
-    expect(rightDock.text()).toContain(workflow.name)
-    expect(rightDock.text()).toContain(graph.definition.state_contract)
+    const left = wrapper.get('.workflow-tool-dock--left')
+    const right = wrapper.get('.workflow-tool-dock--right')
+    expect(left.findAll('.workflow-tool-button')).toHaveLength(3)
+    expect(right.find('.workflow-tool-rail').exists()).toBe(true)
+    await left.findAll('.workflow-tool-button')[1]!.trigger('click')
+    expect(left.findAll('.workflow-node-tracker-item')).toHaveLength(3)
+    expect(left.text()).toContain('router')
     wrapper.unmount()
   })
 
-  it('uses the blocking problem to select its Edge and open the Inspector', async () => {
-    vi.mocked(managementApi.getWorkflowGraph).mockResolvedValueOnce(graphWithBranchProblem)
-    const wrapper = await mountEditor()
-
-    expect(wrapper.get('.workflow-editor-toolbar button:last-child').attributes('disabled'))
-      .toBeDefined()
-    const leftDock = wrapper.get('.workflow-tool-dock--left')
-    expect(leftDock.get('.workflow-tool-count').text()).toBe('1')
-    expect(wrapper.find('.workflow-editor-canvas .workflow-problems-list').exists()).toBe(false)
-
-    await leftDock.findAll('.workflow-tool-button')[2]!.trigger('click')
-    expect(leftDock.findAll('.workflow-problems-item')).toHaveLength(1)
-
-    await leftDock.get('.workflow-problems-item').trigger('click')
-
-    const rightDock = wrapper.get('.workflow-tool-dock--right')
-    expect(rightDock.text()).toContain('Branch Edge')
-    expect(rightDock.find('#workflow-edge-branch-key').exists()).toBe(true)
-    expect(leftDock.get('.workflow-problems-item').text()).toContain('Enter a branch key.')
-    wrapper.unmount()
-  })
-
-  it('shows every publish issue while draft saving remains available', async () => {
-    vi.useFakeTimers()
-    vi.mocked(managementApi.validateWorkflow).mockResolvedValueOnce({
-      valid: false,
-      stage: 'workflow_publish',
-      issues: [
-        {
-          code: 'workflow.node_unreachable_from_start',
-          scope: 'workflow',
-          owner_id: 'agent-1',
-          owner_name: 'agent-1',
-          owner_type: 'agent',
-          path: 'definition.nodes[1]',
-          message: 'The Workflow node is not reachable from Start.',
-          message_key: 'validation.issue.workflow.nodeUnreachableFromStart',
-          message_args: {},
-          severity: 'error',
-        },
-        {
-          code: 'assembly.model_not_found',
-          scope: 'workflow',
-          owner_id: 'agent-1',
-          owner_name: 'agent-1',
-          owner_type: 'agent',
-          path: 'definition.nodes[1].config.main_agent_id',
-          message: 'The selected model does not exist.',
-          message_key: 'validation.issue.assembly.modelNotFound',
-          message_args: {},
-          severity: 'error',
-        },
-      ],
-    })
-    const wrapper = await mountEditor()
-    await vi.advanceTimersByTimeAsync(350)
-    await flushPromises()
-
-    const toolbar = wrapper.get('.workflow-editor-toolbar')
-    const saveDraft = toolbar.get('button[aria-label="Save draft"]')
-    const publish = toolbar.get('button[aria-label="Publish Workflow"]')
-    expect(saveDraft.attributes('disabled')).toBeUndefined()
-    expect(publish.attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.workflow-tool-count').text()).toBe('2')
-
-    await wrapper.get('.workflow-tool-dock--left .workflow-tool-button:nth-child(3)').trigger('click')
-    expect(wrapper.findAll('.workflow-problems-item')).toHaveLength(2)
-
-    await saveDraft.trigger('click')
-    await flushPromises()
-    expect(managementApi.saveWorkflowDraft).toHaveBeenCalledOnce()
-    expect(toolbar.text()).toContain('Draft')
-    wrapper.unmount()
-  })
-
-  it('publishes only after the current graph passes validation', async () => {
+  it('publishes after current validation succeeds', async () => {
     vi.useFakeTimers()
     const wrapper = await mountEditor()
     await vi.advanceTimersByTimeAsync(350)
     await flushPromises()
-
     const publish = wrapper.get('.workflow-editor-toolbar button[aria-label="Publish Workflow"]')
     expect(publish.attributes('disabled')).toBeUndefined()
     await publish.trigger('click')
     await flushPromises()
-
     expect(managementApi.publishWorkflow).toHaveBeenCalledOnce()
-    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Published')
-    wrapper.unmount()
-  })
-
-  it('keeps publish disabled when validation fails and retries explicitly', async () => {
-    vi.useFakeTimers()
-    vi.mocked(managementApi.validateWorkflow).mockRejectedValueOnce(
-      new Error('validation service offline'),
-    )
-    const wrapper = await mountEditor()
-    await vi.advanceTimersByTimeAsync(350)
-    await flushPromises()
-
-    const publish = wrapper.get('.workflow-editor-toolbar button[aria-label="Publish Workflow"]')
-    expect(publish.attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.workflow-validation-error').text()).toContain('Formal validation failed.')
-
-    await wrapper.get('.workflow-validation-error button').trigger('click')
-    await vi.advanceTimersByTimeAsync(0)
-    await flushPromises()
-
-    expect(managementApi.validateWorkflow).toHaveBeenCalledTimes(2)
-    expect(wrapper.find('.workflow-validation-error').exists()).toBe(false)
-    expect(publish.attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 })

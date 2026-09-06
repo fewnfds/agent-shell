@@ -113,6 +113,12 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
         lifecycle_id = str(uuid4())
         coordinator._lifecycle_id = lifecycle_id
+        await graph_store.aput(
+            lifecycle_input_namespace(lifecycle_id),
+            LIFECYCLE_INPUT_KEY,
+            {"messages": raw_messages},
+            index=False,
+        )
         runtime = coordinator._snapshot.new_runtime(store=graph_store)
         return await runtime.start_main_agent(
             str(main_agent["id"]),
@@ -273,33 +279,20 @@ def create_workflow(
 def save_linear_workflow_graph(
     client: TestClient,
     workflow: dict,
-    main_agent: dict,
+    _main_agent: dict,
 ) -> dict:
     document = {
         "definition": {
             "schema_version": 1,
-            "state_contract": "agent-shell.workflow.agent-invocations.v1",
+            "state_contract": "agent-shell.workflow.control.v1",
             "nodes": [
                 {"id": "start", "type": "start", "type_version": 1, "config": {}},
-                {
-                    "id": "agent",
-                    "type": "agent",
-                    "type_version": 1,
-                    "config": {"main_agent_id": main_agent["id"]},
-                },
                 {"id": "end", "type": "end", "type_version": 1, "config": {}},
             ],
             "edges": [
                 {
-                    "id": "start-agent",
+                    "id": "start-end",
                     "source": "start",
-                    "source_handle": "next",
-                    "target": "agent",
-                    "target_handle": "in",
-                },
-                {
-                    "id": "agent-end",
-                    "source": "agent",
                     "source_handle": "next",
                     "target": "end",
                     "target_handle": "in",
@@ -309,7 +302,6 @@ def save_linear_workflow_graph(
         "layout": {
             "nodes": {
                 "start": {"x": 80, "y": 160},
-                "agent": {"x": 360, "y": 160},
                 "end": {"x": 640, "y": 160},
             },
             "viewport": {"x": 0, "y": 0, "zoom": 1},

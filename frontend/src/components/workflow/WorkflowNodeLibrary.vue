@@ -3,18 +3,17 @@ import type { WorkflowNodeCatalogItem } from '@/api'
 import { WORKFLOW_NODE_DRAG_MIME } from '@/domain/workflowGraph'
 
 defineProps<{
-  agent: WorkflowNodeCatalogItem | null
   command: WorkflowNodeCatalogItem | null
-  agentDisabled: boolean
   commandDisabled: boolean
 }>()
 
-const emit = defineEmits<{
-  addAgent: []
-  addCommand: []
-}>()
+const emit = defineEmits<{ addCommand: [] }>()
 
-function startDrag(event: DragEvent, item: WorkflowNodeCatalogItem | null, disabled: boolean): void {
+function startDrag(
+  event: DragEvent,
+  item: WorkflowNodeCatalogItem | null,
+  disabled: boolean,
+): void {
   if (!item || disabled || !event.dataTransfer) {
     event.preventDefault()
     return
@@ -31,27 +30,9 @@ function startDrag(event: DragEvent, item: WorkflowNodeCatalogItem | null, disab
         {{ $t('workflows.editor.nodeLibrary') }}
       </h2>
     </header>
-
     <div class="workflow-tool-panel-body">
       <h3 class="workflow-tool-panel-section-title">{{ $t('workflows.editor.executionNodes') }}</h3>
       <div class="workflow-node-library-list">
-        <button
-          v-if="agent"
-          class="workflow-node-library-item"
-          :disabled="agentDisabled"
-          :draggable="!agentDisabled"
-          type="button"
-          @click="emit('addAgent')"
-          @dragstart="startDrag($event, agent, agentDisabled)"
-        >
-          <span class="workflow-node-library-icon" aria-hidden="true">
-            <i class="bi bi-robot" />
-          </span>
-          <span class="workflow-node-library-copy">
-            <span class="workflow-node-library-title">{{ $t('workflows.editor.agent') }}</span>
-            <span class="workflow-node-library-meta">{{ $t('workflows.editor.compiledAgent') }}</span>
-          </span>
-        </button>
         <button
           v-if="command"
           class="workflow-node-library-item"

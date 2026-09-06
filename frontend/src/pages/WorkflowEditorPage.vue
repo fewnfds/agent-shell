@@ -29,7 +29,6 @@ import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import {
-  newAgentCanvasNode,
   newCommandCanvasNode,
   nextWorkflowCanvasEdgeId,
   WORKFLOW_NODE_DRAG_MIME,
@@ -59,13 +58,12 @@ const router = useRouter()
 const managementError = useManagementError()
 const { notify } = useToasts()
 const workflow = ref<Workflow | null>(null)
-const mainAgents = ref<ConfigurationSummary[]>([])
 const commands = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
 const nodes = ref<WorkflowCanvasNode[]>([])
 const edges = ref<WorkflowCanvasEdge[]>([])
 const flow = ref<VueFlowStore | null>(null)
-const stateContract = ref('agent-shell.workflow.agent-invocations.v1')
+const stateContract = ref('agent-shell.workflow.control.v1')
 const savedViewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
 const leftPanel = ref<WorkflowLeftPanel | null>('library')
 const rightPanel = ref<WorkflowRightPanel | null>('inspector')
@@ -81,14 +79,6 @@ let validationGeneration = 0
 let loadGeneration = 0
 const workflowId = computed(() => String(route.params.id ?? ''))
 const workflowListPath = computed(() => '/workflows')
-const agentCatalogItem = computed(() => (
-  nodeCatalog.value.find((item) => item.type === 'agent') ?? null
-))
-const canAddAgent = computed(() => (
-  loaded.value
-  && mainAgents.value.length > 0
-  && agentCatalogItem.value !== null
-))
 const commandCatalogItem = computed(() => (
   nodeCatalog.value.find((item) => item.type === 'command') ?? null
 ))
@@ -121,9 +111,7 @@ const graphRevision = computed(() => JSON.stringify({
     id: node.id,
     position: node.position,
     type: node.data.nodeType,
-    mainAgentId: node.data.mainAgentId,
     commandId: node.data.commandId,
-    defer: node.data.defer,
   })),
   edges: edges.value.map((edge) => ({
     id: edge.id,
@@ -132,8 +120,6 @@ const graphRevision = computed(() => JSON.stringify({
     target: edge.target,
     targetHandle: edge.targetHandle,
     edgeType: edge.data.edgeType,
-    branchKey: edge.data.branchKey,
-    dispatchKey: edge.data.dispatchKey,
   })),
 }))
 const { markClean } = useUnsavedChanges(
@@ -228,20 +214,6 @@ function connect(connection: Connection): void {
   rightPanel.value = 'inspector'
 }
 
-function addAgent(position?: XYPosition): void {
-  const firstAgent = mainAgents.value[0]
-  if (!canAddAgent.value || !firstAgent) return
-  const nodeId = nextAgentNodeId()
-  const node = newAgentCanvasNode(nodeId, firstAgent.id, position ?? nextAgentPosition())
-  node.selected = true
-  nodes.value = [
-    ...nodes.value.map((item) => ({ ...item, selected: false })),
-    node,
-  ]
-  edges.value = edges.value.map((edge) => ({ ...edge, selected: false }))
-  rightPanel.value = 'inspector'
-}
-
 function addCommand(position?: XYPosition): void {
   const firstRouter = commands.value[0]
   if (!canAddCommand.value || !firstRouter) return
@@ -260,20 +232,6 @@ function addCommand(position?: XYPosition): void {
   rightPanel.value = 'inspector'
 }
 
-function nextAgentPosition(): XYPosition {
-  const count = nodes.value.filter((node) => node.data.nodeType === 'agent').length
-  return {
-    x: 360 + (count % 4) * 260,
-    y: 180 + Math.floor(count / 4) * 140,
-  }
-}
-
-function nextAgentNodeId(): string {
-  let index = 1
-  while (nodes.value.some((node) => node.id === `agent-${index}`)) index += 1
-  return `agent-${index}`
-}
-
 function nextCommandPosition(): XYPosition {
   const count = nodes.value.filter((node) => node.data.nodeType === 'command').length
   return { x: 620 + (count % 3) * 280, y: 180 + Math.floor(count / 3) * 160 }
@@ -287,7 +245,7 @@ function nextCommandNodeId(): string {
 
 function dragOver(event: DragEvent): void {
   if (
-    (!canAddAgent.value && !canAddCommand.value)
+    !canAddCommand.value
     || !event.dataTransfer?.types.includes(WORKFLOW_NODE_DRAG_MIME)
   ) return
   event.preventDefault()
@@ -296,17 +254,13 @@ function dragOver(event: DragEvent): void {
 
 function dropNode(event: DragEvent): void {
   if (
-    (!canAddAgent.value && !canAddCommand.value)
+    !canAddCommand.value
     || !flow.value
-    || !['agent', 'command'].includes(
-      event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_MIME) ?? '',
-    )
+    || event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_MIME) !== 'command'
   ) return
   event.preventDefault()
   const position = flow.value.screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  const nodeType = event.dataTransfer?.getData(WORKFLOW_NODE_DRAG_MIME)
-  if (nodeType === 'agent') addAgent(position)
-  else addCommand(position)
+  addCommand(position)
 }
 
 function removeNode(nodeId: string): void {
@@ -363,11 +317,7 @@ function replaceEdgeEndpoints(
           ...item,
           sourceHandle,
           targetHandle,
-          data: {
-            edgeType,
-            branchKey: edgeType === 'branch' ? item.data.branchKey : undefined,
-            dispatchKey: edgeType === 'dispatch' ? item.data.dispatchKey : undefined,
-          },
+          data: { edgeType },
           ...workflowCanvasEdgeVisual(edgeType, source.data.nodeType, target.data.nodeType),
         }
       : item
@@ -400,42 +350,10 @@ function selectEdgeTargetEndpoint(edgeId: string, targetHandle: string): void {
   replaceEdgeEndpoints(edgeId, edge.sourceHandle, targetHandle)
 }
 
-function selectAgent(nodeId: string, mainAgentId: string): void {
-  nodes.value = nodes.value.map((node) => (
-    node.id === nodeId
-      ? { ...node, data: { ...node.data, mainAgentId } }
-      : node
-  ))
-}
-
 function selectCommand(nodeId: string, commandId: string): void {
   nodes.value = nodes.value.map((node) => (
     node.id === nodeId
       ? { ...node, data: { ...node.data, commandId } }
-      : node
-  ))
-}
-
-function updateBranchKey(edgeId: string, branchKey: string): void {
-  edges.value = edges.value.map((edge) => (
-    edge.id === edgeId && edge.data.edgeType === 'branch'
-      ? { ...edge, data: { ...edge.data, branchKey } }
-      : edge
-  ))
-}
-
-function updateDispatchKey(edgeId: string, dispatchKey: string): void {
-  edges.value = edges.value.map((edge) => (
-    edge.id === edgeId && edge.data.edgeType === 'dispatch'
-      ? { ...edge, data: { ...edge.data, dispatchKey } }
-      : edge
-  ))
-}
-
-function selectDefer(nodeId: string, defer: boolean): void {
-  nodes.value = nodes.value.map((node) => (
-    node.id === nodeId
-      ? { ...node, data: { ...node.data, defer } }
       : node
   ))
 }
@@ -496,11 +414,6 @@ function selectProblem(problem: WorkflowCanvasProblem): void {
   }
   clearSelection()
   rightPanel.value = 'inspector'
-}
-
-function mainAgentName(mainAgentId: string): string {
-  return mainAgents.value.find((agent) => agent.id === mainAgentId)?.name
-    ?? t('workflows.editor.noMainAgentSelected')
 }
 
 function commandName(commandId: string): string {
@@ -670,7 +583,6 @@ async function loadWorkflow(id: string): Promise<void> {
     ])
     if (generation !== loadGeneration) return
     workflow.value = metadata
-    mainAgents.value = options.main_agents
     commands.value = options.components.command ?? []
     nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
@@ -780,11 +692,8 @@ onUnmounted(() => {
         </nav>
         <WorkflowNodeLibrary
           v-if="leftPanel === 'library'"
-          :agent="agentCatalogItem"
           :command="commandCatalogItem"
-          :agent-disabled="!canAddAgent"
           :command-disabled="!canAddCommand"
-          @add-agent="addAgent()"
           @add-command="addCommand()"
         />
         <WorkflowNodeTracker
@@ -849,24 +758,6 @@ onUnmounted(() => {
             </div>
           </template>
 
-          <template #node-agent="{ id, data }">
-            <div class="workflow-node workflow-node--agent">
-              <WorkflowNodeEndpoints
-                direction="input"
-                :endpoints="nodeEndpoints('agent', 'input')"
-              />
-              <div class="workflow-node-header">
-                <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-robot" /></span>
-                <span class="workflow-node-title">{{ id }}</span>
-              </div>
-              <span class="workflow-node-summary">{{ mainAgentName(data.mainAgentId) }}</span>
-              <WorkflowNodeEndpoints
-                direction="output"
-                :endpoints="nodeEndpoints('agent', 'output')"
-              />
-            </div>
-          </template>
-
           <template #node-command="{ id, data }">
             <div class="workflow-node workflow-node--command">
               <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('command', 'input')" />
@@ -903,7 +794,6 @@ onUnmounted(() => {
           :edge-target-endpoints="selectedEdgeTargetEndpoints"
           :edge-type-options="selectedEdgeTypeOptions"
           :input-endpoints="selectedNodeInputEndpoints"
-          :main-agents="mainAgents"
           :commands="commands"
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
@@ -915,12 +805,8 @@ onUnmounted(() => {
           @select-edge-source-endpoint="selectEdgeSourceEndpoint"
           @select-edge-target-endpoint="selectEdgeTargetEndpoint"
           @select-edge-type="selectEdgeType"
-          @update-agent="selectAgent"
           @update-command="selectCommand"
           @update-node-id="updateNodeId"
-          @update-branch-key="updateBranchKey"
-          @update-dispatch-key="updateDispatchKey"
-          @update-defer="selectDefer"
         />
         <nav class="workflow-tool-rail" :aria-label="t('workflows.editor.rightTools')">
           <button

@@ -61,7 +61,6 @@ class WorkflowRuntimeContext(WorkflowRunContext):
     run_id: str = ""
     workflow_id: str = ""
     workflow_node_id: str = ""
-    agent_profile_id: str = ""
     node_invocation_id: str = ""
     agent_runs: AgentRunCommands | None = None
     workflow_runs: WorkflowRunCommands | None = None
@@ -184,24 +183,6 @@ class WorkflowRuntimeContext(WorkflowRunContext):
                 if self._mcp_commands_by_node is not None
                 else None
             ),
-        )
-
-    def for_workflow_agent(
-        self,
-        *,
-        workflow_node_id: str,
-        agent_profile_id: str,
-        node_invocation_id: str,
-    ) -> "WorkflowRuntimeContext":
-        """Bind stable canvas Agent identity to a foreground child invocation."""
-
-        return replace(
-            self.for_workflow_node(
-                workflow_node_id=workflow_node_id,
-                node_invocation_id=node_invocation_id,
-            ),
-            agent_profile_id=agent_profile_id,
-            mcp=None,
         )
 
 __all__ = [

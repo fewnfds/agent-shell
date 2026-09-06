@@ -14,7 +14,7 @@ from agent_shell.contracts import (
     SubagentProfile,
     SystemPromptBlock,
 )
-from agent_shell.workflow.catalog import AgentNodeConfig
+from agent_shell.workflow.catalog import CommandNodeConfig
 from agent_shell.workflow_contracts import WorkflowDefinition
 from agent_shell.validation import (
     ValidationIssue,
@@ -274,8 +274,8 @@ def test_repository_validation_cache_tracks_repository_and_model_revisions() -> 
             },
         ),
         (
-            AgentNodeConfig,
-            {"main_agent_id": "not-a-uuid"},
+            CommandNodeConfig,
+            {"command_id": "not-a-uuid"},
         ),
     ],
 )
