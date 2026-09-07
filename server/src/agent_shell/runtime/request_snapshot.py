@@ -1272,22 +1272,18 @@ class LifecycleRunCoordinator:
         }
 
     async def _start_bound_run(self, binding: _RunBinding, client: Any) -> Mapping[str, Any]:
-        configurable = {
-            "workflow_id": str(binding.workflow["id"]),
-            "request_id": binding.request_id,
-            "lifecycle_id": binding.lifecycle_id,
-            "caller_run_id": binding.caller_run_id,
-            "operation_id": binding.operation_id,
-        }
         return await client.runs.create(
             binding.thread_id,
             binding.assistant_id,
             input={
                 "shared_vars": deepcopy(dict(binding.initial_shared_vars)),
             },
-            config={
-                **self._owner.run_config(),
-                "configurable": configurable,
+            config=self._owner.run_config(),
+            context={
+                "request_id": binding.request_id,
+                "lifecycle_id": binding.lifecycle_id,
+                "caller_run_id": binding.caller_run_id,
+                "operation_id": binding.operation_id,
             },
             metadata={
                 "lifecycle_id": binding.lifecycle_id,
@@ -1307,13 +1303,6 @@ class LifecycleRunCoordinator:
         client: Any,
     ) -> Mapping[str, Any]:
         agent_id = str(binding.main_agent["id"])
-        configurable = {
-            "main_agent_id": agent_id,
-            "request_id": binding.request_id,
-            "lifecycle_id": binding.lifecycle_id,
-            "caller_run_id": binding.caller_run_id,
-            "operation_id": binding.operation_id,
-        }
         return await client.runs.create(
             (
                 None
@@ -1322,10 +1311,7 @@ class LifecycleRunCoordinator:
             ),
             binding.assistant_id,
             input={"messages": deepcopy(binding.messages)},
-            config={
-                **self._owner.run_config(),
-                "configurable": configurable,
-            },
+            config=self._owner.run_config(),
             context={
                 "request_id": binding.request_id,
                 "lifecycle_id": binding.lifecycle_id,

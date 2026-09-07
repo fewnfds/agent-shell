@@ -18,6 +18,7 @@ from agent_shell.runtime.context import (
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _AgentRunBinding,
+    _RunBinding,
     _ensure_assistant,
 )
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle
@@ -170,11 +171,67 @@ def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
     asyncio.run(start("disabled", ""))
 
     assert calls[0][0][:2] == ("thread-stateful", "assistant-1")
+    assert calls[0][1]["config"] == {"recursion_limit": 10}
+    assert calls[0][1]["context"] == {
+        "request_id": "request-1",
+        "lifecycle_id": "lifecycle-1",
+        "caller_run_id": "",
+        "operation_id": "",
+    }
     assert calls[0][1]["durability"] == "exit"
     assert calls[0][1]["on_completion"] is None
     assert calls[1][0][:2] == (None, "assistant-1")
+    assert calls[1][1]["config"] == {"recursion_limit": 10}
+    assert calls[1][1]["context"] == calls[0][1]["context"]
     assert calls[1][1]["durability"] == "exit"
     assert calls[1][1]["on_completion"] == "keep"
+
+
+def test_workflow_run_creation_uses_context_without_configurable() -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Runs:
+        async def create(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return {"run_id": "run-1", "thread_id": "thread-1"}
+
+    coordinator = LifecycleRunCoordinator(
+        _owner=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
+        _snapshot=SimpleNamespace(),
+        _detached_tasks=SimpleNamespace(),
+    )
+    binding = _RunBinding(
+        workflow={
+            "id": "workflow-1",
+            "name": "Workflow",
+            "durability": "async",
+        },
+        document=_start_end_document(),
+        request_id="request-1",
+        lifecycle_id="lifecycle-1",
+        public_model="Workflow",
+        caller_run_id="caller-1",
+        operation_id="operation-1",
+        thread_id="thread-1",
+        assistant_id="assistant-1",
+    )
+
+    asyncio.run(
+        coordinator._start_bound_run(
+            binding,
+            SimpleNamespace(runs=Runs()),
+        )
+    )
+
+    assert calls[0][0] == ("thread-1", "assistant-1")
+    assert calls[0][1]["config"] == {"recursion_limit": 10}
+    assert calls[0][1]["context"] == {
+        "request_id": "request-1",
+        "lifecycle_id": "lifecycle-1",
+        "caller_run_id": "caller-1",
+        "operation_id": "operation-1",
+    }
+    assert calls[0][1]["durability"] == "async"
 
 
 def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
