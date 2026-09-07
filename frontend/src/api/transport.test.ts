@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   managementAuth,
+  managementAuthorizedFetch,
   managementNamedDownload,
   ManagementApiError,
   managementRequest,
@@ -28,6 +29,19 @@ afterEach(() => {
 })
 
 describe('management transport', () => {
+  it('authorizes Agent Server requests without rewriting their URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = managementAuthorizedFetch('/threads/thread-1/state')
+    managementAuth.submit('management-token')
+
+    await expect(response).resolves.toMatchObject({ status: 200 })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/threads/thread-1/state')
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Authorization'))
+      .toBe('Bearer management-token')
+  })
+
   it('challenges in memory and retries 401 with a replacement token', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

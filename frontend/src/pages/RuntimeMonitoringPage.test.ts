@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -13,68 +14,194 @@ const snapshot: LangGraphLifecycleSnapshot = {
   request_id: 'request-1',
   created_at: '2026-09-06T00:00:00Z',
   updated_at: '2026-09-06T00:01:00Z',
-  status: 'success',
+  status: 'running',
   subjects: [
     { graph_kind: 'agent', id: 'agent-1', name: 'Research Agent' },
     { graph_kind: 'workflow', id: 'workflow-1', name: 'Review Workflow' },
   ],
-  run_count: 2,
-  active_run_count: 0,
+  run_count: 3,
+  active_run_count: 1,
   error_run_count: 0,
-  threads: [],
-  runs: [
+  threads: [
     {
-      run_id: 'run-agent',
       thread_id: 'thread-agent',
-      assistant_id: 'assistant-agent',
-      created_at: '2026-09-06T00:00:00Z',
-      updated_at: '2026-09-06T00:00:30Z',
-      status: 'success',
-      metadata: {
-        graph_kind: 'agent',
-        main_agent_id: 'agent-1',
-        main_agent_name: 'Research Agent',
+      thread: {
+        thread_id: 'thread-agent',
+        created_at: '2026-09-06T00:00:00Z',
+        updated_at: '2026-09-06T00:00:30Z',
+        metadata: { lifecycle_id: 'lifecycle-1' },
+        status: 'busy',
+        values: {},
+        interrupts: {},
       },
-      multitask_strategy: 'enqueue',
+      error: null,
+      runs: [
+        {
+          run_id: 'run-agent',
+          run: {
+            run_id: 'run-agent',
+            thread_id: 'thread-agent',
+            assistant_id: 'assistant-agent',
+            created_at: '2026-09-06T00:00:00Z',
+            updated_at: '2026-09-06T00:00:30Z',
+            status: 'running',
+            metadata: {
+              graph_kind: 'agent',
+              main_agent_id: 'agent-1',
+              main_agent_name: 'Research Agent',
+            },
+            multitask_strategy: 'enqueue',
+          },
+          relation: {
+            lifecycle_id: 'lifecycle-1',
+            graph_kind: 'agent',
+            operation_id: 'entry',
+            caller_run_id: '',
+            resource_id: 'agent-1',
+            resource_name: 'Research Agent',
+            on_disconnect: 'continue',
+            checkpoint_mode: 'enabled',
+            assistant_id: 'assistant-agent',
+            thread_id: 'thread-agent',
+            run_id: 'run-agent',
+          },
+          error: null,
+        },
+        {
+          run_id: 'run-agent-2',
+          run: {
+            run_id: 'run-agent-2',
+            thread_id: 'thread-agent',
+            assistant_id: 'assistant-agent',
+            created_at: '2026-09-06T00:00:20Z',
+            updated_at: '2026-09-06T00:00:25Z',
+            status: 'success',
+            metadata: {
+              graph_kind: 'agent',
+              main_agent_id: 'agent-1',
+              main_agent_name: 'Research Agent',
+            },
+            multitask_strategy: 'enqueue',
+          },
+          relation: {
+            lifecycle_id: 'lifecycle-1',
+            graph_kind: 'agent',
+            operation_id: 'follow-up',
+            caller_run_id: '',
+            resource_id: 'agent-1',
+            resource_name: 'Research Agent',
+            on_disconnect: 'continue',
+            checkpoint_mode: 'enabled',
+            assistant_id: 'assistant-agent',
+            thread_id: 'thread-agent',
+            run_id: 'run-agent-2',
+          },
+          error: null,
+        },
+      ],
     },
     {
-      run_id: 'run-workflow',
       thread_id: 'thread-workflow',
-      assistant_id: 'assistant-workflow',
-      created_at: '2026-09-06T00:00:31Z',
-      updated_at: '2026-09-06T00:01:00Z',
-      status: 'success',
-      metadata: {
-        graph_kind: 'workflow',
-        workflow_id: 'workflow-1',
-        workflow_name: 'Review Workflow',
+      thread: {
+        thread_id: 'thread-workflow',
+        created_at: '2026-09-06T00:00:31Z',
+        updated_at: '2026-09-06T00:01:00Z',
+        metadata: { lifecycle_id: 'lifecycle-1' },
+        status: 'idle',
+        values: {},
+        interrupts: {},
       },
-      multitask_strategy: 'enqueue',
+      error: null,
+      runs: [
+        {
+          run_id: 'run-workflow',
+          run: {
+            run_id: 'run-workflow',
+            thread_id: 'thread-workflow',
+            assistant_id: 'assistant-workflow',
+            created_at: '2026-09-06T00:00:31Z',
+            updated_at: '2026-09-06T00:01:00Z',
+            status: 'success',
+            metadata: {
+              graph_kind: 'workflow',
+              workflow_id: 'workflow-1',
+              workflow_name: 'Review Workflow',
+            },
+            multitask_strategy: 'enqueue',
+          },
+          relation: {
+            lifecycle_id: 'lifecycle-1',
+            graph_kind: 'workflow',
+            operation_id: 'review',
+            caller_run_id: 'run-agent',
+            resource_id: 'workflow-1',
+            resource_name: 'Review Workflow',
+            on_disconnect: 'continue',
+            checkpoint_mode: null,
+            assistant_id: 'assistant-workflow',
+            thread_id: 'thread-workflow',
+            run_id: 'run-workflow',
+          },
+          error: null,
+        },
+      ],
     },
   ],
 }
+
+const AgentThreadViewStub = defineComponent({
+  name: 'AgentThreadView',
+  props: ['assistantId', 'threadId'],
+  template: '<div data-testid="agent-thread">{{ assistantId }}:{{ threadId }}</div>',
+})
+
+const WorkflowRuntimeViewStub = defineComponent({
+  name: 'WorkflowRuntimeView',
+  props: ['graph', 'state'],
+  template: '<div data-testid="workflow-runtime">{{ state?.next?.join(",") }}</div>',
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
 describe('RuntimeMonitoringPage', () => {
-  it('labels Agent and Workflow Runs from their graph metadata', async () => {
+  it('selects active Thread, switches Graph view, and displays Lifecycle Store', async () => {
     vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockResolvedValue(snapshot)
-    vi.spyOn(managementApi, 'getLangGraphRunGraph').mockResolvedValue({
-      run_id: 'run-agent',
-      assistant_id: 'assistant-agent',
-      graph: {},
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [
+        {
+          namespace: ['workflow-lifecycle', 'lifecycle-1', 'filesystem'],
+          items: [
+            {
+              namespace: ['workflow-lifecycle', 'lifecycle-1', 'filesystem'],
+              key: 'workspace',
+              value: { path: 'H:/workspace' },
+              created_at: '2026-09-06T00:00:00Z',
+              updated_at: '2026-09-06T00:00:01Z',
+            },
+          ],
+        },
+      ],
     })
-    vi.spyOn(managementApi, 'getLangGraphRunState').mockResolvedValue({
-      run_id: 'run-agent',
-      thread_id: 'thread-agent',
-      state: {},
-    })
-    vi.spyOn(managementApi, 'getLangGraphRunHistory').mockResolvedValue({
-      run_id: 'run-agent',
-      thread_id: 'thread-agent',
-      history: [],
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockImplementation(async (_lifecycleId, runId) => ({
+      run_id: runId,
+      thread_id: runId.startsWith('run-agent') ? 'thread-agent' : 'thread-workflow',
+      state: { values: { answer: 42 }, next: runId === 'run-workflow' ? ['review'] : [] },
+      error: null,
+    }))
+    const graphSpy = vi.spyOn(managementApi, 'getLangGraphRunGraph').mockResolvedValue({
+      run_id: 'run-workflow',
+      assistant_id: 'assistant-workflow',
+      graph: {
+        nodes: [{ id: '__start__' }, { id: 'review' }, { id: '__end__' }],
+        edges: [
+          { source: '__start__', target: 'review' },
+          { source: 'review', target: '__end__' },
+        ],
+      },
+      error: null,
     })
     const router = createRouter({
       history: createMemoryHistory(),
@@ -92,14 +219,38 @@ describe('RuntimeMonitoringPage', () => {
     const wrapper = mount(RuntimeMonitoringPage, {
       global: {
         plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: {
+          AgentThreadView: AgentThreadViewStub,
+          WorkflowRuntimeView: WorkflowRuntimeViewStub,
+        },
       },
     })
     await flushPromises()
 
-    const runLabels = wrapper.findAll('[role="option"] .fw-semibold')
-      .map((item) => item.text())
-    expect(runLabels).toEqual(['Research Agent', 'Review Workflow'])
-    expect(runLabels).not.toContain('run-agent')
+    expect(wrapper.findAll('.runtime-thread-row')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="agent-thread"]').text()).toContain('thread-agent')
+    const agentRuns = wrapper.findAll('.runtime-run-item')
+    expect(agentRuns).toHaveLength(2)
+    expect(agentRuns[0]?.attributes('aria-current')).toBe('true')
+    await agentRuns[1]?.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.runtime-run-item')[1]?.attributes('aria-current')).toBe('true')
+
+    const workflowThread = wrapper.findAll('.runtime-thread-row')
+      .find((row) => row.text().includes('Review Workflow'))
+    expect(workflowThread).toBeDefined()
+    await workflowThread?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="workflow-runtime"]').text()).toBe('review')
+    expect(graphSpy).toHaveBeenCalledWith('lifecycle-1', 'run-workflow')
+
+    const storeTab = wrapper.findAll('.runtime-inspector-tab')
+      .find((button) => button.text() === 'Store')
+    await storeTab?.trigger('click')
+    expect(wrapper.text()).toContain('filesystem')
+    expect(wrapper.text()).toContain('workspace')
+    expect(wrapper.find('pre').exists()).toBe(false)
     wrapper.unmount()
   })
 })

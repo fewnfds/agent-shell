@@ -15,6 +15,10 @@ import { en } from '@/locales/en'
 
 import WorkflowLifecyclesPage from './WorkflowLifecyclesPage.vue'
 
+const triggerBrowserDownload = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/download', () => ({ triggerBrowserDownload }))
+
 const lifecycle: LangGraphLifecycleSummary = {
   lifecycle_id: 'lifecycle-1',
   request_id: 'request-1',
@@ -107,6 +111,10 @@ describe('WorkflowLifecyclesPage', () => {
       total_pages: 1,
     }
     const list = vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue(page)
+    const download = vi.spyOn(managementApi, 'downloadLangGraphLifecycle').mockResolvedValue({
+      blob: new Blob(['monitoring']),
+      filename: 'lifecycle-1.agent-shell-monitoring.zip',
+    })
     const remove = vi.spyOn(managementApi, 'deleteWorkflowLifecycle').mockResolvedValue({ ok: true })
     const { router, wrapper } = await mountPage()
     await flushPromises()
@@ -118,6 +126,16 @@ describe('WorkflowLifecyclesPage', () => {
     expect(wrapper.text()).toContain('1 / 4')
     const monitorButtons = wrapper.findAll('button[data-action="monitor"]')
     expect(monitorButtons).toHaveLength(2)
+    const downloadButtons = wrapper.findAll('button[data-action="download"]')
+    expect(downloadButtons).toHaveLength(2)
+
+    await downloadButtons[0]!.trigger('click')
+    await flushPromises()
+    expect(download).toHaveBeenCalledWith(lifecycle.lifecycle_id)
+    expect(triggerBrowserDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'lifecycle-1.agent-shell-monitoring.zip',
+    )
 
     await monitorButtons[0]!.trigger('click')
     await flushPromises()

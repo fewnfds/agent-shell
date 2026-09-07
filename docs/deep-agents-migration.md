@@ -26,7 +26,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 才只匹配虚拟根目录；
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
 - Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
-- Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Agent Shell 使用这些官方默认或同名 replacement 自带的官方策略；运行监控在root Graph的LangChain ChatModel和post-transformer v3边界采集，不修改Middleware实例、类属性或进程级trace policy；
+- Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Agent Shell 使用这些官方默认或同名 replacement 自带的官方策略；运行监控直接消费 LangGraph Server 的公共 Thread stream 与 latest State，不依赖 Middleware hook input，也不修改 Middleware 实例、类属性或进程级 trace policy；
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；

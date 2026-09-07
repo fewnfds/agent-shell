@@ -566,6 +566,13 @@ export type LangGraphRunStatus =
   | 'timeout'
   | 'interrupted'
 
+export type LangGraphLifecycleStatus = LangGraphRunStatus | 'unavailable'
+
+export interface LangGraphMonitoringError {
+  code: string
+  message: string
+}
+
 export interface LangGraphThread {
   thread_id: string
   created_at: string
@@ -587,6 +594,34 @@ export interface LangGraphRun {
   multitask_strategy: string
 }
 
+export interface LangGraphRunRelation {
+  lifecycle_id: string
+  graph_kind: 'agent' | 'workflow'
+  operation_id: string
+  caller_run_id: string
+  resource_id: string
+  resource_name: string
+  on_disconnect: 'cancel' | 'continue'
+  checkpoint_mode: 'enabled' | 'disabled' | null
+  assistant_id: string
+  thread_id: string
+  run_id: string
+}
+
+export interface LangGraphRunObservation {
+  run_id: string
+  run: LangGraphRun | null
+  relation: LangGraphRunRelation | null
+  error: LangGraphMonitoringError | null
+}
+
+export interface LangGraphThreadObservation {
+  thread_id: string
+  thread: LangGraphThread | null
+  runs: LangGraphRunObservation[]
+  error: LangGraphMonitoringError | null
+}
+
 export interface LangGraphLifecycleSubject {
   graph_kind: 'agent' | 'workflow'
   id: string
@@ -598,7 +633,7 @@ export interface LangGraphLifecycleSummary {
   request_id: string
   created_at: string
   updated_at: string
-  status: LangGraphRunStatus
+  status: LangGraphLifecycleStatus
   subjects: LangGraphLifecycleSubject[]
   run_count: number
   active_run_count: number
@@ -608,26 +643,38 @@ export interface LangGraphLifecycleSummary {
 export type LangGraphLifecyclePage = PaginationResponse<LangGraphLifecycleSummary>
 
 export interface LangGraphLifecycleSnapshot extends LangGraphLifecycleSummary {
-  threads: LangGraphThread[]
-  runs: LangGraphRun[]
+  threads: LangGraphThreadObservation[]
 }
 
 export interface LangGraphGraphResponse {
   run_id: string
   assistant_id: string
-  graph: Record<string, JsonValue>
+  graph: Record<string, JsonValue> | null
+  error: LangGraphMonitoringError | null
 }
 
 export interface LangGraphStateResponse {
   run_id: string
   thread_id: string
-  state: Record<string, JsonValue>
+  state: Record<string, JsonValue> | null
+  error: LangGraphMonitoringError | null
 }
 
 export interface LangGraphHistoryResponse {
   run_id: string
   thread_id: string
-  history: Array<Record<string, JsonValue>>
+  history: Array<Record<string, JsonValue>> | null
+  error: LangGraphMonitoringError | null
+}
+
+export interface LangGraphStoreNamespace {
+  namespace: string[]
+  items: Array<Record<string, JsonValue>>
+}
+
+export interface LangGraphLifecycleStore {
+  lifecycle_id: string
+  namespaces: LangGraphStoreNamespace[]
 }
 
 export type WorkflowNodeType =

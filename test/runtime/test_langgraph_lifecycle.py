@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from io import BytesIO
+import json
+from types import SimpleNamespace
+from zipfile import ZipFile
 
 import pytest
 
@@ -10,6 +14,10 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleService,
     LangGraphRunNotFound,
 )
+
+
+class _NotFound(LookupError):
+    status_code = 404
 
 
 class _Threads:
@@ -29,11 +37,15 @@ class _Threads:
     async def get_state(self, thread_id: str):
         return deepcopy(self._owner.states[thread_id])
 
-    async def get_history(self, thread_id: str, *, limit: int):
+    async def get_history(self, thread_id: str, *, limit: int, before=None):
+        del before
         return deepcopy(self._owner.histories[thread_id][:limit])
 
     async def get(self, thread_id: str):
-        return deepcopy(self._owner.thread_values[thread_id])
+        try:
+            return deepcopy(self._owner.thread_values[thread_id])
+        except KeyError as exc:
+            raise _NotFound(thread_id) from exc
 
     async def delete(self, thread_id: str) -> None:
         self._owner.deleted_threads.append(thread_id)
@@ -45,13 +57,23 @@ class _Runs:
         self._owner = owner
 
     async def list(self, thread_id: str, *, limit: int, offset: int):
-        return deepcopy(self._owner.run_values[thread_id][offset : offset + limit])
+        if thread_id in self._owner.run_list_errors:
+            raise self._owner.run_list_errors[thread_id]
+        try:
+            values = self._owner.run_values[thread_id]
+        except KeyError as exc:
+            raise _NotFound(thread_id) from exc
+        return deepcopy(values[offset : offset + limit])
 
     async def get(self, thread_id: str, run_id: str):
-        for run in self._owner.run_values[thread_id]:
+        try:
+            runs = self._owner.run_values[thread_id]
+        except KeyError as exc:
+            raise _NotFound(thread_id) from exc
+        for run in runs:
             if run["run_id"] == run_id:
                 return deepcopy(run)
-        raise LookupError(run_id)
+        raise _NotFound(run_id)
 
     async def cancel(self, thread_id: str, run_id: str, *, wait: bool = False):
         self._owner.cancelled_runs.append((thread_id, run_id, wait))
@@ -63,7 +85,11 @@ class _Runs:
 
 
 class _Assistants:
+    def __init__(self) -> None:
+        self.graph_reads: list[str] = []
+
     async def get_graph(self, assistant_id: str):
+        self.graph_reads.append(assistant_id)
         return {"assistant_id": assistant_id, "nodes": ["start", "end"]}
 
 
@@ -79,9 +105,27 @@ class _Store:
         ]
         return {"namespaces": [list(item) for item in namespaces[offset : offset + limit]]}
 
+    async def get_item(self, namespace, key: str):
+        value = self._owner.store_items.get(tuple(namespace), {}).get(key)
+        if value is None:
+            return None
+        return {
+            "namespace": list(namespace),
+            "key": key,
+            "value": deepcopy(value),
+            "created_at": "2026-09-05T00:59:00Z",
+            "updated_at": "2026-09-05T00:59:00Z",
+        }
+
     async def search_items(self, namespace, *, limit: int, offset: int):
         items = [
-            {"key": key, "value": deepcopy(value)}
+            {
+                "namespace": list(namespace),
+                "key": key,
+                "value": deepcopy(value),
+                "created_at": "2026-09-05T01:00:00Z",
+                "updated_at": "2026-09-05T01:01:00Z",
+            }
             for key, value in self._owner.store_items.get(tuple(namespace), {}).items()
         ]
         return {"items": items[offset : offset + limit]}
@@ -171,11 +215,11 @@ class _Client:
                 },
                 "run-peer": {
                     "lifecycle_id": "lifecycle-1",
-                    "graph_kind": "workflow",
+                    "graph_kind": "agent",
                     "operation_id": "peer",
                     "caller_run_id": "run-entry",
-                    "resource_id": "workflow-peer",
-                    "resource_name": "Peer Workflow",
+                    "resource_id": "agent-peer",
+                    "resource_name": "Peer Agent",
                     "on_disconnect": "cancel",
                     "assistant_id": "assistant-peer",
                     "thread_id": "thread-peer",
@@ -185,6 +229,7 @@ class _Client:
         }
         self.cancelled_runs: list[tuple[str, str, bool]] = []
         self.deleted_threads: list[str] = []
+        self.run_list_errors: dict[str, Exception] = {}
         self.threads = _Threads(self)
         self.runs = _Runs(self)
         self.assistants = _Assistants()
@@ -238,10 +283,17 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
             "name": "Entry Workflow",
         },
     ]
-    assert {run["run_id"] for run in snapshot["runs"]} == {
-        "run-entry",
-        "run-peer",
+    assert {thread["thread_id"] for thread in snapshot["threads"]} == {
+        "thread-entry",
+        "thread-peer",
     }
+    peer_thread = next(
+        thread for thread in snapshot["threads"]
+        if thread["thread_id"] == "thread-peer"
+    )
+    assert [run["run_id"] for run in peer_thread["runs"]] == ["run-peer"]
+    assert peer_thread["runs"][0]["run"]["status"] == "running"
+    assert peer_thread["runs"][0]["relation"]["resource_name"] == "Peer Agent"
     assert graph["assistant_id"] == "assistant-peer"
     assert state["state"]["values"]["shared_vars"] == {"answer": 42}
     assert history["history"] == [{"checkpoint_id": "checkpoint-peer"}]
@@ -282,36 +334,36 @@ def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> 
 def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
     async def scenario():
         client = _Client()
-        client.thread_values["thread-async"] = {
-            "thread_id": "thread-async",
+        client.thread_values["thread-detached"] = {
+            "thread_id": "thread-detached",
             "created_at": "2026-09-05T01:04:00Z",
             "updated_at": "2026-09-05T01:05:00Z",
             "metadata": {},
         }
-        client.run_values["thread-async"] = [
+        client.run_values["thread-detached"] = [
             {
-                "run_id": "run-async",
-                "assistant_id": "assistant-async",
+                "run_id": "run-detached",
+                "assistant_id": "assistant-detached",
                 "status": "running",
                 "metadata": {},
             }
         ]
-        client.states["thread-async"] = {"values": {"messages": []}}
-        client.histories["thread-async"] = [{"checkpoint_id": "checkpoint-async"}]
+        client.states["thread-detached"] = {"values": {"messages": []}}
+        client.histories["thread-detached"] = [{"checkpoint_id": "checkpoint-detached"}]
         client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")][
-            "run-async"
+            "run-detached"
         ] = {
             "lifecycle_id": "lifecycle-1",
             "graph_kind": "agent",
-            "operation_id": "async:profile-1:run-async",
+            "operation_id": "detached-agent",
             "caller_run_id": "run-entry",
-            "resource_id": "agent-async",
-            "resource_name": "Async Child",
+            "resource_id": "agent-detached",
+            "resource_name": "Detached Agent",
             "on_disconnect": "continue",
             "checkpoint_mode": "enabled",
-            "assistant_id": "assistant-async",
-            "thread_id": "thread-async",
-            "run_id": "run-async",
+            "assistant_id": "assistant-detached",
+            "thread_id": "thread-detached",
+            "run_id": "run-detached",
         }
         service = LangGraphLifecycleService(lambda: client)
 
@@ -326,9 +378,160 @@ def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
     assert {
         (subject["graph_kind"], subject["id"], subject["name"])
         for subject in page["items"][0]["subjects"]
-    } >= {("agent", "agent-async", "Async Child")}
-    async_run = next(run for run in snapshot["runs"] if run["run_id"] == "run-async")
-    assert async_run["metadata"]["main_agent_name"] == "Async Child"
+    } >= {("agent", "agent-detached", "Detached Agent")}
+    relation_thread = next(
+        thread for thread in snapshot["threads"]
+        if thread["thread_id"] == "thread-detached"
+    )
+    relation_run = relation_thread["runs"][0]
+    assert relation_run["run"]["metadata"]["main_agent_name"] == "Detached Agent"
     assert cancelled == 2
     assert deleted == 3
-    assert "thread-async" in client.deleted_threads
+    assert "thread-detached" in client.deleted_threads
+
+
+def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> None:
+    async def scenario():
+        client = _Client()
+        client.run_values["thread-peer"].append(
+            {
+                "run_id": "run-peer-2",
+                "thread_id": "thread-peer",
+                "assistant_id": "assistant-peer",
+                "created_at": "2026-09-05T01:04:00Z",
+                "updated_at": "2026-09-05T01:05:00Z",
+                "status": "success",
+                "metadata": {},
+                "multitask_strategy": "enqueue",
+            }
+        )
+        client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")][
+            "run-peer-2"
+        ] = {
+            "lifecycle_id": "lifecycle-1",
+            "graph_kind": "agent",
+            "operation_id": "peer-2",
+            "caller_run_id": "run-peer",
+            "resource_id": "agent-peer",
+            "resource_name": "Peer Agent",
+            "on_disconnect": "continue",
+            "checkpoint_mode": "enabled",
+            "assistant_id": "assistant-peer",
+            "thread_id": "thread-peer",
+            "run_id": "run-peer-2",
+        }
+        service = LangGraphLifecycleService(lambda: client)
+        snapshot = await service.snapshot("lifecycle-1")
+        store = await service.store("lifecycle-1")
+        archive = await service.export("lifecycle-1")
+        return client, snapshot, store, archive
+
+    client, snapshot, store, exported = asyncio.run(scenario())
+    peer_thread = next(
+        thread for thread in snapshot["threads"]
+        if thread["thread_id"] == "thread-peer"
+    )
+    assert [run["run_id"] for run in peer_thread["runs"]] == [
+        "run-peer",
+        "run-peer-2",
+    ]
+    assert snapshot["run_count"] == 3
+    assert [namespace["namespace"][-1] for namespace in store["namespaces"]] == [
+        "input",
+        "runs",
+    ]
+    assert store["namespaces"][0]["items"][0]["created_at"]
+
+    with ZipFile(BytesIO(exported.content)) as archive:
+        names = set(archive.namelist())
+        manifest = json.loads(archive.read("manifest.json"))
+        archived_snapshot = json.loads(archive.read("snapshot.json"))
+        archived_store = json.loads(archive.read("store.json"))
+    assert manifest["schema_version"] == 1
+    assert manifest["atomic"] is False
+    assert all(item["status"] == "available" for item in manifest["files"])
+    assert "assistants/assistant-peer/graph.json" in names
+    assert "threads/thread-peer/state.json" in names
+    assert "threads/thread-peer/history.json" in names
+    assert archived_snapshot["run_count"] == 3
+    assert len(archived_store["namespaces"]) == 2
+    assert client.assistants.graph_reads.count("assistant-peer") == 1
+
+
+def test_deleted_stateless_thread_remains_explicit_until_lifecycle_retention() -> None:
+    async def scenario():
+        client = _Client()
+        relation = client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")][
+            "run-peer"
+        ]
+        relation["checkpoint_mode"] = "disabled"
+        client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] = {
+            "run-peer": relation
+        }
+        client.thread_values.clear()
+        client.run_values.clear()
+        service = LangGraphLifecycleService(lambda: client)
+        page = await service.list_page(page=1, page_size=10)
+        snapshot = await service.snapshot("lifecycle-1")
+        archive = await service.export("lifecycle-1")
+        deleted = await service.delete("lifecycle-1")
+        return client, page, snapshot, archive, deleted
+
+    client, page, snapshot, exported, deleted = asyncio.run(scenario())
+    assert page["items"][0]["status"] == "unavailable"
+    assert page["items"][0]["run_count"] == 1
+    assert snapshot["threads"][0]["thread"] is None
+    assert snapshot["threads"][0]["runs"][0]["run"] is None
+    assert snapshot["threads"][0]["runs"][0]["error"]["code"] == "run_unavailable"
+    with ZipFile(BytesIO(exported.content)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    assert any(item["status"] == "error" for item in manifest["files"])
+    assert deleted == 0
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
+
+
+def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:
+    async def scenario():
+        client = _Client()
+        for runs in client.run_values.values():
+            for run in runs:
+                run["status"] = "success"
+        client.run_list_errors["thread-peer"] = ConnectionError("Agent Server unavailable")
+        service = LangGraphLifecycleService(lambda: client)
+
+        snapshot = await service.snapshot("lifecycle-1")
+        with pytest.raises(RuntimeError, match="official Thread/Run status is unavailable"):
+            await service.delete("lifecycle-1")
+        return client, snapshot
+
+    client, snapshot = asyncio.run(scenario())
+    peer = next(
+        thread for thread in snapshot["threads"]
+        if thread["thread_id"] == "thread-peer"
+    )
+    assert peer["error"]["code"] == "runs_unavailable"
+    assert client.deleted_threads == []
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")]
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")]
+
+
+def test_retention_excludes_active_then_deletes_terminal_lifecycle_data() -> None:
+    async def scenario():
+        client = _Client()
+        settings = SimpleNamespace(snapshot=lambda: {"retained_lifecycles": 0})
+        service = LangGraphLifecycleService(lambda: client, settings=settings)
+
+        await service.enforce_retention()
+        assert client.deleted_threads == []
+
+        for runs in client.run_values.values():
+            for run in runs:
+                run["status"] = "success"
+        await service.enforce_retention()
+        return client
+
+    client = asyncio.run(scenario())
+    assert set(client.deleted_threads) == {"thread-entry", "thread-peer"}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}

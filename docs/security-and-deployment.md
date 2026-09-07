@@ -37,6 +37,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
 - LangGraph Dev 保存 Assistant、Thread、Run、checkpoint、State/history 与 Server Store 数据；管理 API 通过公共接口读取 Lifecycle 下的官方 Run、Assistant Graph、latest Thread State 和 State history；
+- Lifecycle 监控 ZIP 在用户下载时通过公共 API 组合 snapshot、Store、Assistant Graph、latest State 和 checkpoint history，其中可能包含消息、reasoning、Tool 输入/输出、State 与文件路径；
 - 用户创建的组件、文件和 Python 资源。
 
 运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
@@ -86,6 +87,8 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、Graph Run relation和filesystem route记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
 官方 Graph、State/history 和 Server Store 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把`data/state/`和完整`data/`作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*`全部需要 management Bearer，不建立新的多租户可见性边界。
+
+active Lifecycle 的监控 ZIP 由多个公共 API 依次读取，manifest 使用 `atomic: false` 并逐项记录读取结果；导出期间 Run、State 与 Store 可以继续变化。下载文件离开实例 retention 与访问控制边界，不会在 Lifecycle retention 时被 Agent Shell 追踪或删除，由下载者负责保护和清理。
 
 ## 系统配置与变量
 

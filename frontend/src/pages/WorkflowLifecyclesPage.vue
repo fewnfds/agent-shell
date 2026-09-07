@@ -8,6 +8,7 @@ import {
   managementApi,
   type LangGraphLifecyclePage,
   type LangGraphLifecycleSummary,
+  type NamedDownload,
   type WorkflowLifecycleBulkDeleteResult,
   type WorkflowLifecycleSettings,
   type WorkflowLifecycleSettingsUpdate,
@@ -17,6 +18,7 @@ import type { DataTableConfig } from '@/components/data-table/types'
 import PageShell from '@/components/PageShell.vue'
 import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
+import { triggerBrowserDownload } from '@/utils/download'
 
 interface WorkflowLifecyclesApi {
   listWorkflowLifecycles(
@@ -24,6 +26,7 @@ interface WorkflowLifecyclesApi {
   ): Promise<LangGraphLifecyclePage>
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }>
   deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult>
+  downloadLangGraphLifecycle(id: string): Promise<NamedDownload>
   getWorkflowLifecycleSettings(): Promise<WorkflowLifecycleSettings>
   updateWorkflowLifecycleSettings(
     payload: WorkflowLifecycleSettingsUpdate,
@@ -88,6 +91,11 @@ function localTime(value: string): string {
 
 function subjectNames(row: LangGraphLifecycleSummary): string[] {
   return row.subjects.map((subject) => subject.name || subject.id)
+}
+
+async function downloadLifecycle(row: LangGraphLifecycleSummary): Promise<void> {
+  const download = await api.downloadLangGraphLifecycle(row.lifecycle_id)
+  triggerBrowserDownload(download.blob, download.filename)
 }
 
 const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
@@ -157,6 +165,15 @@ const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
       run: (row) => router.push(
         `/system/workflow-lifecycles/${encodeURIComponent(row.lifecycle_id)}/monitoring`,
       ),
+      reloadAfter: false,
+    },
+    {
+      key: 'download',
+      label: () => t('runtimeMonitoring.download'),
+      icon: 'download',
+      tone: 'secondary',
+      run: downloadLifecycle,
+      failureTitle: () => t('workflowLifecycles.downloadFailed'),
       reloadAfter: false,
     },
     {

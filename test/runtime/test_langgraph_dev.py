@@ -177,6 +177,83 @@ def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
     assert calls[1][1]["on_completion"] == "keep"
 
 
+def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
+    order: list[str] = []
+
+    class Assistants:
+        async def create(self, *_args, **_kwargs):
+            order.append("assistant")
+            return {"assistant_id": "assistant-1", "name": "Agent"}
+
+    class Stream:
+        events = None
+
+        async def __aenter__(self):
+            order.append("stream-enter")
+            return self
+
+        async def close(self):
+            order.append("stream-close")
+
+    class Threads:
+        async def create(self, *, metadata):
+            assert metadata["lifecycle_id"] == "lifecycle-1"
+            order.append("thread")
+            return {"thread_id": "thread-1"}
+
+        def stream(self, thread_id: str, *, assistant_id: str):
+            assert (thread_id, assistant_id) == ("thread-1", "assistant-1")
+            return Stream()
+
+    class Runs:
+        async def create(self, thread_id: str, assistant_id: str, **_kwargs):
+            assert (thread_id, assistant_id) == ("thread-1", "assistant-1")
+            order.append("run")
+            return {"thread_id": thread_id, "run_id": "run-1"}
+
+    class Client:
+        assistants = Assistants()
+        threads = Threads()
+        runs = Runs()
+
+        async def aclose(self):
+            order.append("client-close")
+
+    client = Client()
+    owner = SimpleNamespace(
+        new_agent_server_client=lambda: client,
+        run_config=lambda: {"recursion_limit": 10},
+        release_active_lifecycle=lambda _coordinator: None,
+    )
+    coordinator = LifecycleRunCoordinator(
+        _owner=owner,
+        _snapshot=SimpleNamespace(),
+        _detached_tasks=SimpleNamespace(),
+    )
+    binding = _AgentRunBinding(
+        main_agent={
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Agent",
+            "durability": "async",
+            "checkpoint_mode": "enabled",
+        },
+        messages=[{"role": "user", "content": "hello"}],
+        request_id="request-1",
+        lifecycle_id="lifecycle-1",
+        public_model="Agent",
+    )
+
+    async def scenario() -> None:
+        opened_client, stream = await coordinator._open_agent_run_session(binding)
+        assert opened_client is client
+        assert stream is not None
+        await coordinator._start_bound_agent_run(binding, opened_client)
+        await coordinator.close_official_session(binding.thread_id)
+
+    asyncio.run(scenario())
+    assert order[:4] == ["assistant", "thread", "stream-enter", "run"]
+
+
 def test_stable_assistant_updates_only_when_its_name_changed() -> None:
     class Assistants:
         def __init__(self, current_name: str) -> None:

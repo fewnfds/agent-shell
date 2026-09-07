@@ -155,7 +155,7 @@ Main Agent 与 Workflow 分别保存`on_disconnect=cancel|continue`。每个 Run
 
 ## 10. 观测与交付检查
 
-运行监控按 Lifecycle 显示本次请求的全部官方 Run，并允许选择任意 Run 查看原始 Run 对象、Assistant Graph、Thread latest State 和 State history。`caller_run_id` 只用于理解调用关系，不形成 Parent/Child 能力层级。
+运行监控按 `Lifecycle -> Thread -> Run` 显示本次请求的全部官方执行。选择 Main Agent Thread 时显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；选择 Workflow Thread 时显示只读 Graph、当前活动 Node 和 latest State。旁侧字段树显示 Thread State 与 Lifecycle Store，监控 ZIP 包含公共 API 可读取的完整 checkpoint history。`caller_run_id` 只用于理解调用关系，不形成 Parent/Child 能力层级。
 
 交付前确认：
 

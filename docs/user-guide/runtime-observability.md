@@ -6,7 +6,7 @@
 
 ## 运行监控
 
-【系统 / 运行监控】按 Lifecycle 展示本次请求启动的所有官方 LangGraph Run。Lifecycle 只是观察和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。
+【系统 / 运行监控】按 `Lifecycle -> Thread -> Run` 展示本次请求启动的官方 LangGraph 工作。Lifecycle 只是观察、下载和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。
 
 目录列出：
 
@@ -17,24 +17,38 @@
 
 任意 Lifecycle 都可以进入监控页。active Lifecycle 不能删除；terminal Lifecycle 可以单项删除或按当前搜索条件批量删除。
 
-## Run 详情
+## 监控页
 
-监控页直接组合 LangGraph Dev 公共 API：
+左侧按 Thread 列出 Main Agent 与 Workflow，当前有 pending/running Run 的 Thread 显示动态状态。右侧顶部按创建顺序显示所选 Thread 的 Run；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。
 
-- snapshot：Lifecycle 下的 Thread 和 Run；
-- Graph：该 Run 使用的 Assistant Graph；
-- State：Thread 的 latest persisted State；
-- history：Thread 的 checkpoint/State history。
+Main Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_id`：
 
-这些数据以官方 `assistant_id`、`thread_id`、`run_id` 和 status 为准。Async child 的官方 Thread 初始没有 Shell Lifecycle metadata，目录使用工具边界保存的最小 Run relation 将其纳入同一查询和删除范围；relation 不复制 child State、正文或 status。页面不重建第二套 Registry，不从 event 时间或 namespace 推测执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
+- 页面进入时先从 latest Thread State 恢复已经 checkpoint 的消息；
+- Thread 仍 active 时，`useStream` 加入官方 Thread stream，继续更新当前 reasoning、assistant text、Tool、interrupt 和 error；
+- reasoning 与 assistant text 使用流式 Markdown 渲染；Tool 调用与结果在同一条记录中更新；
+- 页面只观察，不提供输入、停止、approve 或 State 写入操作；离开页面只断开观察，不取消 Run。
 
-Lifecycle summary 将每个 Run 的 metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID 和名称。Run 选择列表按 `graph_kind` 显示 `main_agent_name` 或 `workflow_name`，身份 metadata 缺失时显示 `run_id`。
+Workflow Thread 使用只读 Vue Flow 显示 Assistant Graph，以 latest Thread State 的 `next` 高亮一个或多个当前节点。active Lifecycle 每三秒刷新 Lifecycle snapshot、Store 和当前 Workflow State；终态后保留最终 State 并停止自动刷新。
+
+右侧数据检查器以可展开字段树显示所选 Thread 的 State 和 Lifecycle namespace 下的 Store item，不把它们转换为第二套字段协议。页面不从 checkpoint history 合成 Agent 信息流，不从事件时间或 namespace 推测 Workflow 执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
+
+这些数据以官方 `assistant_id`、`thread_id`、`run_id`、Run status、Graph 和 State 为准。Agent Shell 只保存最小 Run relation，用于把没有 Lifecycle Thread metadata 的已登记 Run 纳入对应 Lifecycle。Lifecycle summary 将 relation/Run metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID、名称、Lifecycle ID 和 request ID。
+
+`checkpoint_mode=disabled` 的 Main Agent 使用官方 Stateless Run。运行期间创建的临时 Thread 可被监控；事件会话结束后临时 Thread 被删除，Lifecycle relation 继续存在，因此该 Run 的历史消息、State 和 checkpoint 显示为 unavailable。Workflow 始终使用持久 Thread，没有 Stateless 模式。
+
+## 下载
+
+Lifecycle 列表与监控页都可以按需生成监控 ZIP。ZIP 包含 `manifest.json`、Lifecycle snapshot、Lifecycle Store、去重后的 Assistant Graph、Thread latest State 和完整 checkpoint history。manifest 记录 schema version、导出时间、Lifecycle 状态以及每个文件的读取结果。
+
+active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 manifest 的 `atomic` 为 `false`。某一 Graph、Thread、State 或 history 已不可用时，manifest 为该项记录局部错误；下载不会读取 LangGraph Dev 内部数据库文件，也不会把缺失数据伪装为空成功。
 
 ## 保留与删除
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
 
 删除 Lifecycle 会删除其入口与内部启动 Run 的官方 Thread、Run/checkpoint/State，并删除 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
+
+监控 ZIP、Lifecycle Store、State、消息和 Tool payload 都可能包含完整业务内容。下载文件离开实例保留边界后由下载者负责保存和删除。
 
 ## API Docs、Studio 与 LangSmith
 

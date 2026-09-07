@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import '@adminlte/vue/css'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
+import 'markstream-vue/index.css'
 import 'bootstrap/js/dist/dropdown'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 

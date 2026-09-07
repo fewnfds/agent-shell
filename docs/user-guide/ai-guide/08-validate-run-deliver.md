@@ -264,7 +264,7 @@ Content-Type: application/json
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-运行监控页面按 Lifecycle 浏览本次请求已登记的全部官方 Run；选择 Run 后可查看原始 Run 对象、Assistant Graph、Thread latest State 和最近 State history。页面通过刷新按钮重新读取公共 API，不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
+运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
 
 常见 HTTP 范围：
 

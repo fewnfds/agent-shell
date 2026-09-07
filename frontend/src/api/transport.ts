@@ -344,6 +344,41 @@ async function authenticatedFetch(
   }
 }
 
+export const managementAuthorizedFetch: typeof fetch = async (
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> => {
+  const request = input instanceof Request ? input : null
+  const signal = init.signal ?? request?.signal
+  let reason: AuthChallengeReason = 'required'
+  while (true) {
+    if (signal?.aborted) throw abortError()
+    const headers = new Headers(request?.headers)
+    new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+    const token = await waitForToken(managementAuth, reason, signal)
+    const generation = managementAuth.credentialGeneration()
+    headers.set('Authorization', `Bearer ${token}`)
+    let response: Response
+    try {
+      response = await fetch(input, { ...init, headers, signal })
+    } catch (error: unknown) {
+      if (isAbortError(error)) throw error
+      throw new ManagementApiError({
+        status: 0,
+        code: 'network_error',
+        message: 'The management request could not reach the server.',
+        messageKey: 'errors.network',
+      })
+    }
+    if (response.status === 401 || response.status === 403) {
+      reason = managementAuth.invalidate(generation) ? 'invalid' : 'required'
+      await response.body?.cancel().catch(() => undefined)
+      continue
+    }
+    return response
+  }
+}
+
 export async function managementRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await authenticatedFetch(path, init, 'application/json')
   return parseManagementResponse<T>(response)

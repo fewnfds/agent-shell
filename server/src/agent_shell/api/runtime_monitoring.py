@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
@@ -42,6 +43,21 @@ def build_runtime_monitoring_router(service: LangGraphLifecycleService) -> APIRo
     @router.get(prefix + "/snapshot")
     async def snapshot(lifecycle_id: str):
         return await read(lambda: service.snapshot(lifecycle_id))
+
+    @router.get(prefix + "/store")
+    async def store(lifecycle_id: str):
+        return await read(lambda: service.store(lifecycle_id))
+
+    @router.get(prefix + "/download")
+    async def download(lifecycle_id: str):
+        exported = await read(lambda: service.export(lifecycle_id))
+        return Response(
+            content=exported.content,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{exported.filename}"'
+            },
+        )
 
     @router.get(prefix + "/runs/{run_id}/graph")
     async def graph(lifecycle_id: str, run_id: str):

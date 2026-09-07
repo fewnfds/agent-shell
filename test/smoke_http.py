@@ -685,8 +685,14 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
             headers=management,
         ).json()
-        assert len(snapshot["runs"]) >= 2
-        inspected_run = snapshot["runs"][0]
+        observed_runs = [
+            (thread["thread_id"], observation)
+            for thread in snapshot["threads"]
+            for observation in thread["runs"]
+            if observation["run"] is not None
+        ]
+        assert len(observed_runs) >= 2
+        inspected_thread_id, inspected_run = observed_runs[0]
         run_id = inspected_run["run_id"]
         graph = _request(
             client,
@@ -701,14 +707,14 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
             headers=management,
         ).json()
-        assert state["thread_id"] == inspected_run["thread_id"]
+        assert state["thread_id"] == inspected_thread_id
         history = _request(
             client,
             "GET",
             f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
             headers=management,
         ).json()
-        assert history["thread_id"] == inspected_run["thread_id"]
+        assert history["thread_id"] == inspected_thread_id
         model_connection = _request(
             client,
             "POST",

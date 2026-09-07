@@ -28,6 +28,7 @@ import type {
   LangGraphHistoryResponse,
   LangGraphLifecyclePage,
   LangGraphLifecycleSnapshot,
+  LangGraphLifecycleStore,
   LangGraphStateResponse,
   MainAgentSummary,
   PythonPackageTemplate,
@@ -426,6 +427,22 @@ export const managementApi = {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
       { signal },
+    )
+  },
+
+  getLangGraphLifecycleStore(
+    lifecycleId: string,
+    signal?: AbortSignal,
+  ): Promise<LangGraphLifecycleStore> {
+    return managementRequest(
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/store`,
+      { signal },
+    )
+  },
+
+  downloadLangGraphLifecycle(lifecycleId: string): Promise<NamedDownload> {
+    return managementNamedDownload(
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/download`,
     )
   },
 
