@@ -123,15 +123,15 @@ def test_provider_http_clients_are_shared_and_closed_by_their_single_owner(
         _ = clients.sync_client
 
 
-def test_async_provider_stream_preserves_only_safe_curl_failure_evidence() -> None:
-    sensitive_detail = "https://secret.example/private provider response body"
+def test_async_provider_stream_preserves_complete_curl_failure_evidence() -> None:
+    provider_detail = "https://provider.example/private provider response body"
 
     class FailingResponse:
         queue = True
 
         async def aiter_content(self):
             yield b"partial"
-            raise RequestException(sensitive_detail, CurlECode.RECV_ERROR)
+            raise RequestException(provider_detail, CurlECode.RECV_ERROR)
 
         async def aclose(self) -> None:
             return None
@@ -149,4 +149,4 @@ def test_async_provider_stream_preserves_only_safe_curl_failure_evidence() -> No
 
     assert error.curl_code == 56
     assert error.curl_error == "RECV_ERROR"
-    assert sensitive_detail not in str(error)
+    assert provider_detail in str(error)

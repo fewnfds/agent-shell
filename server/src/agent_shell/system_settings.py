@@ -15,6 +15,7 @@ from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 from agent_shell.storage.environment import (
+    EnvironmentSnapshot,
     InstanceEnvironmentStore,
     SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
 )
@@ -166,11 +167,22 @@ class SystemSettingsService:
             candidate = Settings(**values)
         except ValidationError as exc:
             keys = ", ".join(_validation_keys(exc))
+            secret_values = {
+                name: value
+                for name, value in {
+                    "AGENT_SHELL_MANAGEMENT_TOKEN": values["management_token"],
+                    "LANGSMITH_API_KEY": values["langsmith_api_key"],
+                }.items()
+                if isinstance(value, str)
+            }
+            detail = EnvironmentSnapshot.capture(secret_values).redact_secret_text(
+                str(exc)
+            )
             raise SystemSettingsError(
                 422,
                 "system_settings_invalid",
                 "errors.systemSettingsInvalid",
-                "The system settings are invalid.",
+                f"{type(exc).__name__}: {detail}",
                 {"keys": keys},
             ) from None
         candidate.bind_paths(self._active.application_home, self._active.data_root)
@@ -181,7 +193,7 @@ class SystemSettingsService:
                 422,
                 "system_settings_invalid",
                 "errors.systemSettingsInvalid",
-                "The system settings are invalid.",
+                str(exc),
                 {"keys": ", ".join(exc.keys)},
             ) from None
         try:
@@ -191,7 +203,7 @@ class SystemSettingsService:
                 422,
                 exc.code,
                 exc.message_key,
-                exc.safe_message,
+                str(exc),
             ) from None
         return candidate
 
@@ -228,13 +240,14 @@ class SystemSettingsService:
         if candidate.langsmith_tracing_enabled and langsmith_connection_changed:
             try:
                 validate_langsmith_connection(candidate)
-            except LangSmithConnectionError:
+            except LangSmithConnectionError as exc:
                 raise SystemSettingsError(
                     422,
                     "langsmith_connection_failed",
                     "errors.langsmithConnectionFailed",
-                    "LangSmith connection validation failed. Check the API key, endpoint region, and workspace ID.",
-                ) from None
+                    str(exc)
+                    or "LangSmith connection validation failed without an error message.",
+                ) from exc
         try:
             def mutate(system: dict[str, Any]) -> None:
                 system["settings"] = {

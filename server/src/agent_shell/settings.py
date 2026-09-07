@@ -21,6 +21,7 @@ from agent_shell.configuration.repositories import ensure_active_configuration_r
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.storage.environment import (
     EnvironmentFormatError,
+    EnvironmentSnapshot,
     read_environment_file,
     unknown_environment_names,
 )
@@ -42,7 +43,7 @@ def bearer_token_is_valid(value: str) -> bool:
 
 
 class SettingsError(RuntimeError):
-    """A startup-safe settings error that never includes setting values."""
+    """Describe a startup configuration failure and its affected keys."""
 
     def __init__(self, keys: tuple[str, ...], action: str) -> None:
         self.keys = tuple(sorted(set(keys)))
@@ -120,9 +121,8 @@ class Settings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
-        # All non-secret settings come from system.yaml. The only Settings field
-        # allowed to come from the environment is injected explicitly by
-        # load_settings below: AGENT_SHELL_MANAGEMENT_TOKEN.
+        # All non-secret settings come from system.yaml. Secret Settings fields
+        # are injected explicitly from the instance environment by load_settings.
         return init_settings,
 
     @field_validator("host")
@@ -415,11 +415,12 @@ def load_settings(
     system_path = root / "config" / "system.yaml"
     try:
         environment_values = read_environment_file(env_path)
-    except (OSError, UnicodeError, EnvironmentFormatError):
+    except (OSError, UnicodeError, EnvironmentFormatError) as exc:
         raise SettingsError(
             ("data/config/agent-shell.env",),
-            "Rewrite the secret settings through the management pages.",
-        ) from None
+            "Rewrite the secret settings through the management pages. "
+            f"Cause: {type(exc).__name__}: {exc}",
+        ) from exc
     file_unknown = _unknown_environment_keys(environment_values)
     if file_unknown:
         raise SettingsError(
@@ -446,8 +447,13 @@ def load_settings(
             system_values["langsmith_api_key"] = langsmith_api_key
         settings = Settings(**system_values)
     except ValidationError as exc:
+        detail = EnvironmentSnapshot.capture(environment_values).redact_secret_text(
+            str(exc)
+        )
         raise SettingsError(
-            _error_keys(exc), "Correct the listed setting keys and restart."
+            _error_keys(exc),
+            "Correct the listed setting keys and restart. "
+            f"Cause: {type(exc).__name__}: {detail}",
         ) from None
     settings.bind_paths(home, root)
     return settings

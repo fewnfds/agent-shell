@@ -46,7 +46,7 @@ const messages = {
       previewTitle: 'Import Bundle', digest: 'Digest', originalName: 'Original', importName: 'Import name',
       targetId: 'Target UUID', bindings: 'Bindings', pathOrigin: 'Path origin', absolute: 'Absolute',
       selectPathOrigin: 'Select path origin', dataRootRelative: 'Data root relative', blockers: 'Blockers', warnings: 'Warnings', import: 'Import', imported: 'Imported',
-      securityWarningTitle: 'Untrusted imports are dangerous', securityWarning: 'Review code and permissions.', unknownIssue: 'Issue {code}',
+      unknownIssue: 'Issue {code}',
     },
     catalogUnavailable: 'Catalog unavailable',
     unknownCategory: 'Unknown category {type}',

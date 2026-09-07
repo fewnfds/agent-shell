@@ -9,6 +9,7 @@ import pytest
 from agent_shell.app import create_app
 from agent_shell import security_events
 from agent_shell.security_events import SecurityEventLogger
+from agent_shell.storage.environment import EnvironmentSnapshot
 from support import ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -117,10 +118,14 @@ def test_lifecycle_configuration_events_and_model_secrets_are_metadata_only(
     assert all(set(record) == {"timestamp", "event", "request_id", "actor", "metadata"} for record in records)
 
 
-def test_event_logger_reuses_redaction_and_rejects_unregistered_metadata(
+def test_event_logger_redacts_stored_secrets_and_keeps_debug_metadata(
     tmp_path: Path,
 ) -> None:
-    logger = SecurityEventLogger(tmp_path / "logs")
+    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": "audit-token-sentinel"})
+    logger = SecurityEventLogger(
+        tmp_path / "logs",
+        redact=snapshot.redact_secrets,
+    )
     logger.emit(
         "service_stopped",
         {
@@ -144,7 +149,8 @@ def test_event_logger_reuses_redaction_and_rejects_unregistered_metadata(
 
     raw = logger.path.read_text(encoding="utf-8")
     assert "audit-token-sentinel" not in raw
-    assert "Users" not in raw
+    assert "[REDACTED]" in raw
+    assert r"C:\\Users\\private\\runtime\\trace.txt" in raw
     assert "unregistered-secret-sentinel" not in raw
     assert logger.directory_permission.enforced is True
     assert logger.file_permission.enforced is True
@@ -190,9 +196,45 @@ def test_event_persistence_failure_does_not_reverse_committed_configuration(
             for item in diagnostics["items"]
             if item["inline_content"] is not None
         )
-        assert private_detail not in json.dumps(diagnostics, ensure_ascii=False)
+        runtime_entries = [
+            json.loads(item["inline_content"])["entry"]
+            for item in diagnostics["items"]
+            if item["inline_content"] is not None
+        ]
+        assert any(private_detail in str(entry["summary"]) for entry in runtime_entries)
 
     assert not (runtime / "logs" / "runtime.log").exists()
+
+
+def test_event_persistence_fallback_log_keeps_the_failure_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stored_secret = "stored-event-secret"
+    private_detail = str(tmp_path / "private" / "security-events.jsonl")
+    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": stored_secret})
+    logger = SecurityEventLogger(
+        tmp_path / "logs",
+        redact=snapshot.redact_secrets,
+    )
+
+    def fail_rollover(*_args, **_kwargs):
+        raise OSError(f"{private_detail}: {stored_secret}")
+
+    monkeypatch.setattr(
+        security_events._ReportingRotatingFileHandler,
+        "shouldRollover",
+        fail_rollover,
+    )
+    with caplog.at_level("ERROR", logger="agent_shell.security_events"):
+        logger.emit("service_stopped", {"reason": "application_shutdown"})
+
+    assert "security_event_record_failed" in caplog.text
+    assert private_detail in caplog.text
+    assert "OSError" in caplog.text
+    assert stored_secret not in caplog.text
+    assert "[REDACTED]" in caplog.text
 
 
 def test_event_log_enforces_one_file_without_backups(tmp_path: Path) -> None:
@@ -275,10 +317,15 @@ def test_event_feed_filters_persisted_system_operations_and_management_errors(
     assert error["items"][0]["request_id"] == error_request_id
     error_metadata = error_entry["metadata"]
     assert {key: error_metadata[key] for key in (
-        "code", "issue_count", "method", "path", "status_code"
+        "code", "issue_count", "message", "method", "path", "status_code"
     )} == {
         "code": "configuration_validation_failed",
         "issue_count": expected_issue_count,
+        "message": (
+            "The configuration contains validation issues.\n"
+            "Cause: ComponentMutationValidationError: "
+            "The component configuration failed validation."
+        ),
         "method": "POST",
         "path": "/agent-shell/api/blocks/system-prompt",
         "status_code": 422,

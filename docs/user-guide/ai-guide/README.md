@@ -124,7 +124,7 @@ Workflow Graph 决定 Command super-step、State transition 和结束条件。Ma
 写入前：
 
 - 确认 base URL、credential domain、认证 credential 是否可由本地程序或运行平台取得，以及 active Configuration Repository；
-- 按[发现当前实例事实](01-discover-current-instance.md)的认证边界使用 `AGENT_SHELL_MANAGEMENT_TOKEN` 和 `AGENT_SHELL_API_KEY`；操作 Agent 不打开或接收实例 secret store 的内容，不要求用户在对话中发送 secret；
+- 按[发现当前实例事实](01-discover-current-instance.md)的认证边界使用 `AGENT_SHELL_MANAGEMENT_TOKEN` 和 `AGENT_SHELL_API_KEY`；
 - 读取 `/agent-shell/api/catalog`、`/agent-shell/api/workflow-node-catalog` 和 `/agent-shell/api/configuration-options`；
 - 读取准备复用或修改的完整对象；
 - 读取需要使用的 Python template catalog；
@@ -137,7 +137,7 @@ Workflow Graph 决定 Command super-step、State transition 和结束条件。Ma
 - 不把 GET response、masked secret 或 collection envelope 原样作为 PUT payload；
 - Python-backed component 使用当前 catalog 返回的 `key + revision`；
 - Graph layout 只保存展示位置；
-- 不把 secret、完整用户消息或大型 artifact 复制到普通控制 State 或诊断摘要。
+- 普通控制 State 只保存 Workflow 控制所需的 identity 和状态，不重复复制完整用户消息或大型 artifact；
 
 写入后：
 

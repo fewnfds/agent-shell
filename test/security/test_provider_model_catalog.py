@@ -133,7 +133,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_endpoint(
     assert upstream_called is False
     assert LOCAL_SECRET not in response.text
 
-def test_model_catalog_reports_cloudflare_browser_challenge_without_leaking_body(
+def test_model_catalog_reports_cloudflare_browser_challenge_with_provider_body(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, _ = make_client(tmp_path, monkeypatch)
@@ -162,7 +162,9 @@ def test_model_catalog_reports_cloudflare_browser_challenge_without_leaking_body
 
     assert response.status_code == 502
     assert response.json()["detail"]["code"] == "model_catalog_browser_challenge"
-    assert "provider-private" not in response.text
+    assert "HTTP 403 Forbidden" in response.text
+    assert "provider-private challenge body" in response.text
+    assert LOCAL_SECRET not in response.text
 
 def test_model_catalog_never_reuses_saved_key_for_a_different_provider(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -204,7 +206,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_provider(
         {"data": [{"id": "safe-model", "secret_field": "provider-private"}, None]},
     ],
 )
-def test_model_catalog_rejects_malformed_provider_payload_without_leaking_it(
+def test_model_catalog_rejects_malformed_provider_payload_with_complete_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider_payload: object,
@@ -230,4 +232,5 @@ def test_model_catalog_rejects_malformed_provider_payload_without_leaking_it(
 
     assert response.status_code == 502
     assert response.json()["detail"]["code"] == "invalid_model_catalog_response"
-    assert "provider-private" not in response.text
+    if "provider-private" in str(provider_payload):
+        assert "provider-private" in response.text

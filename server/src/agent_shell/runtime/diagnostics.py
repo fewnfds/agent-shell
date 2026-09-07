@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from itertools import chain
 import logging
 from pathlib import Path
 import threading
@@ -56,11 +55,13 @@ class RuntimeDiagnostics:
         *,
         store: RuntimeDiagnosticStore,
         details: RuntimeDiagnosticDetailStore,
+        redact_secret_text: Callable[[str], str] | None = None,
     ) -> None:
         self._lock = threading.Lock()
         self._store = store
         self._details = details
         self._publish = publish
+        self._redact_secret_text = redact_secret_text or (lambda value: value)
         self._logger = logging.getLogger(f"agent_shell.runtime.{id(self)}")
         self._logger.setLevel(logging.DEBUG)
         self._logger.propagate = False
@@ -206,10 +207,17 @@ class RuntimeDiagnostics:
     ) -> None:
         diagnostic_id = uuid4().hex
         occurred_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        diagnostic_code = _diagnostic_text(code)
-        diagnostic_component = _diagnostic_text(component)
-        diagnostic_summary = _diagnostic_text(summary)
-        diagnostic_context = (context or RuntimeDiagnosticContext()).values()
+        diagnostic_code = self._redact_secret_text(_diagnostic_text(code))
+        diagnostic_component = self._redact_secret_text(_diagnostic_text(component))
+        diagnostic_summary = self._redact_secret_text(_diagnostic_text(summary))
+        diagnostic_context = {
+            key: (
+                self._redact_secret_text(value)
+                if isinstance(value, str)
+                else value
+            )
+            for key, value in (context or RuntimeDiagnosticContext()).values().items()
+        }
         diagnostic_exception_type = _optional_diagnostic_text(source_exception_type)
         prefix = (
             f"{occurred_at} [ERROR] component={diagnostic_component} "
@@ -223,40 +231,42 @@ class RuntimeDiagnostics:
         with self._lock:
             detail_available = False
             try:
+                header = "".join(
+                    (
+                        f"diagnostic_id={diagnostic_id}\n",
+                        f"occurred_at={occurred_at}\n",
+                        f"component={diagnostic_component}\n",
+                        f"code={diagnostic_code}\n",
+                        *(
+                            f"{key}={value}\n"
+                            for key, value in diagnostic_context.items()
+                            if value
+                        ),
+                        f"exception_type={source_exception_type}\n\n",
+                    )
+                )
+                traceback_text = "".join(
+                    traceback.TracebackException.from_exception(
+                        detail_exception
+                    ).format(chain=True)
+                )
+                if (
+                    isinstance(detail_exception, AgentRuntimeError)
+                    and detail_exception.remote_traceback
+                ):
+                    traceback_text += (
+                        "\nAgent Server source traceback:\n"
+                        + detail_exception.remote_traceback
+                    )
                 detail_available = self._details.write(
                     diagnostic_id,
-                    chain(
-                        (
-                            f"diagnostic_id={diagnostic_id}\n",
-                            f"occurred_at={occurred_at}\n",
-                            f"component={diagnostic_component}\n",
-                            f"code={diagnostic_code}\n",
-                            *(
-                                f"{key}={value}\n"
-                                for key, value in diagnostic_context.items()
-                                if value
-                            ),
-                            f"exception_type={source_exception_type}\n\n",
-                        ),
-                        traceback.TracebackException.from_exception(
-                            detail_exception
-                        ).format(chain=True),
-                        (
-                            (
-                                "\nAgent Server source traceback:\n",
-                                detail_exception.remote_traceback,
-                            )
-                            if isinstance(detail_exception, AgentRuntimeError)
-                            and detail_exception.remote_traceback
-                            else ()
-                        ),
-                    ),
+                    (header + self._redact_secret_text(traceback_text),),
                 )
             except Exception as persistence_error:
                 self._logger.error(
                     prefix
                     + "\nruntime diagnostic detail persistence failed: "
-                    + describe_exception(persistence_error)
+                    + self._redact_secret_text(describe_exception(persistence_error))
                 )
             try:
                 entry = self._store.add(
@@ -274,7 +284,7 @@ class RuntimeDiagnostics:
                 self._logger.error(
                     prefix
                     + "\nruntime diagnostic index persistence failed: "
-                    + describe_exception(persistence_error)
+                    + self._redact_secret_text(describe_exception(persistence_error))
                 )
                 try:
                     self._reconcile_details()
@@ -282,7 +292,7 @@ class RuntimeDiagnostics:
                     self._logger.error(
                         prefix
                         + "\nruntime diagnostic cleanup failed: "
-                        + describe_exception(cleanup_error)
+                        + self._redact_secret_text(describe_exception(cleanup_error))
                     )
                 return
             try:
@@ -291,7 +301,7 @@ class RuntimeDiagnostics:
                 self._logger.error(
                     prefix
                     + "\nruntime diagnostic cleanup failed: "
-                    + describe_exception(cleanup_error)
+                    + self._redact_secret_text(describe_exception(cleanup_error))
                 )
         self._publish({"type": "runtime_diagnostic", "entry": entry})
 

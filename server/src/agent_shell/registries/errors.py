@@ -7,9 +7,6 @@ from agent_shell.localization import (
     normalize_message_args,
     normalize_message_key,
 )
-from agent_shell.redaction import redact_for_boundary
-
-
 class ResourceScanError(ValueError):
     def __init__(
         self,
@@ -19,8 +16,7 @@ class ResourceScanError(ValueError):
     ) -> None:
         self.message_key = normalize_message_key(message_key)
         self.message_args = normalize_message_args(message_args)
-        safe = redact_for_boundary("preflight-diagnostic", fallback)
-        super().__init__(safe if isinstance(safe, str) else "Resource scan failed.")
+        super().__init__(fallback)
 
     def as_dict(self) -> dict[str, object]:
         return {

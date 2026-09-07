@@ -293,7 +293,11 @@ def test_unreachable_langsmith_connection_does_not_save_settings_or_secret(
     replacement = "langsmith-replacement-secret"
     monkeypatch.setattr(
         "agent_shell.system_settings.validate_langsmith_connection",
-        lambda _settings: (_ for _ in ()).throw(LangSmithConnectionError()),
+        lambda _settings: (_ for _ in ()).throw(
+            LangSmithConnectionError(
+                "AuthenticationError: LangSmith rejected workspace test-workspace"
+            )
+        ),
     )
 
     response = client.put(
@@ -307,6 +311,8 @@ def test_unreachable_langsmith_connection_does_not_save_settings_or_secret(
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "langsmith_connection_failed"
     assert response.json()["detail"]["message_key"] == "errors.langsmithConnectionFailed"
+    assert "AuthenticationError" in response.json()["detail"]["message"]
+    assert "test-workspace" in response.json()["detail"]["message"]
     assert replacement not in response.text
     assert settings_path.read_text(encoding="utf-8") == original_settings
     assert environment_path.read_text(encoding="utf-8") == original_environment

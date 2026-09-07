@@ -158,7 +158,7 @@ export function useValidationIssuePresentation() {
     )
   }
 
-  function message(issue: ValidationIssue): string {
+  function localizedMessage(issue: ValidationIssue): string {
     if (locale.value === 'debug') return issue.code
     if (issue.code === 'contract.text_too_short' && fieldName(issue) === 'name') {
       return t('validation.issue.contract.requiredText', { field: fieldLabel(issue) })
@@ -178,6 +178,15 @@ export function useValidationIssuePresentation() {
             : fieldLabel(issue),
         }
       : args)
+  }
+
+  function message(issue: ValidationIssue): string {
+    return issue.message || localizedMessage(issue)
+  }
+
+  function explanation(issue: ValidationIssue): string {
+    const localized = localizedMessage(issue)
+    return localized !== issue.message ? localized : ''
   }
 
   function resolution(issue: ValidationIssue): string {
@@ -216,5 +225,5 @@ export function useValidationIssuePresentation() {
     return t('validation.resolution.unknownField', { field: fieldName(issue) })
   }
 
-  return { location, message, ownerLabel, resolution }
+  return { explanation, location, message, ownerLabel, resolution }
 }

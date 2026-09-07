@@ -147,6 +147,38 @@ class EnvironmentSnapshot:
     def as_dict(self) -> dict[str, str]:
         return dict(self._values)
 
+    def redact_secrets(self, value: object) -> object:
+        """Replace only values stored in the instance credential environment."""
+
+        secrets = tuple(
+            sorted(
+                {item for item in self._values.values() if item},
+                key=len,
+                reverse=True,
+            )
+        )
+
+        def redact(item: object) -> object:
+            if isinstance(item, str):
+                for secret in secrets:
+                    item = item.replace(secret, "[REDACTED]")
+                return item
+            if isinstance(item, Mapping):
+                return {key: redact(child) for key, child in item.items()}
+            if isinstance(item, list):
+                return [redact(child) for child in item]
+            if isinstance(item, tuple):
+                return tuple(redact(child) for child in item)
+            return item
+
+        return redact(value)
+
+    def redact_secret_text(self, value: str) -> str:
+        redacted = self.redact_secrets(value)
+        if not isinstance(redacted, str):
+            raise TypeError("environment secret text projection must remain text")
+        return redacted
+
 
 class InstanceEnvironmentStore:
     """The only writer for the instance-owned secret environment file."""
@@ -187,6 +219,12 @@ class InstanceEnvironmentStore:
 
     def get(self, name: str) -> str | None:
         return self.snapshot().get(name)
+
+    def redact_secrets(self, value: object) -> object:
+        return self.snapshot().redact_secrets(value)
+
+    def redact_secret_text(self, value: str) -> str:
+        return self.snapshot().redact_secret_text(value)
 
     def owned_values(self, owner: str) -> dict[str, str]:
         self._validate_owner(owner)

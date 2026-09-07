@@ -52,7 +52,7 @@ active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 ma
 
 删除 Lifecycle 会删除其入口与内部启动 Run 的官方 Thread、Run/checkpoint/State，并删除 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
 
-运行错误、诊断附件、监控 ZIP、Lifecycle Store、State、消息和 Tool payload 都可能包含完整业务内容、本机路径或异常中出现的 credential。下载文件离开实例保留边界后由下载者负责保存和删除。
+运行错误、诊断附件、监控 ZIP、Lifecycle Store、State、消息和 Tool payload 保留其 owner 提供的业务内容与本机路径；监控数据沿 LangGraph 官方对象读取。错误与 credential 的投影规则见[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。
 
 ## API Docs、Studio 与 LangSmith
 
@@ -60,4 +60,4 @@ active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 ma
 
 远程部署应只公开反向代理后的 TLS 地址，并在 `cors_origins` 中明确允许 Studio 或管理前端需要的 origin。浏览器对公网 HTTPS 页面访问 loopback、HTTP 或私网地址可能应用 Private Network Access/混合内容限制；这属于浏览器与部署网络边界，不通过增加 Agent Shell 端口解决。
 
-启用 LangSmith tracing 后，官方 trace 可能上传 prompt、模型输出和工具输入/输出。启用前应按敏感数据策略检查项目与工作区。
+启用 LangSmith tracing 后，trace payload 由 LangSmith 官方 contract 决定，其中可以包含 prompt、模型输出和工具输入/输出。是否启用由实例所有者决定。

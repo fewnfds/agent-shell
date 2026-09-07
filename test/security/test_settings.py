@@ -366,7 +366,7 @@ def test_cors_and_proxy_lists_are_strict_and_normalized(
         ("AGENT_SHELL_TRUSTED_PROXY_CIDRS", "10.0.0.1/8"),
     ],
 )
-def test_invalid_network_settings_report_only_the_setting_key(
+def test_invalid_network_settings_report_the_concrete_validation_reason(
     monkeypatch: pytest.MonkeyPatch,
     key: str,
     value: str,
@@ -382,4 +382,5 @@ def test_invalid_network_settings_report_only_the_setting_key(
         get_settings(application_home=tmp_path)
 
     assert key in str(captured.value)
-    assert value not in str(captured.value)
+    assert value in str(captured.value)
+    assert "ValidationError" in str(captured.value)

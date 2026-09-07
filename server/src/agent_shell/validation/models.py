@@ -9,14 +9,6 @@ from agent_shell.localization import (
     normalize_message_args,
     normalize_message_key,
 )
-from agent_shell.redaction import redact_for_boundary
-
-
-def _safe_report_text(value: str) -> str:
-    safe = redact_for_boundary("preflight-diagnostic", value)
-    return safe if isinstance(safe, str) else "[UNAVAILABLE]"
-
-
 @dataclass(frozen=True, slots=True)
 class ValidationIssue:
     code: str
@@ -31,21 +23,6 @@ class ValidationIssue:
     severity: Literal["error", "warning"] = "error"
 
     def __post_init__(self) -> None:
-        # owner/path values can originate from a draft or historical payload.
-        # Normalize them once here so management responses, inference adapters,
-        # DOM rendering, and diagnostics all consume the same safe issue.
-        for field_name in (
-            "owner_id",
-            "owner_name",
-            "owner_type",
-            "path",
-            "message",
-        ):
-            object.__setattr__(
-                self,
-                field_name,
-                _safe_report_text(getattr(self, field_name)),
-            )
         object.__setattr__(self, "message_key", normalize_message_key(self.message_key))
         object.__setattr__(
             self,

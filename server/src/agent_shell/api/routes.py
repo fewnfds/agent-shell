@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from functools import wraps
+import json
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
@@ -79,6 +80,25 @@ RESOURCE_COMPONENT_CATALOG = (
         "resource_component": True,
     },
 )
+
+
+def _model_catalog_message(value: str, credential: str | None) -> str:
+    return value.replace(credential, "[REDACTED]") if credential else value
+
+
+def _model_catalog_response_message(
+    response: httpx.Response,
+    credential: str | None,
+    *,
+    reason: str,
+) -> str:
+    message = (
+        f"{reason} HTTP {response.status_code} {response.reason_phrase} "
+        f"for {response.request.url}."
+    )
+    if response.text:
+        message += f"\nProvider response:\n{response.text}"
+    return _model_catalog_message(message, credential)
 
 
 def build_router(
@@ -303,9 +323,13 @@ def build_router(
                     502,
                     code="model_catalog_browser_challenge",
                     message_key="errors.modelCatalogBrowserChallenge",
-                    message=(
-                        "Cloudflare rejected the server-side API client with a "
-                        "browser challenge."
+                    message=_model_catalog_response_message(
+                        response,
+                        api_key,
+                        reason=(
+                            "Cloudflare rejected the server-side API client with a "
+                            "browser challenge."
+                        ),
                     ),
                 )
             response.raise_for_status()
@@ -315,21 +339,31 @@ def build_router(
                 502,
                 code="model_catalog_upstream_error",
                 message_key="errors.modelCatalogUpstreamError",
-                message="The model service could not complete the catalog request.",
+                message=_model_catalog_response_message(
+                    exc.response,
+                    api_key,
+                    reason="The model catalog request failed.",
+                ),
             ) from exc
         except httpx.HTTPError as exc:
             raise management_error(
                 502,
                 code="model_catalog_unreachable",
                 message_key="errors.modelCatalogUnreachable",
-                message="The model service could not be reached.",
+                message=_model_catalog_message(
+                    f"{type(exc).__name__}: {exc}",
+                    api_key,
+                ),
             ) from exc
         except ValueError as exc:
             raise management_error(
                 502,
                 code="invalid_model_catalog_response",
                 message_key="errors.modelCatalogResponseInvalid",
-                message="The model service returned an invalid model catalog response.",
+                message=_model_catalog_message(
+                    f"{type(exc).__name__}: {exc}\nProvider response:\n{response.text}",
+                    api_key,
+                ),
             ) from exc
         models = payload.get("data") if isinstance(payload, dict) else payload
         if not isinstance(models, list):
@@ -337,7 +371,11 @@ def build_router(
                 502,
                 code="invalid_model_catalog_response",
                 message_key="errors.modelCatalogResponseInvalid",
-                message="The model service returned an invalid model catalog response.",
+                message=_model_catalog_message(
+                    "The model service returned an invalid model catalog response: "
+                    + json.dumps(payload, ensure_ascii=False),
+                    api_key,
+                ),
             )
         model_ids: list[str] = []
         for item in models:
@@ -350,7 +388,11 @@ def build_router(
                     502,
                     code="invalid_model_catalog_response",
                     message_key="errors.modelCatalogResponseInvalid",
-                    message="The model service returned an invalid model catalog response.",
+                    message=_model_catalog_message(
+                        "The model service returned an invalid model catalog response: "
+                        + json.dumps(payload, ensure_ascii=False),
+                        api_key,
+                    ),
                 )
             model_ids.append(item["id"])
         return model_ids

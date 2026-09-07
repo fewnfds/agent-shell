@@ -46,12 +46,7 @@ def describe_exception(exc: BaseException) -> str:
         if isinstance(current, AgentRuntimeError):
             part = current.message.strip() or current.code
         else:
-            explicit_message = getattr(current, "safe_message", None)
-            message = (
-                explicit_message.strip()
-                if isinstance(explicit_message, str) and explicit_message.strip()
-                else str(current).strip()
-            )
+            message = str(current).strip()
             part = (
                 f"{type(current).__name__}: {message}"
                 if message
@@ -59,9 +54,7 @@ def describe_exception(exc: BaseException) -> str:
             )
         if not parts or part != parts[-1]:
             parts.append(part)
-        current = current.__cause__ or (
-            None if current.__suppress_context__ else current.__context__
-        )
+        current = current.__cause__ or current.__context__
     return " <- ".join(parts)
 
 

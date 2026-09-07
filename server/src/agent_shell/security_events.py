@@ -8,10 +8,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
 import threading
+import traceback
 from typing import Mapping, Any
 
-from agent_shell.redaction import redact_for_boundary
 from agent_shell.request_context import current_actor, current_request_id
+from agent_shell.runtime.errors import describe_exception
 from agent_shell.storage.permissions import PermissionStatus, secure_directory, secure_file
 
 
@@ -44,7 +45,7 @@ SECURITY_EVENT_FIELDS = {
     "provider_secret_rotated": frozenset({"block_id"}),
     "provider_secret_cleared": frozenset({"block_id", "reason"}),
     "management_request_failed": frozenset(
-        {"method", "path", "status_code", "code", "issue_count"}
+        {"method", "path", "status_code", "code", "issue_count", "message"}
     ),
     "authentication_failed": frozenset(
         {"required_scope", "status_code", "code"}
@@ -108,15 +109,22 @@ class _ReportingRotatingFileHandler(RotatingFileHandler):
 
 
 class SecurityEventLogger:
-    """Bounded metadata events; configuration and request bodies are never accepted."""
+    """Persist the product-defined system event records used by the log center."""
 
-    def __init__(self, logs_dir: Path, *, max_bytes: int = 5 * 1024 * 1024) -> None:
+    def __init__(
+        self,
+        logs_dir: Path,
+        *,
+        max_bytes: int = 5 * 1024 * 1024,
+        redact: Callable[[object], object] | None = None,
+    ) -> None:
         if max_bytes < 1:
             raise ValueError("system event maximum size must be positive")
         self._lock = threading.Lock()
         self._max_bytes = max_bytes
         self._failure_reporter: SecurityEventFailureReporter | None = None
         self._publisher: SystemEventPublisher | None = None
+        self._redact = redact or (lambda value: value)
         self.directory_permission = secure_directory(logs_dir)
         self.path = logs_dir / "security-events.jsonl"
         self.path.touch(exist_ok=True)
@@ -148,8 +156,7 @@ class SecurityEventLogger:
             self._max_bytes = max_bytes
             self._enforce_current_limit()
 
-    @staticmethod
-    def _public_record(record: Mapping[str, Any]) -> dict[str, object]:
+    def _public_record(self, record: Mapping[str, Any]) -> dict[str, object]:
         event = str(record.get("event", ""))
         metadata = record.get("metadata", {})
         public = {
@@ -161,8 +168,8 @@ class SecurityEventLogger:
             "actor": str(record.get("actor", "")),
             "metadata": dict(metadata) if isinstance(metadata, Mapping) else {},
         }
-        safe = redact_for_boundary("event-log", public)
-        return safe if isinstance(safe, dict) else {
+        projected = self._redact(public)
+        return projected if isinstance(projected, dict) else {
             "timestamp": "",
             "event": event,
             "category": SYSTEM_EVENT_CATEGORIES.get(event, "system"),
@@ -216,15 +223,43 @@ class SecurityEventLogger:
 
     def _report_write_failure(self, error: BaseException, request_id: str) -> None:
         reporter = self._failure_reporter
+        reporter_error: BaseException | None = None
         if reporter is not None:
             try:
                 reporter(error, request_id)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                reporter_error = exc
         try:
+            failure = self._redact(
+                "".join(
+                    traceback.TracebackException.from_exception(error).format(
+                        chain=True
+                    )
+                ).rstrip()
+                or describe_exception(error)
+            )
+            reporter_failure = (
+                self._redact(
+                    "".join(
+                        traceback.TracebackException.from_exception(
+                            reporter_error
+                        ).format(chain=True)
+                    ).rstrip()
+                    or describe_exception(reporter_error)
+                )
+                if reporter_error is not None
+                else ""
+            )
             logging.getLogger(__name__).error(
-                "security_event_record_failed request_id=%s", request_id or "-"
+                "security_event_record_failed request_id=%s\n%s%s",
+                request_id or "-",
+                failure,
+                (
+                    f"\nruntime diagnostic reporting failed: {reporter_failure}"
+                    if reporter_failure
+                    else ""
+                ),
             )
         except Exception:
             pass
@@ -243,15 +278,15 @@ class SecurityEventLogger:
         unknown = set(raw_metadata) - SECURITY_EVENT_FIELDS[event]
         if unknown:
             raise ValueError(f"unsupported metadata fields for security event: {event}")
-        safe_metadata = redact_for_boundary("event-log", raw_metadata)
-        if not isinstance(safe_metadata, dict):
-            safe_metadata = {"status": "[UNAVAILABLE]"}
+        projected_metadata = self._redact(raw_metadata)
+        if not isinstance(projected_metadata, dict):
+            projected_metadata = {"status": "[UNAVAILABLE]"}
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
             "event": event,
             "request_id": request_id if request_id is not None else current_request_id(),
             "actor": actor if actor is not None else current_actor(),
-            "metadata": safe_metadata,
+            "metadata": projected_metadata,
         }
         line = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         with self._lock:

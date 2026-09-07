@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -48,7 +49,6 @@ from agent_shell.settings import (
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
 from agent_shell.runtime.errors import describe_exception
 from agent_shell.event_feed import EventFeedService
-from agent_shell.redaction import redact_for_boundary
 from agent_shell.readiness import ReadinessService
 from agent_shell.security_events import SecurityEventLogger
 from agent_shell.security import (
@@ -161,6 +161,7 @@ def create_app(
     event_logger = SecurityEventLogger(
         logs_dir,
         max_bytes=system_log_settings.snapshot()["max_size_mib"] * MIB_BYTES,
+        redact=environment.redact_secrets,
     )
     history_retention = HistoryRetentionStore(configuration)
     runtime_diagnostic_details = RuntimeDiagnosticDetailStore(logs_dir / "diagnostics")
@@ -231,7 +232,7 @@ def create_app(
         validate_api_key_policy(settings, api_server_store.api_key())
     except ApiKeyPolicyError as exc:
         raise SettingsError(
-            ("API Server API Key",), exc.safe_message
+            ("API Server API Key",), str(exc)
         ) from None
     api_server_events = ApiServerEventHub()
     message_interception = MessageInterceptionState()
@@ -240,6 +241,7 @@ def create_app(
         api_server_events.publish_nowait,
         store=runtime_diagnostic_store,
         details=runtime_diagnostic_details,
+        redact_secret_text=environment.redact_secret_text,
     )
     detached_tasks = DetachedTaskManager()
     event_logger.set_failure_reporter(
@@ -387,9 +389,11 @@ def create_app(
         if not is_agent_shell_api_path(request.url.path):
             return
         code = "request_failed"
+        message = ""
         issue_count = 0
         if isinstance(detail, dict):
             code = str(detail.get("code", code))
+            message = str(detail.get("message", ""))
             validation = detail.get("validation")
             issues = (
                 validation.get("issues", [])
@@ -397,6 +401,8 @@ def create_app(
                 else detail.get("issues", [])
             )
             issue_count = len(issues) if isinstance(issues, list) else 0
+        elif isinstance(detail, str):
+            message = detail
         await asyncio.to_thread(
             event_logger.emit,
             "management_request_failed",
@@ -406,29 +412,52 @@ def create_app(
                 "status_code": status_code,
                 "code": code,
                 "issue_count": issue_count,
+                "message": message,
             },
         )
 
     @app.exception_handler(HTTPException)
-    async def safe_http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
         headers = dict(exc.headers or {})
         request_id = getattr(request.state, "request_id", "")
         if request_id:
             headers["X-Request-ID"] = request_id
-        detail = redact_for_boundary("http-error", exc.detail)
-        if is_agent_shell_api_path(request.url.path):
-            if not isinstance(detail, dict) or not isinstance(
-                detail.get("message_key"), str
-            ):
-                detail = localized_error_detail(
-                    code=(
-                        str(detail.get("code", "request_failed"))
-                        if isinstance(detail, dict)
-                        else "request_failed"
-                    ),
-                    message_key="errors.requestFailed",
-                    message="The management request failed.",
+        detail = await asyncio.to_thread(
+            environment.redact_secrets,
+            jsonable_encoder(exc.detail),
+        )
+        cause = exc.__cause__ or exc.__context__
+        if cause is not None:
+            cause_message = await asyncio.to_thread(
+                environment.redact_secret_text,
+                describe_exception(cause),
+            )
+            if isinstance(detail, dict):
+                detail = dict(detail)
+                message = str(detail.get("message", "")).strip()
+                detail["message"] = (
+                    f"{message}\nCause: {cause_message}"
+                    if message
+                    else cause_message
                 )
+            elif isinstance(detail, str):
+                detail = f"{detail}\nCause: {cause_message}"
+        if exc.status_code >= 500:
+            diagnostic_code = (
+                str(detail.get("code", "request_failed"))
+                if isinstance(detail, dict)
+                else "request_failed"
+            )
+            await runtime_diagnostics.aruntime_error(
+                exc,
+                code=diagnostic_code,
+                component="api",
+                context=RuntimeDiagnosticContext(
+                    request_id=request_id,
+                    subject_kind="api",
+                    subject_name=request.url.path,
+                ),
+            )
         await record_management_failure(
             request,
             status_code=exc.status_code,
@@ -444,7 +473,7 @@ def create_app(
     async def repository_changed_error(
         request: Request, exc: ActiveRepositoryChangedError
     ) -> JSONResponse:
-        return await safe_http_error(
+        return await http_error(
             request,
             HTTPException(
                 status_code=409,
@@ -460,39 +489,28 @@ def create_app(
         )
 
     @app.exception_handler(RequestValidationError)
-    async def safe_request_validation_error(
+    async def request_validation_error(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        safe_errors = [
-            {
-                key: error[key]
-                for key in ("type", "loc", "msg")
-                if key in error
-            }
-            for error in exc.errors()
-        ]
+        errors = jsonable_encoder(exc.errors())
         if is_agent_shell_api_path(request.url.path):
             detail: object = {
                 **localized_error_detail(
                     code="request_validation_failed",
                     message_key="errors.requestValidationFailed",
                     message="The management request payload is invalid.",
-                    message_args={"count": len(safe_errors)},
+                    message_args={"count": len(errors)},
                 ),
-                "issues": safe_errors,
+                "issues": errors,
             }
         else:
-            detail = safe_errors
+            detail = errors
+        detail = await asyncio.to_thread(environment.redact_secrets, detail)
         await record_management_failure(request, status_code=422, detail=detail)
         return JSONResponse(
             status_code=422,
             headers={"X-Request-ID": getattr(request.state, "request_id", "")},
-            content={
-                "detail": redact_for_boundary(
-                    "http-error",
-                    detail,
-                )
-            },
+            content={"detail": detail},
         )
 
     @app.exception_handler(Exception)
@@ -508,7 +526,10 @@ def create_app(
             ),
         )
         request_id = getattr(request.state, "request_id", "")
-        message = describe_exception(exc)
+        message = await asyncio.to_thread(
+            environment.redact_secret_text,
+            describe_exception(exc),
+        )
         if is_agent_shell_api_path(request.url.path):
             content: dict[str, object] = {
                 "detail": localized_error_detail(
@@ -668,6 +689,7 @@ def create_app(
             api_server_events,
             message_interception,
             detached_tasks,
+            environment.redact_secret_text,
         )
     )
 

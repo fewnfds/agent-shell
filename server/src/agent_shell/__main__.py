@@ -208,8 +208,11 @@ def initialize_local_settings(
             password,
             env_path=env_path,
         )
-    except OSError:
-        print("无法保存配置文件，请检查 data 目录是否可写。", file=sys.stderr)
+    except OSError as exc:
+        print(
+            f"无法保存配置文件：{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 1
 
     print(
@@ -291,7 +294,8 @@ def main(
             )
         except Exception as exc:
             print(
-                f"Python package dependency preparation failed: {exc}",
+                "Python package dependency preparation failed: "
+                f"{type(exc).__name__}: {exc}",
                 file=sys.stderr,
             )
             return 1

@@ -24,7 +24,7 @@ from agent_shell.validation import (
 from agent_shell.validation.repository import RepositoryValidationService
 
 
-def test_contract_errors_become_safe_structured_validation_issues() -> None:
+def test_contract_errors_preserve_pydantic_messages_in_structured_issues() -> None:
     try:
         SystemPromptBlock.model_validate(
             {
@@ -69,8 +69,10 @@ def test_contract_errors_become_safe_structured_validation_issues() -> None:
         "system_prompt": {"min_length": 1},
         "legacy_field": {},
     }
-    assert all("private" not in issue["message"] for issue in payload["issues"])
-    assert all("legacy.json" not in issue["message"] for issue in payload["issues"])
+    assert {issue["message"] for issue in payload["issues"]} == {
+        "String should have at least 1 character",
+        "Extra inputs are not permitted",
+    }
 
 
 def test_filesystem_contract_rejects_linked_virtual_sources(
@@ -121,7 +123,7 @@ def test_filesystem_contract_rejects_linked_virtual_sources(
             FilesystemBlock.model_validate(payload)
 
 
-def test_validation_issue_redacts_user_controlled_owner_path_and_message() -> None:
+def test_validation_issue_preserves_owner_path_message_and_arguments() -> None:
     issue = ValidationIssue(
         code="contract.invalid_value",
         scope="block",
@@ -135,12 +137,15 @@ def test_validation_issue_redacts_user_controlled_owner_path_and_message() -> No
         },
     ).as_dict()
 
-    serialized = str(issue)
-    assert "C:\\private" not in serialized
-    assert "sk-1234567890-private" not in serialized
-    assert "top-secret-token" not in serialized
-    assert "[LOCAL_PATH]" in serialized
-    assert "[REDACTED]" in serialized
+    assert issue["owner_id"] == r"C:\private\owner-id"
+    assert issue["owner_name"] == "sk-1234567890-private"
+    assert issue["path"] == r"legacy.C:\private\field.json"
+    assert issue["message"] == (
+        r"Invalid C:\private\payload.json with Bearer top-secret-token"
+    )
+    assert issue["message_args"] == {
+        "detail": r"Invalid C:\private\payload.json with Bearer top-secret-token"
+    }
     assert issue["message_key"] == "validation.issue.contract.invalidValue"
 
 
@@ -338,7 +343,7 @@ def test_declared_configuration_references_require_canonical_uuid4(
         ),
     ],
 )
-def test_common_schema_rules_have_specific_safe_issue_identities(
+def test_common_schema_rules_have_specific_issue_identities(
     model: type,
     payload: dict[str, object],
     scope: str,
@@ -360,4 +365,4 @@ def test_common_schema_rules_have_specific_safe_issue_identities(
     assert issue["message_key"] == message_key
     assert issue["path"] == path
     assert issue["message_args"] == message_args
-    assert "pattern" not in str(issue["message"])
+    assert issue["message"]

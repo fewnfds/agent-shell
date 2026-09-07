@@ -15,6 +15,7 @@ from agent_shell.mcp.importing import (
     normalize_mcp_servers_import,
 )
 from agent_shell.mcp.installation import McpInstallationError
+from agent_shell.runtime.errors import describe_exception
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.mcp_connections import (
@@ -158,14 +159,14 @@ def build_mcp_connection_router(
                 409,
                 code=exc.code,
                 message_key="errors.mcpInstallationFailed",
-                message="The managed local MCP package could not be installed.",
+                message=str(exc),
             ) from exc
         except Exception as exc:
             raise management_error(
                 502,
                 code="mcp_connection_test_failed",
                 message_key="errors.mcpConnectionTestFailed",
-                message="The installed MCP Server could not complete Tool discovery.",
+                message=describe_exception(exc),
             ) from exc
         public_connection = await run_in_threadpool(
             resources.get_connection,

@@ -384,7 +384,7 @@ def test_official_launcher_warns_when_remote_http_backend_is_enabled(
     assert api_key not in captured.err
 
 
-def test_official_launcher_reports_safe_startup_error(
+def test_official_launcher_reports_startup_error_without_env_key_value(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -509,7 +509,8 @@ def test_windows_launcher_does_not_overwrite_invalid_existing_settings(
     assert system_path.read_text(encoding="utf-8") == original_system
     captured = capsys.readouterr()
     assert "AGENT_SHELL_PORT" in captured.err
-    assert "not-a-port" not in captured.err
+    assert "not-a-port" in captured.err
+    assert "Input should be a valid integer" in captured.err
 
 
 def test_windows_launcher_does_not_initialize_remote_deployment(

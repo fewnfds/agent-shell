@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping
 from pydantic import ValidationError
 
 from agent_shell.localization import MessageArg
-from agent_shell.redaction import redact_for_boundary
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 
 
@@ -128,38 +127,6 @@ def _specific_contract_identity(
     return None
 
 
-_ERROR_MESSAGES = {
-    "extra_forbidden": "The field is not accepted by the current contract.",
-    "missing": "A required field is missing.",
-    "string_too_short": "The text is shorter than the allowed range.",
-    "string_too_long": "The text is longer than the allowed range.",
-    "string_pattern_mismatch": "The value does not match the allowed format.",
-    "too_short": "The collection contains too few items.",
-    "too_long": "The collection contains too many items.",
-    "literal_error": "The value is not one of the allowed choices.",
-    "enum": "The value is not one of the allowed choices.",
-    "finite_number": "The value must be a finite number.",
-    "greater_than": "The value is not greater than the required limit.",
-    "greater_than_equal": "The value is below the required minimum.",
-    "less_than": "The value is not less than the required limit.",
-    "less_than_equal": "The value exceeds the allowed maximum.",
-    "int_type": "The value must be an integer.",
-    "int_parsing": "The value must be an integer.",
-    "float_type": "The value must be a number.",
-    "float_parsing": "The value must be a number.",
-    "bool_type": "The value must be true or false.",
-    "bool_parsing": "The value must be true or false.",
-    "string_type": "The value must be text.",
-    "list_type": "The value must be a list.",
-    "tuple_type": "The value must be a list.",
-    "set_type": "The value must be a list.",
-    "dict_type": "The value must be an object.",
-    "mapping_type": "The value must be an object.",
-    "model_type": "The value must be an object.",
-    "model_attributes_type": "The value must be an object.",
-}
-
-
 def _path(loc: Iterable[object]) -> str:
     result = ""
     for part in loc:
@@ -170,20 +137,11 @@ def _path(loc: Iterable[object]) -> str:
     return result
 
 
-def _safe_message(error: dict[str, object]) -> str:
-    error_type = str(error.get("type", ""))
-    known = _ERROR_MESSAGES.get(error_type)
-    if known:
-        return known
+def _message(error: dict[str, object]) -> str:
     raw = str(error.get("msg") or "The value does not satisfy the contract.")
     if raw.startswith("Value error, "):
         raw = raw[len("Value error, ") :]
-    safe = redact_for_boundary("preflight-diagnostic", raw)
-    return (
-        safe
-        if isinstance(safe, str) and safe
-        else "The value does not satisfy the contract."
-    )
+    return raw
 
 
 def _message_args(
@@ -245,7 +203,7 @@ def report_from_validation_error(
                 owner_name=owner_name,
                 owner_type=owner_type,
                 path=path,
-                message=_safe_message(error),
+                message=_message(error),
                 message_key=(
                     specific_identity[1]
                     if specific_identity is not None

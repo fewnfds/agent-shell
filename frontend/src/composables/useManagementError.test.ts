@@ -19,26 +19,28 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('useManagementError', () => {
-  it('localizes backend keys and exposes only code and request id as technical detail', () => {
+  it('keeps the localized heading, backend reason, and complete technical payload', () => {
     const error = new ManagementApiError({
       status: 409,
       code: 'configuration_in_use',
-      message: 'raw backend text must stay hidden',
+      message: 'raw backend text remains visible',
       messageKey: 'backend.configurationInUse',
       messageArgs: { name: 'Main Agent' },
       requestId: 'request-123',
-      payload: { traceback: 'hidden' },
+      payload: { traceback: 'complete traceback' },
     })
 
     const result = useManagementError().describe(error)
     expect(result.message).toBe('backend.configurationInUse:{"name":"Main Agent"}')
     expect(result.display).toContain('configuration_in_use')
     expect(result.display).toContain('request-123')
-    expect(result.display).not.toContain('raw backend text')
-    expect(result.display).not.toContain('traceback')
+    expect(result.reason).toBe('raw backend text remains visible')
+    expect(result.display).toContain('raw backend text remains visible')
+    expect(result.display).toContain('traceback')
+    expect(result.display).toContain('complete traceback')
   })
 
-  it('renders every safe structured validation issue before technical details', () => {
+  it('renders every structured validation issue with its backend reason', () => {
     const error = new ManagementApiError({
       status: 422,
       code: 'configuration_validation_failed',
@@ -78,25 +80,25 @@ describe('useManagementError', () => {
     expect(result.validationIssues).toHaveLength(2)
     expect(result.display).toContain('validation.location.namedOwner')
     expect(result.display).toContain('capability_refs.model')
-    expect(result.display).toContain('validation.issue.configuration.referenceNotFound')
+    expect(result.display).toContain('raw issue text')
     expect(result.display).toContain('legacy_field')
-    expect(result.display).toContain(
-      'validation.issue.contract.unknownField:{"field":"legacy_field"}',
-    )
+    expect(result.display).toContain('raw issue text 2')
     expect(result.display.indexOf('request-validation'))
       .toBeGreaterThan(result.display.indexOf('legacy_field'))
-    expect(result.display).not.toContain('raw issue text')
+    expect(result.display).toContain('raw backend validation text')
   })
 
-  it('uses stable frontend keys and a generic fallback instead of raw messages', () => {
+  it('uses stable frontend headings without discarding raw error messages', () => {
     const network = new ManagementApiError({
       status: 0,
       code: 'network_error',
       message: 'host details',
     })
     expect(useManagementError().describe(network).message).toBe('errors.network')
-    expect(useManagementError().describe(new Error('secret text')).message)
-      .toBe('errors.requestFailed')
+    expect(useManagementError().describe(network).display).toContain('host details')
+    const generic = useManagementError().describe(new Error('concrete failure'))
+    expect(generic.message).toBe('errors.requestFailed')
+    expect(generic.display).toContain('concrete failure')
     expect(useManagementError().describe(new ManagementAuthCancelledError()).message)
       .toBe('errors.authenticationCancelled')
   })

@@ -44,16 +44,14 @@ class SecurityFailure(ValueError):
     def __init__(self, status_code: int, code: str, message: str) -> None:
         self.status_code = status_code
         self.code = code
-        self.safe_message = message
-        super().__init__(code)
+        super().__init__(message)
 
 
 class ApiKeyPolicyError(ValueError):
     def __init__(self, code: str, message_key: str, message: str) -> None:
         self.code = code
         self.message_key = message_key
-        self.safe_message = message
-        super().__init__(code)
+        super().__init__(message)
 
 
 class ProxyHeaderError(ValueError):
@@ -282,7 +280,7 @@ class ScopeAuthenticationMiddleware:
             response = security_error_response(
                 exc.status_code,
                 exc.code,
-                exc.safe_message,
+                str(exc),
                 request_id,
                 required_scope,
             )
@@ -449,11 +447,11 @@ class TrustedProxyHeadersMiddleware:
         request_id = request_id_for_scope(scope)
         try:
             prepared = self._prepare_scope(scope)
-        except ProxyHeaderError:
+        except ProxyHeaderError as exc:
             response = security_error_response(
                 400,
                 "invalid_proxy_headers",
-                "Forwarding headers are invalid for this deployment.",
+                f"{type(exc).__name__}: {exc}",
                 request_id,
                 _required_scope(scope.get("path", "")),
             )
@@ -468,7 +466,9 @@ class TrustedProxyHeadersMiddleware:
         except ValueError as exc:
             raise ProxyHeaderError("direct peer is not an IP literal") from exc
         if not self._is_trusted(peer):
-            raise ProxyHeaderError("forwarding headers came from an untrusted peer")
+            raise ProxyHeaderError(
+                f"forwarding headers came from untrusted peer {peer}"
+            )
 
         names = [name.lower() for name, _ in scope.get("headers", [])]
         unknown_x = {

@@ -972,7 +972,7 @@ describe('ComponentsPage', () => {
 
     expect(wrapper.get('[data-testid="validation-checklist"]').attributes('data-status')).toBe('invalid')
     expect(wrapper.get('[data-testid="validation-checklist"]').text()).toContain('validation.issue.contract.fieldRequired')
-    expect(wrapper.get('[data-testid="validation-checklist"]').text()).not.toContain('backend validation message')
+    expect(wrapper.get('[data-testid="validation-checklist"]').text()).toContain('backend validation message')
     expect(toastNotify).not.toHaveBeenCalled()
     wrapper.unmount()
   })

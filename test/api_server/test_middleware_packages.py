@@ -337,5 +337,5 @@ def test_async_agent_runtime_rejects_sync_only_middleware_hooks(tmp_path: Path) 
         runtime.middleware_for("main")
 
     assert caught.value.code == "middleware_package_async_hook_required"
-    assert caught.value.safe_message.endswith("before_agent without abefore_agent.")
+    assert caught.value.message.endswith("before_agent without abefore_agent.")
     asyncio.run(runtime.close())

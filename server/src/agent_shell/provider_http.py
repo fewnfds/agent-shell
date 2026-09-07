@@ -11,15 +11,18 @@ from httpx_curl_cffi.transport import CurlAsyncByteStream
 
 
 class ProviderStreamError(RuntimeError):
-    """Safe evidence for a curl failure after a response stream has started."""
+    """Preserve a curl failure after a Provider response stream has started."""
 
-    def __init__(self, *, curl_code: int) -> None:
+    def __init__(self, message: str, *, curl_code: int) -> None:
         self.curl_code = curl_code
         try:
             self.curl_error = CurlECode(curl_code).name
         except ValueError:
             self.curl_error = "UNKNOWN"
-        super().__init__("provider response stream failed")
+        super().__init__(
+            f"Provider response stream failed with curl {self.curl_error} "
+            f"({self.curl_code}): {message}"
+        )
 
 
 class _ProviderAsyncByteStream(CurlAsyncByteStream):
@@ -28,7 +31,7 @@ class _ProviderAsyncByteStream(CurlAsyncByteStream):
             async for data in super().__aiter__():
                 yield data
         except RequestException as exc:
-            raise ProviderStreamError(curl_code=int(exc.code)) from exc
+            raise ProviderStreamError(str(exc), curl_code=int(exc.code)) from exc
 
 
 class ProviderAsyncCurlTransport(AsyncCurlTransport):

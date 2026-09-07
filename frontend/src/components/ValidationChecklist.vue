@@ -75,6 +75,9 @@ const detailSeparator = computed(() => {
           <p class="mb-2" data-testid="validation-reason-line">
             <span class="fw-semibold">{{ t('validation.location.reason') }}{{ detailSeparator }}</span><span data-testid="validation-reason">{{ issuePresentation.message(issue) }}</span>
           </p>
+          <p v-if="issuePresentation.explanation(issue)" class="mb-2" data-testid="validation-explanation-line">
+            <span class="fw-semibold">{{ t('validation.location.explanation') }}{{ detailSeparator }}</span><span data-testid="validation-explanation">{{ issuePresentation.explanation(issue) }}</span>
+          </p>
           <p class="mb-0" data-testid="validation-resolution-line">
             <span class="fw-semibold">{{ t('validation.location.resolution') }}{{ detailSeparator }}</span><span data-testid="validation-resolution">{{ issuePresentation.resolution(issue) }}</span>
           </p>

@@ -159,7 +159,7 @@ response 只返回 API Key 是否 configured，不返回 secret value。
 
 如果 API Key 已 configured，按第一章的认证边界取得 `AGENT_SHELL_API_KEY`，在同一本地程序或已注入该值的 HTTP client 中完成后续 `/compat/openai/v1/*` 调用。不要把它返回给操作 Agent，也不要因为 GET 不回显 secret 就自动替换它。
 
-如果本地程序或运行平台无法取得 `AGENT_SHELL_API_KEY`，报告该 key 为 `missing`，并把真实 `/compat/openai/v1/*` 验证记录为未验证项。不要通过读取工具打开 secret store，也不要要求用户在对话中粘贴 API Key。
+如果本地程序或运行平台无法按第一章的认证边界取得 `AGENT_SHELL_API_KEY`，报告该 key 为 `missing`，并把真实 `/compat/openai/v1/*` 验证记录为未验证项。不要要求用户在对话中发送 key 值。
 
 只有用户明确要求替换或当前尚未配置，并且本地执行边界已从对话之外取得新的 `AGENT_SHELL_API_KEY` 时，才用它构造 write-only value：
 
@@ -177,7 +177,7 @@ Content-Type: application/json
 }
 ```
 
-`<value injected from AGENT_SHELL_API_KEY>` 只表示 client-side 注入位置，不能把这段占位文本按字面发送。构造和发送 request 时不记录 request body。变量缺失时，由用户在对话之外完成设置；AI 不生成、猜测或索取 secret。
+`<value injected from AGENT_SHELL_API_KEY>` 只表示 client-side 注入位置，不能把这段占位文本按字面发送。request body 进入调试材料前应用第一章的 key 值投影。变量缺失时，由用户在对话之外完成设置；AI 不生成、猜测或索取 key。
 
 `api_key.operation` 支持：
 
@@ -193,7 +193,7 @@ POST /agent-shell/api/api-server/start
 
 请求不需要 body。再次 GET，确认 `enabled=true` 和 `status="running"`。
 
-API Key 只用于 `/compat/openai/v1/*`，不写入 Graph、Component、日志或交付报告。
+API Key 只用于 `/compat/openai/v1/*`；实际值不写入 Graph、Component、日志或交付报告。
 
 ## 9. 确认模型入口可发现
 
@@ -252,7 +252,7 @@ Content-Type: application/json
 
 ## 11. Invocation 失败
 
-保留 HTTP status、structured error code、request ID 和非敏感 issue。按 owner 定位：
+保留 HTTP status、structured error code、request ID、完整 issue、异常消息、Provider 正文和 traceback。按 owner 定位：
 
 1. 检查所选Main Agent的model entry，或Workflow的enabled/model entry状态；
 2. 检查 Model Mapping 与 MCP Mapping；
@@ -325,7 +325,7 @@ Not tested or user action
 - <remaining item and reason>
 ```
 
-报告可以包含 Configuration UUID 和非敏感名称。不要包含 token、API Key、Provider credential、完整私密消息或用户文件正文。
+报告保留复现结论所需的 Configuration identity、运行证据和错误详情，并应用第一章的认证 key 投影边界。
 
 ## 14. 完成判定
 

@@ -213,6 +213,7 @@ def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
                 disconnect_lifecycle=disconnect_lifecycle,
+                redact_secret_text=lambda value: value,
             )
             first = await anext(stream)
             assert '"role":"assistant"' in first
@@ -271,6 +272,7 @@ def test_completion_stream_does_not_wait_for_disconnect_cleanup(
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
                 disconnect_lifecycle=execution.disconnect_lifecycle,
+                redact_secret_text=lambda value: value,
             )
             await anext(stream)
             pending = asyncio.create_task(anext(stream))

@@ -128,16 +128,7 @@ class BundleImportPlanner:
         )
 
         errors: list[dict[str, object]] = [*name_errors, *binding_errors]
-        warnings: list[dict[str, object]] = [
-            bundle_issue(
-                "review_user_authored_content_for_secrets",
-                (
-                    "Importing an unknown or untrusted configuration is dangerous. "
-                    "Review prompts, Skill files, Python source, requirements, "
-                    "filesystem bindings, and permissions before sharing or importing."
-                ),
-            )
-        ]
+        warnings: list[dict[str, object]] = []
         for binding in bindings:
             resolution = binding_resolutions.get(binding.binding_id)
             selected_origin = (

@@ -69,4 +69,4 @@ Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workf
 API Key 是 write-only 设置，用于 `/compat/openai/v1/*`；管理密码用于管理台、除 Health 外的 `/agent-shell/api/*`，以及 LangGraph Agent Server 官方资源路径。清除 API Key 后推理 API 不可用。
 API Server启停与model catalog使用当前Repository入口配置；完整repository validation用于管理诊断，单次Chat请求只运行所选Main Agent或Workflow root Graph及其显式启动的独立Run。
 
-API Key 是个人实例的受信任执行凭据。推理失败响应可以包含 Provider 原始错误正文、本机路径或其他运行细节；只把 API Key 提供给允许读取这些排错信息的客户端。management-only 的 local exception-detail attachment 保存完整 traceback。
+API Key 是个人实例的受信任执行凭据。推理失败响应保留 Provider 错误正文、本机路径和运行细节；management-only 的 local exception-detail attachment 保留完整 traceback。内容投影遵循[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。

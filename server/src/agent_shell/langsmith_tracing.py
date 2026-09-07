@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 from typing import TYPE_CHECKING
 
 import langsmith as ls
 from langsmith import Client
+
+from agent_shell.runtime.errors import describe_exception
 
 if TYPE_CHECKING:
     from agent_shell.settings import Settings
@@ -22,11 +25,23 @@ class LangSmithConnectionError(RuntimeError):
     pass
 
 
+def _without_langsmith_key(settings: Settings, value: str) -> str:
+    key = (
+        settings.langsmith_api_key.get_secret_value()
+        if settings.langsmith_api_key is not None
+        else None
+    )
+    return value.replace(key, "[REDACTED]") if key else value
+
+
 def _client(settings: Settings, *, report_upload_errors: bool) -> Client:
     def report_error(exc: Exception) -> None:
+        detail = "".join(
+            traceback.TracebackException.from_exception(exc).format(chain=True)
+        ).rstrip()
         logging.getLogger("agent_shell.langsmith").error(
-            "LangSmith trace upload failed error_type=%s",
-            type(exc).__name__,
+            "LangSmith trace upload failed\n%s",
+            _without_langsmith_key(settings, detail),
         )
 
     return Client(
@@ -77,6 +92,8 @@ def validate_langsmith_connection(settings: Settings) -> None:
     try:
         next(client.list_projects(limit=1), None)
     except Exception as exc:
-        raise LangSmithConnectionError from exc
+        raise LangSmithConnectionError(
+            _without_langsmith_key(settings, describe_exception(exc))
+        ) from exc
     finally:
         client.close()

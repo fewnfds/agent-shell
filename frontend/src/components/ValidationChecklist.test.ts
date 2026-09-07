@@ -51,10 +51,12 @@ describe('ValidationChecklist', () => {
       .toBe('valid')
     expect(wrapper.get('header').text()).toContain('1 个非阻塞警告，配置仍可保存')
     expect(wrapper.get('[data-testid="validation-reason"]').text())
+      .toBe('raw warning')
+    expect(wrapper.get('[data-testid="validation-explanation"]').text())
       .toContain('路径权限 /archive/** 当前没有命中')
     expect(wrapper.get('[data-testid="validation-resolution"]').text())
       .toContain('可以保留并继续保存')
-    expect(wrapper.text()).not.toContain('raw warning')
+    expect(wrapper.text()).toContain('raw warning')
   })
 
   it('shows a compact success title and icon without a redundant status badge', () => {
@@ -128,7 +130,7 @@ describe('ValidationChecklist', () => {
     expect(wrapper.text()).toContain('subagents[0].name')
     expect(wrapper.text()).toContain('配置名称不能为空。')
     expect(wrapper.text()).toContain('配置名称未通过当前配置规则')
-    expect(wrapper.text()).not.toContain('backend report message')
+    expect(wrapper.text()).toContain('backend report message')
     expect(wrapper.text()).toContain('当前编辑的 Main Agent 配置')
   })
 
@@ -146,7 +148,7 @@ describe('ValidationChecklist', () => {
           owner_name: 'Default output',
           owner_type: 'agent-event-output',
           path: 'python_package.folder',
-          message: 'safe backend detail',
+          message: 'concrete backend detail',
           message_key: 'validation.issue.pythonPackage.invalid',
           message_args: { package_id: 'output-id' },
         }],
@@ -206,7 +208,7 @@ describe('ValidationChecklist', () => {
           scope: 'main_agent',
           owner_id: 'main-agent-id',
           owner_name: 'coordinator',
-          message: 'safe backend detail',
+          message: 'concrete backend detail',
           message_args: {},
         })),
       },
@@ -216,7 +218,8 @@ describe('ValidationChecklist', () => {
     expect(cards).toHaveLength(cases.length)
     cases.forEach((item, index) => {
       expect(cards[index].get('[data-testid="validation-technical-path"]').text()).toBe(item.path)
-      expect(cards[index].get('[data-testid="validation-reason"]').text()).toContain(item.reason)
+      expect(cards[index].get('[data-testid="validation-reason"]').text()).toBe('concrete backend detail')
+      expect(cards[index].get('[data-testid="validation-explanation"]').text()).toContain(item.reason)
       expect(cards[index].get('[data-testid="validation-resolution"]').text()).toContain(item.resolution)
     })
     expect(wrapper.text()).not.toContain('整份配置未通过当前配置规则')
@@ -246,10 +249,12 @@ describe('ValidationChecklist', () => {
     expect(card.get('[data-testid="validation-location"]').text())
       .toContain('代理角色名')
     expect(card.get('[data-testid="validation-reason"]').text())
+      .toBe('raw backend detail')
+    expect(card.get('[data-testid="validation-explanation"]').text())
       .toContain('必须以英文字母或下划线开头')
     expect(card.get('[data-testid="validation-resolution"]').text())
       .toContain('删除中文、空格或其他特殊字符')
-    expect(card.text()).not.toContain('raw backend detail')
+    expect(card.text()).toContain('raw backend detail')
   })
 
   it('keeps reason and resolution non-empty for unrecognized validation issues', () => {
@@ -265,7 +270,7 @@ describe('ValidationChecklist', () => {
           owner_id: 'future-id',
           owner_name: 'Future configuration',
           path: '',
-          message: 'safe backend detail',
+          message: 'concrete backend detail',
           message_key: 'validation.issue.future.unmapped',
           message_args: {},
         }],
@@ -274,7 +279,8 @@ describe('ValidationChecklist', () => {
 
     const card = wrapper.get('[data-testid="validation-issue"]')
     expect(card.get('[data-testid="validation-location"]').text()).toBe('整份配置')
-    expect(card.get('[data-testid="validation-reason"]').text())
+    expect(card.get('[data-testid="validation-reason"]').text()).toBe('concrete backend detail')
+    expect(card.get('[data-testid="validation-explanation"]').text())
       .toContain('错误代码：future.unmapped_issue')
     expect(card.get('[data-testid="validation-resolution"]').text())
       .toContain('根据错误代码 future.unmapped_issue 更正内容')
@@ -294,7 +300,7 @@ describe('ValidationChecklist', () => {
           owner_name: 'tag-test',
           owner_type: 'prompt-injection',
           path: 'block_type',
-          message: 'safe backend detail',
+          message: 'concrete backend detail',
           message_key: 'errors.unknownConfigurationType',
           message_args: { type: 'prompt-injection' },
         }],
@@ -335,11 +341,13 @@ describe('ValidationChecklist', () => {
     expect(technicalPath.element.tagName).toBe('SPAN')
     expect(technicalPath.classes()).toContain('font-monospace')
     expect(card.get('[data-testid="validation-reason"]').text())
+      .toBe('raw backend report message')
+    expect(card.get('[data-testid="validation-explanation"]').text())
       .toContain('inherit_all 字段不属于当前配置结构，可能已被删除或名称有误。')
     expect(card.get('[data-testid="validation-resolution"]').text())
       .toContain('打开 test-main-agent 对应的 Main Agent 配置，找到第 1 个 Subagent')
     expect(card.text()).not.toContain('配置项')
-    expect(card.text()).not.toContain('raw backend report message')
+    expect(card.text()).toContain('raw backend report message')
     expect(card.text()).not.toMatch(/[\u300c\u300d\u201c\u201d\u00b7\u2192]/)
     expect(card.find('code').exists()).toBe(false)
 
@@ -410,7 +418,7 @@ describe('ValidationChecklist', () => {
     expect(card.get('[data-testid="validation-resolution"]').text())
       .toContain('在所属配置中选择一份Agent 事件输出配置。')
     expect(card.get('[data-testid="validation-technical-path"]').text()).toBe('capability_refs.agent-event-output')
-    expect(card.text()).not.toContain('raw backend report message')
+    expect(card.text()).toContain('raw backend report message')
   })
 
   it('shows backend validation paths and codes in debug locale', () => {
@@ -430,7 +438,7 @@ describe('ValidationChecklist', () => {
               owner_id: 'main-agent-id',
               owner_name: 'coordinator',
               path,
-              message: 'safe backend detail',
+              message: 'concrete backend detail',
               message_key: 'validation.issue.pythonPackage.notFound',
               message_args: { package_id: 'missing-package' },
             }],
@@ -442,6 +450,8 @@ describe('ValidationChecklist', () => {
 
     expect(wrapper.get('[data-testid="validation-location"]').text()).toBe(path)
     expect(wrapper.get('[data-testid="validation-reason"]').text())
+      .toBe('concrete backend detail')
+    expect(wrapper.get('[data-testid="validation-explanation"]').text())
       .toBe('python_package.not_found')
     expect(wrapper.get('[data-testid="validation-resolution"]').text())
       .toBe('validation.resolution.pythonPackageNotFound')

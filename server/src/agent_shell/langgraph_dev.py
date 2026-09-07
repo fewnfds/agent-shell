@@ -116,7 +116,7 @@ async def authenticate(authorization: str | None) -> Auth.types.MinimalUserDict:
     except SecurityFailure as exc:
         raise Auth.exceptions.HTTPException(
             status_code=exc.status_code,
-            detail=exc.safe_message,
+            detail=str(exc),
         ) from None
     return {
         "identity": "agent-shell",

@@ -11,8 +11,7 @@ from agent_shell.storage.model_connections import (
 class ProviderCredentialError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
-        self.safe_message = message
-        super().__init__(code)
+        super().__init__(message)
 
 
 class ProviderSecretResolver:

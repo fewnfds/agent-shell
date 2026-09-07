@@ -31,9 +31,9 @@ Authorization: Bearer ${AGENT_SHELL_API_KEY}
 
 实际值位于 `<data-root>/config/agent-shell.env`。默认 data root 是 `<application-home>/data`；使用 `--data-dir` 启动时以该参数为准。仓库根目录的 [`.env.example`](../../../.env.example) 只说明当前 key 格式，不参与运行，也不保存实际值。
 
-用户已授权操作同一台机器上的实例时，操作 Agent 可以让本地程序使用 dotenv parser 加载所需认证 key，并在同一进程中完成 HTTP 请求。操作 Agent 不得通过文件读取工具、`cat`、`Get-Content` 或编辑器打开实际 secret store；不得让 dotenv mapping、secret value、Authorization Header、HTTP debug/trace 或含 secret 的异常进入工具输出；不得把值展开到命令参数、临时文件、对话、任务材料或交付报告。远程或隔离执行环境不能访问实例 secret store 时，由运行平台在对话之外注入 credential；缺失时只报告 key name 和 `missing` 状态。
+用户已授权操作同一台机器上的实例时，本地 API client 使用 dotenv parser 从 `agent-shell.env` 把所需认证 key 加载到进程内存，并直接构造 HTTP Authorization Header。不序列化 dotenv mapping、key 值或未投影的 Authorization Header；输出请求、trace 或异常前，先替换其中已加载 key 值的实际出现。远程或隔离执行环境不能访问实例 secret store 时，由运行平台在对话之外注入 credential；缺失时报告 key name 和 `missing` 状态。
 
-以下跨平台 Python 示例只把 `/agent-shell/api/readiness` response 返回给操作 Agent。其他语言使用相同边界：dotenv parser -> 进程内局部变量 -> HTTP client Header -> 非敏感 response。
+以下跨平台 Python 示例只把 `/agent-shell/api/readiness` response 返回给操作 Agent。其他语言使用相同边界：dotenv parser -> 进程内局部变量 -> HTTP client Header -> response。
 
 ```python
 from pathlib import Path
@@ -59,7 +59,7 @@ with urlopen(request) as response:
     print(response.read().decode("utf-8"))
 ```
 
-不要打印 `token`、dotenv mapping、`request.headers` 或完整 request。Model Connection credential、MCP secret 和 LangSmith API Key 由 Agent Shell 自己解析和使用；操作 Agent 通过 Management API 的 `masked`、`missing`、configured 状态及真实 Workflow invocation 验证它们，不从 secret store 提取这些值。
+不要打印 token 或完整 dotenv mapping。request、response 或 headers 进入调试输出前，必须完成上述 key 值投影。Model Connection credential、MCP secret 和 LangSmith API Key 由 Agent Shell 自己解析和使用；操作 Agent 通过 Management API 的 `masked`、`missing`、configured 状态及真实 Workflow invocation 验证它们。
 
 先调用：
 
@@ -194,7 +194,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 - `422`：检查 query、payload shape 或当前 contract；
 - `5xx`：保留 request ID，检查服务日志和运行环境。
 
-不要把 secret、完整用户消息或 host path 复制到诊断材料。
+诊断材料保留服务端返回的 structured detail、Provider 正文和 traceback，并应用本章的认证 key 投影边界。产品的数据分类与错误披露规则见[安全与部署](../../security-and-deployment.md#数据分类与错误披露)。
 
 ## 8. 本章完成结果
 

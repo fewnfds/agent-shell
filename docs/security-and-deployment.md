@@ -25,14 +25,17 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 应用只依据当前安全配置解释转发信息。反向代理必须覆盖客户端可伪造的 forwarded headers，并把管理台和推理 API 的访问策略一并纳入部署设计。
 
-## Secret 与用户内容
+## 数据分类与错误披露
 
-Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在实例 `data/config/` 中：模型连接与 MCP 连接 YAML 只保存 secret 的变量引用，`agent-shell.env` 保存实际敏感值；这些文件不提供加密存储。保护整个 `data/` 的磁盘权限、备份和传输，
-不要提交 Git 或公开分享。
+本节是 Agent Shell 的唯一数据敏感性与错误披露声明。敏感信息只有实例 `data/config/agent-shell.env` 中保存的实际密钥值，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。模型连接与 MCP 连接 YAML 保存变量引用；credential 读取 API 只投影 `masked`、`missing` 或 `configured` 状态。不要提交或公开分享 `agent-shell.env`。
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
-成功 API response、普通 DOM 和 system log 不主动复制 credential、Bearer token 或 traceback。经过认证的未处理 API 失败与 OpenAI-compatible 推理失败响应直接包含具体异常链；Lifecycle error 与 management-only runtime diagnostic summary 同样保留异常原文，因此可能出现 Provider 原始错误正文、本机路径、请求片段、credential 或其他运行细节。显式 HTTP 错误仍按所属 API contract 返回其结构化 detail。以下功能也会按产品用途保存完整内容：
+`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。普通内容是否进入某个载体由该领域 owner 的 contract 决定；内容进入错误事实后，不再根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。经过认证的显式 HTTP 错误、未处理异常与 OpenAI-compatible 推理失败响应保留具体异常链；FastAPI 请求结构错误保留 Pydantic 的被拒绝输入；system log 保存具体错误 message；Lifecycle error 保留 Server 失败 payload；management-only runtime diagnostic 保留异常链，其附件保留完整 traceback。稳定 code、HTTP status 和本地化标题是分类与展示元数据，与真实原因同时保留。
+
+该分类只决定内容投影，不改变认证、credential write-only API、持久化 owner、不受信任代码审查、文件系统权限或 retention 约束。内容是普通事实不等于应把它复制到无关 State、日志或导出物；每个载体仍只保存其 contract 需要的数据。
+
+以下功能的 contract 需要保存完整内容：
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
@@ -40,7 +43,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 - Lifecycle 监控 ZIP 在用户下载时通过公共 API 组合 snapshot、Store、Assistant Graph、latest State 和 checkpoint history，其中可能包含消息、reasoning、Tool 输入/输出、State 与文件路径；
 - 用户创建的组件、文件和 Python 资源。
 
-运行诊断列表保存固定结构化 identity、错误码、源异常类型和具体错误链，不对异常正文做摘要白名单或脱敏。异常详情附件只从管理台日志中心对应的运行诊断行下载；它保留本地 traceback，跨 Agent Server 时追加 Server source traceback。正常完成不会产生诊断或附件。运行诊断目录、管理凭据和 API Key 必须按可读取完整排错信息的敏感边界保护。
+运行诊断列表保存固定结构化 identity、错误码、源异常类型和具体错误链。异常详情附件只从管理台日志中心对应的运行诊断行下载；它保留本地 traceback，跨 Agent Server 时追加 Server source traceback。正常完成不会产生诊断或附件。
 
 ## 配置 Bundle
 
@@ -49,7 +52,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 Python template、`skills-template` 公共素材或 runtime cache。模型要求和 MCP 要求会随配置导入；模型/MCP 连接与 credential 需要在目标实例单独维护并完成各自映射。
 Skill Component 导出的是该 Component 已拥有的 Skill 独立包。
 
-平台不能可靠识别用户自行写进 prompt、Skill 文件或 Python source 的任意 secret。导出者在分享前仍需审查这些内容；导入者导入未知或不受信任配置是危险操作：Bundle 可能包含以 Agent Shell 权限执行的 Python/Skill 代码、文件系统或网络访问，以及欺骗性引用。导入或分享前必须审查来源、提示词、Skill 文件、Python 源码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
+导入未知或不受信任配置可能执行具有 Agent Shell 权限的 Python/Skill 代码，并访问文件系统、网络或进程。导入前应审查代码、requirements、Filesystem binding 与权限；在完成审查前不要启用导入的 Workflow。导入和导出阶段只执行静态语法/manifest/factory contract 扫描，不 import module、不安装 dependency、不调用 factory。
 
 ZIP 接受当前 format version、canonical `manifest.json`、规范相对 POSIX path 和匹配的 SHA-256 asset tree hash；绝对路径、
 `..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field 或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
@@ -86,13 +89,13 @@ mapped host directory 和软件根目录外路径均不可达。此边界不限�
 
 Lifecycle retention 和显式删除会删除对应官方 Thread、Run/checkpoint/State，以及 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的 input、Graph Run relation和filesystem route记录。删除日志或运行诊断不会删除这些数据。普通文件、生成媒体、mapped directory 正文和 Lifecycle 动态目录都属于用户产出，不由运行记录清理处理。
 
-官方 Graph、State/history 和 Server Store 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。平台不能识别用户主动写入普通文本、异常 message 或自定义对象表示中的任意密钥，实例所有者必须把`data/state/`和完整`data/`作为敏感数据保护。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*`全部需要 management Bearer，不建立新的多租户可见性边界。
+官方 Graph、State/history 和 Server Store 可以包含 prompt、消息、Tool payload、State、路径和其他业务材料。`/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/*` 需要 management Bearer，作为单实例产品的访问控制边界。
 
 active Lifecycle 的监控 ZIP 由多个公共 API 依次读取，manifest 使用 `atomic: false` 并逐项记录读取结果；导出期间 Run、State 与 Store 可以继续变化。下载文件离开实例 retention 与访问控制边界，不会在 Lifecycle retention 时被 Agent Shell 追踪或删除，由下载者负责保护和清理。
 
 ## 系统配置与变量
 
-非敏感系统字段位于 `data/config/system.yaml`。以下为与部署直接相关的节选，文件还包含 retention、validation 和 log 等当前系统设置：
+系统字段位于 `data/config/system.yaml`。以下为与部署直接相关的节选，文件还包含 retention、validation 和 log 等当前系统设置：
 
 ```yaml
 settings:
@@ -135,6 +138,6 @@ AGENT_SHELL_MCP_<CONNECTION_UUID_WITHOUT_HYPHENS>_<SLOT_UUID_WITHOUT_HYPHENS>=<m
 模型连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，credential 实际值由连接的 env 变量保存；模型要求与模型连接的绑定关系位于 `data/config/model-bindings.yaml`。
 模型要求 YAML 只保存名称和说明，写入 Configuration Repository。其他字段（包括 prompt、filesystem、middleware 和 tool 配置）直接写入 YAML。
 LangSmith 连接在系统配置中管理；启用或修改 Endpoint、API Key、
-Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 可能上传 prompt、模型输出和工具输入/输出；Agent Shell 不修改 Deep Agents 官方 Middleware trace policy，也不为外部 tracing 恢复上游已省略的 hook input。明确的 credential/API Key/secret 字段继续由项目序列化边界排除或脱敏，但平台不能识别普通文本中自行嵌入的任意密钥，分享或启用外部 tracing 前需要由维护者检查。
+Workspace ID 时会在落盘前验证 Key 能否访问对应区域，保存后重启生效。进程使用官方显式 Client 配置，并同步设置 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_PROJECT` 和可选 `LANGSMITH_WORKSPACE_ID` 供 LangChain 生态读取。关闭时只在本项目进程环境中强制 tracing 为 `false`。开启后，标准 LangSmith trace 的 prompt、模型输出和工具输入/输出由官方 trace contract 决定；LangSmith API Key 作为官方 Client credential 使用。
 
-实例敏感值只从 `data/config/agent-shell.env` 读取；服务启动和配置 Repository 都不把宿主进程中的同名 Secret 当作回退来源。非敏感 `AGENT_SHELL_*` 启动变量也不作为配置来源；未知键和误放入环境文件的键会使启动失败。Windows 源码启动器读取当前 Clone 的 data 配置；启动和维护方式见[开发与版本](development-and-release.md)。
+实例 credential 值从 `data/config/agent-shell.env` 读取；服务启动和配置 Repository 都不把宿主进程中的同名值当作回退来源。其他 `AGENT_SHELL_*` 启动变量也不作为配置来源；未知键和误放入环境文件的键会使启动失败。Windows 源码启动器读取当前 Clone 的 data 配置；启动和维护方式见[开发与版本](development-and-release.md)。
