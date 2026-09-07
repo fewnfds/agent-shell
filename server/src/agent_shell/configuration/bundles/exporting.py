@@ -114,11 +114,7 @@ def _configuration_closure(
 def _record(entity: ConfigurationEntity) -> BundleRecord:
     payload = deepcopy(entity.payload)
     payload.pop("id", None)
-    identity_field = (
-        "component_name"
-        if entity.kind in {"subagent", "async_subagent"}
-        else "name"
-    )
+    identity_field = "component_name" if entity.kind == "subagent" else "name"
     name = str(payload.pop(identity_field, ""))
     return BundleRecord(
         kind=entity.kind,
@@ -135,7 +131,6 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
         "components": {},
         "main_agents": [],
         "subagents": [],
-        "async_subagents": [],
         "workflows": [],
     }
     for entity in entities:
@@ -146,8 +141,6 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
             config["main_agents"].append(record)
         elif entity.kind == "subagent":
             config["subagents"].append(record)
-        elif entity.kind == "async_subagent":
-            config["async_subagents"].append(record)
         else:
             config["workflows"].append(record)
     return config

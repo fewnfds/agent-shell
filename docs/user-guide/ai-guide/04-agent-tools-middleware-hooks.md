@@ -17,9 +17,6 @@ Main Agent root graph
        -> direct Subagent
             -> its own ordered tool_refs
             -> its own ordered middleware_refs
-       -> explicit Async Subagent Middleware component
-            -> ordered Async Subagent configuration references
-            -> official async task tools
 ```
 
 Main Agent 和 Subagent 分别维护 `tool_refs` 与 `middleware_refs`。这两个列表独立于 `capability_refs` 和 Subagent capability override。每个 reference 指向当前 Configuration Repository 中一份配置独占的 Python package。
@@ -154,7 +151,7 @@ GET /agent-shell/api/subagents/<Subagent UUID>
 PUT /agent-shell/api/subagents/<Subagent UUID>
 ```
 
-每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool、同步 Subagent 的`task`和 Async Subagent 的五个 task 工具共享模型可见 Tool namespace；重复 Tool name 会在 Agent assembly validation 中返回错误。
+每个列表内的 UUID 必须唯一。Custom Tool、Filesystem Tool、Middleware 提供的 Tool 和同步 Subagent 的`task`共享模型可见 Tool namespace；重复 Tool name 会在 Agent assembly validation 中返回错误。
 
 ## 6. Custom Middleware factory
 

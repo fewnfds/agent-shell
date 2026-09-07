@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from agent_shell.validation.capability_assembly import FilesystemMode
 
@@ -36,16 +36,6 @@ class ResolvedSubagent:
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedAsyncSubagent:
-    async_subagent_id: str
-    main_agent_id: str
-    main_agent_name: str
-    on_disconnect: Literal["cancel", "continue"]
-    name: str
-    description: str
-
-
-@dataclass(frozen=True, slots=True)
 class StaticAssembly:
     main_agent: dict[str, Any]
     references: dict[str, str]
@@ -57,4 +47,3 @@ class StaticAssembly:
     tool_blocks: tuple[dict[str, Any], ...] = ()
     middleware_blocks: tuple[dict[str, Any], ...] = ()
     mcp_references: tuple[ResolvedMcpReference, ...] = ()
-    async_subagents: tuple[ResolvedAsyncSubagent, ...] = ()

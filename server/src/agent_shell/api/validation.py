@@ -26,7 +26,6 @@ class DraftValidationTarget(BaseModel):
         "main_agent",
         "model_connection",
         "subagent",
-        "async_subagent",
     ]
     type: str = ""
     id: str = ""
@@ -95,12 +94,6 @@ def build_validation_router(
             )
         elif target.kind == "subagent":
             report, _ = validation.validate_subagent(
-                request.payload,
-                stage="draft_validation",
-                owner_id=target.id,
-            )
-        elif target.kind == "async_subagent":
-            report, _ = validation.validate_async_subagent(
                 request.payload,
                 stage="draft_validation",
                 owner_id=target.id,

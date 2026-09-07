@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   blankMainAgent,
   blankSubagent,
-  normalizeAsyncSubagentReference,
   normalizeSubagentReference,
   overrideSelection,
   mainAgentPayload,
@@ -18,9 +17,6 @@ describe('agent profile adapters', () => {
     draft.name = 'Repeated display name'
     setReference(draft, 'model', '00000000-0000-0000-0000-000000000001')
     draft.subagents.push({ subagent_id: '00000000-0000-0000-0000-000000000020' })
-    draft.async_subagents.push({
-      async_subagent_id: '00000000-0000-0000-0000-000000000030',
-    })
 
     expect(mainAgentPayload(draft)).toEqual({
       name: 'Repeated display name',
@@ -36,9 +32,6 @@ describe('agent profile adapters', () => {
       middleware_refs: [],
       mcp_refs: [],
       subagents: [{ subagent_id: '00000000-0000-0000-0000-000000000020' }],
-      async_subagents: [{
-        async_subagent_id: '00000000-0000-0000-0000-000000000030',
-      }],
     })
   })
 
@@ -81,12 +74,6 @@ describe('agent profile adapters', () => {
       name: 'legacy field',
     })).toEqual({
       subagent_id: '00000000-0000-0000-0000-000000000020',
-    })
-    expect(normalizeAsyncSubagentReference({
-      async_subagent_id: '00000000-0000-0000-0000-000000000030',
-      name: 'ignored',
-    })).toEqual({
-      async_subagent_id: '00000000-0000-0000-0000-000000000030',
     })
   })
 })

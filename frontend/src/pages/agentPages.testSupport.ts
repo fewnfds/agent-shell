@@ -4,7 +4,6 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import type {
   AgentAuthoringService,
-  AsyncSubagentProfile,
   CapabilityManifest,
   MainAgentProfile,
   SubagentProfile,
@@ -12,7 +11,6 @@ import type {
 } from '@/domain/agents'
 
 import MainAgentPage from './MainAgentPage.vue'
-import AsyncSubagentPage from './AsyncSubagentPage.vue'
 import SubagentPage from './SubagentPage.vue'
 
 const toastNotify = vi.hoisted(() => vi.fn())
@@ -136,7 +134,6 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
     middleware_refs: [],
     mcp_refs: [],
     subagents: [],
-    async_subagents: [],
   }
   const subagent: SubagentProfile = {
     id: '00000000-0000-0000-0000-000000000020',
@@ -149,13 +146,6 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       middleware_refs: [],
       mcp_refs: [],
     },
-  }
-  const asyncSubagent: AsyncSubagentProfile = {
-    id: '00000000-0000-0000-0000-000000000030',
-    component_name: 'Async worker configuration',
-    main_agent_id: mainAgent.id,
-    name: 'async_worker',
-    description: 'Handles background work.',
   }
   const base: AgentAuthoringService = {
     getCatalog: vi.fn(async () => ({
@@ -175,7 +165,6 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       },
       main_agents: [mainAgent],
       subagents: [subagent],
-      async_subagents: [asyncSubagent],
       workflows: [],
     })),
     getMainAgent: vi.fn(async () => mainAgent),
@@ -188,11 +177,6 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
     updateSubagent: vi.fn(async (id, payload) => ({ ...subagent, ...payload, id })),
     copySubagent: vi.fn(async (_id, componentName) => ({ ...subagent, id: 'copied-subagent', component_name: componentName })),
     deleteSubagent: vi.fn(async () => ({ ok: true })),
-    getAsyncSubagent: vi.fn(async () => asyncSubagent),
-    createAsyncSubagent: vi.fn(async (payload) => ({ ...asyncSubagent, ...payload, id: 'created-async-subagent' })),
-    updateAsyncSubagent: vi.fn(async (id, payload) => ({ ...asyncSubagent, ...payload, id })),
-    copyAsyncSubagent: vi.fn(async (_id, componentName) => ({ ...asyncSubagent, id: 'copied-async-subagent', component_name: componentName })),
-    deleteAsyncSubagent: vi.fn(async () => ({ ok: true })),
     validateDraft: vi.fn(async () => validReport),
   }
   return { ...base, ...overrides }
@@ -241,24 +225,6 @@ export async function mountSubagentPage(
   await router.push(path)
   await router.isReady()
   const wrapper = mount(SubagentPage, {
-    props: { service: api },
-    global: { plugins: [router] },
-  })
-  await flushPromises()
-  return { router, wrapper }
-}
-
-export async function mountAsyncSubagentPage(
-  api: AgentAuthoringService,
-  path = '/agents/async-subagents',
-) {
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [{ path: '/agents/async-subagents', component: AsyncSubagentPage }],
-  })
-  await router.push(path)
-  await router.isReady()
-  const wrapper = mount(AsyncSubagentPage, {
     props: { service: api },
     global: { plugins: [router] },
   })

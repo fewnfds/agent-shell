@@ -5,7 +5,6 @@ import type { Component } from 'vue'
 
 import {
   agentEventOutputAdapter,
-  asyncSubagentAdapter,
   customToolAdapter,
   exceptionRetryAdapter,
   filesystemAdapter,
@@ -17,7 +16,6 @@ import {
   summarizationAdapter,
   systemPromptAdapter,
   todoListAdapter,
-  type AsyncSubagentDefaults,
   type ExceptionRetryDefaults,
   type FilesystemDefaults,
   type FilesystemToolsDefaults,
@@ -45,7 +43,6 @@ import {
   TodoListEditor,
   WorkflowEventOutputEditor,
 } from './index'
-import AsyncSubagentEditor from './AsyncSubagentEditor.vue'
 
 const filesystemDefaults: FilesystemDefaults = {
   system_prompt: 'filesystem default',
@@ -70,16 +67,6 @@ const skillDefaults: SkillDefaults = {
 const subagentDefaults: SubagentDefaults = {
   system_prompt: 'subagent default prompt',
   tool_description: 'task default description',
-}
-const asyncSubagentDefaults: AsyncSubagentDefaults = {
-  system_prompt: 'async subagent default prompt',
-  tool_descriptions: {
-    start_async_task: 'start default',
-    check_async_task: 'check default',
-    update_async_task: 'update default',
-    cancel_async_task: 'cancel default',
-    list_async_tasks: 'list default',
-  },
 }
 const todoListDefaults: TodoListDefaults = {
   system_prompt: 'todo default prompt',
@@ -235,16 +222,6 @@ describe('dedicated block editors', () => {
         toolNames: ['task'],
         switchCount: 0,
       },
-      {
-        component: AsyncSubagentEditor,
-        props: {
-          modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
-          defaults: asyncSubagentDefaults,
-        },
-        title: '异步子代理工具',
-        toolNames: Object.keys(asyncSubagentDefaults.tool_descriptions),
-        switchCount: 0,
-      },
     ]
 
     for (const scenario of scenarios) {
@@ -272,17 +249,7 @@ describe('dedicated block editors', () => {
       },
       global: { plugins: [localizedI18n] },
     })
-    const asynchronous = mount(AsyncSubagentEditor, {
-      props: {
-        modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
-        defaults: asyncSubagentDefaults,
-      },
-      global: { plugins: [localizedI18n] },
-    })
-
     expect(synchronous.get('[data-testid="tool-description-card"] .form-text').text())
-      .toBe('必要变量 {available_agents}')
-    expect(asynchronous.get('[data-testid="tool-description-card"] .form-text').text())
       .toBe('必要变量 {available_agents}')
   })
 
@@ -313,15 +280,6 @@ describe('dedicated block editors', () => {
           defaults: subagentDefaults,
         },
         title: '同步子代理系统提示词',
-        switchCount: 0,
-      },
-      {
-        component: AsyncSubagentEditor,
-        props: {
-          modelValue: asyncSubagentAdapter.blank(asyncSubagentDefaults),
-          defaults: asyncSubagentDefaults,
-        },
-        title: '异步子代理系统提示词',
         switchCount: 0,
       },
       {

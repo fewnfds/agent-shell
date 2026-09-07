@@ -27,7 +27,6 @@ export const en: MessageSchema = {
       eventFeed: 'Log center',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
-      asyncSubagents: 'Async Subagent',
       workflowLifecycles: 'Runtime monitoring',
       workflowEventOutput: 'Workflow event output',
       command: 'Command Node',
@@ -717,9 +716,6 @@ export const en: MessageSchema = {
     subagent: {
       label: 'Synchronous Subagents',
     },
-    'async-subagent': {
-      label: 'Async Subagent',
-    },
     summarization: {
       label: 'Context summarization',
     },
@@ -737,9 +733,6 @@ export const en: MessageSchema = {
     },
     'subagent-profile': {
       label: 'Subagent',
-    },
-    'async-subagent-profile': {
-      label: 'Async Subagent',
     },
     workflow: { label: 'Workflow' },
   },
@@ -1042,11 +1035,6 @@ export const en: MessageSchema = {
       namePlaceholder: 'For example: Synchronous research team',
       instructionTitle: 'Synchronous Subagent system prompt',
       taskDescriptionTitle: 'Synchronous Subagent tools',
-    },
-    asyncSubagent: {
-      namePlaceholder: 'For example: Async research capability',
-      systemPromptTitle: 'Async Subagent system prompt',
-      toolDescriptionsTitle: 'Async Subagent tools',
     },
     todoList: {
       namePlaceholder: 'For example: Complex task planning',
@@ -1474,7 +1462,6 @@ export const en: MessageSchema = {
     configurationNameRequired: 'The configuration name is required.',
     mainAgentNotFound: 'The Main Agent configuration does not exist.',
     subagentNotFound: 'The Subagent entity does not exist.',
-    asyncSubagentNotFound: 'The Async Subagent configuration does not exist.',
     configurationNameConflict: 'A configuration with this name already exists.',
     modelNameConflict: 'A Main Agent or enabled Workflow already uses this model name.',
     configurationNameInvalid: 'Use a valid Windows file name for the configuration name.',
@@ -1622,22 +1609,6 @@ export const en: MessageSchema = {
       unselectedReference: 'Unselected Subagent',
       inheritMainAgent: 'Same as Main Agent',
     },
-    asyncSubagent: {
-      referencesTitle: 'Async Subagent references',
-      addReference: 'Add Async Subagent',
-      noReferences: 'No Async Subagent configuration is referenced.',
-      reference: 'Async Subagent configuration',
-    },
-    asyncSubagentEntity: {
-      identityTitle: 'Async Subagent configuration',
-      template: 'Template Main Agent',
-      roleName: 'Agent role name',
-      runtimeTitle: 'Fixed runtime behavior',
-      templateAssembly: 'Template assembly',
-      inheritTemplate: 'Use the template Main Agent current configuration',
-      checkpointFixed: 'Enabled',
-      durabilityFixed: 'Async',
-    },
     middleware: {
       referencesTitle: 'Middleware order',
       addReference: 'Add Middleware',
@@ -1680,13 +1651,11 @@ export const en: MessageSchema = {
       main_agent: 'Main Agent configuration',
       model_connection: 'model connection configuration',
       subagent: 'Subagent configuration',
-      async_subagent: 'Async Subagent configuration',
       workflow: 'Workflow configuration',
     },
     referenceType: {
       main_agent: 'Main Agent',
       subagent: 'Subagent',
-      async_subagent: 'Async Subagent',
       workflow: 'Workflow',
     },
     location: {
@@ -1741,11 +1710,6 @@ export const en: MessageSchema = {
       subagentDescriptionRequired: 'Describe when the Main Agent should delegate work to this Subagent, then save again.',
       subagentNameDuplicate: 'Give each Subagent a unique name, then save again.',
       subagentReferenceDuplicate: 'Remove the duplicate reference to the same Subagent entity.',
-      asyncSubagentNameDuplicate: 'Give each referenced Async Subagent configuration a unique agent role name.',
-      asyncSubagentSelfReference: 'Select an Async Subagent configuration whose template is not the current Main Agent.',
-      asyncSubagentReferenceDuplicate: 'Remove the duplicate reference to the same Async Subagent configuration.',
-      asyncSubagentInvalid: 'Open the Async Subagent configuration named {component_name} and fix it, or select another configuration.',
-      asyncSubagentReferenceRequired: 'Reference at least one Async Subagent configuration, or remove the Async Subagent component when async delegation is not needed.',
       pythonPackageNotFound: 'Select a Python package that still exists.',
       pythonPackageInvalid: 'Correct the Python package or select another package.',
       pythonPackageDependenciesFailed: 'Correct the package requirements and restart Agent Shell.',
@@ -1819,9 +1783,6 @@ export const en: MessageSchema = {
         subagentDescriptionRequired: 'A Subagent must have a description.',
         subagentNameDuplicate: 'This Subagent name is already used by another Subagent.',
         subagentReferenceDuplicate: 'The same Subagent entity is referenced more than once by this Agent.',
-        asyncSubagentNameDuplicate: 'This async subagent name is already used by another reference.',
-        asyncSubagentSelfReference: 'A Main Agent cannot select itself as an async subagent.',
-        asyncSubagentReferenceDuplicate: 'The same Async Subagent configuration is referenced more than once by this Agent.',
         subagentNestedReferencesForbidden: 'Only a Main Agent may reference Subagents. A Subagent cannot configure child Subagents.',
       },
       assembly: {
@@ -1831,8 +1792,6 @@ export const en: MessageSchema = {
         filesystemPermissionPathUnmatched: 'Path permission {path} does not currently match a declared path in this Agent\'s filesystem.',
         subagentInvalid: 'The Subagent entity named {component_name} contains invalid content.',
         subagentReferenceRequired: 'The synchronous Subagent capability is selected, but no usable Subagent entity is referenced.',
-        asyncSubagentInvalid: 'The Async Subagent configuration named {component_name} contains invalid content.',
-        asyncSubagentReferenceRequired: 'Async Subagent is selected, but no usable Async Subagent configuration is referenced.',
       },
       pythonPackage: {
         notFound: 'Python package {package_id} does not exist.',

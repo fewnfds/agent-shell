@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from agent_shell.configuration.dependencies import (
-    ConfigurationEntity,
     iter_configuration_entities,
     iter_configuration_references,
-    rewrite_configuration_references,
 )
 from agent_shell.configuration.bundles.contracts import FilesystemBindingResolution
 from agent_shell.configuration.bundles.filesystem import (
@@ -25,8 +23,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "workflow": "77777777-7777-4777-8777-777777777777",
         "workflow_output": "88888888-8888-4888-8888-888888888888",
         "command": "99999999-9999-4999-8999-999999999999",
-        "async_main": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        "async_subagent": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     }
     config = {
         "components": {
@@ -56,13 +52,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                     {"middleware_id": ids["middleware"]}
                 ],
                 "subagents": [{"subagent_id": ids["subagent"]}],
-                "async_subagents": [
-                    {"async_subagent_id": ids["async_subagent"]}
-                ],
-            },
-            {
-                "id": ids["async_main"],
-                "name": "Async target",
             },
         ],
         "subagents": [
@@ -88,15 +77,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                         {"middleware_id": ids["middleware"]}
                     ],
                 },
-            }
-        ],
-        "async_subagents": [
-            {
-                "id": ids["async_subagent"],
-                "component_name": "Research profile",
-                "main_agent_id": ids["async_main"],
-                "name": "researcher",
-                "description": "Research in the background.",
             }
         ],
         "workflows": [
@@ -154,20 +134,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         ),
         ("main_agent", "subagents[0].subagent_id", "subagent", "", ids["subagent"]),
         (
-            "main_agent",
-            "async_subagents[0].async_subagent_id",
-            "async_subagent",
-            "",
-            ids["async_subagent"],
-        ),
-        (
-            "async_subagent",
-            "main_agent_id",
-            "main_agent",
-            "",
-            ids["async_main"],
-        ),
-        (
             "subagent",
             "settings.capability_overrides[0].block_id",
             "component",
@@ -197,32 +163,6 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             ids["command"],
         ),
     }
-
-    target_ids = {reference[-1]: reference[-1] for reference in references}
-    rewritten_async_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-    target_ids[ids["async_subagent"]] = rewritten_async_id
-    rewritten = rewrite_configuration_references(
-        ConfigurationEntity(
-            id=ids["main"],
-            kind="main_agent",
-            name="Main",
-            payload=config["main_agents"][0],
-        ),
-        target_ids,
-    )
-    assert rewritten["async_subagents"][0]["async_subagent_id"] == rewritten_async_id
-
-    rewritten_target_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-    rewritten_profile = rewrite_configuration_references(
-        ConfigurationEntity(
-            id=ids["async_subagent"],
-            kind="async_subagent",
-            name="Research profile",
-            payload=config["async_subagents"][0],
-        ),
-        {ids["async_main"]: rewritten_target_id},
-    )
-    assert rewritten_profile["main_agent_id"] == rewritten_target_id
 
 
 def test_local_shell_workspace_is_a_rebindable_filesystem_directory(

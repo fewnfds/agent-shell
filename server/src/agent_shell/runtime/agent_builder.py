@@ -157,7 +157,6 @@ class AgentBuilder:
         model_resources: ModelResourceStore | ModelResourceSnapshot | None = None,
         mcp_resources: McpResourceSnapshot | None = None,
         repository_id: str | None = None,
-        async_subagent_run_observer: Any | None = None,
     ) -> None:
         self._secrets = secrets
         self._python_packages_dir = python_packages_dir
@@ -172,7 +171,6 @@ class AgentBuilder:
         self._mcp_runtime: McpRunRuntime | None = None
         self._tool_runtime: ToolPackageRuntime | None = None
         self._middleware_runtime: MiddlewarePackageRuntime | None = None
-        self._async_subagent_run_observer = async_subagent_run_observer
 
     async def discover_mcp(
         self,
@@ -649,7 +647,6 @@ class AgentBuilder:
             }
         )
         resolved_subagents = assembly.subagents
-        resolved_async_subagents = assembly.async_subagents
 
         main_agent_id = str(main_agent["id"])
         main_agent_name = str(main_agent["name"])
@@ -721,8 +718,6 @@ class AgentBuilder:
         }
 
         compiled_subagents: list[dict[str, Any]] = []
-        async_subagent_specs: list[dict[str, str]] = []
-        async_subagent_tool_names: tuple[str, ...] = ()
         subagent_initial_files: dict[str, Any] = {}
         task_description_override: str | None = None
         if resolved_subagents:
@@ -751,21 +746,6 @@ class AgentBuilder:
                     part for part in (existing_prompt, delegation_instruction) if part
                 )
             constructor["subagents"] = compiled_subagents
-
-        if resolved_async_subagents:
-            from agent_shell.runtime.subagents import (
-                ASYNC_SUBAGENT_TOOL_NAMES,
-                build_async_subagent_specs,
-            )
-
-            async_subagent_specs = build_async_subagent_specs(
-                resolved_async_subagents
-            )
-            async_subagent_tool_names = ASYNC_SUBAGENT_TOOL_NAMES
-            constructor["subagents"] = [
-                *compiled_subagents,
-                *async_subagent_specs,
-            ]
 
         middleware.extend(materialized.extra_middleware)
         exception_retry_runtime = materialized.exception_retry
@@ -807,32 +787,6 @@ class AgentBuilder:
                 )
                 if replacement is not None:
                     middleware.append(replacement)
-            if async_subagent_specs:
-                from agent_shell.runtime.subagent_middleware import (
-                    make_async_subagent_middleware_override,
-                    make_async_subagent_run_middleware,
-                )
-
-                async_block = selected_blocks["async-subagent"]
-                middleware.append(
-                    make_async_subagent_middleware_override(
-                        async_subagents=async_subagent_specs,
-                        system_prompt=async_block["system_prompt_override"],
-                        description_overrides={
-                            tool_name: async_block[
-                                f"{tool_name}_description_override"
-                            ]
-                            for tool_name in async_subagent_tool_names
-                        },
-                    )
-                )
-                if self._async_subagent_run_observer is not None:
-                    middleware.append(
-                        make_async_subagent_run_middleware(
-                            references=resolved_async_subagents,
-                            observer=self._async_subagent_run_observer,
-                        )
-                    )
             middleware.extend(materialized.package_middleware)
             validate_middleware_names(middleware, owner="Main Agent")
             main_agent_middleware_names = {
@@ -851,13 +805,6 @@ class AgentBuilder:
                     ("task",)
                     if resolved_subagents
                     and "SubAgentMiddleware" not in main_agent_middleware_names
-                    else ()
-                )
-                + (
-                    async_subagent_tool_names
-                    if resolved_async_subagents
-                    and "AsyncSubAgentMiddleware"
-                    not in main_agent_middleware_names
                     else ()
                 ),
             )

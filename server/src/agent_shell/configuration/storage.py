@@ -44,7 +44,7 @@ def validate_configuration_snapshot(
         ):
             raise ValueError("component type keys must be normalized path segments")
         _record_list(records, label=f"components.{component_type}")
-    for key in ("main_agents", "subagents", "async_subagents", "workflows"):
+    for key in ("main_agents", "subagents", "workflows"):
         _record_list(config.get(key), label=key)
 
     seen_ids: dict[str, str] = {}
@@ -65,7 +65,7 @@ def validate_configuration_snapshot(
 
         identity_field = (
             "component_name"
-            if entity.kind in {"subagent", "async_subagent"}
+            if entity.kind == "subagent"
             else "name"
         )
         raw_name = entity.payload.get(identity_field)

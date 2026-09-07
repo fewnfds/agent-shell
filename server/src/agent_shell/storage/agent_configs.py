@@ -11,7 +11,6 @@ class AgentConfigStore:
     _IDENTITY_COLUMNS = {
         "main_agents": "name",
         "subagents": "component_name",
-        "async_subagents": "component_name",
     }
 
     def __init__(self, repository: FileConfigRepository, event_logger: SecurityEventLogger | None = None) -> None:
@@ -40,13 +39,6 @@ class AgentConfigStore:
         fields = {
             "main_agents": ("id", "name"),
             "subagents": ("id", "component_name", "name", "description"),
-            "async_subagents": (
-                "id",
-                "component_name",
-                "main_agent_id",
-                "name",
-                "description",
-            ),
         }[table]
         return sorted(
             self._repository.list_records(table, fields=fields),
@@ -105,7 +97,6 @@ class AgentConfigStore:
             entity={
                 "main_agents": "main-agent",
                 "subagents": "subagent",
-                "async_subagents": "async-subagent",
             }[table],
             entity_id=item_id,
         )
@@ -143,7 +134,6 @@ class AgentConfigStore:
                 entity={
                     "main_agents": "main-agent",
                     "subagents": "subagent",
-                    "async_subagents": "async-subagent",
                 }[table],
                 entity_id=item_id,
             )

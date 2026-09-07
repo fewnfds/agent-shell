@@ -4,7 +4,6 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
-import AsyncSubagentReferencesEditor from '@/components/AsyncSubagentReferencesEditor.vue'
 import CopyNameModal from '@/components/CopyNameModal.vue'
 import PageShell from '@/components/PageShell.vue'
 import MiddlewareReferencesEditor from '@/components/MiddlewareReferencesEditor.vue'
@@ -18,14 +17,12 @@ import {
   agentAuthoringServiceKey,
   blankMainAgent,
   managementAgentAuthoringService,
-  normalizeAsyncSubagent,
   normalizeMainAgent,
   normalizeSubagent,
   mainAgentPayload,
   referenceId,
   setReference,
   type AgentAuthoringService,
-  type AsyncSubagentProfile,
   type CapabilityManifest,
   type CapabilityType,
   type StoredBlock,
@@ -103,7 +100,6 @@ const {
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
 const subagentProfiles = ref<SubagentProfile[]>([])
-const asyncSubagentProfiles = ref<AsyncSubagentProfile[]>([])
 const mcpRequirements = ref<StoredBlock[]>([])
 
 const obsoleteReferences = computed(() => {
@@ -151,7 +147,6 @@ async function loadWorkspace(): Promise<void> {
     ])
     manifests.value = catalog.block_types.filter((item) => item.agent_selectable !== false).sort((left, right) => left.order - right.order)
     subagentProfiles.value = options.subagents.map(normalizeSubagent)
-    asyncSubagentProfiles.value = options.async_subagents.map(normalizeAsyncSubagent)
     mcpRequirements.value = options.components['mcp-requirement'] ?? []
     blocks.value = Object.fromEntries(manifests.value.map((manifest) => [
       manifest.type,
@@ -435,10 +430,6 @@ onMounted(() => {
           :profiles="subagentProfiles"
         />
 
-        <AsyncSubagentReferencesEditor
-          v-model:references="form.async_subagents"
-          :profiles="asyncSubagentProfiles"
-        />
       </template>
       <template #aside>
         <ValidationChecklist

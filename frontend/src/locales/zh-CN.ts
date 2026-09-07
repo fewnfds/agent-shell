@@ -25,7 +25,6 @@ export const zhCN = {
       eventFeed: '日志中心',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
-      asyncSubagents: 'Async Subagent',
       workflowLifecycles: '运行监控',
       workflowEventOutput: 'Workflow 事件输出',
       command: 'Command 节点',
@@ -715,9 +714,6 @@ export const zhCN = {
     subagent: {
       label: '同步子代理',
     },
-    'async-subagent': {
-      label: '异步子代理',
-    },
     summarization: {
       label: '上下文摘要',
     },
@@ -735,9 +731,6 @@ export const zhCN = {
     },
     'subagent-profile': {
       label: 'Subagent',
-    },
-    'async-subagent-profile': {
-      label: '异步子代理',
     },
     workflow: { label: 'Workflow' },
   },
@@ -1040,11 +1033,6 @@ export const zhCN = {
       namePlaceholder: '例如：同步研究组',
       instructionTitle: '同步子代理系统提示词',
       taskDescriptionTitle: '同步子代理工具',
-    },
-    asyncSubagent: {
-      namePlaceholder: '例如：异步研究能力',
-      systemPromptTitle: '异步子代理系统提示词',
-      toolDescriptionsTitle: '异步子代理工具',
     },
     todoList: {
       namePlaceholder: '例如：复杂任务计划',
@@ -1472,7 +1460,6 @@ export const zhCN = {
     configurationNameRequired: '配置名称不能为空。',
     mainAgentNotFound: 'Main Agent 配置不存在。',
     subagentNotFound: 'Subagent 实体不存在。',
-    asyncSubagentNotFound: '异步子代理配置不存在。',
     configurationNameConflict: '已经存在同名配置。',
     modelNameConflict: '已有 Main Agent 或已启用 Workflow 使用该模型名称。',
     configurationNameInvalid: '配置名称必须符合 Windows 文件名规则。',
@@ -1620,22 +1607,6 @@ export const zhCN = {
       unselectedReference: '未选择 Subagent',
       inheritMainAgent: '与 Main Agent 相同',
     },
-    asyncSubagent: {
-      referencesTitle: '异步子代理引用',
-      addReference: '添加异步子代理',
-      noReferences: '尚未引用异步子代理配置。',
-      reference: '异步子代理配置',
-    },
-    asyncSubagentEntity: {
-      identityTitle: '异步子代理配置',
-      template: '模板 Main Agent',
-      roleName: '代理角色名',
-      runtimeTitle: '固定运行方式',
-      templateAssembly: '模板装配',
-      inheritTemplate: '使用模板 Main Agent 当前配置',
-      checkpointFixed: '启用',
-      durabilityFixed: '异步写入',
-    },
     middleware: {
       referencesTitle: 'Middleware 排列',
       addReference: '添加 Middleware',
@@ -1678,13 +1649,11 @@ export const zhCN = {
       main_agent: 'Main Agent 配置',
       model_connection: '模型连接配置',
       subagent: 'Subagent 配置',
-      async_subagent: '异步子代理配置',
       workflow: 'Workflow 配置',
     },
     referenceType: {
       main_agent: 'Main Agent',
       subagent: 'Subagent',
-      async_subagent: '异步子代理',
       workflow: 'Workflow',
     },
     location: {
@@ -1739,11 +1708,6 @@ export const zhCN = {
       subagentDescriptionRequired: '说明 Main Agent 应在什么情况下把任务交给这个 Subagent，然后重新保存。',
       subagentNameDuplicate: '为每个 Subagent 使用不同的名称，然后重新保存。',
       subagentReferenceDuplicate: '删除指向同一个 Subagent 实体的重复引用。',
-      asyncSubagentNameDuplicate: '为每个异步子代理配置使用不同的代理角色名。',
-      asyncSubagentSelfReference: '请选择一个不指向当前 Main Agent 的异步子代理配置。',
-      asyncSubagentReferenceDuplicate: '删除指向同一个异步子代理配置的重复引用。',
-      asyncSubagentInvalid: '打开 {component_name} 对应的异步子代理配置并修正内容，或改选其他配置。',
-      asyncSubagentReferenceRequired: '至少引用一个异步子代理配置；如果不需要异步委派，请移除异步子代理组件。',
       pythonPackageNotFound: '重新选择一个仍然存在的 Python 包。',
       pythonPackageInvalid: '修正 Python 包，或选择其他包。',
       pythonPackageDependenciesFailed: '修正包依赖并重启 Agent Shell。',
@@ -1817,9 +1781,6 @@ export const zhCN = {
         subagentDescriptionRequired: 'Subagent 必须填写说明。',
         subagentNameDuplicate: '这个 Subagent 名称已被另一个 Subagent 使用。',
         subagentReferenceDuplicate: '当前 Agent 重复引用了同一个 Subagent 实体。',
-        asyncSubagentNameDuplicate: '该异步子代理角色名已被另一条引用使用。',
-        asyncSubagentSelfReference: 'Main Agent 不能引用模板指向自己的异步子代理配置。',
-        asyncSubagentReferenceDuplicate: '当前 Agent 重复引用了同一个异步子代理配置。',
         subagentNestedReferencesForbidden: '只有 Main Agent 可以引用 Subagent；Subagent 不能再配置子代理。',
       },
       assembly: {
@@ -1829,8 +1790,6 @@ export const zhCN = {
         filesystemPermissionPathUnmatched: '路径权限 {path} 当前没有命中此 Agent 文件系统中声明的路径。',
         subagentInvalid: '{component_name} 对应的 Subagent 实体包含无效内容。',
         subagentReferenceRequired: '已选择同步 Subagent 能力，但还没有引用可用的 Subagent 实体。',
-        asyncSubagentInvalid: '{component_name} 对应的异步子代理配置包含无效内容。',
-        asyncSubagentReferenceRequired: '已选择异步子代理，但还没有引用可用的异步子代理配置。',
       },
       pythonPackage: {
         notFound: '引用的 Python 包 {package_id} 不存在。',

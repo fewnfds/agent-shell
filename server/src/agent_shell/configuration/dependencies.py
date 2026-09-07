@@ -10,7 +10,6 @@ ConfigurationEntityKind = Literal[
     "component",
     "main_agent",
     "subagent",
-    "async_subagent",
     "workflow",
 ]
 
@@ -69,13 +68,6 @@ def iter_configuration_entities(
         yield ConfigurationEntity(
             id=str(record.get("id", "")),
             kind="subagent",
-            name=str(record.get("component_name", "")),
-            payload=record,
-        )
-    for record in _records(config.get("async_subagents", [])):
-        yield ConfigurationEntity(
-            id=str(record.get("id", "")),
-            kind="async_subagent",
             name=str(record.get("component_name", "")),
             payload=record,
         )
@@ -161,28 +153,6 @@ def _main_agent_references(
             target_kind="subagent",
             location=("subagents", index, "subagent_id"),
         )
-    for index, item in enumerate(_records(payload.get("async_subagents", []))):
-        yield _reference(
-            owner,
-            path=f"async_subagents[{index}].async_subagent_id",
-            target_id=item.get("async_subagent_id"),
-            target_kind="async_subagent",
-            location=("async_subagents", index, "async_subagent_id"),
-        )
-
-
-def _async_subagent_references(
-    owner: ConfigurationEntity,
-) -> Iterator[ConfigurationReference]:
-    yield _reference(
-        owner,
-        path="main_agent_id",
-        target_id=owner.payload.get("main_agent_id"),
-        target_kind="main_agent",
-        location=("main_agent_id",),
-    )
-
-
 def _component_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
@@ -306,8 +276,6 @@ def iter_configuration_references(
         yield from _main_agent_references(owner)
     elif owner.kind == "subagent":
         yield from _subagent_references(owner)
-    elif owner.kind == "async_subagent":
-        yield from _async_subagent_references(owner)
     elif owner.kind == "workflow":
         yield from _workflow_references(owner)
 

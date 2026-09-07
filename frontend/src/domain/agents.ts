@@ -2,9 +2,6 @@ import type { InjectionKey } from 'vue'
 
 import { managementApi } from '@/api'
 import type {
-  AsyncSubagent,
-  AsyncSubagentPayload as ApiAsyncSubagentPayload,
-  AsyncSubagentReference as ApiAsyncSubagentReference,
   BlockType,
   CapabilityManifest as ApiCapabilityManifest,
   CapabilityOverride as ApiCapabilityOverride,
@@ -32,15 +29,13 @@ export type CapabilityManifest = ApiCapabilityManifest
 type AgentCatalog = CatalogResponse
 export type StoredBlock = ConfigurationSummary
 export type SubagentReference = ApiSubagentReference
-export type AsyncSubagentReference = ApiAsyncSubagentReference
 export type MiddlewareReference = ApiMiddlewareReference
 export type ToolReference = ApiToolReference
 export type McpReference = ApiMcpReference
 
-export interface MainAgentProfile extends Omit<MainAgent, 'subagents' | 'async_subagents'> {
+export interface MainAgentProfile extends Omit<MainAgent, 'subagents'> {
   id: string
   subagents: SubagentReference[]
-  async_subagents: AsyncSubagentReference[]
 }
 
 type MainAgentPayload = ApiMainAgentPayload
@@ -55,8 +50,6 @@ interface OverrideSelection {
 export interface SubagentProfile extends Omit<Subagent, 'settings'> {
   settings: Subagent['settings']
 }
-export type AsyncSubagentProfile = AsyncSubagent
-type AsyncSubagentPayload = ApiAsyncSubagentPayload
 type SubagentPayload = ApiSubagentPayload
 export type ValidationReport = ApiValidationReport
 export type DraftValidationRequest = ApiDraftValidationRequest
@@ -74,11 +67,6 @@ export interface AgentAuthoringService {
   updateSubagent(id: string, payload: SubagentPayload): Promise<SubagentProfile>
   copySubagent(id: string, componentName: string): Promise<SubagentProfile>
   deleteSubagent(id: string): Promise<{ ok: boolean }>
-  getAsyncSubagent(id: string): Promise<AsyncSubagentProfile>
-  createAsyncSubagent(payload: AsyncSubagentPayload): Promise<AsyncSubagentProfile>
-  updateAsyncSubagent(id: string, payload: AsyncSubagentPayload): Promise<AsyncSubagentProfile>
-  copyAsyncSubagent(id: string, componentName: string): Promise<AsyncSubagentProfile>
-  deleteAsyncSubagent(id: string): Promise<{ ok: boolean }>
   validateDraft(request: DraftValidationRequest): Promise<ValidationReport>
 }
 
@@ -97,11 +85,6 @@ export const managementAgentAuthoringService: AgentAuthoringService = {
   updateSubagent: (id, payload) => managementApi.saveSubagent({ id, ...payload }),
   copySubagent: (id, componentName) => managementApi.copySubagent(id, componentName),
   deleteSubagent: (id) => managementApi.deleteSubagent(id),
-  getAsyncSubagent: (id) => managementApi.getAsyncSubagent(id),
-  createAsyncSubagent: (payload) => managementApi.saveAsyncSubagent(payload),
-  updateAsyncSubagent: (id, payload) => managementApi.saveAsyncSubagent({ id, ...payload }),
-  copyAsyncSubagent: (id, componentName) => managementApi.copyAsyncSubagent(id, componentName),
-  deleteAsyncSubagent: (id) => managementApi.deleteAsyncSubagent(id),
   validateDraft: (request) => managementApi.validateDraft(request),
 }
 
@@ -130,11 +113,6 @@ export function normalizeSubagentReference(value: unknown): SubagentReference {
   return { subagent_id: text(source.subagent_id) }
 }
 
-export function normalizeAsyncSubagentReference(value: unknown): AsyncSubagentReference {
-  const source = record(value)
-  return { async_subagent_id: text(source.async_subagent_id) }
-}
-
 export function blankMainAgent(): MainAgentProfile {
   return {
     id: '',
@@ -148,7 +126,6 @@ export function blankMainAgent(): MainAgentProfile {
     middleware_refs: [],
     mcp_refs: [],
     subagents: [],
-    async_subagents: [],
   }
 }
 
@@ -156,7 +133,6 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
   const source = record(value)
   const references = Array.isArray(source.capability_refs) ? source.capability_refs : []
   const subagents = Array.isArray(source.subagents) ? source.subagents : []
-  const asyncSubagents = Array.isArray(source.async_subagents) ? source.async_subagents : []
   const toolRefs = Array.isArray(source.tool_refs) ? source.tool_refs : []
   const middlewareRefs = Array.isArray(source.middleware_refs) ? source.middleware_refs : []
   const mcpRefs = Array.isArray(source.mcp_refs) ? source.mcp_refs : []
@@ -183,7 +159,6 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
     }),
     mcp_refs: mcpRefs.map(normalizeMcpReference),
     subagents: subagents.map(normalizeSubagentReference),
-    async_subagents: asyncSubagents.map(normalizeAsyncSubagentReference),
   }
 }
 
@@ -205,9 +180,6 @@ export function mainAgentPayload(value: MainAgentProfile): MainAgentPayload {
     mcp_refs: value.mcp_refs.map(mcpReferencePayload),
     subagents: value.subagents.map((reference) => ({
       subagent_id: reference.subagent_id,
-    })),
-    async_subagents: value.async_subagents.map((reference) => ({
-      async_subagent_id: reference.async_subagent_id,
     })),
   }
 }
@@ -314,37 +286,5 @@ export function subagentPayload(value: SubagentProfile): SubagentPayload {
       })),
       mcp_refs: value.settings.mcp_refs.map(mcpReferencePayload),
     },
-  }
-}
-
-export function blankAsyncSubagent(): AsyncSubagentProfile {
-  return {
-    id: '',
-    component_name: '',
-    main_agent_id: '',
-    name: '',
-    description: '',
-  }
-}
-
-export function normalizeAsyncSubagent(value: unknown): AsyncSubagentProfile {
-  const source = record(value)
-  return {
-    id: text(source.id),
-    component_name: text(source.component_name),
-    main_agent_id: text(source.main_agent_id),
-    name: text(source.name),
-    description: text(source.description),
-  }
-}
-
-export function asyncSubagentPayload(
-  value: AsyncSubagentProfile,
-): AsyncSubagentPayload {
-  return {
-    component_name: value.component_name.trim(),
-    main_agent_id: value.main_agent_id,
-    name: value.name.trim(),
-    description: value.description.trim(),
   }
 }

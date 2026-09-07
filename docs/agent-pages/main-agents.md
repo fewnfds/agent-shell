@@ -15,8 +15,7 @@ Main Agent是完整、可复用的Deep Agents assembly和Agent Server root graph
     {"type": "model-requirement", "block_id": "model-requirement-uuid"},
     {"type": "filesystem", "block_id": "filesystem-uuid"},
     {"type": "filesystem-tools", "block_id": "filesystem-tools-uuid"},
-    {"type": "agent-event-output", "block_id": "output-uuid"},
-    {"type": "async-subagent", "block_id": "async-subagent-middleware-uuid"}
+    {"type": "agent-event-output", "block_id": "output-uuid"}
   ],
   "tool_refs": [
     {"tool_id": "custom-tool-uuid"}
@@ -33,9 +32,6 @@ Main Agent是完整、可复用的Deep Agents assembly和Agent Server root graph
   ],
   "subagents": [
     {"subagent_id": "subagent-uuid"}
-  ],
-  "async_subagents": [
-    {"async_subagent_id": "async-subagent-configuration-uuid"}
   ]
 }
 ```
@@ -45,7 +41,3 @@ Main Agent是完整、可复用的Deep Agents assembly和Agent Server root graph
 Todo List、Summarization 与 Prompt Caching 通过 `capability_refs` 独立选择，并分别物化为 official Middleware；未选择时使用同名无行为 replacement，使最终 stack 保持显式。Custom Tool 通过有序 `tool_refs` 装配，Custom Middleware 通过有序 `middleware_refs` 装配；MCP Requirement 通过有序 `mcp_refs` 装配，并为每条引用保存 `all|include` 原始 Tool name 选择。每个列表内 ID 唯一。Agent 生命周期使用 LangChain Middleware hook。
 
 `capability_refs`引用`type=subagent`的委派组件且`subagents`至少包含一个有效实体时，Main Agent获得Deep Agents官方`task`工具。当前直接Subagent用于Main Agent内部同步委派；Workflow单独定义确定性控制拓扑。
-
-`async_subagents`是独立的 ordered reference 列表，每条记录只保存一个 Async Subagent 配置 UUID。该配置资源选择模板 Main Agent，并复用代理角色名与说明；运行时把模板稳定 Assistant ID 投影为官方`AsyncSubAgent.graph_id`。引用只是候选配置，只有`capability_refs`显式选择 Async Subagent Middleware component 后才增加`start_async_task`、`check_async_task`、`update_async_task`、`cancel_async_task`和`list_async_tasks`。同一个配置不能重复引用；模板指回当前 Main Agent，或多个有效引用的角色名按大小写不敏感语义冲突时，保存会被拒绝。
-
-异步 task 使用独立 Thread/Run，Thread checkpoint 固定启用，checkpoint 保存时机固定使用 Agent Server 默认`async`。父 Agent 的`async_tasks` State channel 保存 reference；父`checkpoint_mode=enabled`时这些 reference 随父 Thread checkpoint 延续，`disabled`时仅当前 Run 可用。child Run 在创建时冻结模板 Main Agent 的用户断开策略，并进入父 Lifecycle 的 monitoring 与 retention；child 原始 stream 不进入父 response，父 Agent 显式 check 并复述结果后才通过自己的 Agent Event Output 公开。

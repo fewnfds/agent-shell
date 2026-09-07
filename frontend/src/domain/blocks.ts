@@ -9,7 +9,6 @@ import { agentEventOutputAdapter } from './blocks/agentEventOutput'
 import { promptCachingAdapter } from './blocks/promptCaching'
 import { skillAdapter } from './blocks/skill'
 import { subagentAdapter } from './blocks/subagent'
-import { asyncSubagentAdapter } from './blocks/asyncSubagent'
 import { summarizationAdapter } from './blocks/summarization'
 import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
@@ -68,13 +67,6 @@ export type { BlockDraftBase } from './blocks/shared'
 export type { SkillCatalogItem, SkillDefaults, SkillDraft } from './blocks/skill'
 export type { SubagentDefaults, SubagentDraft } from './blocks/subagent'
 export type {
-  AsyncSubagentDefaults,
-  AsyncSubagentDescriptionField,
-  AsyncSubagentDraft,
-  AsyncSubagentToolName,
-} from './blocks/asyncSubagent'
-export { asyncSubagentToolNames } from './blocks/asyncSubagent'
-export type {
   SummarizationDefaults,
   SummarizationDraft,
   SummarizationThresholdDraft,
@@ -104,7 +96,6 @@ export {
   promptCachingAdapter,
   skillAdapter,
   subagentAdapter,
-  asyncSubagentAdapter,
   summarizationAdapter,
   systemPromptAdapter,
   todoListAdapter,
@@ -123,7 +114,6 @@ export const blockTypes = [
   'skill',
   'system-prompt',
   'subagent',
-  'async-subagent',
   'todo-list',
   'summarization',
   'prompt-caching',
@@ -147,7 +137,6 @@ export const blockAdapters = {
   skill: skillAdapter,
   'system-prompt': systemPromptAdapter,
   subagent: subagentAdapter,
-  'async-subagent': asyncSubagentAdapter,
   'todo-list': todoListAdapter,
   summarization: summarizationAdapter,
   'prompt-caching': promptCachingAdapter,

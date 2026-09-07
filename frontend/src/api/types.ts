@@ -18,7 +18,6 @@ export type BlockType =
   | 'agent-event-output'
   | 'exception-retry'
   | 'subagent'
-  | 'async-subagent'
   | 'summarization'
   | 'prompt-caching'
 
@@ -95,14 +94,6 @@ export interface SubagentSummary {
   description: string
 }
 
-export interface AsyncSubagentSummary {
-  id: string
-  component_name: string
-  main_agent_id: string
-  name: string
-  description: string
-}
-
 export interface WorkflowSummary extends ConfigurationSummary {
   description: string
   enabled: boolean
@@ -121,7 +112,6 @@ export interface ConfigurationOptions {
   components: Partial<Record<ManagedComponentType, ConfigurationSummary[]>>
   main_agents: MainAgentSummary[]
   subagents: SubagentSummary[]
-  async_subagents: AsyncSubagentSummary[]
   workflows: WorkflowSummary[]
 }
 
@@ -379,7 +369,7 @@ export interface ConfigurationRepositoryActivation extends ConfigurationReposito
   validation: ValidationReport
 }
 
-export type ConfigurationEntityKind = 'component' | 'main_agent' | 'subagent' | 'async_subagent' | 'workflow'
+export type ConfigurationEntityKind = 'component' | 'main_agent' | 'subagent' | 'workflow'
 
 export interface ConfigurationBundleRoot {
   kind: ConfigurationEntityKind
@@ -701,10 +691,6 @@ export interface SubagentReference {
   subagent_id: string
 }
 
-export interface AsyncSubagentReference {
-  async_subagent_id: string
-}
-
 export interface MiddlewareReference {
   middleware_id: string
 }
@@ -724,7 +710,6 @@ export interface MainAgentPayload {
   middleware_refs: MiddlewareReference[]
   mcp_refs: McpReference[]
   subagents: SubagentReference[]
-  async_subagents: AsyncSubagentReference[]
 }
 
 export type MainAgent = MainAgentPayload & { id: string }
@@ -751,21 +736,11 @@ export interface SubagentPayload {
 
 export type Subagent = SubagentPayload & { id: string }
 
-export interface AsyncSubagentPayload {
-  component_name: string
-  main_agent_id: string
-  name: string
-  description: string
-}
-
-export type AsyncSubagent = AsyncSubagentPayload & { id: string }
-
 type ValidationTarget =
   | { kind: 'block'; type: ManagedComponentType; id?: string }
   | { kind: 'main_agent'; type?: ''; id?: string }
   | { kind: 'model_connection'; type?: ''; id?: string }
   | { kind: 'subagent'; type?: ''; id?: string }
-  | { kind: 'async_subagent'; type?: ''; id?: string }
 
 export interface DraftValidationRequest {
   target: ValidationTarget

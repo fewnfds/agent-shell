@@ -23,7 +23,6 @@ from agent_shell.configuration.bundles.planning import BundleImportPlanner
 from agent_shell.configuration.bundles.transactions import commit_prepared_import
 from agent_shell.storage.file_config import FileConfigRepository
 from .support import (
-    async_subagent_payload,
     create_main_agent,
     create_workflow,
     make_client,
@@ -197,117 +196,6 @@ def test_main_agent_bundle_import_remaps_identity_and_requires_path_binding(
         for path in package_folder.iterdir()
     )
     assert len(source_config["main_agents"]) == 1
-
-
-def test_main_agent_bundle_closes_over_and_rewrites_async_agent_targets(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source_root = tmp_path / "async-source"
-    source_root.mkdir()
-    with make_client(source_root, monkeypatch) as source:
-        parent = create_main_agent(source)
-        target = source.post(
-            f"/agent-shell/api/main-agents/{parent['id']}/copy",
-            json={"name": "Portable async target"},
-        ).json()
-        profile = source.post(
-            "/agent-shell/api/async-subagents",
-            json=async_subagent_payload(
-                "Portable research profile",
-                target["id"],
-                name="researcher",
-                description="Research from an independent Thread.",
-            ),
-        ).json()
-        payload = {key: value for key, value in parent.items() if key != "id"}
-        payload["async_subagents"] = [
-            {"async_subagent_id": profile["id"]}
-        ]
-        saved = source.put(
-            f"/agent-shell/api/main-agents/{parent['id']}",
-            json=payload,
-        )
-        assert saved.status_code == 200, saved.text
-        exported = source.post(
-            "/agent-shell/api/configuration-bundles/export",
-            json={"kind": "main_agent", "source_id": parent["id"]},
-        )
-        assert exported.status_code == 200, exported.text
-
-    with ZipFile(BytesIO(exported.content)) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
-    bundled_main_ids = {
-        record["source_id"]
-        for record in manifest["records"]
-        if record["kind"] == "main_agent"
-    }
-    assert bundled_main_ids == {parent["id"], target["id"]}
-    assert {
-        record["source_id"]
-        for record in manifest["records"]
-        if record["kind"] == "async_subagent"
-    } == {profile["id"]}
-
-    target_root = tmp_path / "async-target"
-    target_root.mkdir()
-    with make_client(target_root, monkeypatch) as destination:
-        preview_response = destination.post(
-            "/agent-shell/api/configuration-bundles/preview",
-            files={
-                "bundle": (
-                    "async-agent.zip",
-                    exported.content,
-                    "application/zip",
-                )
-            },
-        )
-        assert preview_response.status_code == 200, preview_response.text
-        preview = preview_response.json()
-        assert preview["ready"] is True
-        imported_response = destination.post(
-            "/agent-shell/api/configuration-bundles/import",
-            files={
-                "bundle": (
-                    "async-agent.zip",
-                    exported.content,
-                    "application/zip",
-                )
-            },
-            data={
-                "request": json.dumps(
-                    {
-                        "bundle_sha256": preview["bundle_sha256"],
-                        "plan_token": preview["plan_token"],
-                        "resolutions": {
-                            "target_ids": preview["target_ids"],
-                            "filesystem_bindings": {},
-                        },
-                    }
-                )
-            },
-        )
-        assert imported_response.status_code == 200, imported_response.text
-        imported = imported_response.json()
-        destination_config = FileConfigRepository(
-            target_root / "data"
-        ).config()
-
-    imported_parent = next(
-        agent
-        for agent in destination_config["main_agents"]
-        if agent["id"] == imported["root"]["target_id"]
-    )
-    assert imported_parent["async_subagents"] == [
-        {"async_subagent_id": preview["target_ids"][profile["id"]]}
-    ]
-    imported_profile = next(
-        item
-        for item in destination_config["async_subagents"]
-        if item["id"] == preview["target_ids"][profile["id"]]
-    )
-    assert imported_profile["main_agent_id"] == preview["target_ids"][target["id"]]
-    assert imported_profile["name"] == "researcher"
 
 
 def test_bundle_import_failure_removes_staged_configuration_and_assets(

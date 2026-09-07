@@ -41,11 +41,7 @@ class BundleRecord(BaseModel):
             raise ValueError("type is required only for component records")
         forbidden = {
             "id",
-            (
-                "component_name"
-                if self.kind in {"subagent", "async_subagent"}
-                else "name"
-            ),
+            "component_name" if self.kind == "subagent" else "name",
         }
         if forbidden.intersection(self.payload):
             raise ValueError("bundle record payload duplicates envelope identity")

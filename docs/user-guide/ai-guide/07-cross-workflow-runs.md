@@ -164,6 +164,6 @@ Main Agent 与 Workflow 分别保存`on_disconnect=cancel|continue`。每个 Run
 - 需要后续控制的 `run_id` 已保存，官方状态没有复制为第二套 State；
 - `join()`、`check()` 或 fire-and-forget 符合预期结果交付方式；
 - 大型结果通过 Store/Filesystem reference 交付；
-- 每个可能参与 Lifecycle 的 Main Agent、Workflow 与 Async Subagent 模板都配置了符合预期的`on_disconnect`；
+- 每个可能参与 Lifecycle 的 Main Agent 与 Workflow 都配置了符合预期的`on_disconnect`；
 - 循环有业务退出条件；
 - 要进入同一公开 response 的输出在请求入口 Run 结束前完成收集。
