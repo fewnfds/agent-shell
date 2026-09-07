@@ -375,6 +375,7 @@ describe('dedicated block editors', () => {
     const card = editor.get('[data-testid="model-parameters-card"]')
     const providerFields = card.findAll('[data-testid="provider-parameter-field"]')
     const settings = card.findAll('[data-request-setting]')
+    const requestSettingsRow = card.get('[data-testid="model-request-settings-row"]')
 
     expect(card.get('.card-title').text()).toBe('模型参数')
     expect(providerFields.length).toBeGreaterThan(0)
@@ -387,6 +388,9 @@ describe('dedicated block editors', () => {
     expect(settings[0]?.classes()).toContain('col-md-4')
     expect(settings[1]?.classes()).toContain('col-md-6')
     expect(settings[2]?.classes()).toContain('col-md-6')
+    expect(requestSettingsRow.classes()).toContain('row')
+    expect(requestSettingsRow.findAll(':scope > [data-request-setting]')).toHaveLength(2)
+    expect(requestSettingsRow.find('[data-request-setting="tool_choice"]').exists()).toBe(false)
     expect(settings[0]?.find('input[list="tool-choice-options"]').exists()).toBe(true)
     expect(settings[1]?.find('textarea').exists()).toBe(true)
     expect(settings[2]?.find('textarea').exists()).toBe(true)

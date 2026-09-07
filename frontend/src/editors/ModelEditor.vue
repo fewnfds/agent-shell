@@ -410,23 +410,27 @@ function setBooleanNumber(key: string, event: Event): void {
               <datalist id="tool-choice-options"><option value="auto" /><option value="none" /><option value="required" /><option value="any" /></datalist>
             </FormField>
           </div>
-          <div class="col-md-6" data-request-setting="response_format">
-            <FormField field-path="response_format" technical>
-              <LteTextarea
-                v-model="draft.response_format"
-                :placeholder="responseFormatPlaceholder"
-                :rows="8"
-              />
-            </FormField>
-          </div>
-          <div class="col-md-6" data-request-setting="model_settings">
-            <FormField field-path="model_settings" technical>
-              <LteTextarea
-                v-model="draft.model_settings"
-                :placeholder="modelSettingsPlaceholder"
-                :rows="5"
-              />
-            </FormField>
+          <div class="col-12">
+            <div class="row g-3" data-testid="model-request-settings-row">
+              <div class="col-md-6" data-request-setting="response_format">
+                <FormField field-path="response_format" technical>
+                  <LteTextarea
+                    v-model="draft.response_format"
+                    :placeholder="responseFormatPlaceholder"
+                    :rows="8"
+                  />
+                </FormField>
+              </div>
+              <div class="col-md-6" data-request-setting="model_settings">
+                <FormField field-path="model_settings" technical>
+                  <LteTextarea
+                    v-model="draft.model_settings"
+                    :placeholder="modelSettingsPlaceholder"
+                    :rows="5"
+                  />
+                </FormField>
+              </div>
+            </div>
           </div>
         </div>
         <p v-if="!parameterFields.length" class="text-body-secondary mb-0 mt-3">{{ t('editors.model.selectProviderFirst') }}</p>
