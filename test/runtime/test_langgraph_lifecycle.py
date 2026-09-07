@@ -14,6 +14,7 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleService,
     LangGraphRunNotFound,
 )
+from agent_shell.runtime.lifecycle_store import LIFECYCLE_START_ERROR_KEY
 
 
 class _NotFound(LookupError):
@@ -310,6 +311,42 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
             "name": "Peer Agent Renamed",
         }
     ]
+
+
+def test_run_start_error_is_a_terminal_lifecycle_without_an_official_run() -> None:
+    async def scenario():
+        client = _Client()
+        client.thread_values.clear()
+        client.run_values.clear()
+        client.store_items = {
+            ("workflow-lifecycle", "lifecycle-start-error", "input"): {
+                LIFECYCLE_START_ERROR_KEY: {
+                    "status": "error",
+                    "code": "run_start_failed",
+                    "message": "RuntimeError: run creation exploded",
+                    "exception_type": "RuntimeError",
+                    "occurred_at": "2026-09-07T15:07:55.700+00:00",
+                    "request_id": "request-start-error",
+                    "graph_kind": "agent",
+                    "subject_id": "agent-one",
+                    "subject_name": "Agent One",
+                    "thread_id": "thread-empty",
+                }
+            }
+        }
+        service = LangGraphLifecycleService(lambda: client)
+        page = await service.list_page(page=1, page_size=10)
+        return page["items"][0]
+
+    item = asyncio.run(scenario())
+    assert item["status"] == "error"
+    assert item["request_id"] == "request-start-error"
+    assert item["run_count"] == 0
+    assert item["active_run_count"] == 0
+    assert item["subjects"] == [
+        {"graph_kind": "agent", "id": "agent-one", "name": "Agent One"}
+    ]
+    assert item["start_error"]["message"] == "RuntimeError: run creation exploded"
 
 
 def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> None:

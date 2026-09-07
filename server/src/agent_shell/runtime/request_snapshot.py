@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -22,8 +23,12 @@ from agent_shell.runtime.agent_assistants import main_agent_assistant_id
 from agent_shell.runtime.agent_run_calls import AgentRunHandle, AgentRunSnapshot
 from agent_shell.runtime.agent_runtime import AgentRuntime, RunExecution
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
-from agent_shell.runtime.diagnostics import RuntimeDiagnostics
-from agent_shell.runtime.errors import AgentRuntimeError, decode_server_run_error
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
+from agent_shell.runtime.errors import (
+    AgentRuntimeError,
+    decode_server_run_error,
+    describe_exception,
+)
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
 from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleService
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
@@ -40,6 +45,7 @@ from agent_shell.runtime.run_calls import (
 )
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
+    LIFECYCLE_START_ERROR_KEY,
     lifecycle_input_namespace,
 )
 from agent_shell.runtime.workflow_data import WorkflowDataService
@@ -289,6 +295,64 @@ class LifecycleRunCoordinator:
             lifecycle_id=lifecycle_id,
         )
 
+    async def _record_entry_start_failure(
+        self,
+        exc: Exception,
+        *,
+        graph_kind: str,
+        subject_id: str,
+        subject_name: str,
+        request_id: str,
+        thread_id: str,
+    ) -> None:
+        detail = describe_exception(exc)
+        context = RuntimeDiagnosticContext(
+            request_id=request_id,
+            lifecycle_id=self._lifecycle_id,
+            thread_id=thread_id,
+            subject_kind=graph_kind,
+            subject_id=subject_id,
+            subject_name=subject_name,
+        )
+        marker = {
+            "status": "error",
+            "code": "run_start_failed",
+            "message": detail,
+            "exception_type": type(exc).__name__,
+            "occurred_at": datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            ),
+            "request_id": request_id,
+            "graph_kind": graph_kind,
+            "subject_id": subject_id,
+            "subject_name": subject_name,
+            "thread_id": thread_id,
+        }
+        try:
+            async with self._owner.new_agent_server_client() as client:
+                await client.store.put_item(
+                    lifecycle_input_namespace(self._lifecycle_id),
+                    LIFECYCLE_START_ERROR_KEY,
+                    marker,
+                    index=False,
+                )
+        except Exception as marker_error:
+            with suppress(Exception):
+                await self._owner.runtime_diagnostics.aobservation_error(
+                    marker_error,
+                    code="lifecycle_start_error_persistence_failed",
+                    component="observability",
+                    context=context,
+                )
+        with suppress(Exception):
+            await self._owner.runtime_diagnostics.aruntime_error(
+                AgentRuntimeError("run_start_failed", detail),
+                code="run_start_failed",
+                component="graph_runtime",
+                context=context,
+                detail_exception=exc,
+            )
+
     async def start_workflow(
         self,
         workflow: Mapping[str, Any],
@@ -337,10 +401,20 @@ class LifecycleRunCoordinator:
             )
             assert binding.execution_ready is not None
             return await binding.execution_ready
-        except BaseException:
+        except BaseException as exc:
             self._cancel_binding_futures(binding)
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
+            if isinstance(exc, Exception):
+                with suppress(Exception):
+                    await self._record_entry_start_failure(
+                        exc,
+                        graph_kind="workflow",
+                        subject_id=str(workflow["id"]),
+                        subject_name=str(workflow["name"]),
+                        request_id=request_id,
+                        thread_id=binding.thread_id,
+                    )
             self._release_if_finished()
             raise
 
@@ -420,13 +494,23 @@ class LifecycleRunCoordinator:
             )
             assert binding.execution_ready is not None
             return await binding.execution_ready
-        except BaseException:
+        except BaseException as exc:
             self._cancel_agent_binding_futures(binding)
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             if client is not None and binding.thread_id not in self._sessions:
                 with suppress(Exception):
                     await client.aclose()
+            if isinstance(exc, Exception):
+                with suppress(Exception):
+                    await self._record_entry_start_failure(
+                        exc,
+                        graph_kind="agent",
+                        subject_id=str(main_agent["id"]),
+                        subject_name=str(main_agent["name"]),
+                        request_id=request_id,
+                        thread_id=binding.thread_id,
+                    )
             self._release_if_finished()
             raise
 
@@ -1595,6 +1679,10 @@ class RequestSnapshotRuntime:
     @property
     def langgraph_lifecycles(self) -> LangGraphLifecycleService:
         return self._langgraph_lifecycles
+
+    @property
+    def runtime_diagnostics(self) -> RuntimeDiagnostics:
+        return self._runtime_diagnostics
 
     async def enforce_lifecycle_retention(self) -> None:
         await self._langgraph_lifecycles.enforce_retention()

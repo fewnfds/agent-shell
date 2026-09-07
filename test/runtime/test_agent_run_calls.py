@@ -4,7 +4,12 @@ import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
 
+from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.request_snapshot import LifecycleRunCoordinator
+from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_START_ERROR_KEY,
+    lifecycle_input_namespace,
+)
 from agent_shell.runtime.run_calls import RunCaller
 
 
@@ -94,9 +99,12 @@ class _Runs:
         self.values: dict[tuple[str, str], dict] = {}
         self.created: list[dict] = []
         self.cancelled: list[tuple[str, str]] = []
+        self.failure: Exception | None = None
         self._next = 0
 
     async def create(self, thread_id, assistant_id, **kwargs):
+        if self.failure is not None:
+            raise self.failure
         self._next += 1
         if thread_id is None:
             created = await self._client.threads.create(metadata={})
@@ -175,26 +183,126 @@ class _Detached:
         return task
 
 
+class _Diagnostics:
+    def __init__(self) -> None:
+        self.runtime_errors: list[tuple[BaseException, dict]] = []
+        self.observation_errors: list[tuple[BaseException, dict]] = []
+        self.failure: Exception | None = None
+
+    async def aruntime_error(self, exc, **kwargs) -> None:
+        self.runtime_errors.append((exc, kwargs))
+        if self.failure is not None:
+            raise self.failure
+
+    async def aobservation_error(self, exc, **kwargs) -> None:
+        self.observation_errors.append((exc, kwargs))
+
+
 def _coordinator(profile: dict) -> tuple[LifecycleRunCoordinator, _Client, _Detached]:
     client = _Client()
     detached = _Detached()
+    diagnostics = _Diagnostics()
     async def register_run_relation(_coordinator, _relation) -> None:
         return None
 
     owner = SimpleNamespace(
         new_agent_server_client=lambda: client,
         run_config=lambda: {"recursion_limit": 100},
+        register_active_lifecycle=lambda _coordinator: None,
         release_active_lifecycle=lambda _coordinator: None,
         register_run_relation=register_run_relation,
+        runtime_diagnostics=diagnostics,
     )
     coordinator = LifecycleRunCoordinator(
         _owner=owner,
-        _snapshot=SimpleNamespace(main_agent_by_id=lambda _agent_id: profile),
+        _snapshot=SimpleNamespace(
+            main_agent_by_id=lambda _agent_id: profile,
+            response_stream_policy=lambda: ResponseStreamPolicy(),
+        ),
         _detached_tasks=detached,
     )
     coordinator._lifecycle_id = "lifecycle-1"
     client.runs = _Runs(client, coordinator)
     return coordinator, client, detached
+
+
+def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
+    async def scenario():
+        profile = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Researcher",
+            "checkpoint_mode": "enabled",
+            "durability": "async",
+        }
+        coordinator, client, _detached = _coordinator(profile)
+        coordinator._lifecycle_id = ""
+        client.runs.failure = RuntimeError("run creation exploded")
+
+        try:
+            await coordinator.start_agent(
+                profile,
+                [{"role": "user", "content": "hello"}],
+                request_id="request-1",
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "run creation exploded"
+        else:
+            raise AssertionError("run start failure was not raised")
+
+        marker = client.store.items[
+            lifecycle_input_namespace(coordinator.lifecycle_id)
+        ][LIFECYCLE_START_ERROR_KEY]
+        diagnostics = coordinator._owner.runtime_diagnostics
+        return marker, diagnostics
+
+    marker, diagnostics = asyncio.run(scenario())
+    assert marker["status"] == "error"
+    assert marker["code"] == "run_start_failed"
+    assert marker["message"] == "RuntimeError: run creation exploded"
+    assert marker["request_id"] == "request-1"
+    assert marker["graph_kind"] == "agent"
+    assert marker["subject_name"] == "Researcher"
+    assert len(diagnostics.runtime_errors) == 1
+    diagnostic, kwargs = diagnostics.runtime_errors[0]
+    assert diagnostic.safe_message == "RuntimeError: run creation exploded"
+    assert kwargs["detail_exception"].args == ("run creation exploded",)
+    assert kwargs["context"].lifecycle_id
+    assert diagnostics.observation_errors == []
+
+
+def test_start_error_marker_survives_diagnostic_write_failure() -> None:
+    async def scenario():
+        profile = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Researcher",
+            "checkpoint_mode": "enabled",
+            "durability": "async",
+        }
+        coordinator, client, _detached = _coordinator(profile)
+        coordinator._lifecycle_id = ""
+        coordinator._owner.runtime_diagnostics.failure = RuntimeError(
+            "diagnostic write exploded"
+        )
+        client.runs.failure = RuntimeError("run creation exploded")
+
+        try:
+            await coordinator.start_agent(
+                profile,
+                [{"role": "user", "content": "hello"}],
+                request_id="request-1",
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "run creation exploded"
+        else:
+            raise AssertionError("run start failure was not raised")
+
+        return client.store.items[
+            lifecycle_input_namespace(coordinator.lifecycle_id)
+        ][LIFECYCLE_START_ERROR_KEY]
+
+    marker = asyncio.run(scenario())
+    assert marker["status"] == "error"
+    assert marker["message"] == "RuntimeError: run creation exploded"
 
 
 def test_agent_run_facade_is_idempotent_and_can_continue_a_thread() -> None:

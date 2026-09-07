@@ -38,6 +38,8 @@ Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workf
 
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，各 participating Run 的 Event Output producer 将已投影 frame 提交给它；任一时刻只有一个 `(thread_id, run_id)` 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
+失败响应保留稳定 `error.code`，并在 `error.message` 直接返回异常类型与具体异常链；同时返回 `request_id`，Lifecycle 已建立时还返回 `lifecycle_id`。API Key 持有者可以据此直接排错，日志中心保存同一次失败的结构化记录和完整 traceback 附件。入口 Run 创建前失败的 Lifecycle 状态为 `error`，其 `run_count` 可以为零。
+
 响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的普通 Run 共用 scheduler。Run 在创建后立即进入 FIFO ready queue，因此完全静默的 owner 也从取得 writer 时开始计算 idle timeout；非空 frame 刷新 deadline，超时只让位、不取消 Run，后续再有 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部 scheduler producer terminal 且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用`start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb`与`send_interval_seconds`只控制客户端发送批次，producer 提交不等待 scheduler 消费。
 
 ## 拦截消息
@@ -56,7 +58,7 @@ Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workf
 - 每次请求执行一次完整官方Run；Main Agent Assistant ID由其UUID稳定派生，Workflow Assistant ID使用Workflow UUID，Thread和Run ID使用官方身份；
 - 独立Graph调用通过`Runtime.context.agent_runs`或`workflow_runs`的`start/check/list/join/cancel`使用公共Agent Server SDK；每次调用创建或明确续接Thread并创建新Run。Command只返回`update + goto`，多个goto目标和循环按LangGraph Super-step语义执行；
 - 每个被调用 Run 使用自己的 Event Output projector，并把已投影事件提交给同一个 Lifecycle response scheduler；scheduler 只按 Run identity 隔离输出，不建立静态运行角色；
-- 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回对应错误；
+- 图不完整、引用失效、Agent 装配失败或 Provider 失败时，本次请求返回稳定错误码、具体异常消息和关联 identity；
 - 日志中心展示系统事件和结构化运行失败诊断，运行异常自动尝试保存 traceback 附件；
 - Assistant、Thread、Run 与 State 可通过同端口的 LangGraph Dev 官方 API 读取；官方 route 使用管理密码。`/agent-shell/api/workflow-lifecycles` 通过公共 Thread/Run API 聚合本次请求的全部 Run，并提供 Graph、latest State 和 State history 读取。
 
@@ -65,4 +67,4 @@ Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workf
 API Key 是 write-only 设置，用于 `/compat/openai/v1/*`；管理密码用于管理台、除 Health 外的 `/agent-shell/api/*`，以及 LangGraph Agent Server 官方资源路径。清除 API Key 后推理 API 不可用。
 API Server启停与model catalog使用当前Repository入口配置；完整repository validation用于管理诊断，单次Chat请求只运行所选Main Agent或Workflow root Graph及其显式启动的独立Run。
 
-普通 API response、DOM 和 log summary 仅提供脱敏后的公开字段；management-only 的 local exception-detail attachment 保留完整排错信息。
+API Key 是个人实例的受信任执行凭据。推理失败响应可以包含 Provider 原始错误正文、本机路径或其他运行细节；只把 API Key 提供给允许读取这些排错信息的客户端。management-only 的 local exception-detail attachment 保存完整 traceback。

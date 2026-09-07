@@ -23,6 +23,30 @@ class AgentRuntimeError(RuntimeError):
         super().__init__(code)
 
 
+def describe_exception(exc: BaseException) -> str:
+    """Preserve the concrete failure and its explicit exception chain."""
+
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = (
+            current.safe_message
+            if isinstance(current, AgentRuntimeError)
+            else str(current).strip()
+        )
+        parts.append(
+            f"{type(current).__name__}: {message}"
+            if message
+            else type(current).__name__
+        )
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    return " <- ".join(parts)
+
+
 _SERVER_RUN_ERROR_PREFIX = "agent-shell.runtime-error.v1:"
 
 
@@ -70,5 +94,6 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
 __all__ = [
     "AgentRuntimeError",
     "decode_server_run_error",
+    "describe_exception",
     "encode_server_run_error",
 ]

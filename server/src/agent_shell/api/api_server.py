@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import suppress
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -22,7 +23,8 @@ from agent_shell.http_surface import (
 )
 from agent_shell.runtime.agent_runtime import RunExecution
 from agent_shell.runtime.detached_tasks import DetachedTaskManager
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
+from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.settings import Settings, bearer_token_is_valid
@@ -156,10 +158,21 @@ def _openai_error(
     message: str,
     *,
     param: str | None = None,
+    request_id: str = "",
+    lifecycle_id: str = "",
 ) -> JSONResponse:
+    headers = {"X-Request-ID": request_id} if request_id else None
     return JSONResponse(
         status_code=status_code,
-        content=_openai_error_payload(code, message, status_code=status_code, param=param),
+        headers=headers,
+        content=_openai_error_payload(
+            code,
+            message,
+            status_code=status_code,
+            param=param,
+            request_id=request_id,
+            lifecycle_id=lifecycle_id,
+        ),
     )
 
 
@@ -169,15 +182,23 @@ def _openai_error_payload(
     *,
     status_code: int,
     param: str | None = None,
+    request_id: str = "",
+    lifecycle_id: str = "",
 ) -> dict[str, object]:
-    return {
-        "error": {
-            "message": message,
-            "type": "invalid_request_error" if status_code < 500 else "server_error",
-            "param": param,
-            "code": code,
-        }
+    error: dict[str, object] = {
+        "message": message,
+        "type": "invalid_request_error" if status_code < 500 else "server_error",
+        "param": param,
+        "code": code,
     }
+    payload: dict[str, object] = {"error": error}
+    if request_id:
+        error["request_id"] = request_id
+        payload["request_id"] = request_id
+    if lifecycle_id:
+        error["lifecycle_id"] = lifecycle_id
+        payload["lifecycle_id"] = lifecycle_id
+    return payload
 
 
 def _model_object(model_id: str) -> dict[str, object]:
@@ -370,6 +391,7 @@ async def _completion_stream(
                 }
             )
     except AgentRuntimeError as exc:
+        identity = getattr(execution, "identity", None)
         yield encode(
             {
                 "id": completion_id,
@@ -381,14 +403,28 @@ async def _completion_stream(
                 ],
                 "error": _openai_error_payload(
                     exc.code,
-                    exc.safe_message,
+                    describe_exception(exc),
                     status_code=exc.status_code,
+                    request_id=str(getattr(identity, "request_id", "") or ""),
+                    lifecycle_id=str(getattr(identity, "lifecycle_id", "") or ""),
                 )["error"],
             }
         )
         yield "data: [DONE]\n\n"
         return
-    except Exception:
+    except Exception as exc:
+        detail = describe_exception(exc)
+        identity = getattr(execution, "identity", None)
+        diagnostics = getattr(execution, "runtime_diagnostics", None)
+        if diagnostics is not None:
+            with suppress(Exception):
+                await diagnostics.aruntime_error(
+                    AgentRuntimeError("completion_failed", detail),
+                    code="completion_failed",
+                    component="graph_runtime",
+                    context=execution.diagnostic_context(),
+                    detail_exception=exc,
+                )
         yield encode(
             {
                 "id": completion_id,
@@ -399,9 +435,11 @@ async def _completion_stream(
                     {"index": 0, "delta": {}, "finish_reason": "error"}
                 ],
                 "error": _openai_error_payload(
-                    "internal_error",
-                    "An internal operation failed.",
+                    "completion_failed",
+                    detail,
                     status_code=500,
+                    request_id=str(getattr(identity, "request_id", "") or ""),
+                    lifecycle_id=str(getattr(identity, "lifecycle_id", "") or ""),
                 )["error"],
             }
         )
@@ -621,6 +659,7 @@ def build_api_server_router(
         openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
     )
     async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
+        request_id = str(getattr(request.state, "request_id", "") or "")
         server_settings = await asyncio.to_thread(store.settings)
         if not server_settings["enabled"]:
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
@@ -669,11 +708,25 @@ def build_api_server_router(
             )
         try:
             request_snapshot = await runtime.capture()
-        except Exception:
+        except Exception as exc:
+            detail = describe_exception(exc)
+            with suppress(Exception):
+                await runtime.runtime_diagnostics.aruntime_error(
+                    AgentRuntimeError("configuration_snapshot_failed", detail),
+                    code="configuration_snapshot_failed",
+                    component="graph_runtime",
+                    context=RuntimeDiagnosticContext(
+                        request_id=request_id,
+                        subject_kind="api",
+                        subject_name=model,
+                    ),
+                    detail_exception=exc,
+                )
             return _openai_error(
                 500,
                 "configuration_snapshot_failed",
-                "The current Graph configuration could not be captured.",
+                detail,
+                request_id=request_id,
             )
         workflow = request_snapshot.workflow_by_name(model)
         main_agent = request_snapshot.main_agent_by_name(model)
@@ -692,6 +745,7 @@ def build_api_server_router(
                 "The requested model does not exist.",
                 param="model",
             )
+        lifecycle_coordinator = None
         try:
             lifecycle_coordinator = runtime.create_lifecycle_coordinator(
                 request_snapshot
@@ -711,6 +765,11 @@ def build_api_server_router(
                     public_model=model,
                 )
         except AgentRuntimeError as exc:
+            lifecycle_id = (
+                lifecycle_coordinator.lifecycle_id
+                if lifecycle_coordinator is not None
+                else ""
+            )
             issue = (
                 exc.validation_report.issues[0]
                 if exc.validation_report is not None
@@ -720,14 +779,24 @@ def build_api_server_router(
             return _openai_error(
                 exc.status_code,
                 issue.code if issue is not None else exc.code,
-                issue.message if issue is not None else exc.safe_message,
+                issue.message if issue is not None else describe_exception(exc),
+                request_id=request_id,
+                lifecycle_id=lifecycle_id,
             )
-        except Exception:
+        except Exception as exc:
+            lifecycle_id = (
+                lifecycle_coordinator.lifecycle_id
+                if lifecycle_coordinator is not None
+                else ""
+            )
             return _openai_error(
                 500,
-                "internal_error",
-                "An internal operation failed.",
-        )
+                "run_start_failed",
+                describe_exception(exc),
+                request_id=request_id,
+                lifecycle_id=lifecycle_id,
+            )
+        assert lifecycle_coordinator is not None
         if stream:
             return StreamingResponse(
                 _completion_stream(
@@ -752,13 +821,26 @@ def build_api_server_router(
             return _openai_error(
                 exc.status_code,
                 exc.code,
-                exc.safe_message,
+                describe_exception(exc),
+                request_id=request_id,
+                lifecycle_id=lifecycle_coordinator.lifecycle_id,
             )
-        except Exception:
+        except Exception as exc:
+            detail = describe_exception(exc)
+            with suppress(Exception):
+                await runtime.runtime_diagnostics.aruntime_error(
+                    AgentRuntimeError("completion_failed", detail),
+                    code="completion_failed",
+                    component="graph_runtime",
+                    context=execution.diagnostic_context(),
+                    detail_exception=exc,
+                )
             return _openai_error(
                 500,
-                "internal_error",
-                "An internal operation failed.",
+                "completion_failed",
+                detail,
+                request_id=request_id,
+                lifecycle_id=lifecycle_coordinator.lifecycle_id,
             )
         return JSONResponse(
             content=_completion_payload(

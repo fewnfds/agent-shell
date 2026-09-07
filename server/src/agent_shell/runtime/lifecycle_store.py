@@ -3,6 +3,7 @@ from __future__ import annotations
 
 LIFECYCLE_NAMESPACE_ROOT = "workflow-lifecycle"
 LIFECYCLE_INPUT_KEY = "request"
+LIFECYCLE_START_ERROR_KEY = "start-error"
 
 
 def _namespace(lifecycle_id: str, *parts: str) -> tuple[str, ...]:
@@ -26,6 +27,7 @@ def lifecycle_runs_namespace(lifecycle_id: str) -> tuple[str, str, str]:
 __all__ = [
     "LIFECYCLE_INPUT_KEY",
     "LIFECYCLE_NAMESPACE_ROOT",
+    "LIFECYCLE_START_ERROR_KEY",
     "lifecycle_filesystem_namespace",
     "lifecycle_input_namespace",
     "lifecycle_runs_namespace",

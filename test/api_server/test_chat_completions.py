@@ -5,6 +5,10 @@ import json
 from typing import ClassVar
 
 from agent_shell.api import api_server
+from agent_shell.runtime.request_snapshot import (
+    LifecycleRunCoordinator,
+    RequestSnapshotRuntime,
+)
 from agent_shell.storage.file_config import FileConfigRepository
 
 from .support import *
@@ -31,6 +35,86 @@ class InspectingFakeChatModel(ToolCompatibleFakeListChatModel):
             **kwargs,
         ):
             yield chunk
+
+
+def test_configuration_failure_returns_concrete_error_and_records_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def fail_capture(_self):
+            raise RuntimeError("snapshot exploded")
+
+        monkeypatch.setattr(RequestSnapshotRuntime, "capture", fail_capture)
+        response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": main_agent["name"],
+                "messages": [{"role": "user", "content": "hello"}],
+                "stream": False,
+            },
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+        request_id = response.headers["x-request-id"]
+        events = client.get(
+            "/agent-shell/api/event-feed",
+            params=event_feed_params(source="runtime", query=request_id),
+        ).json()["items"]
+
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "message": "RuntimeError: snapshot exploded",
+        "type": "server_error",
+        "param": None,
+        "code": "configuration_snapshot_failed",
+        "request_id": request_id,
+    }
+    assert response.json()["request_id"] == request_id
+    assert events[0]["summary"].endswith("RuntimeError: snapshot exploded")
+
+
+def test_run_start_failure_returns_exception_chain_and_lifecycle_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def fail_start(coordinator, *_args, **_kwargs):
+            coordinator._begin_lifecycle("lifecycle-start-failure")
+            try:
+                raise OSError("provider connection refused")
+            except OSError as cause:
+                raise RuntimeError("run creation exploded") from cause
+
+        monkeypatch.setattr(LifecycleRunCoordinator, "start_agent", fail_start)
+        response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": main_agent["name"],
+                "messages": [{"role": "user", "content": "hello"}],
+                "stream": False,
+            },
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+
+    request_id = response.headers["x-request-id"]
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "message": (
+            "RuntimeError: run creation exploded <- "
+            "OSError: provider connection refused"
+        ),
+        "type": "server_error",
+        "param": None,
+        "code": "run_start_failed",
+        "request_id": request_id,
+        "lifecycle_id": "lifecycle-start-failure",
+    }
+    assert response.json()["request_id"] == request_id
+    assert response.json()["lifecycle_id"] == "lifecycle-start-failure"
 
 
 def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(

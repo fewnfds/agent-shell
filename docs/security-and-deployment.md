@@ -32,7 +32,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
-普通 API response、DOM、system log 和 runtime diagnostic summary 不回显 credential、Bearer token、宿主敏感路径、traceback 或 Provider 原始错误正文。以下 management-only 功能会按产品用途保存完整内容：
+成功 API response、DOM、system log 和 runtime diagnostic summary 不主动复制 credential、Bearer token 或 traceback。OpenAI-compatible 推理失败响应面向持有 API Key 的受信任客户端，直接包含具体异常链，可能出现 Provider 原始错误正文、本机路径或其他运行细节。以下功能也会按产品用途保存完整内容：
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
@@ -40,7 +40,7 @@ Provider/MCP credential、API Key、管理密码和 LangSmith API Key 保存在�
 - Lifecycle 监控 ZIP 在用户下载时通过公共 API 组合 snapshot、Store、Assistant Graph、latest State 和 checkpoint history，其中可能包含消息、reasoning、Tool 输入/输出、State 与文件路径；
 - 用户创建的组件、文件和 Python 资源。
 
-运行诊断列表只保存固定结构化身份和安全摘要字段。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留 Provider 异常链，供实例维护者调查网关原始响应。正常完成不会产生诊断或附件。
+运行诊断列表保存固定结构化 identity、错误码、异常类型和具体错误消息。异常详情附件不经过摘要白名单或脱敏，并只从管理台日志中心对应的运行诊断行下载；它保留完整异常链，供实例维护者调查。正常完成不会产生诊断或附件。
 
 ## 配置 Bundle
 

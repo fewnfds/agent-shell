@@ -14,6 +14,7 @@ from agent_shell.runtime.lifecycle_monitoring_archive import (
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
     LIFECYCLE_NAMESPACE_ROOT,
+    LIFECYCLE_START_ERROR_KEY,
     lifecycle_input_namespace,
 )
 from agent_shell.runtime.run_calls import (
@@ -47,6 +48,7 @@ class _LifecycleObservation:
     relations: list[GraphRunCallRelation]
     read_failures: list[Exception]
     lifecycle_created_at: str = ""
+    start_error: dict[str, Any] | None = None
 
     @property
     def runs(self) -> list[dict[str, Any]]:
@@ -65,7 +67,10 @@ def _lifecycle_status(
     runs: list[Mapping[str, Any]],
     *,
     unavailable_run_count: int = 0,
+    start_error: bool = False,
 ) -> str:
+    if start_error:
+        return "error"
     statuses = [official_status(run) for run in runs]
     if not statuses:
         return "unavailable" if unavailable_run_count else "pending"
@@ -191,6 +196,7 @@ class LangGraphLifecycleService:
 
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
         lifecycle_created_at = ""
+        start_error: dict[str, Any] | None = None
         try:
             input_item = await client.store.get_item(
                 lifecycle_input_namespace(lifecycle_id),
@@ -198,6 +204,21 @@ class LangGraphLifecycleService:
             )
             if isinstance(input_item, Mapping):
                 lifecycle_created_at = str(input_item.get("created_at") or "")
+        except Exception:
+            pass
+        try:
+            error_item = await client.store.get_item(
+                lifecycle_input_namespace(lifecycle_id),
+                LIFECYCLE_START_ERROR_KEY,
+            )
+            error_value = (
+                error_item.get("value") if isinstance(error_item, Mapping) else None
+            )
+            if isinstance(error_value, Mapping):
+                start_error = dict(error_value)
+                lifecycle_created_at = lifecycle_created_at or str(
+                    error_item.get("created_at") or ""
+                )
         except Exception:
             pass
         relations_by_run = {relation.run_id: relation for relation in relations}
@@ -318,6 +339,7 @@ class LangGraphLifecycleService:
             relations=relations,
             read_failures=read_failures,
             lifecycle_created_at=lifecycle_created_at,
+            start_error=start_error,
         )
 
     @staticmethod
@@ -332,6 +354,8 @@ class LangGraphLifecycleService:
         if observation.lifecycle_created_at:
             created_values.append(observation.lifecycle_created_at)
         updated_values = [str(thread.get("updated_at") or "") for thread in threads]
+        if observation.start_error:
+            updated_values.append(str(observation.start_error.get("occurred_at") or ""))
         subjects_by_identity: dict[tuple[str, str], dict[str, str]] = {}
         for entry in sorted(
             observation.run_entries,
@@ -351,6 +375,15 @@ class LangGraphLifecycleService:
                 )
             if subject is not None:
                 subjects_by_identity[(subject["graph_kind"], subject["id"])] = subject
+        if observation.start_error:
+            graph_kind = str(observation.start_error.get("graph_kind") or "")
+            subject_id = str(observation.start_error.get("subject_id") or "")
+            if graph_kind in {"agent", "workflow"} and subject_id:
+                subjects_by_identity[(graph_kind, subject_id)] = {
+                    "graph_kind": graph_kind,
+                    "id": subject_id,
+                    "name": str(observation.start_error.get("subject_name") or ""),
+                }
         subjects = sorted(
             subjects_by_identity.values(),
             key=lambda subject: (
@@ -368,15 +401,17 @@ class LangGraphLifecycleService:
             "lifecycle_id": lifecycle_id,
             "request_id": next(
                 (str(item.get("request_id")) for item in metadata if item.get("request_id")),
-                "",
+                str((observation.start_error or {}).get("request_id") or ""),
             ),
             "created_at": min(created_values) if created_values else "",
             "updated_at": max(updated_values) if updated_values else "",
             "status": _lifecycle_status(
                 runs,
                 unavailable_run_count=unavailable_run_count,
+                start_error=observation.start_error is not None,
             ),
             "subjects": subjects,
+            "start_error": observation.start_error,
             "run_count": len(observation.run_entries),
             "active_run_count": sum(
                 status in ACTIVE_RUN_STATUSES for status in statuses

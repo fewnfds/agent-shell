@@ -260,7 +260,7 @@ Content-Type: application/json
 4. 检查 Python dependency status；
 5. 检查 Provider endpoint、model capability 和 credential missing state；
 6. 通过 `GET /agent-shell/api/workflow-lifecycles` 找到当前 Lifecycle；
-7. 在【系统 / 日志中心】按 `request_id`、`lifecycle_id` 或 `run_id` 定位运行诊断，并按需下载对应异常详情附件；
+7. 先读取 OpenAI-compatible response 的具体异常消息、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并按需下载完整 traceback 附件；
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
@@ -274,7 +274,7 @@ Content-Type: application/json
 - `422`：payload、Graph、package 或 assembly 不符合 contract；
 - `5xx`：Runtime、Provider、外部服务或系统资源失败。
 
-诊断材料不复制 Provider secret、完整用户私密消息、package source、traceback 或 host path。management-only 本地异常附件按安全与部署文档处理。
+失败响应与本地异常附件可能包含 Provider 正文、host path 或其他运行细节。API Key 与 management token 只提供给受信任的实例操作者，诊断材料按[安全与部署](../../security-and-deployment.md)处理。
 
 Lifecycle 和 Run 观测见[Runtime observability](../runtime-observability.md)。
 
