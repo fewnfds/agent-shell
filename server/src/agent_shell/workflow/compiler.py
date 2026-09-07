@@ -91,7 +91,9 @@ def _make_command_node(
                 status_code=422,
             )
             if runtime_context is not None:
-                raise RuntimeError(encode_server_run_error(error)) from exc
+                raise RuntimeError(
+                    encode_server_run_error(error, detail_exception=exc)
+                ) from exc
             raise error from exc
 
     return call_command

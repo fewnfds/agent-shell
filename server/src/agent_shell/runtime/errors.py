@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import traceback
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,12 +16,23 @@ class AgentRuntimeError(RuntimeError):
         *,
         status_code: int = 500,
         validation_report: ValidationReport | None = None,
+        source_exception_type: str = "",
+        remote_traceback: str = "",
+        transport_decoded: bool = False,
     ) -> None:
         self.code = code
         self.safe_message = message
         self.status_code = status_code
         self.validation_report = validation_report
+        self.source_exception_type = source_exception_type
+        self.remote_traceback = remote_traceback
+        self.transport_decoded = transport_decoded
         super().__init__(code)
+
+    def __str__(self) -> str:
+        if self.transport_decoded:
+            return self.safe_message
+        return encode_server_run_error(self)
 
 
 def describe_exception(exc: BaseException) -> str:
@@ -50,14 +62,33 @@ def describe_exception(exc: BaseException) -> str:
 _SERVER_RUN_ERROR_PREFIX = "agent-shell.runtime-error.v1:"
 
 
-def encode_server_run_error(error: AgentRuntimeError) -> str:
-    """Serialize one safe product error through Server's string error field."""
+def encode_server_run_error(
+    error: AgentRuntimeError,
+    *,
+    detail_exception: BaseException | None = None,
+) -> str:
+    """Serialize a classified error and its source through Server's error field."""
+
+    source = detail_exception or error.__cause__ or (
+        None if error.__suppress_context__ else error.__context__
+    )
+    message = describe_exception(source) if source is not None else error.safe_message
+    source_exception_type = (
+        type(source).__name__ if source is not None else error.source_exception_type
+    )
+    remote_traceback = error.remote_traceback
+    if source is not None:
+        remote_traceback = "".join(
+            traceback.TracebackException.from_exception(source).format(chain=True)
+        )
 
     return _SERVER_RUN_ERROR_PREFIX + json.dumps(
         {
             "code": error.code,
-            "message": error.safe_message,
+            "message": message,
             "status_code": error.status_code,
+            "source_exception_type": source_exception_type,
+            "traceback": remote_traceback,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -78,6 +109,8 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
     code = payload.get("code")
     message = payload.get("message")
     status_code = payload.get("status_code")
+    source_exception_type = payload.get("source_exception_type", "")
+    remote_traceback = payload.get("traceback", "")
     if (
         not isinstance(code, str)
         or not code
@@ -86,9 +119,18 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
         or not isinstance(status_code, int)
         or isinstance(status_code, bool)
         or not 400 <= status_code <= 599
+        or not isinstance(source_exception_type, str)
+        or not isinstance(remote_traceback, str)
     ):
         return None
-    return AgentRuntimeError(code, message, status_code=status_code)
+    return AgentRuntimeError(
+        code,
+        message,
+        status_code=status_code,
+        source_exception_type=source_exception_type,
+        remote_traceback=remote_traceback,
+        transport_decoded=True,
+    )
 
 
 __all__ = [

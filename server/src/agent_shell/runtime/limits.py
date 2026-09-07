@@ -7,7 +7,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 
 
 def _provider_error(exc: Exception) -> AgentRuntimeError:
@@ -25,8 +25,9 @@ def _provider_error(exc: Exception) -> AgentRuntimeError:
         current = current.__cause__ or current.__context__
     return AgentRuntimeError(
         "provider_request_failed",
-        "The model provider request failed.",
+        describe_exception(exc),
         status_code=status_code,
+        source_exception_type=type(exc).__name__,
     )
 
 
@@ -45,8 +46,9 @@ class ToolErrorBoundaryMiddleware(AgentMiddleware):
         except Exception as exc:
             raise AgentRuntimeError(
                 "tool_execution_failed",
-                "A selected tool failed during execution.",
+                describe_exception(exc),
                 status_code=502,
+                source_exception_type=type(exc).__name__,
             ) from exc
 
     async def awrap_tool_call(
@@ -61,8 +63,9 @@ class ToolErrorBoundaryMiddleware(AgentMiddleware):
         except Exception as exc:
             raise AgentRuntimeError(
                 "tool_execution_failed",
-                "A selected tool failed during execution.",
+                describe_exception(exc),
                 status_code=502,
+                source_exception_type=type(exc).__name__,
             ) from exc
 
 

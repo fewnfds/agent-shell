@@ -12,7 +12,7 @@ import traceback
 from uuid import uuid4
 
 from agent_shell.redaction import redact_for_boundary
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 from agent_shell.storage.runtime_diagnostic_details import (
     RuntimeDiagnosticDetailStore,
 )
@@ -125,10 +125,12 @@ class RuntimeDiagnostics:
         context: RuntimeDiagnosticContext | None = None,
         detail_exception: BaseException | None = None,
     ) -> None:
-        summary = (
-            _safe_text(exc.safe_message)
-            if isinstance(exc, AgentRuntimeError)
-            else "A runtime operation failed."
+        summary_source = detail_exception or exc
+        summary = describe_exception(summary_source)
+        source_exception_type = (
+            exc.source_exception_type
+            if isinstance(exc, AgentRuntimeError) and exc.source_exception_type
+            else type(summary_source).__name__
         )
         self._emit_exception(
             exc,
@@ -137,6 +139,7 @@ class RuntimeDiagnostics:
             summary=summary,
             context=context,
             detail_exception=exc if detail_exception is None else detail_exception,
+            source_exception_type=source_exception_type,
         )
 
     async def aruntime_error(
@@ -172,6 +175,7 @@ class RuntimeDiagnostics:
             summary="Observation data could not be recorded.",
             context=context,
             detail_exception=exc,
+            source_exception_type=type(exc).__name__,
         )
 
     async def aobservation_error(
@@ -199,6 +203,7 @@ class RuntimeDiagnostics:
         summary: str,
         context: RuntimeDiagnosticContext | None,
         detail_exception: BaseException,
+        source_exception_type: str,
     ) -> None:
         diagnostic_id = uuid4().hex
         occurred_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -206,7 +211,7 @@ class RuntimeDiagnostics:
         safe_component = _safe_text(component)
         safe_summary = _safe_text(summary)
         safe_context = (context or RuntimeDiagnosticContext()).safe_values()
-        safe_exception_type = _optional_safe_text(type(exc).__name__)
+        safe_exception_type = _optional_safe_text(source_exception_type)
         prefix = (
             f"{occurred_at} [ERROR] component={safe_component} code={safe_code} "
             f"request_id={safe_context['request_id'] or '-'} "
@@ -227,11 +232,20 @@ class RuntimeDiagnostics:
                             f"component={safe_component}\n",
                             f"code={safe_code}\n",
                             *(f"{key}={value}\n" for key, value in safe_context.items() if value),
-                            f"exception_type={type(exc).__name__}\n\n",
+                            f"exception_type={source_exception_type}\n\n",
                         ),
                         traceback.TracebackException.from_exception(
                             detail_exception
                         ).format(chain=True),
+                        (
+                            (
+                                "\nAgent Server source traceback:\n",
+                                detail_exception.remote_traceback,
+                            )
+                            if isinstance(detail_exception, AgentRuntimeError)
+                            and detail_exception.remote_traceback
+                            else ()
+                        ),
                     ),
                 )
             except Exception:
