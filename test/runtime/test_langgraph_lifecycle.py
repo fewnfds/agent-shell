@@ -11,6 +11,7 @@ import pytest
 
 from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleActive,
+    LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
     LangGraphRunNotFound,
 )
@@ -347,6 +348,40 @@ def test_run_start_error_is_a_terminal_lifecycle_without_an_official_run() -> No
         {"graph_kind": "agent", "id": "agent-one", "name": "Agent One"}
     ]
     assert item["start_error"]["message"] == "RuntimeError: run creation exploded"
+
+
+def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> None:
+    async def scenario():
+        client = _Client()
+        client.thread_values.clear()
+        client.run_values.clear()
+        client.store_items = {
+            ("workflow-lifecycle", "lifecycle-start-error", "input"): {
+                "request": {"messages": []},
+                LIFECYCLE_START_ERROR_KEY: {
+                    "status": "error",
+                    "code": "run_start_failed",
+                    "message": "RuntimeError: run creation exploded",
+                    "occurred_at": "2026-09-07T15:07:55.700+00:00",
+                },
+            }
+        }
+        service = LangGraphLifecycleService(lambda: client)
+
+        before = await service.list_page(page=1, page_size=10)
+        deleted_threads = await service.delete("lifecycle-start-error")
+        after = await service.list_page(page=1, page_size=10)
+        with pytest.raises(LangGraphLifecycleNotFound):
+            await service.delete("lifecycle-start-error")
+        return client, before, deleted_threads, after
+
+    client, before, deleted_threads, after = asyncio.run(scenario())
+    assert before["total"] == 1
+    assert deleted_threads == 0
+    assert after["total"] == 0
+    assert client.store_items[
+        ("workflow-lifecycle", "lifecycle-start-error", "input")
+    ] == {}
 
 
 def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> None:

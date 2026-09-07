@@ -438,8 +438,18 @@ class LangGraphLifecycleService:
             page = response.get("namespaces", [])
             namespaces.extend(list(namespace) for namespace in page)
             if len(page) < 100:
-                return namespaces
+                break
             offset += len(page)
+        populated: list[list[str]] = []
+        for namespace in namespaces:
+            response = await client.store.search_items(
+                namespace,
+                limit=1,
+                offset=0,
+            )
+            if response.get("items"):
+                populated.append(namespace)
+        return populated
 
     async def _store_data(self, client: Any, lifecycle_id: str) -> dict[str, Any]:
         namespaces = await self._lifecycle_namespaces(client, lifecycle_id)
