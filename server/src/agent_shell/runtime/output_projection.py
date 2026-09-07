@@ -12,7 +12,7 @@ from agent_shell.runtime.errors import AgentRuntimeError
 
 
 class EventOutputError(AgentRuntimeError):
-    """Safe wrapper for user-authored public output failures."""
+    """Classify user-authored public output failures."""
 
     def __init__(self) -> None:
         super().__init__(

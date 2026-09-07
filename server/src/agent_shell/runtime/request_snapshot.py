@@ -114,6 +114,51 @@ def _root_terminal_status(event: Mapping[str, object]) -> str:
     } else ""
 
 
+def _root_run_error(event: Mapping[str, object]) -> AgentRuntimeError:
+    params = event.get("params")
+    data = params.get("data") if isinstance(params, Mapping) else None
+    raw_error = data.get("error") if isinstance(data, Mapping) else None
+    decoded = decode_server_run_error(raw_error)
+    if decoded is not None:
+        return decoded
+    if isinstance(raw_error, str) and raw_error:
+        message = raw_error
+    elif raw_error is not None:
+        message = f"{type(raw_error).__name__}: {raw_error!r}"
+    else:
+        message = "The official Run failed without an error detail."
+    return AgentRuntimeError(
+        "official_run_failed",
+        message,
+        status_code=502,
+        decoded_from_server=True,
+    )
+
+
+def _project_root_run_error(
+    event: Mapping[str, object],
+    error: AgentRuntimeError,
+) -> Mapping[str, object]:
+    params = event.get("params")
+    if not isinstance(params, Mapping):
+        return event
+    data = params.get("data")
+    if not isinstance(data, Mapping):
+        return event
+    projected_data = dict(data)
+    projected_data["error"] = error.message
+    projected_data["error_code"] = error.code
+    if error.source_exception_type:
+        projected_data["exception_type"] = error.source_exception_type
+    return {
+        **event,
+        "params": {
+            **params,
+            "data": projected_data,
+        },
+    }
+
+
 class _OfficialRunEventStream:
     """Expose one official Protocol v2 stream to the existing projector."""
 
@@ -138,20 +183,20 @@ class _OfficialRunEventStream:
 
     async def _until_terminal(self) -> AsyncIterator[Mapping[str, object]]:
         async for event in self._events:
-            yield event
             status = _root_terminal_status(event)
+            error = (
+                _root_run_error(event)
+                if status in {"failed", "error"}
+                else None
+            )
+            yield (
+                _project_root_run_error(event, error)
+                if error is not None
+                else event
+            )
             if status:
-                if status in {"failed", "error"}:
-                    params = event.get("params")
-                    data = params.get("data") if isinstance(params, Mapping) else None
-                    error = (
-                        decode_server_run_error(data.get("error"))
-                        if isinstance(data, Mapping)
-                        else None
-                    )
-                    if error is not None:
-                        raise error
-                    raise RuntimeError("The official Workflow Run failed.")
+                if error is not None:
+                    raise error
                 if status in {"interrupted", "cancelled"}:
                     raise asyncio.CancelledError
                 if status in {"timeout", "timed_out"}:
@@ -318,7 +363,11 @@ class LifecycleRunCoordinator:
             "status": "error",
             "code": "run_start_failed",
             "message": detail,
-            "exception_type": type(exc).__name__,
+            "exception_type": (
+                exc.source_exception_type
+                if isinstance(exc, AgentRuntimeError) and exc.source_exception_type
+                else type(exc).__name__
+            ),
             "occurred_at": datetime.now(timezone.utc).isoformat(
                 timespec="milliseconds"
             ),

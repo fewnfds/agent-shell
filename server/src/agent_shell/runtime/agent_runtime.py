@@ -26,7 +26,7 @@ from agent_shell.event_output_packages import (
     EventSegmentEndCallable,
 )
 from agent_shell.tool_packages import ToolPackageRuntime
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 from agent_shell.runtime.diagnostics import (
     RuntimeDiagnosticContext,
     RuntimeDiagnostics,
@@ -609,14 +609,16 @@ class RunExecution:
             if isinstance(exc, GraphRecursionError):
                 error = AgentRuntimeError(
                     "execution_step_limit",
-                    "The Agent exceeded the runtime step limit.",
+                    describe_exception(exc),
                     status_code=508,
+                    source_exception_type=type(exc).__name__,
                 )
             else:
                 error = AgentRuntimeError(
                     "agent_execution_failed",
-                    "The Agent failed during graph execution.",
+                    describe_exception(exc),
                     status_code=502,
+                    source_exception_type=type(exc).__name__,
                 )
             for rendered in failure_output(error.code):
                 yield rendered

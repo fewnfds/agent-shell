@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from types import SimpleNamespace
 
 import pytest
 
-from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
+from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _OfficialRunEventStream,
@@ -199,7 +200,22 @@ def test_relation_key_preserves_caller_and_operation_boundaries() -> None:
     assert relation_key("a", "b:c") != relation_key("a:b", "c")
 
 
-def test_official_run_stream_restores_safe_product_error() -> None:
+def test_official_run_stream_restores_source_error_and_projects_readable_event() -> None:
+    class ProviderGatewayError(RuntimeError):
+        pass
+
+    try:
+        raise ProviderGatewayError("gateway rejected request body")
+    except ProviderGatewayError as cause:
+        try:
+            raise AgentRuntimeError(
+                "provider_request_failed",
+                "classified provider failure",
+                status_code=502,
+            ) from cause
+        except AgentRuntimeError as source_error:
+            transported_error = str(source_error)
+
     async def events():
         yield {
             "method": "lifecycle",
@@ -207,13 +223,7 @@ def test_official_run_stream_restores_safe_product_error() -> None:
                 "namespace": [],
                 "data": {
                     "event": "failed",
-                    "error": encode_server_run_error(
-                        AgentRuntimeError(
-                            "workflow.command_failed",
-                            "The Command Node script failed.",
-                            status_code=422,
-                        )
-                    ),
+                    "error": transported_error,
                 },
             },
         }
@@ -221,17 +231,65 @@ def test_official_run_stream_restores_safe_product_error() -> None:
     async def close_session(_thread_id: str) -> None:
         return None
 
-    async def scenario() -> None:
+    async def scenario() -> tuple[AgentRuntimeError, list[Mapping[str, object]]]:
         stream = _OfficialRunEventStream(
             events(),
             SimpleNamespace(close_official_session=close_session),
             "thread-1",
         )
+        projected: list[Mapping[str, object]] = []
         with pytest.raises(AgentRuntimeError) as captured:
-            async for _event in stream:
-                pass
-        assert captured.value.code == "workflow.command_failed"
-        assert captured.value.safe_message == "The Command Node script failed."
-        assert captured.value.status_code == 422
+            async for event in stream:
+                projected.append(event)
+        return captured.value, projected
 
-    asyncio.run(scenario())
+    error, projected = asyncio.run(scenario())
+    assert error.code == "provider_request_failed"
+    assert error.message == "ProviderGatewayError: gateway rejected request body"
+    assert error.status_code == 502
+    assert error.source_exception_type == "ProviderGatewayError"
+    assert "ProviderGatewayError: gateway rejected request body" in error.remote_traceback
+    assert projected[0]["params"]["data"] == {
+        "event": "failed",
+        "error": "ProviderGatewayError: gateway rejected request body",
+        "error_code": "provider_request_failed",
+        "exception_type": "ProviderGatewayError",
+    }
+
+
+def test_official_run_stream_preserves_unencoded_failure_text() -> None:
+    async def events():
+        yield {
+            "method": "lifecycle",
+            "params": {
+                "namespace": [],
+                "data": {
+                    "event": "failed",
+                    "error": "worker exited while opening C:\\runtime\\provider.log",
+                },
+            },
+        }
+
+    async def close_session(_thread_id: str) -> None:
+        return None
+
+    async def scenario() -> tuple[AgentRuntimeError, list[Mapping[str, object]]]:
+        stream = _OfficialRunEventStream(
+            events(),
+            SimpleNamespace(close_official_session=close_session),
+            "thread-raw",
+        )
+        projected: list[Mapping[str, object]] = []
+        with pytest.raises(AgentRuntimeError) as captured:
+            async for event in stream:
+                projected.append(event)
+        return captured.value, projected
+
+    error, projected = asyncio.run(scenario())
+    assert error.code == "official_run_failed"
+    assert error.message == "worker exited while opening C:\\runtime\\provider.log"
+    assert projected[0]["params"]["data"] == {
+        "event": "failed",
+        "error": "worker exited while opening C:\\runtime\\provider.log",
+        "error_code": "official_run_failed",
+    }

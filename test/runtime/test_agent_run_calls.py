@@ -264,7 +264,7 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
     assert marker["subject_name"] == "Researcher"
     assert len(diagnostics.runtime_errors) == 1
     diagnostic, kwargs = diagnostics.runtime_errors[0]
-    assert diagnostic.safe_message == "RuntimeError: run creation exploded"
+    assert diagnostic.message == "RuntimeError: run creation exploded"
     assert kwargs["detail_exception"].args == ("run creation exploded",)
     assert kwargs["context"].lifecycle_id
     assert diagnostics.observation_errors == []

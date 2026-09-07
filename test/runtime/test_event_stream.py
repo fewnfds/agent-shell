@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import pytest
 from langchain_core.messages import AIMessage
 
-from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.event_origin import RunEventOriginResolver
 from agent_shell.runtime.event_stream import RunEventStream
 from agent_shell.runtime.usage import RunUsageAccumulator
@@ -151,7 +149,7 @@ def test_whole_ai_message_after_streamed_message_is_not_projected_twice() -> Non
     assert projection.frames == ()
 
 
-def test_main_agent_message_error_is_redacted_and_fails_immediately() -> None:
+def test_main_agent_message_error_waits_for_root_lifecycle_failure() -> None:
     stream, _usage, resolver = _stream()
     _consume(
         stream,
@@ -159,15 +157,14 @@ def test_main_agent_message_error_is_redacted_and_fails_immediately() -> None:
         message_envelope({"event": "message-start", "role": "ai", "id": "m1"}),
     )
 
-    with pytest.raises(AgentRuntimeError) as captured:
-        _consume(
-            stream,
-            resolver,
-            message_envelope({"event": "error", "error": {"private": "secret"}}),
-        )
+    projection = _consume(
+        stream,
+        resolver,
+        message_envelope({"event": "error", "error": {"detail": "provider failed"}}),
+        "provider failed",
+    )
 
-    assert captured.value.code == "agent_execution_failed"
-    assert "secret" not in str(captured.value)
+    assert [frame.text for frame in projection.frames] == ["provider failed"]
 
 
 def test_completed_media_is_returned_separately_from_atomic_event_text() -> None:

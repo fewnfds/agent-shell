@@ -46,6 +46,7 @@ from agent_shell.settings import (
     get_settings,
 )
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext, RuntimeDiagnostics
+from agent_shell.runtime.errors import describe_exception
 from agent_shell.event_feed import EventFeedService
 from agent_shell.redaction import redact_for_boundary
 from agent_shell.readiness import ReadinessService
@@ -495,7 +496,7 @@ def create_app(
         )
 
     @app.exception_handler(Exception)
-    async def safe_internal_error(request: Request, exc: Exception) -> JSONResponse:
+    async def internal_error(request: Request, exc: Exception) -> JSONResponse:
         await runtime_diagnostics.aruntime_error(
             exc,
             code="internal_error",
@@ -507,19 +508,20 @@ def create_app(
             ),
         )
         request_id = getattr(request.state, "request_id", "")
+        message = describe_exception(exc)
         if is_agent_shell_api_path(request.url.path):
             content: dict[str, object] = {
                 "detail": localized_error_detail(
                     code="internal_error",
                     message_key="errors.internalError",
-                    message="An internal management operation failed.",
+                    message=message,
                 ),
                 "request_id": request_id,
             }
         else:
             content = {
                 "error": {
-                    "message": "An internal operation failed.",
+                    "message": message,
                     "type": "internal_error",
                     "param": None,
                     "code": "internal_error",

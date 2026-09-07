@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage
 
-from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.event_origin import ResolvedEventOrigin
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.message_state import MessageRunRegistry
@@ -146,15 +145,7 @@ class RunEventStream:
             return EventStreamProjection(frames=tuple(frames))
 
         if event_name == "error":
-            message = self._messages.get(run_key)
-            is_main = message.main_agent_ai if message is not None else origin.is_main_agent
             self._discard_message(run_key)
-            if is_main:
-                raise AgentRuntimeError(
-                    "agent_execution_failed",
-                    "The model response stream failed.",
-                    status_code=502,
-                )
             return self._atomic_projection(text)
 
         message = self._messages.get(run_key)

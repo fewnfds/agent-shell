@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from typing import ClassVar
 
 from agent_shell.api import api_server
+from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     RequestSnapshotRuntime,
@@ -115,6 +117,58 @@ def test_run_start_failure_returns_exception_chain_and_lifecycle_identity(
     }
     assert response.json()["request_id"] == request_id
     assert response.json()["lifecycle_id"] == "lifecycle-start-failure"
+
+
+def test_execution_failure_returns_decoded_provider_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Execution:
+        identity = SimpleNamespace(run_id="run-provider-failure")
+
+        async def run(self):
+            raise AgentRuntimeError(
+                "provider_request_failed",
+                "ProviderGatewayError: upstream returned 503 with an invalid payload",
+                status_code=502,
+                source_exception_type="ProviderGatewayError",
+                remote_traceback=(
+                    "Traceback (most recent call last):\n"
+                    "ProviderGatewayError: upstream returned 503 with an invalid payload\n"
+                ),
+                decoded_from_server=True,
+            )
+
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def fail_execution(coordinator, *_args, **_kwargs):
+            coordinator._begin_lifecycle("lifecycle-provider-failure")
+            return Execution()
+
+        monkeypatch.setattr(LifecycleRunCoordinator, "start_agent", fail_execution)
+        response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": main_agent["name"],
+                "messages": [{"role": "user", "content": "hello"}],
+                "stream": False,
+            },
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+
+    request_id = response.headers["x-request-id"]
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "message": (
+            "ProviderGatewayError: upstream returned 503 with an invalid payload"
+        ),
+        "type": "server_error",
+        "param": None,
+        "code": "provider_request_failed",
+        "request_id": request_id,
+        "lifecycle_id": "lifecycle-provider-failure",
+    }
 
 
 def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(

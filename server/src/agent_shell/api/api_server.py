@@ -779,7 +779,7 @@ def build_api_server_router(
             return _openai_error(
                 exc.status_code,
                 issue.code if issue is not None else exc.code,
-                issue.message if issue is not None else describe_exception(exc),
+                describe_exception(exc),
                 request_id=request_id,
                 lifecycle_id=lifecycle_id,
             )

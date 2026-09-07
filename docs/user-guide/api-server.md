@@ -38,7 +38,9 @@ Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workf
 
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，各 participating Run 的 Event Output producer 将已投影 frame 提交给它；任一时刻只有一个 `(thread_id, run_id)` 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
 
-失败响应保留稳定 `error.code`，并在 `error.message` 直接返回异常类型与具体异常链；同时返回 `request_id`，Lifecycle 已建立时还返回 `lifecycle_id`。API Key 持有者可以据此直接排错，日志中心保存同一次失败的结构化记录和完整 traceback 附件。入口 Run 创建前失败的 Lifecycle 状态为 `error`，其 `run_count` 可以为零。
+失败响应保留稳定 `error.code`，并在 `error.message` 直接返回异常类型与具体异常链；同时返回 `request_id`，Lifecycle 已建立时还返回 `lifecycle_id`。Provider、Tool 和 Graph 分类只增加 code/status，不会把原因改写为固定文案。API Key 持有者可以据此直接排错，日志中心保存同一次失败的源异常类型、具体异常链和完整 traceback 附件；跨 Agent Server 时附件同时包含 Server source traceback。入口 Run 创建前失败的 Lifecycle 状态为 `error`，其 `run_count` 可以为零。
+
+路由没有分类处理的意外异常使用 `internal_error` code，并直接返回异常类型与具体异常链，同时写入运行诊断。该 catch-all 不把原因替换为固定的 internal operation 文案。
 
 响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的普通 Run 共用 scheduler。Run 在创建后立即进入 FIFO ready queue，因此完全静默的 owner 也从取得 writer 时开始计算 idle timeout；非空 frame 刷新 deadline，超时只让位、不取消 Run，后续再有 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部 scheduler producer terminal 且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用`start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb`与`send_interval_seconds`只控制客户端发送批次，producer 提交不等待 scheduler 消费。
 

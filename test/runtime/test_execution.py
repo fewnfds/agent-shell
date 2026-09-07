@@ -450,7 +450,8 @@ def test_graph_recursion_failure_uses_step_limit_error() -> None:
         )
         with pytest.raises(AgentRuntimeError) as captured:
             await anext(execution.stream_text())
-        assert "private graph state" not in captured.value.safe_message
+        assert captured.value.message == "GraphRecursionError: private graph state"
+        assert captured.value.source_exception_type == "GraphRecursionError"
         return captured.value.code
 
     assert asyncio.run(scenario()) == "execution_step_limit"
@@ -466,11 +467,13 @@ def test_runtime_boundaries_classify_provider_and_tool_failures() -> None:
 
     assert tool_error.value.code == "tool_execution_failed"
     assert provider_error.value.code == "provider_request_failed"
-    assert "private failure details" not in tool_error.value.safe_message
-    assert provider_error.value.safe_message == "The model provider request failed."
+    assert tool_error.value.message == "RuntimeError: private failure details"
+    assert provider_error.value.message == "RuntimeError: private failure details"
+    assert tool_error.value.source_exception_type == "RuntimeError"
+    assert provider_error.value.source_exception_type == "RuntimeError"
 
 
-def test_provider_error_boundary_preserves_status_and_redacts_message() -> None:
+def test_provider_error_boundary_preserves_status_and_message() -> None:
     class RateLimitError(RuntimeError):
         status_code = 429
 
@@ -483,7 +486,11 @@ def test_provider_error_boundary_preserves_status_and_redacts_message() -> None:
         ProviderErrorBoundaryMiddleware().wrap_model_call(None, fail)
 
     assert captured.value.status_code == 429
-    assert captured.value.safe_message == "The model provider request failed."
+    assert captured.value.message == (
+        "RateLimitError: quota exceeded at C:\\private\\provider.log "
+        "with Bearer token-value"
+    )
+    assert captured.value.source_exception_type == "RateLimitError"
     assert isinstance(captured.value.__cause__, RateLimitError)
 
 def test_tool_error_boundary_preserves_successful_result() -> None:
@@ -550,7 +557,10 @@ def test_unclassified_graph_failure_is_not_mislabeled_as_provider() -> None:
         assert await anext(stream) == "failed"
         with pytest.raises(AgentRuntimeError) as captured:
             await anext(stream)
-        assert "private middleware or graph details" not in captured.value.safe_message
+        assert captured.value.message == (
+            "RuntimeError: private middleware or graph details"
+        )
+        assert captured.value.source_exception_type == "RuntimeError"
         assert diagnostics.context is not None
         return (
             captured.value.code,

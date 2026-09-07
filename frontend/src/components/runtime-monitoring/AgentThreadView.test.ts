@@ -81,4 +81,35 @@ describe('AgentThreadView', () => {
     expect(wrapper.get('.tool-activity').text()).toContain('Finished')
     expect(wrapper.get('.tool-activity').text()).toContain('result')
   })
+
+  it('renders the concrete Agent Server error instead of its transport envelope', () => {
+    useStreamMock.mockReturnValue({
+      values: ref({ messages: [] }),
+      messages: ref([]),
+      toolCalls: ref([]),
+      interrupts: ref([]),
+      error: ref(new Error(
+        'agent-shell.runtime-error.v1:' + JSON.stringify({
+          code: 'provider_request_failed',
+          message: 'ProviderGatewayError: upstream returned 503',
+          status_code: 502,
+          source_exception_type: 'ProviderGatewayError',
+          traceback: 'ProviderGatewayError: upstream returned 503',
+        }),
+      )),
+      isThreadLoading: ref(false),
+      isLoading: computed(() => false),
+    })
+
+    const wrapper = mount(AgentThreadView, {
+      props: { assistantId: 'assistant-1', threadId: 'thread-1' },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })],
+      },
+    })
+
+    expect(wrapper.get('.agent-event-row--error').text())
+      .toBe('ProviderGatewayError: upstream returned 503')
+    expect(wrapper.text()).not.toContain('agent-shell.runtime-error.v1')
+  })
 })

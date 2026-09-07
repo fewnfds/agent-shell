@@ -6,7 +6,7 @@ from typing import Any, Mapping, Protocol
 
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.capabilities.exception_retry import ExceptionRetryRuntime
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.models import ValidationIssue, ValidationReport
 from agent_shell.validation.assembly import ResolvedMcpReference
@@ -106,7 +106,7 @@ def reported_error(
         return error
     return configuration_error(
         error.code,
-        error.safe_message,
+        describe_exception(error),
         status_code=error.status_code,
         scope=scope,
         owner_id=owner_id,

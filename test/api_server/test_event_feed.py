@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
-from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.errors import AgentRuntimeError, decode_server_run_error
 from agent_shell.runtime.limits import ProviderErrorBoundaryMiddleware
 
 from .support import *
@@ -132,7 +132,7 @@ def test_runtime_diagnostic_settings_have_no_capture_switch(
     assert listing["items"] == []
 
 
-def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
+def test_runtime_diagnostic_summary_and_detail_keep_full_exception(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request_id = "request-full-debug"
@@ -189,9 +189,10 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
 
     assert item["download_kind"] == "diagnostic_detail"
     assert item["summary"] == (
-        "Published Main Agent · The Agent failed during graph execution."
+        "Published Main Agent · RuntimeError: outer debug failure <- "
+        "TypeError: private-debug-detail"
     )
-    assert private_detail not in item["inline_content"]
+    assert private_detail in item["inline_content"]
     assert download.status_code == 200
     assert download.headers["content-type"].startswith("text/plain")
     assert download.headers["content-disposition"].endswith('.log"')
@@ -205,7 +206,7 @@ def test_runtime_diagnostic_detail_keeps_full_exception_out_of_summary(
     assert list((tmp_path / "data" / "logs" / "diagnostics").glob("*.log")) == []
 
 
-def test_provider_error_detail_is_management_only(
+def test_provider_error_transport_reaches_summary_type_and_source_traceback(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     raw_provider_response = "<html>gateway body: request was rejected</html>"
@@ -215,9 +216,11 @@ def test_provider_error_detail_is_management_only(
 
         with pytest.raises(AgentRuntimeError) as captured:
             ProviderErrorBoundaryMiddleware().wrap_model_call(None, fail)
+        transported = decode_server_run_error(str(captured.value))
+        assert transported is not None
         client.app.state.runtime_diagnostics.runtime_error(
-            captured.value,
-            code=captured.value.code,
+            transported,
+            code=transported.code,
             component="graph_runtime",
             context=RuntimeDiagnosticContext(request_id="request-provider-detail"),
         )
@@ -233,14 +236,20 @@ def test_provider_error_detail_is_management_only(
             f"/agent-shell/api/event-feed/runtime/{item['id']}/download"
         )
 
-    assert raw_provider_response not in json.dumps(listing)
-    assert item["summary"] == "The model provider request failed."
+    assert raw_provider_response in json.dumps(listing)
+    assert item["summary"] == f"ValueError: {raw_provider_response}"
+    assert '"exception_type": "ValueError"' in item["inline_content"]
     assert download.status_code == 200
-    assert raw_provider_response in download.content.decode("utf-8")
+    detail_text = download.content.decode("utf-8")
+    assert raw_provider_response in detail_text
+    assert "Agent Server source traceback:" in detail_text
+    assert "ValueError: <html>gateway body: request was rejected</html>" in detail_text
 
 
 def test_runtime_diagnostic_keeps_structured_entry_when_detail_write_fails(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
 
@@ -261,7 +270,10 @@ def test_runtime_diagnostic_keeps_structured_entry_when_detail_write_fails(
             ),
         )
         entries = client.app.state.runtime_diagnostics.snapshot()["entries"]
+        stderr = capsys.readouterr().err
 
     assert len(entries) == 1
     assert entries[0]["run_id"] == "run-without-detail"
+    assert entries[0]["summary"] == "OSError: journal unavailable"
     assert entries[0]["detail_available"] is False
+    assert "OSError: diagnostic attachment unavailable" in stderr

@@ -11,7 +11,6 @@ import threading
 import traceback
 from uuid import uuid4
 
-from agent_shell.redaction import redact_for_boundary
 from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
 from agent_shell.storage.runtime_diagnostic_details import (
     RuntimeDiagnosticDetailStore,
@@ -19,13 +18,12 @@ from agent_shell.storage.runtime_diagnostic_details import (
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
 
 
-def _safe_text(value: object) -> str:
-    safe = redact_for_boundary("request-trace", str(value or ""))
-    return safe if isinstance(safe, str) else "[UNAVAILABLE]"
+def _diagnostic_text(value: object) -> str:
+    return str(value or "")
 
 
-def _optional_safe_text(value: object) -> str | None:
-    text = _safe_text(value)
+def _optional_diagnostic_text(value: object) -> str | None:
+    text = _diagnostic_text(value)
     return text or None
 
 
@@ -41,9 +39,9 @@ class RuntimeDiagnosticContext:
     workflow_node_id: str = ""
     node_invocation_id: str = ""
 
-    def safe_values(self) -> dict[str, str | None]:
+    def values(self) -> dict[str, str | None]:
         values = {
-            key: _optional_safe_text(value)
+            key: _optional_diagnostic_text(value)
             for key, value in asdict(self).items()
         }
         return values
@@ -128,8 +126,9 @@ class RuntimeDiagnostics:
         summary_source = detail_exception or exc
         summary = describe_exception(summary_source)
         source_exception_type = (
-            exc.source_exception_type
-            if isinstance(exc, AgentRuntimeError) and exc.source_exception_type
+            summary_source.source_exception_type
+            if isinstance(summary_source, AgentRuntimeError)
+            and summary_source.source_exception_type
             else type(summary_source).__name__
         )
         self._emit_exception(
@@ -172,7 +171,7 @@ class RuntimeDiagnostics:
             exc,
             code=code,
             component=component,
-            summary="Observation data could not be recorded.",
+            summary=describe_exception(exc),
             context=context,
             detail_exception=exc,
             source_exception_type=type(exc).__name__,
@@ -207,18 +206,19 @@ class RuntimeDiagnostics:
     ) -> None:
         diagnostic_id = uuid4().hex
         occurred_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        safe_code = _safe_text(code)
-        safe_component = _safe_text(component)
-        safe_summary = _safe_text(summary)
-        safe_context = (context or RuntimeDiagnosticContext()).safe_values()
-        safe_exception_type = _optional_safe_text(source_exception_type)
+        diagnostic_code = _diagnostic_text(code)
+        diagnostic_component = _diagnostic_text(component)
+        diagnostic_summary = _diagnostic_text(summary)
+        diagnostic_context = (context or RuntimeDiagnosticContext()).values()
+        diagnostic_exception_type = _optional_diagnostic_text(source_exception_type)
         prefix = (
-            f"{occurred_at} [ERROR] component={safe_component} code={safe_code} "
-            f"request_id={safe_context['request_id'] or '-'} "
-            f"lifecycle_id={safe_context['lifecycle_id'] or '-'} "
-            f"run_id={safe_context['run_id'] or '-'}"
+            f"{occurred_at} [ERROR] component={diagnostic_component} "
+            f"code={diagnostic_code} "
+            f"request_id={diagnostic_context['request_id'] or '-'} "
+            f"lifecycle_id={diagnostic_context['lifecycle_id'] or '-'} "
+            f"run_id={diagnostic_context['run_id'] or '-'}"
         )
-        self._logger.error(prefix + "\n" + safe_summary)
+        self._logger.error(prefix + "\n" + diagnostic_summary)
 
         with self._lock:
             detail_available = False
@@ -229,9 +229,13 @@ class RuntimeDiagnostics:
                         (
                             f"diagnostic_id={diagnostic_id}\n",
                             f"occurred_at={occurred_at}\n",
-                            f"component={safe_component}\n",
-                            f"code={safe_code}\n",
-                            *(f"{key}={value}\n" for key, value in safe_context.items() if value),
+                            f"component={diagnostic_component}\n",
+                            f"code={diagnostic_code}\n",
+                            *(
+                                f"{key}={value}\n"
+                                for key, value in diagnostic_context.items()
+                                if value
+                            ),
                             f"exception_type={source_exception_type}\n\n",
                         ),
                         traceback.TracebackException.from_exception(
@@ -248,31 +252,47 @@ class RuntimeDiagnostics:
                         ),
                     ),
                 )
-            except Exception:
-                self._logger.error(prefix + "\nruntime diagnostic detail persistence failed")
+            except Exception as persistence_error:
+                self._logger.error(
+                    prefix
+                    + "\nruntime diagnostic detail persistence failed: "
+                    + describe_exception(persistence_error)
+                )
             try:
                 entry = self._store.add(
                     diagnostic_id=diagnostic_id,
                     occurred_at=occurred_at,
                     severity="error",
-                    code=safe_code,
-                    summary=safe_summary,
-                    component=safe_component,
-                    exception_type=safe_exception_type,
+                    code=diagnostic_code,
+                    summary=diagnostic_summary,
+                    component=diagnostic_component,
+                    exception_type=diagnostic_exception_type,
                     detail_available=detail_available,
-                    **safe_context,
+                    **diagnostic_context,
                 )
-            except Exception:
-                self._logger.error(prefix + "\nruntime diagnostic index persistence failed")
+            except Exception as persistence_error:
+                self._logger.error(
+                    prefix
+                    + "\nruntime diagnostic index persistence failed: "
+                    + describe_exception(persistence_error)
+                )
                 try:
                     self._reconcile_details()
-                except Exception:
-                    self._logger.error(prefix + "\nruntime diagnostic cleanup failed")
+                except Exception as cleanup_error:
+                    self._logger.error(
+                        prefix
+                        + "\nruntime diagnostic cleanup failed: "
+                        + describe_exception(cleanup_error)
+                    )
                 return
             try:
                 self._reconcile_details()
-            except Exception:
-                self._logger.error(prefix + "\nruntime diagnostic cleanup failed")
+            except Exception as cleanup_error:
+                self._logger.error(
+                    prefix
+                    + "\nruntime diagnostic cleanup failed: "
+                    + describe_exception(cleanup_error)
+                )
         self._publish({"type": "runtime_diagnostic", "entry": entry})
 
 

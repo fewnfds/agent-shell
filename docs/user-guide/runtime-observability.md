@@ -2,7 +2,7 @@
 
 ## 日志中心
 
-【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目显示具体错误消息，可以包含 request、Lifecycle、Run 和 Thread ID；完整 traceback 通过对应诊断附件提供。日志不是已经建立的官方 Run 状态来源。
+【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目直接显示 Provider、Tool 或 Graph 的具体异常链、源异常类型以及 request、Lifecycle、Run 和 Thread ID；附件包含本地消费 traceback，跨 Agent Server 的异常还包含 Agent Server source traceback。错误码用于检索和程序分类，不替代异常原因。诊断写入自身失败时，服务端 stderr 会输出具体的持久化异常。日志不是已经建立的官方 Run 状态来源。
 
 ## 运行监控
 
@@ -16,6 +16,8 @@
 - error/timeout Run 数量。
 
 入口 Assistant、Thread 或 Run 创建失败时，Lifecycle 直接显示 `error`，并保留 `start_error`、目标 Main Agent/Workflow 和 request identity。这个状态只表示官方 Run 建立前的启动失败，因此 Run 数量可以为零。
+
+官方 Run 执行失败时，根 Lifecycle event 显示可读的 `error`、稳定 `error_code` 和可用的 `exception_type`。Agent Server 内部错误 transport 不直接显示为编码文本；无法识别的官方错误字符串保持原文。消息流中的 error event 不会抢先用通用文案覆盖随后到达的根 Lifecycle 失败原因。
 
 任意 Lifecycle 都可以进入监控页。active Lifecycle 不能删除；terminal Lifecycle 可以单项删除或按当前搜索条件批量删除。
 
@@ -50,7 +52,7 @@ active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 ma
 
 删除 Lifecycle 会删除其入口与内部启动 Run 的官方 Thread、Run/checkpoint/State，并删除 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
 
-监控 ZIP、Lifecycle Store、State、消息和 Tool payload 都可能包含完整业务内容。下载文件离开实例保留边界后由下载者负责保存和删除。
+运行错误、诊断附件、监控 ZIP、Lifecycle Store、State、消息和 Tool payload 都可能包含完整业务内容、本机路径或异常中出现的 credential。下载文件离开实例保留边界后由下载者负责保存和删除。
 
 ## API Docs、Studio 与 LangSmith
 

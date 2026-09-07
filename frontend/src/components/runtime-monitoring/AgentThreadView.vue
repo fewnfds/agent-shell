@@ -16,6 +16,8 @@ interface DisplayToolCall {
   args?: unknown
 }
 
+const SERVER_RUN_ERROR_PREFIX = 'agent-shell.runtime-error.v1:'
+
 type MessageBlock =
   | { kind: 'text' | 'reasoning', id: string, text: string }
   | { kind: 'tool', id: string, call: DisplayToolCall }
@@ -121,7 +123,23 @@ function orphanToolId(message: BaseMessage): string {
 
 function streamError(): string {
   const value = stream.error.value
-  return value instanceof Error ? value.message : String(value ?? '')
+  const message = value instanceof Error ? value.message : String(value ?? '')
+  if (!message.startsWith(SERVER_RUN_ERROR_PREFIX)) return message
+  try {
+    const payload: unknown = JSON.parse(message.slice(SERVER_RUN_ERROR_PREFIX.length))
+    if (
+      typeof payload === 'object'
+      && payload !== null
+      && 'message' in payload
+      && typeof payload.message === 'string'
+      && payload.message
+    ) {
+      return payload.message
+    }
+  } catch {
+    return message
+  }
+  return message
 }
 
 function onScroll(): void {

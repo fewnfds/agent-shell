@@ -151,7 +151,7 @@ def test_every_public_boundary_uses_the_same_fail_closed_policy() -> None:
         redact_for_boundary("ad-hoc-replacement", payload)
 
 
-def test_http_and_unhandled_errors_reuse_safe_redaction(
+def test_http_errors_redact_structured_detail_and_unhandled_errors_keep_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     app = configure_app(monkeypatch, tmp_path)
@@ -188,6 +188,9 @@ def test_http_and_unhandled_errors_reuse_safe_redaction(
     assert internal.status_code == 500
     assert internal.json()["detail"]["code"] == "internal_error"
     assert internal.json()["detail"]["message_key"] == "errors.internalError"
+    assert internal.json()["detail"]["message"] == (
+        "RuntimeError: internal-secret-sentinel C:\\Users\\private\\trace.py"
+    )
     assert internal.json()["request_id"].startswith("req_")
-    assert "internal-secret-sentinel" not in internal.text
-    assert "Users" not in internal.text
+    assert "internal-secret-sentinel" in internal.text
+    assert "Users" in internal.text
