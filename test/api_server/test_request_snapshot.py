@@ -1,6 +1,38 @@
 from __future__ import annotations
 
+import threading
+from typing import Any, cast
+
+from agent_shell.response_stream_policy import ResponseStreamPolicy
+from agent_shell.runtime.request_snapshot import RequestRuntimeSnapshot
+
 from .support import *
+
+
+def test_snapshot_materializes_runtime_factory_off_event_loop() -> None:
+    event_loop_thread_id = 0
+    factory_thread_id = 0
+    expected_runtime = object()
+
+    def runtime_factory(_store: Any) -> Any:
+        nonlocal factory_thread_id
+        factory_thread_id = threading.get_ident()
+        return expected_runtime
+
+    snapshot = RequestRuntimeSnapshot(
+        _workflows=cast(Any, None),
+        _agents=cast(Any, None),
+        _runtime_factory=runtime_factory,
+        _response_stream_policy=ResponseStreamPolicy(),
+    )
+
+    async def materialize() -> Any:
+        nonlocal event_loop_thread_id
+        event_loop_thread_id = threading.get_ident()
+        return await snapshot.new_runtime(store=cast(Any, object()))
+
+    assert asyncio.run(materialize()) is expected_runtime
+    assert factory_thread_id != event_loop_thread_id
 
 
 def test_snapshot_freezes_workflow_metadata(

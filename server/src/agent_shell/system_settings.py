@@ -91,6 +91,7 @@ class SystemSettingsService:
             "response_stream_scheduling": (
                 settings.response_stream_scheduling.model_dump(mode="json")
             ),
+            "provider_http": settings.provider_http.model_dump(mode="json"),
         }
 
     @staticmethod
@@ -162,6 +163,7 @@ class SystemSettingsService:
             "cors_origins": payload["cors_origins"],
             "trusted_proxy_cidrs": payload["trusted_proxy_cidrs"],
             "response_stream_scheduling": payload["response_stream_scheduling"],
+            "provider_http": payload["provider_http"],
         }
         try:
             candidate = Settings(**values)
@@ -187,6 +189,7 @@ class SystemSettingsService:
             ) from None
         candidate.bind_paths(self._active.application_home, self._active.data_root)
         try:
+            candidate.validate_provider_http()
             candidate.validate_deployment()
         except SettingsError as exc:
             raise SystemSettingsError(
@@ -267,6 +270,7 @@ class SystemSettingsService:
                     "response_stream_scheduling": (
                         candidate.response_stream_scheduling.model_dump(mode="json")
                     ),
+                    "provider_http": candidate.provider_http.model_dump(mode="json"),
                 }
             set_values: dict[str, str] = {}
             remove_keys: set[str] = set()

@@ -195,7 +195,54 @@ def test_model_builder_passes_native_provider_fields_unchanged(
     else:
         assert "http_client" not in captured
         assert "http_async_client" not in captured
-        assert "default_headers" not in captured
+        if provider == "anthropic":
+            assert captured["default_headers"] == {
+                "User-Agent": "Agent-Shell/0.2.0"
+            }
+        else:
+            assert captured["additional_headers"] == {
+                "User-Agent": "Agent-Shell/0.2.0"
+            }
+
+
+def test_model_builder_applies_system_provider_headers_case_insensitively(
+    monkeypatch,
+) -> None:
+    from agent_shell.provider_http import ProviderHttpClients, ProviderHttpSettings
+
+    captured = {}
+    monkeypatch.setattr(
+        agent_builder,
+        "init_chat_model",
+        lambda **kwargs: captured.update(kwargs) or kwargs,
+    )
+    clients = ProviderHttpClients(
+        ProviderHttpSettings(
+            transport="httpx",
+            default_headers={
+                "user-agent": "my-agent/2.0",
+                "x-opencode-session": "cache-group",
+            },
+        )
+    )
+    try:
+        _build_chat_model(
+            {
+                "provider": "openai",
+                "model": "local",
+                "base_url": "https://provider.example/v1",
+                "provider_settings": {},
+            },
+            "secret",
+            clients,
+        )
+    finally:
+        asyncio.run(clients.aclose())
+
+    assert captured["default_headers"] == {
+        "user-agent": "my-agent/2.0",
+        "x-opencode-session": "cache-group",
+    }
 
 def test_provider_setting_contracts_use_current_official_constructor_names() -> None:
     for integration in bundled_provider_integrations():

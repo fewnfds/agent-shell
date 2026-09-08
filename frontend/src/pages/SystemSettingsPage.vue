@@ -45,6 +45,7 @@ const loadError = ref('')
 const langgraphSaving = ref(false)
 const limitsSaving = ref(false)
 const responseSchedulingSaving = ref(false)
+const providerNetworkSaving = ref(false)
 const langsmithSaving = ref(false)
 const proxySaving = ref(false)
 const apiServerSaving = ref(false)
@@ -52,6 +53,7 @@ const validationSaving = ref(false)
 const langgraphError = ref('')
 const limitsError = ref('')
 const responseSchedulingError = ref('')
+const providerNetworkError = ref('')
 const langsmithError = ref('')
 const proxyError = ref('')
 const apiServerError = ref('')
@@ -82,6 +84,18 @@ const trustedProxies = ref('')
 const responseIdleTimeoutSeconds = ref(2)
 const responseMaxBatchKb = ref(64)
 const responseSendIntervalSeconds = ref(0.05)
+const providerTransport = ref<'httpx' | 'curl_cffi'>('curl_cffi')
+const providerHttpVersion = ref<'auto' | 'http1' | 'http2'>('auto')
+const providerTlsVerify = ref(true)
+const providerCaBundle = ref('')
+const providerProxyUrl = ref('')
+interface ProviderHeaderRow {
+  id: number
+  name: string
+  value: string
+}
+let nextProviderHeaderId = 1
+const providerHeaders = ref<ProviderHeaderRow[]>([])
 
 const apiKeyPlaceholder = computed(() => apiServerSettings.value?.api_key.configured
   ? t('common.configuredSecretPlaceholder')
@@ -155,9 +169,29 @@ const responseSchedulingValid = computed(() => {
     && Number.isFinite(batch) && batch > 0
     && Number.isFinite(interval) && interval >= 0
 })
+const providerNetworkValid = computed(() => {
+  if (!providerTlsVerify.value && providerCaBundle.value.trim()) return false
+  const proxy = providerProxyUrl.value.trim()
+  if (proxy) {
+    try {
+      const parsed = new URL(proxy)
+      if (!['http:', 'https:'].includes(parsed.protocol)
+        || parsed.username
+        || parsed.password
+        || (parsed.pathname && parsed.pathname !== '/')
+        || parsed.search
+        || parsed.hash) return false
+    } catch {
+      return false
+    }
+  }
+  const names = providerHeaders.value.map((header) => header.name.trim().toLowerCase())
+  return names.every(Boolean) && new Set(names).size === names.length
+})
 const anySaving = computed(() => langgraphSaving.value
   || limitsSaving.value
   || responseSchedulingSaving.value
+  || providerNetworkSaving.value
   || langsmithSaving.value
   || proxySaving.value
   || apiServerSaving.value
@@ -165,6 +199,33 @@ const anySaving = computed(() => langgraphSaving.value
 
 function lines(value: string): string[] {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+}
+
+function applyProviderNetwork(value: SystemSettings['provider_http']): void {
+  providerTransport.value = value.transport
+  providerHttpVersion.value = value.http_version
+  providerTlsVerify.value = value.tls_verify
+  providerCaBundle.value = value.ca_bundle ?? ''
+  providerProxyUrl.value = value.proxy_url ?? ''
+  providerHeaders.value = Object.entries(value.default_headers).map(([name, headerValue]) => ({
+    id: nextProviderHeaderId++,
+    name,
+    value: headerValue,
+  }))
+}
+
+function addProviderHeader(): void {
+  providerHeaders.value.push({ id: nextProviderHeaderId++, name: '', value: '' })
+}
+
+function removeProviderHeader(id: number): void {
+  providerHeaders.value = providerHeaders.value.filter((header) => header.id !== id)
+}
+
+function providerDefaultHeaders(): Record<string, string> {
+  return Object.fromEntries(
+    providerHeaders.value.map((header) => [header.name.trim(), header.value]),
+  )
 }
 
 function applySystemSettings(value: SystemSettings): void {
@@ -188,6 +249,7 @@ function applySystemSettings(value: SystemSettings): void {
   responseIdleTimeoutSeconds.value = value.response_stream_scheduling.idle_timeout_seconds
   responseMaxBatchKb.value = value.response_stream_scheduling.max_batch_kb
   responseSendIntervalSeconds.value = value.response_stream_scheduling.send_interval_seconds
+  applyProviderNetwork(value.provider_http)
   managementPassword.value = ''
   showManagementPassword.value = false
 }
@@ -205,7 +267,7 @@ function applyValidationSettings(value: ConfigurationValidationSettings): void {
   validationSettingsController.apply(value)
 }
 
-type SystemSettingsSection = 'langgraph' | 'limits' | 'response_scheduling' | 'langsmith' | 'proxy'
+type SystemSettingsSection = 'langgraph' | 'limits' | 'response_scheduling' | 'provider_network' | 'langsmith' | 'proxy'
 
 function applySystemSettingsSection(
   value: SystemSettings,
@@ -226,6 +288,10 @@ function applySystemSettingsSection(
     responseIdleTimeoutSeconds.value = value.response_stream_scheduling.idle_timeout_seconds
     responseMaxBatchKb.value = value.response_stream_scheduling.max_batch_kb
     responseSendIntervalSeconds.value = value.response_stream_scheduling.send_interval_seconds
+    return
+  }
+  if (section === 'provider_network') {
+    applyProviderNetwork(value.provider_http)
     return
   }
   if (section === 'langsmith') {
@@ -295,6 +361,16 @@ function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUp
           send_interval_seconds: Number(responseSendIntervalSeconds.value),
         }
       : saved.response_stream_scheduling,
+    provider_http: section === 'provider_network'
+      ? {
+          transport: providerTransport.value,
+          http_version: providerHttpVersion.value,
+          tls_verify: providerTlsVerify.value,
+          ca_bundle: providerCaBundle.value.trim() || null,
+          proxy_url: providerProxyUrl.value.trim().replace(/\/$/, '') || null,
+          default_headers: providerDefaultHeaders(),
+        }
+      : saved.provider_http,
   }
 }
 
@@ -305,6 +381,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
       ? limitsSettingsValid.value
       : section === 'response_scheduling'
         ? responseSchedulingValid.value
+        : section === 'provider_network'
+          ? providerNetworkValid.value
       : section === 'langsmith'
         ? langsmithSettingsValid.value
         : proxySettingsValid.value
@@ -314,6 +392,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
       ? limitsSaving
       : section === 'response_scheduling'
         ? responseSchedulingSaving
+        : section === 'provider_network'
+          ? providerNetworkSaving
       : section === 'langsmith'
         ? langsmithSaving
         : proxySaving
@@ -323,6 +403,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
       ? limitsError
       : section === 'response_scheduling'
         ? responseSchedulingError
+        : section === 'provider_network'
+          ? providerNetworkError
       : section === 'langsmith'
         ? langsmithError
         : proxyError
@@ -332,6 +414,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
       ? 'systemSettings.runtimePolicyInvalid'
       : section === 'response_scheduling'
         ? 'systemSettings.responseSchedulingInvalid'
+        : section === 'provider_network'
+          ? 'systemSettings.providerNetwork.invalid'
       : section === 'langsmith'
         ? 'systemSettings.langsmithInvalid'
         : 'systemSettings.proxyInvalid'
@@ -341,6 +425,8 @@ async function saveSystemCard(section: SystemSettingsSection): Promise<void> {
       ? 'systemSettings.runtimePolicySaved'
       : section === 'response_scheduling'
         ? 'systemSettings.responseSchedulingSaved'
+        : section === 'provider_network'
+          ? 'systemSettings.providerNetwork.saved'
       : section === 'langsmith'
         ? 'systemSettings.langsmithSaved'
         : 'systemSettings.proxySaved'
@@ -593,6 +679,133 @@ onMounted(() => { void load() })
               </div>
               <div class="col-lg-3">
                 <LteTextarea v-model="trustedProxies" :label="fieldLabel('systemSettings.trustedProxies', 'trusted_proxy_cidrs')" :rows="4" />
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-12">
+        <form class="card" data-testid="system-card-provider-network" @submit.prevent="saveSystemCard('provider_network')">
+          <header class="card-header d-flex align-items-center gap-2">
+            <h2 class="card-title">
+              <i class="bi bi-cloud-arrow-down me-2" aria-hidden="true" />
+              {{ t('systemSettings.providerNetwork.title') }}
+            </h2>
+            <LteButton
+              class="action-button ms-auto"
+              data-testid="save-provider-network-settings"
+              :disabled="providerNetworkSaving || !providerNetworkValid"
+              type="submit"
+            >
+              <span v-if="providerNetworkSaving" class="spinner-border spinner-border-sm" aria-hidden="true" />
+              <i v-else class="bi bi-floppy" aria-hidden="true" />
+              {{ t('common.save') }}
+            </LteButton>
+          </header>
+          <div class="card-body" :aria-busy="providerNetworkSaving">
+            <LteAlert v-if="providerNetworkError" theme="danger" :title="t('systemSettings.providerNetwork.saveFailed')">
+              {{ providerNetworkError }}
+            </LteAlert>
+            <p class="text-body-secondary small">
+              {{ t('systemSettings.providerNetwork.description') }}
+            </p>
+            <div class="row g-3">
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="provider-transport">
+                  {{ fieldLabel('systemSettings.providerNetwork.transport', 'provider_http.transport') }}
+                </label>
+                <select id="provider-transport" v-model="providerTransport" class="form-select">
+                  <option value="httpx">{{ t('systemSettings.providerNetwork.transports.httpx') }}</option>
+                  <option value="curl_cffi">{{ t('systemSettings.providerNetwork.transports.curlCffi') }}</option>
+                </select>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="provider-http-version">
+                  {{ fieldLabel('systemSettings.providerNetwork.httpVersion', 'provider_http.http_version') }}
+                </label>
+                <select id="provider-http-version" v-model="providerHttpVersion" class="form-select">
+                  <option value="auto">{{ t('systemSettings.providerNetwork.httpVersions.auto') }}</option>
+                  <option value="http1">HTTP/1.1</option>
+                  <option value="http2">HTTP/2</option>
+                </select>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <label class="form-label" for="provider-tls-verify">
+                  {{ fieldLabel('systemSettings.providerNetwork.tlsVerify', 'provider_http.tls_verify') }}
+                </label>
+                <select id="provider-tls-verify" v-model="providerTlsVerify" class="form-select">
+                  <option :value="true">{{ t('common.yes') }}</option>
+                  <option :value="false">{{ t('common.no') }}</option>
+                </select>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <LteInput
+                  id="provider-ca-bundle"
+                  v-model="providerCaBundle"
+                  :disabled="!providerTlsVerify"
+                  :label="fieldLabel('systemSettings.providerNetwork.caBundle', 'provider_http.ca_bundle')"
+                  :placeholder="t('systemSettings.providerNetwork.caBundlePlaceholder')"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <LteInput
+                  id="provider-proxy-url"
+                  v-model="providerProxyUrl"
+                  autocomplete="url"
+                  :label="fieldLabel('systemSettings.providerNetwork.proxyUrl', 'provider_http.proxy_url')"
+                  placeholder="http://127.0.0.1:8080"
+                  spellcheck="false"
+                  type="url"
+                />
+              </div>
+            </div>
+            <p class="text-body-secondary small mt-3 mb-0">
+              {{ providerTransport === 'curl_cffi'
+                ? t('systemSettings.providerNetwork.curlCffiHint')
+                : t('systemSettings.providerNetwork.httpxHint') }}
+            </p>
+            <p class="text-body-secondary small mt-2 mb-0">
+              {{ t('systemSettings.providerNetwork.coverageHint') }}
+            </p>
+            <div class="d-flex align-items-center gap-2 mt-4 mb-2">
+              <h3 class="h6 mb-0">
+                {{ fieldLabel('systemSettings.providerNetwork.defaultHeaders', 'provider_http.default_headers') }}
+              </h3>
+              <LteButton class="action-button ms-auto" data-testid="add-provider-header" type="button" @click="addProviderHeader">
+                <i class="bi bi-plus-lg" aria-hidden="true" />
+                {{ t('systemSettings.providerNetwork.addHeader') }}
+              </LteButton>
+            </div>
+            <p class="text-body-secondary small">
+              {{ t('systemSettings.providerNetwork.headersHint') }}
+            </p>
+            <div v-if="providerHeaders.length" class="vstack gap-2" data-testid="provider-default-headers">
+              <div v-for="header in providerHeaders" :key="header.id" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" :for="`provider-header-name-${header.id}`">
+                    {{ t('systemSettings.providerNetwork.headerName') }}
+                  </label>
+                  <input :id="`provider-header-name-${header.id}`" v-model="header.name" class="form-control" spellcheck="false" type="text">
+                </div>
+                <div class="col">
+                  <label class="form-label" :for="`provider-header-value-${header.id}`">
+                    {{ t('systemSettings.providerNetwork.headerValue') }}
+                  </label>
+                  <input :id="`provider-header-value-${header.id}`" v-model="header.value" class="form-control" spellcheck="false" type="text">
+                </div>
+                <div class="col-auto">
+                  <LteButton
+                    class="icon-action-button"
+                    :aria-label="t('common.remove')"
+                    :title="t('common.remove')"
+                    type="button"
+                    @click="removeProviderHeader(header.id)"
+                  >
+                    <i class="bi bi-trash" aria-hidden="true" />
+                  </LteButton>
+                </div>
               </div>
             </div>
           </div>

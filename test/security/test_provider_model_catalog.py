@@ -67,7 +67,7 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
         )
 
     monkeypatch.setattr(
-        "agent_shell.provider_http.ProviderAsyncCurlTransport",
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(
@@ -116,7 +116,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_endpoint(
         raise AssertionError("the changed endpoint must not receive an upstream request")
 
     monkeypatch.setattr(
-        "agent_shell.provider_http.ProviderAsyncCurlTransport", unexpected_client
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport", unexpected_client
     )
     response = client.post(
         "/agent-shell/api/fetch-models",
@@ -147,7 +147,7 @@ def test_model_catalog_reports_cloudflare_browser_challenge_with_provider_body(
         )
 
     monkeypatch.setattr(
-        "agent_shell.provider_http.ProviderAsyncCurlTransport",
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(
@@ -179,7 +179,7 @@ def test_model_catalog_never_reuses_saved_key_for_a_different_provider(
         raise AssertionError("the changed Provider must not receive an upstream request")
 
     monkeypatch.setattr(
-        "agent_shell.provider_http.ProviderAsyncCurlTransport", unexpected_client
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport", unexpected_client
     )
     response = client.post(
         "/agent-shell/api/fetch-models",
@@ -217,7 +217,7 @@ def test_model_catalog_rejects_malformed_provider_payload_with_complete_payload(
         return httpx.Response(200, request=request, json=provider_payload)
 
     monkeypatch.setattr(
-        "agent_shell.provider_http.ProviderAsyncCurlTransport",
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
         lambda **kwargs: httpx.MockTransport(handler),
     )
     response = client.post(

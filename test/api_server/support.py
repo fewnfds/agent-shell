@@ -91,7 +91,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             {"messages": raw_messages},
             index=False,
         )
-        runtime = coordinator._snapshot.new_runtime(
+        runtime = await coordinator._snapshot.new_runtime(
             store=graph_store
         )
         return await runtime.start_workflow(
@@ -120,7 +120,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             {"messages": raw_messages},
             index=False,
         )
-        runtime = coordinator._snapshot.new_runtime(store=graph_store)
+        runtime = await coordinator._snapshot.new_runtime(store=graph_store)
         return await runtime.start_main_agent(
             str(main_agent["id"]),
             raw_messages,

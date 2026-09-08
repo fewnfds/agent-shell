@@ -292,8 +292,8 @@ class RequestRuntimeSnapshot:
     def workflow_document(self, workflow_id: str) -> WorkflowGraphDocumentV1 | None:
         return self._workflows.get_graph(workflow_id)
 
-    def new_runtime(self, *, store: BaseStore) -> AgentRuntime:
-        return self._runtime_factory(store)
+    async def new_runtime(self, *, store: BaseStore) -> AgentRuntime:
+        return await asyncio.to_thread(self._runtime_factory, store)
 
     def response_stream_policy(self) -> ResponseStreamPolicy:
         return self._response_stream_policy.model_copy(deep=True)
@@ -561,9 +561,8 @@ class LifecycleRunCoordinator:
         assert binding.execution_ready is not None
         try:
             run_id = await binding.run_id_ready
-            execution = await self._snapshot.new_runtime(
-                store=store
-            ).start_main_agent(
+            runtime = await self._snapshot.new_runtime(store=store)
+            execution = await runtime.start_main_agent(
                 main_agent_id,
                 binding.messages,
                 request_id=binding.request_id,
@@ -627,7 +626,8 @@ class LifecycleRunCoordinator:
             )
             if not isinstance(messages, list):
                 raise RuntimeError("the Workflow Lifecycle input is unavailable")
-            execution = await self._snapshot.new_runtime(store=store).start_workflow(
+            runtime = await self._snapshot.new_runtime(store=store)
+            execution = await runtime.start_workflow(
                 binding.document,
                 messages,
                 workflow_snapshot=binding.workflow,

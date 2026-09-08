@@ -58,6 +58,14 @@ def _payload(**overrides) -> dict:
             "max_batch_kb": 64,
             "send_interval_seconds": 0.05,
         },
+        "provider_http": {
+            "transport": "curl_cffi",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": None,
+            "default_headers": {},
+        },
     }
     payload.update(overrides)
     return payload
@@ -90,6 +98,14 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
             "idle_timeout_seconds": 10.0,
             "max_batch_kb": 64.0,
             "send_interval_seconds": 0.05,
+        },
+        "provider_http": {
+            "transport": "curl_cffi",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": None,
+            "default_headers": {},
         },
         "restart_required": False,
         "active_management_url": "http://testserver/admin#/",
@@ -135,6 +151,105 @@ def test_response_stream_scheduling_updates_without_restart(
         "max_batch_kb": 24.0,
         "send_interval_seconds": 0.2,
     }
+
+
+def test_provider_network_settings_persist_and_take_effect_after_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(
+            provider_http={
+                "transport": "httpx",
+                "http_version": "http2",
+                "tls_verify": True,
+                "ca_bundle": None,
+                "proxy_url": "http://127.0.0.1:8080",
+                "default_headers": {
+                    "User-Agent": "my-agent/2.0",
+                    "x-opencode-session": "cache-group",
+                },
+            }
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["restart_required"] is True
+    assert response.json()["provider_http"] == {
+        "transport": "httpx",
+        "http_version": "http2",
+        "tls_verify": True,
+        "ca_bundle": None,
+        "proxy_url": "http://127.0.0.1:8080",
+        "default_headers": {
+            "User-Agent": "my-agent/2.0",
+            "x-opencode-session": "cache-group",
+        },
+    }
+    document = yaml.safe_load(
+        (tmp_path / "data" / "config" / "system.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert document["settings"]["provider_http"] == response.json()["provider_http"]
+    restarted = get_settings(application_home=tmp_path)
+    assert restarted.provider_http.transport == "httpx"
+    assert restarted.provider_http.http_version == "http2"
+    assert restarted.provider_http.default_headers["User-Agent"] == "my-agent/2.0"
+
+
+@pytest.mark.parametrize(
+    "provider_http",
+    [
+        {
+            "transport": "invalid",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": None,
+            "default_headers": {},
+        },
+        {
+            "transport": "httpx",
+            "http_version": "auto",
+            "tls_verify": False,
+            "ca_bundle": "provider-ca.pem",
+            "proxy_url": None,
+            "default_headers": {},
+        },
+        {
+            "transport": "httpx",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": "socks5://127.0.0.1:1080",
+            "default_headers": {},
+        },
+        {
+            "transport": "httpx",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": None,
+            "default_headers": {"Bad Header": "value"},
+        },
+    ],
+)
+def test_provider_network_settings_reject_invalid_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_http: dict[str, object],
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(provider_http=provider_http),
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(

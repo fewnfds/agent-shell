@@ -285,6 +285,15 @@ type OptionalSecretUpdate =
   | { operation: 'replace'; value: string }
   | { operation: 'clear' }
 
+export interface ProviderHttpSettings {
+  transport: 'httpx' | 'curl_cffi'
+  http_version: 'auto' | 'http1' | 'http2'
+  tls_verify: boolean
+  ca_bundle: string | null
+  proxy_url: string | null
+  default_headers: Record<string, string>
+}
+
 export interface SystemSettings {
   host: string
   port: number
@@ -302,6 +311,7 @@ export interface SystemSettings {
   cors_origins: string[]
   trusted_proxy_cidrs: string[]
   response_stream_scheduling: ResponseStreamPolicy
+  provider_http: ProviderHttpSettings
   restart_required: boolean
   active_management_url: string
   active_api_docs_url: string
@@ -325,6 +335,7 @@ export interface SystemSettingsUpdate {
   cors_origins: string[]
   trusted_proxy_cidrs: string[]
   response_stream_scheduling: ResponseStreamPolicy
+  provider_http: ProviderHttpSettings
 }
 
 export interface ConfigurationValidationSettings {

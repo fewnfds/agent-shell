@@ -101,12 +101,24 @@ def _build_chat_model(
         if provider in _OPENAI_COMPATIBLE_PROVIDERS:
             kwargs.update(
                 {
-                    "default_headers": {
-                        "User-Agent": f"Agent-Shell/{__version__}",
-                    },
+                    "default_headers": provider_http_clients.request_headers(
+                        {"User-Agent": f"Agent-Shell/{__version__}"}
+                    ),
                     "http_client": provider_http_clients.sync_client,
                     "http_async_client": provider_http_clients.async_client,
                 }
+            )
+        elif provider == "anthropic":
+            kwargs["default_headers"] = provider_http_clients.request_headers(
+                {"User-Agent": f"Agent-Shell/{__version__}"}
+            )
+            if provider_http_clients.settings.proxy_url is not None:
+                kwargs["anthropic_proxy"] = (
+                    provider_http_clients.settings.proxy_url
+                )
+        elif provider in {"google_genai", "google_vertexai"}:
+            kwargs["additional_headers"] = provider_http_clients.request_headers(
+                {"User-Agent": f"Agent-Shell/{__version__}"}
             )
         if provider == "openai":
             # Chat Completions is the explicit default for arbitrary gateway URLs.

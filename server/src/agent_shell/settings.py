@@ -18,6 +18,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_shell.configuration.repositories import ensure_active_configuration_repository
+from agent_shell.provider_http import ProviderHttpSettings
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.storage.environment import (
     EnvironmentFormatError,
@@ -110,6 +111,7 @@ class Settings(BaseSettings):
     response_stream_scheduling: ResponseStreamPolicy = Field(
         default_factory=ResponseStreamPolicy
     )
+    provider_http: ProviderHttpSettings = Field(default_factory=ProviderHttpSettings)
     _data_root: Path = PrivateAttr(default_factory=lambda: (Path.cwd() / "data").resolve())
 
     @classmethod
@@ -291,6 +293,15 @@ class Settings(BaseSettings):
         if actions:
             raise SettingsError(tuple(keys), " ".join(actions))
 
+    def validate_provider_http(self) -> None:
+        try:
+            self.provider_http.resolve_ca_bundle(self.data_root)
+        except (OSError, ValueError) as exc:
+            raise SettingsError(
+                ("AGENT_SHELL_PROVIDER_HTTP",),
+                f"Correct the Provider CA bundle path. Cause: {exc}",
+            ) from exc
+
     @property
     def application_home(self) -> Path:
         return self._application_home
@@ -456,6 +467,7 @@ def load_settings(
             f"Cause: {type(exc).__name__}: {detail}",
         ) from None
     settings.bind_paths(home, root)
+    settings.validate_provider_http()
     return settings
 
 

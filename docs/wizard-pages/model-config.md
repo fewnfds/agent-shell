@@ -6,6 +6,8 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 
 当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，实际可用性取决于 Provider integration、模型和上游端点。
 
+【系统 -> 系统配置 -> Provider Network】保存进程级 Provider 出站网络设置。`httpx` 是标准线路，`curl_cffi` 是保留 Chrome TLS/HTTP fingerprint 的浏览器兼容线路；curl-cffi 依赖始终安装，选择只决定请求经过哪条线路，也不会在失败后自动重放。完整共享 transport 当前接入 OpenAI、DeepSeek、xAI 与模型目录；Anthropic 只使用全局 Header 和显式 proxy，Google GenAI / Vertex AI 只使用全局 Header。全局 Header 是 `system.yaml` 中的普通配置，`model_settings.extra_headers` 同名值在请求级覆盖它；API Key 仍只写入 Model Connection credential。
+
 模型连接不属于 Configuration Repository，不进入配置 Bundle，也不提供下载。接口为：
 
 - `GET/POST /agent-shell/api/model-connections`

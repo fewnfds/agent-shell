@@ -262,7 +262,10 @@ def create_app(
         system_log_settings,
     )
     secret_resolver = ProviderSecretResolver(configuration, model_resources)
-    provider_http_clients = ProviderHttpClients()
+    provider_http_clients = ProviderHttpClients(
+        settings.provider_http,
+        data_root=settings.data_root,
+    )
     file_manager = FileManagerService(
         settings.data_root,
         settings.resolved_runtime_dir() / "tmp",

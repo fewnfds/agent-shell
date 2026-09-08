@@ -10,6 +10,10 @@
 
 当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，实际可用性取决于 Provider integration、模型和上游端点。
 
+Provider 出站网络由【系统 / 系统配置 / Provider Network】统一管理。标准 HTTPX 与 curl-cffi 浏览器兼容线路可以切换；`curl-cffi` 始终随软件安装，选择 HTTPX 表示 Provider 请求不经过它。系统不会在两条线路之间自动失败重试。HTTP version、TLS、自定义 CA、显式 proxy 与普通默认 Header 的完整共享 transport 当前用于 OpenAI、DeepSeek、xAI 和模型目录读取；Anthropic 只接收全局 Header 与显式 proxy，Google GenAI / Vertex AI 只接收全局 Header。
+
+全局 Header 是 `system.yaml` 中可读取的普通配置，适合 `x-opencode-session` 等非 credential 参数。API Key 仍使用 Model Connection credential。模型连接的 `model_settings.extra_headers` 继续作为请求级设置，并按 Header 名称大小写不敏感地覆盖全局同名值。默认 `User-Agent` 为 `Agent-Shell/<version>`；需要自定义 Agent Shell 的 HTTP client identity 时，在全局 Header 中添加 `User-Agent`。
+
 连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，实际 secret 位于 `data/config/agent-shell.env` 的 `AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY`；API response 返回 `credential.status` 为 `masked` 或 `missing`。编辑时 `credential: null` 在 Provider 与 `base_url` 保持不变时保留原 Key；`google_vertexai` 使用无 credential 配置。名称去除首尾空白后须为 1-120 个字符且在实例内大小写不敏感唯一；格式错误返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
 ## Model Mapping

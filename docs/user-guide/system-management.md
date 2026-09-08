@@ -73,7 +73,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、限制策略、响应流调度、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、响应流调度、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、Provider 出站网络、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`debug_port` 默认留空；填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。
 
@@ -81,11 +81,17 @@ LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在�
 
 响应流调度直接保存全局`response_stream_scheduling`：`idle_timeout_seconds`默认`10`，控制当前writer全静默多久后让位；`max_batch_kb`默认`64`，控制一次公开发送的软批次大小；`send_interval_seconds`默认`0.05`，控制连续批次的最小间隔。前两项必须大于零，发送间隔可以为零。保存立即生效于后续Lifecycle，已经开始的Lifecycle继续使用请求创建时冻结的副本。调度单位是官方Graph的`(thread_id, run_id)`；Run终态立即让位，静默超时只切换writer，不取消Run。
 
+Provider Network Card 管理 Provider 出站请求。`transport=httpx` 使用标准 HTTPX 网络栈；`transport=curl_cffi` 使用带 Chrome TLS/HTTP fingerprint 的浏览器兼容线路，默认保持该线路以延续现有网关兼容行为。`curl-cffi` 始终是随软件安装的运行依赖，选择 HTTPX 只让请求不经过它。系统不会在请求失败后自动切换或重放到另一条线路，避免重复提交模型请求。
+
+两条线路都可选择 Auto、HTTP/1.1 或 HTTP/2，设置 TLS certificate verification、自定义 CA 文件和显式 HTTP(S) proxy。CA 文件可填写绝对路径，或填写相对 `data/` 根目录的路径，保存时必须已经存在且为普通文件；关闭 TLS verification 时不能同时填写 CA。Proxy URL 不接受 credential、path、query 或 fragment，也不读取进程环境代理。普通 Header 直接保存在 `system.yaml`，可以用于 `x-opencode-session` 等缓存或路由参数；请求级 `model_settings.extra_headers` 的同名 Header 优先。系统默认发送 `User-Agent: Agent-Shell/<version>`，在全局 Header 中填写 `User-Agent` 即可覆盖。
+
+完整的 HTTPX/curl-cffi transport、HTTP version、TLS 和 CA 配置用于 OpenAI、DeepSeek、xAI 以及模型目录请求。Anthropic 通过官方构造字段接收全局 Header 和显式 proxy；Google GenAI 与 Google Vertex AI 通过官方构造字段接收全局 Header。后两类集成不接入这组共享 transport，因此 Card 中的 HTTP version、TLS 和 CA 选择不作用于它们。浏览器兼容线路只模拟网络指纹，不执行 JavaScript、Turnstile 或 CAPTCHA。
+
 Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-Agent Shell API Server、代理设置、限制策略、响应流调度、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
+Agent Shell API Server、代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Provider Network 只管理 Provider 出站线路与普通 HTTP 参数；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
 
 当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；首页服务入口 Card 提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
 
@@ -98,7 +104,7 @@ LangSmith 配置项含义如下：
 - Workspace ID：API Key 可访问多个 Workspace 时填写，否则留空；
 - API Key：只写 secret；已配置的值不会回显，留空保存时保留原值。
 
-当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、配置校验去抖和响应流调度立即生效；最新 Lifecycle 保留数量会立即收敛已结束数据。host、普通端口、Run 槽位数、Graph运行限制、DAP 调试端口、远程访问、管理密码、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
+当开启 LangSmith 且 Endpoint、API Key 或 Workspace ID 发生变化时，保存前会校验连通性；关闭 tracing 时不校验。API Key、配置校验去抖和响应流调度立即生效；最新 Lifecycle 保留数量会立即收敛已结束数据。host、普通端口、Run 槽位数、Graph运行限制、DAP 调试端口、远程访问、管理密码、Provider Network、LangSmith、CORS 和可信代理重启后生效。拦截消息开关见下节，同样立即生效。
 
 【系统 / 拦截消息】管理 Chat Completions 入站拦截。开关立即生效并持久化；开启后，请求会在进入root Graph前直接收到 OpenAI-compatible 的“消息已拦截”回复。页面只暂存进程内最新一条原始 JSON，正文不写入 SQLite、
 系统日志或运行诊断；开关从关闭变为开启或服务重启时清空，关闭期间不捕获。已开启时重复保存不会清空当前原文。日志中心另见[日志中心与 Workflow 观测](runtime-observability.md)。

@@ -38,6 +38,14 @@ const currentSettings: SystemSettings = {
     max_batch_kb: 64,
     send_interval_seconds: 0.05,
   },
+  provider_http: {
+    transport: 'curl_cffi',
+    http_version: 'auto',
+    tls_verify: true,
+    ca_bundle: null,
+    proxy_url: null,
+    default_headers: {},
+  },
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -100,12 +108,13 @@ describe('SystemSettingsPage', () => {
     await flushPromises()
 
     const cards = wrapper.findAll('[data-testid^="system-card-"]')
-    expect(cards).toHaveLength(7)
+    expect(cards).toHaveLength(8)
     expect(cards.every((card) => !card.classes().includes('card-primary'))).toBe(true)
     expect(cards.every((card) => card.get('.card-title').element.tagName === 'H2')).toBe(true)
     expect(cards.map((card) => card.attributes('data-testid'))).toEqual([
       'system-card-api-server',
       'system-card-proxy',
+      'system-card-provider-network',
       'system-card-runtime-policy',
       'system-card-response-scheduling',
       'system-card-langgraph-dev',
@@ -119,9 +128,9 @@ describe('SystemSettingsPage', () => {
     expect(fieldColumns.every((column) => column.classes().includes('col-lg-3'))).toBe(true)
 
     const saveButtons = wrapper.findAll('button').filter((button) => button.text() === 'common.save')
-    expect(saveButtons).toHaveLength(7)
+    expect(saveButtons).toHaveLength(8)
     expect(cards.map((card) => card.get('.card-header i').classes().find((name) => name.startsWith('bi-'))))
-      .toEqual(['bi-key', 'bi-hdd-network', 'bi-sliders', 'bi-shuffle', 'bi-diagram-3', 'bi-cloud-arrow-up', 'bi-check2-square'])
+      .toEqual(['bi-key', 'bi-hdd-network', 'bi-cloud-arrow-down', 'bi-sliders', 'bi-shuffle', 'bi-diagram-3', 'bi-cloud-arrow-up', 'bi-check2-square'])
     await wrapper.get('[data-testid="system-card-proxy"]').trigger('submit')
     await flushPromises()
 
@@ -145,6 +154,14 @@ describe('SystemSettingsPage', () => {
         idle_timeout_seconds: 10,
         max_batch_kb: 64,
         send_interval_seconds: 0.05,
+      },
+      provider_http: {
+        transport: 'curl_cffi',
+        http_version: 'auto',
+        tls_verify: true,
+        ca_bundle: null,
+        proxy_url: null,
+        default_headers: {},
       },
     })
     expect(api.saveApiServer).not.toHaveBeenCalled()
@@ -177,6 +194,7 @@ describe('SystemSettingsPage', () => {
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
         response_stream_scheduling: payload.response_stream_scheduling,
+        provider_http: payload.provider_http,
       })),
       saveApiServer: vi.fn().mockImplementation(async () => currentApiServerSettings),
     }
@@ -252,9 +270,28 @@ describe('SystemSettingsPage', () => {
       },
     }))
 
-    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await wrapper.get('#provider-transport').setValue('httpx')
+    await wrapper.get('#provider-http-version').setValue('http2')
+    await wrapper.get('#provider-proxy-url').setValue('http://127.0.0.1:8080')
+    await wrapper.get('[data-testid="add-provider-header"]').trigger('click')
+    await wrapper.get('[id^="provider-header-name-"]').setValue('User-Agent')
+    await wrapper.get('[id^="provider-header-value-"]').setValue('my-agent/2.0')
+    await wrapper.get('[data-testid="system-card-provider-network"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(5, expect.objectContaining({
+      provider_http: {
+        transport: 'httpx',
+        http_version: 'http2',
+        tls_verify: true,
+        ca_bundle: null,
+        proxy_url: 'http://127.0.0.1:8080',
+        default_headers: { 'User-Agent': 'my-agent/2.0' },
+      },
+    }))
+
+    await wrapper.get('[data-testid="system-card-langsmith"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSystemSettings).toHaveBeenNthCalledWith(6, expect.objectContaining({
       n_jobs_per_worker: 14,
       langsmith_tracing_enabled: true,
       langsmith_api_key: { operation: 'replace', value: 'new-langsmith-key' },

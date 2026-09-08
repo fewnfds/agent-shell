@@ -305,7 +305,9 @@ def build_router(
                 message_key="errors.providerCredentialInvalid",
                 message="The provider credential input is invalid.",
             ) from exc
-        headers = {"User-Agent": f"Agent-Shell/{__version__}"}
+        headers = provider_http_clients.request_headers(
+            {"User-Agent": f"Agent-Shell/{__version__}"}
+        )
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         try:

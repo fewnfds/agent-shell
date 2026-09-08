@@ -283,7 +283,7 @@ async def agent_graph(
     main_agent = snapshot.main_agent_by_id(main_agent_id)
     if main_agent is None:
         raise ValueError("Main Agent is absent")
-    graph_runtime = snapshot.new_runtime(store=runtime.store)
+    graph_runtime = await snapshot.new_runtime(store=runtime.store)
     built = await graph_runtime.build_main_agent_graph(
         main_agent_id,
         lifecycle_id=context.lifecycle_id or f"inspection-{main_agent_id}",
@@ -329,7 +329,7 @@ async def workflow_graph(
     if workflow is None or not workflow.get("enabled") or document is None:
         raise ValueError("Workflow is absent or disabled")
 
-    graph_runtime = snapshot.new_runtime(store=runtime.store)
+    graph_runtime = await snapshot.new_runtime(store=runtime.store)
     if runtime.execution_runtime is None:
         graph = await asyncio.to_thread(
             graph_runtime.build_workflow_structure,

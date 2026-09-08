@@ -56,7 +56,8 @@ def _run_server(*, settings: Settings, config_path: Path) -> None:
     )
     from langgraph_cli.cli import cli
 
-    _configure_windows_curl_blockbuster_compatibility()
+    if settings.provider_http.transport == "curl_cffi":
+        _configure_windows_curl_blockbuster_compatibility()
     arguments = [
         "dev",
         "--config",

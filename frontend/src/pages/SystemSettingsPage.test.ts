@@ -31,6 +31,14 @@ const systemSettings: SystemSettings = {
     max_batch_kb: 64,
     send_interval_seconds: 0.05,
   },
+  provider_http: {
+    transport: 'curl_cffi',
+    http_version: 'auto',
+    tls_verify: true,
+    ca_bundle: null,
+    proxy_url: null,
+    default_headers: {},
+  },
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -153,6 +161,12 @@ describe('SystemSettingsPage', () => {
       'response_stream_scheduling.idle_timeout_seconds',
       'response_stream_scheduling.max_batch_kb',
       'response_stream_scheduling.send_interval_seconds',
+      'provider_http.transport',
+      'provider_http.http_version',
+      'provider_http.tls_verify',
+      'provider_http.ca_bundle',
+      'provider_http.proxy_url',
+      'provider_http.default_headers',
     ]) {
       expect(wrapper.text()).toContain(wireField)
     }

@@ -197,6 +197,45 @@ def test_langgraph_dev_cli_receives_only_the_configured_listener_and_worker_opti
     ]
 
 
+def test_standard_provider_route_does_not_install_curl_blockbuster_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from agent_shell import __main__ as launcher
+    from agent_shell import langgraph_dev
+    from langgraph_cli.cli import cli
+
+    _write_system_settings(
+        tmp_path,
+        provider_http={
+            "transport": "httpx",
+            "http_version": "auto",
+            "tls_verify": True,
+            "ca_bundle": None,
+            "proxy_url": None,
+            "default_headers": {},
+        },
+    )
+    _write_environment_file(
+        tmp_path,
+        "AGENT_SHELL_MANAGEMENT_TOKEN=management-secret\n",
+    )
+    settings = get_settings(application_home=tmp_path)
+    monkeypatch.setattr(cli, "main", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        langgraph_dev,
+        "_configure_windows_curl_blockbuster_compatibility",
+        lambda: pytest.fail(
+            "standard HTTPX route installed the curl compatibility hook"
+        ),
+    )
+
+    launcher._run_server(
+        settings=settings,
+        config_path=launcher._langgraph_config_path(),
+    )
+
+
 @pytest.mark.parametrize(
     ("enabled", "expected"),
     [(False, "false"), (True, "true")],
