@@ -14,7 +14,6 @@ const workflow: Workflow = {
   description: 'Runs deterministic control steps.',
   is_model_entry: true,
   workflow_event_output_id: null,
-  durability: 'async',
   on_disconnect: 'cancel',
   enabled: true,
 }

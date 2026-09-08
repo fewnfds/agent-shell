@@ -24,13 +24,13 @@ Content-Type: application/json
 }
 ```
 
-请求按model name捕获一次配置记录和值视图。Repository YAML、Model/MCP Connection、binding与response policy对该请求保持只读；private Python/Skill package只捕获所在路径，实际源码由Graph factory装配时从磁盘读取，因此运行期间编辑package可能影响尚未装配的Graph。Main Agent入口物化完整Deep Agents graph；Workflow入口物化current Start/Command/End control Graph。两者都由稳定Assistant启动官方Thread/Run并由LangGraph Dev Worker执行。Command需要AI时通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run。官方ProtocolEvent由对应Graph的Agent或Workflow Event Output、Lifecycle Response Scheduler和OpenAI response writer消费。
+请求按model name捕获一次配置记录和值视图。Repository YAML、Model/MCP Connection、binding与response policy对该请求保持只读；private Python/Skill package只捕获所在路径，实际源码由Graph factory装配时从磁盘读取，因此运行期间编辑package可能影响尚未装配的Graph。Agent入口物化所选Main Agent的完整Deep Agents graph；Workflow入口物化current Start/Command/End control Graph。两者都由稳定Assistant启动官方Thread/Run并由LangGraph Dev Worker执行。Command需要AI时通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run。官方ProtocolEvent由对应Graph的Agent或Workflow Event Output、Lifecycle Response Scheduler和OpenAI response writer消费。
 
 Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
-Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。Workflow入口的规范化`messages[]`保存在本次Lifecycle的Server Store namespace而不进入Workflow State。Main Agent入口把`messages[]`作为官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它。
+Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。Workflow入口的规范化`messages[]`保存在本次Lifecycle的Server Store namespace而不进入Workflow State。Agent入口把`messages[]`作为所选Main Agent的官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它。
 
-Main Agent显式配置`checkpoint_mode`、`durability`与`on_disconnect`；Workflow显式配置`durability`与`on_disconnect`。实例级`recursion_limit`、可选`max_concurrency`和`n_jobs_per_worker`位于【系统 / 系统配置 / 限制策略】，使用LangGraph/LangChain官方字段；`max_concurrency`留空时不向运行配置传值。全部Main Agent/Workflow Run的Thread、checkpoint、State与history由LangGraph Dev官方运行时拥有。
+Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`、可选`max_concurrency`和`n_jobs_per_worker`位于【系统 / 系统配置 / 限制策略】，使用LangGraph/LangChain官方字段；`max_concurrency`留空时不向运行配置传值。全部Main Agent/Workflow Run都使用持久Thread，checkpoint、State与history由LangGraph Dev官方运行时拥有，durability 使用服务端默认`async`。
 
 每个 Main Agent 与 Workflow 独立保存`on_disconnect=cancel|continue`，界面名称为【用户断开】，默认`cancel`。创建每个 Run 时会把目标资源的值冻结进 Lifecycle relation；用户在 Run 完成前断开时，只取消选择`cancel`的 active Run，选择`continue`的 Run 继续执行。断开之后才登记的 Run 也立即执行自己的冻结策略。其他 Run 的成功、失败或主动取消不会触发隐式连锁取消，调用关系不传播策略。
 

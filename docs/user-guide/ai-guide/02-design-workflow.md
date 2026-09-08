@@ -87,10 +87,10 @@ handle = await runtime.context.agent_runs.start(
     [{"role": "user", "content": "Research the supplied topic."}],
     operation_id="research:topic-42",
 )
-result = (await runtime.context.agent_runs.join([handle.run_id]))[0]
+result = await runtime.context.agent_runs.join(handle.thread_id, handle.run_id)
 ```
 
-默认创建新Thread。checkpoint enabled Agent可显式复用属于同一Agent的idle Thread，并创建新Run以续接对话；checkpoint disabled Agent使用stateless Run。
+默认创建新Thread。Agent可显式复用属于同一Agent的idle Thread，并创建新Run以续接对话。
 
 `operation_id`在current caller Run内幂等。脚本应从稳定业务identity生成它，避免Node retry重复派遣。
 
@@ -124,13 +124,13 @@ Graph中的并行Node和独立Server Run不是同一层概念。需要独立Thre
 
 在创建配置前写下：
 
-- 入口是Main Agent还是Workflow；
+- 入口类型是Agent还是Workflow；Agent入口对应哪个Main Agent；
 - 每个Command的输入、update和允许goto目标；
 - `shared_vars`每个key的writer与reader；
 - 每个child Run的target、operation ID和等待策略；
 - 大型artifact的namespace/path与consumer；
 - 每个循环退出条件；
-- 请求入口的durability与on_disconnect策略；
+- 请求入口的on_disconnect策略；
 - Agent如何获得初始messages以及是否需要续聊。
 
 确认没有把Agent State搬进Workflow State后，再进入配置和Graph构建。

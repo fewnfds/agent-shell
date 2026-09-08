@@ -51,8 +51,12 @@ def _langgraph_config_path() -> Path:
 
 
 def _run_server(*, settings: Settings, config_path: Path) -> None:
+    from agent_shell.langgraph_dev import (
+        _configure_windows_curl_blockbuster_compatibility,
+    )
     from langgraph_cli.cli import cli
 
+    _configure_windows_curl_blockbuster_compatibility()
     arguments = [
         "dev",
         "--config",

@@ -374,7 +374,7 @@ describe('ConfigLibraryPage', () => {
     const workflow = {
       id: 'workflow-uuid', name: 'Workflow',
       description: '', workflow_event_output_id: null,
-      durability: 'async' as const, on_disconnect: 'cancel' as const,
+      on_disconnect: 'cancel' as const,
       enabled: false,
     }
     vi.mocked(api.service.listWorkflowSummaries).mockResolvedValue({

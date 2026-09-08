@@ -432,7 +432,6 @@ def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
             "resource_id": "agent-detached",
             "resource_name": "Detached Agent",
             "on_disconnect": "continue",
-            "checkpoint_mode": "enabled",
             "assistant_id": "assistant-detached",
             "thread_id": "thread-detached",
             "run_id": "run-detached",
@@ -487,7 +486,6 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
             "resource_id": "agent-peer",
             "resource_name": "Peer Agent",
             "on_disconnect": "continue",
-            "checkpoint_mode": "enabled",
             "assistant_id": "assistant-peer",
             "thread_id": "thread-peer",
             "run_id": "run-peer-2",
@@ -528,39 +526,6 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     assert archived_snapshot["run_count"] == 3
     assert len(archived_store["namespaces"]) == 2
     assert client.assistants.graph_reads.count("assistant-peer") == 1
-
-
-def test_deleted_stateless_thread_remains_explicit_until_lifecycle_retention() -> None:
-    async def scenario():
-        client = _Client()
-        relation = client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")][
-            "run-peer"
-        ]
-        relation["checkpoint_mode"] = "disabled"
-        client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] = {
-            "run-peer": relation
-        }
-        client.thread_values.clear()
-        client.run_values.clear()
-        service = LangGraphLifecycleService(lambda: client)
-        page = await service.list_page(page=1, page_size=10)
-        snapshot = await service.snapshot("lifecycle-1")
-        archive = await service.export("lifecycle-1")
-        deleted = await service.delete("lifecycle-1")
-        return client, page, snapshot, archive, deleted
-
-    client, page, snapshot, exported, deleted = asyncio.run(scenario())
-    assert page["items"][0]["status"] == "unavailable"
-    assert page["items"][0]["run_count"] == 1
-    assert snapshot["threads"][0]["thread"] is None
-    assert snapshot["threads"][0]["runs"][0]["run"] is None
-    assert snapshot["threads"][0]["runs"][0]["error"]["code"] == "run_unavailable"
-    with ZipFile(BytesIO(exported.content)) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
-    assert any(item["status"] == "error" for item in manifest["files"])
-    assert deleted == 0
-    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
-    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
 
 
 def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:

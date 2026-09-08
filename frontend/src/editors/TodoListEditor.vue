@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: TodoListDraft] }>()
 const { t } = useI18n()
 const draft = useEditorModel(() => props.modelValue, (value) => emit('update:modelValue', value))
+const writeTodosToolName = 'write_todos'
 </script>
 
 <template>
@@ -42,7 +43,7 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
       <div class="list-group list-group-flush">
         <div class="list-group-item" data-testid="tool-description-item">
           <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <label class="form-label font-monospace mb-0" for="todo-list-write-todos-description">write_todos</label>
+            <label class="form-label font-monospace mb-0" for="todo-list-write-todos-description">{{ writeTodosToolName }}</label>
             <LteButton class="action-button ms-auto" data-action="restore-default" @click="draft.tool_description_override = defaults.tool_description">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('editors.common.restoreDefault') }}

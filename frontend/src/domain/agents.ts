@@ -118,9 +118,7 @@ export function blankMainAgent(): MainAgentProfile {
     id: '',
     name: '',
     is_model_entry: false,
-    durability: 'async',
     on_disconnect: 'cancel',
-    checkpoint_mode: 'enabled',
     capability_refs: [],
     tool_refs: [],
     middleware_refs: [],
@@ -140,11 +138,7 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
     id: text(source.id),
     name: text(source.name),
     is_model_entry: source.is_model_entry === true,
-    durability: source.durability === 'sync' || source.durability === 'exit'
-      ? source.durability
-      : 'async',
     on_disconnect: source.on_disconnect === 'continue' ? 'continue' : 'cancel',
-    checkpoint_mode: source.checkpoint_mode === 'disabled' ? 'disabled' : 'enabled',
     capability_refs: references.map((item) => {
       const reference = record(item)
       return { type: text(reference.type), block_id: text(reference.block_id) }
@@ -166,9 +160,7 @@ export function mainAgentPayload(value: MainAgentProfile): MainAgentPayload {
   return {
     name: value.name.trim(),
     is_model_entry: value.is_model_entry,
-    durability: value.durability,
     on_disconnect: value.on_disconnect,
-    checkpoint_mode: value.checkpoint_mode,
     capability_refs: value.capability_refs
       .map((reference) => ({ type: reference.type, block_id: reference.block_id })),
     tool_refs: value.tool_refs.map((reference) => ({

@@ -31,7 +31,7 @@ OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `is_m
 
 ```text
 OpenAI-compatible messages[]
-  -> 按 model 选择 Main Agent 或 Workflow 入口
+  -> 按 model 选择 Agent 或 Workflow 入口
   -> 捕获当前配置与 Model/MCP 资源快照
   -> 创建或复用官方 Assistant，并创建或续接 Thread上的新 Run
   -> dynamic graph factory 从同一快照物化 Main Agent Graph 或 Workflow Graph
@@ -40,7 +40,7 @@ OpenAI-compatible messages[]
   -> 返回 OpenAI-compatible response
 ```
 
-客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。Main Agent入口把它们作为官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口把输入保存在Lifecycle Store快照中，Workflow State只保存`shared_vars`。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
+客户端 `messages[]` 是标准 OpenAI-compatible 多轮 `system`、`user`、`assistant` 消息。Agent入口把它们作为对应Main Agent root graph的官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口把输入保存在Lifecycle Store快照中，Workflow State只保存`shared_vars`。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
 
 需要在Thread第一次执行时整理Agent输入时，为该Agent装配Agent Additional Prompt（AAP）或其他明确的Custom Middleware。AAP从current AgentState messages或显式Store/Filesystem来源选择材料，并用private checkpoint marker保证同一stateful Thread只初始化一次。
 

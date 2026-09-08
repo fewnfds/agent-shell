@@ -12,7 +12,6 @@ from collections.abc import Mapping
 from html import escape
 
 
-_SCOPE = "Workflow"
 _MESSAGE_STYLE = "white-space:pre-wrap;margin:0.4rem 0 0.35rem"
 _META_STYLE = "color:#6c757d;font-size:0.78em;line-height:1.35"
 
@@ -40,6 +39,13 @@ def _json_text(value):
         return json.dumps(value, ensure_ascii=False, indent=2, default=str)
     except (TypeError, ValueError):
         return str(value)
+
+
+def _title(origin, category):
+    name = str(origin.get("workflow_name") or "")
+    if not name:
+        raise ValueError("Workflow Event Output origin is missing its Workflow name")
+    return f"Workflow [{name}] · {category}"
 
 
 def _metadata(event, origin, event_name, payload=None, message_metadata=None):
@@ -89,9 +95,12 @@ def _metadata(event, origin, event_name, payload=None, message_metadata=None):
         ("caller_run_id", origin.get("caller_run_id")),
         ("operation_id", origin.get("operation_id")),
         ("workflow_id", origin.get("workflow_id")),
+        ("workflow_name", origin.get("workflow_name")),
         ("workflow_node_id", origin.get("workflow_node_id")),
         ("node_invocation_id", origin.get("node_invocation_id")),
+        ("main_agent_name", origin.get("main_agent_name")),
         ("agent_profile_id", origin.get("agent_profile_id")),
+        ("subagent_name", origin.get("subagent_name")),
         ("subagent_profile_id", origin.get("subagent_profile_id")),
     ]
     rendered = []
@@ -105,16 +114,16 @@ def _metadata(event, origin, event_name, payload=None, message_metadata=None):
 def _atomic(title, value, event, origin, event_name, payload=None, metadata=None):
     meta = _metadata(event, origin, event_name, payload, metadata)
     return (
-        f'<details open><summary>{escape(_SCOPE + " · " + title)}</summary>\n'
+        f'<details open><summary>{escape(_title(origin, title))}</summary>\n'
         f'<pre style="{_MESSAGE_STYLE}">{escape(_json_text(value))}</pre>\n'
         f'<div><small style="{_META_STYLE}">{meta}</small></div>\n'
         "</details>\n"
     )
 
 
-def _stream_start(title):
+def _stream_start(title, origin):
     return (
-        f'<details open><summary>{escape(_SCOPE + " · " + title)}</summary>\n'
+        f'<details open><summary>{escape(_title(origin, title))}</summary>\n'
         f'<div style="{_MESSAGE_STYLE}">'
     )
 
@@ -137,7 +146,7 @@ def render_message_start(event, origin, payload, metadata):
 def render_assistant_text_start(event, origin, payload, metadata):
     """Open one streamed assistant-text presentation segment."""
 
-    return _stream_start("Assistant text")
+    return _stream_start("Assistant text", origin)
 
 
 def render_assistant_text_delta(event, origin, payload, metadata):
@@ -162,7 +171,7 @@ def render_assistant_text_segment_end(event, origin, payload, metadata):
 def render_reasoning_start(event, origin, payload, metadata):
     """Open one streamed model-reasoning presentation segment."""
 
-    return _stream_start("Reasoning")
+    return _stream_start("Reasoning", origin)
 
 
 def render_reasoning_delta(event, origin, payload, metadata):
@@ -185,9 +194,17 @@ def render_reasoning_segment_end(event, origin, payload, metadata):
 
 
 def render_tool_call_fragment(event, origin, payload, metadata):
-    """Filter incomplete Tool-call chunks until the finalized call arrives."""
+    """Render one model Tool-call declaration or argument fragment."""
 
-    return ""
+    return _atomic(
+        "Tool call fragment",
+        payload,
+        event,
+        origin,
+        str(payload.get("event") or "tool-call-fragment"),
+        payload,
+        metadata,
+    )
 
 
 def render_tool_call(event, origin, payload, metadata):
@@ -357,6 +374,12 @@ def output(event, origin):
         block = content if isinstance(content, Mapping) else delta
         block = block if isinstance(block, Mapping) else {}
         block_type = str(block.get("type") or "")
+        block_fields = block.get("fields")
+        fragment_type = (
+            str(block_fields.get("type") or "")
+            if isinstance(block_fields, Mapping)
+            else block_type
+        )
         if event_name == "message-start":
             return render_message_start(event, origin, payload, metadata)
         if event_name == "content-block-start" and block_type == "text":
@@ -369,7 +392,7 @@ def output(event, origin):
             return render_reasoning_start(event, origin, payload, metadata)
         if event_name == "content-block-delta" and block_type == "reasoning-delta":
             return render_reasoning_delta(event, origin, payload, metadata)
-        if event_name in {"content-block-start", "content-block-delta"} and block_type in {
+        if event_name in {"content-block-start", "content-block-delta"} and fragment_type in {
             "tool_call",
             "server_tool_call",
             "tool_call_chunk",

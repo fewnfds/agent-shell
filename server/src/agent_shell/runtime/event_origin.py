@@ -18,9 +18,12 @@ class EventOutputOriginDict(TypedDict):
     caller_run_id: str
     operation_id: str
     workflow_id: str
+    workflow_name: str
     main_agent_id: str
+    main_agent_name: str
     agent_profile_id: str
     subagent_profile_id: str
+    subagent_name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +114,7 @@ class RunEventOriginResolver:
             self._root_agent_profile_id
         )
         subagent_profile_id = ""
+        subagent_name = ""
         source_type: Literal["agent", "subagent", "workflow"] = "workflow"
         if is_agent_graph:
             metadata = _message_metadata(data) if method == "messages" else {}
@@ -124,6 +128,8 @@ class RunEventOriginResolver:
             agent_name = agent_name or active_subagent or graph_name
             if agent_name and agent_name not in self._main_agent_names:
                 subagent_profile_id = self._root_subagent_profile_ids.get(agent_name, "")
+                if subagent_profile_id:
+                    subagent_name = agent_name
             source_type = "subagent" if subagent_profile_id else "agent"
 
             if lifecycle_data is not None:
@@ -134,7 +140,10 @@ class RunEventOriginResolver:
                     self._active_subagents.pop(scope, None)
 
         return ResolvedEventOrigin(
-            output=self._output_origin(subagent_profile_id=subagent_profile_id),
+            output=self._output_origin(
+                subagent_profile_id=subagent_profile_id,
+                subagent_name=subagent_name,
+            ),
             namespace=namespace,
             source_type=source_type,
             subagent_profile_id=subagent_profile_id,
@@ -160,6 +169,7 @@ class RunEventOriginResolver:
         self,
         *,
         subagent_profile_id: str = "",
+        subagent_name: str = "",
     ) -> EventOutputOriginDict:
         identity = self._identity
         main_agent_id = (
@@ -184,11 +194,22 @@ class RunEventOriginResolver:
             "workflow_id": (
                 identity.workflow_id if isinstance(identity, WorkflowRunIdentity) else ""
             ),
+            "workflow_name": (
+                identity.workflow_name if isinstance(identity, WorkflowRunIdentity) else ""
+            ),
             "main_agent_id": main_agent_id,
+            "main_agent_name": (
+                identity.main_agent_name
+                if isinstance(identity, AgentRunIdentity)
+                else self._main_agent_names[0]
+                if main_agent_id and len(self._main_agent_names) == 1
+                else ""
+            ),
             # Event Output profile aliases for the root Agent and its configured
             # synchronous subagents. Scheduler identity never depends on them.
             "agent_profile_id": main_agent_id,
             "subagent_profile_id": subagent_profile_id,
+            "subagent_name": subagent_name,
         }
 
 

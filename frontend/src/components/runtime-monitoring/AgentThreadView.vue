@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useColorMode } from '@adminlte/vue'
 import type { BaseMessage } from '@langchain/core/messages'
 import { useStream, type AssembledToolCall } from '@langchain/vue'
 import MarkdownRender from 'markstream-vue'
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { resolvedMode } = useColorMode()
 const viewport = ref<HTMLElement | null>(null)
 const following = ref(true)
 const stream = useStream<Record<string, unknown>>({
@@ -40,7 +42,6 @@ const stream = useStream<Record<string, unknown>>({
   apiUrl: window.location.origin,
   callerOptions: { fetch: managementAuthorizedFetch },
   fetch: managementAuthorizedFetch,
-  fetchStateHistory: false,
 })
 const streamedMessages = stream.messages
 const streamedToolCalls = stream.toolCalls
@@ -162,7 +163,12 @@ watch([stream.messages, stream.toolCalls, stream.interrupts], async () => {
 
 <template>
   <section class="agent-thread" :aria-label="t('runtimeMonitoring.agent.title')">
-    <div ref="viewport" class="agent-thread-feed" @scroll.passive="onScroll">
+    <div
+      ref="viewport"
+      class="agent-thread-feed"
+      :class="{ dark: resolvedMode === 'dark' }"
+      @scroll.passive="onScroll"
+    >
       <div v-if="hydrating" class="agent-thread-loading" aria-busy="true">
         <span class="spinner-border spinner-border-sm" aria-hidden="true" />
       </div>
@@ -306,7 +312,7 @@ watch([stream.messages, stream.toolCalls, stream.interrupts], async () => {
 
 .agent-reasoning summary {
   margin-block-end: .35rem;
-  font-size: .75rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
 }

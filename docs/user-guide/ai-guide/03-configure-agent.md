@@ -117,7 +117,7 @@ POST /agent-shell/api/blocks/agent-event-output
 }
 ```
 
-服务端会生成该 configuration UUID 独占的 package。只需要 Assistant text 时，`output(event, origin)` 读取 `messages` payload 的 `content-block-delta` 与其中的 `delta.text`（或 `delta.reasoning`），其他 channel 或 payload 返回空字符串；流式与非流式消息都按 LangGraph v3 原始 envelope 处理。
+服务端会生成该 configuration UUID 独占的 package。只需要 Assistant text 时，`output(event, origin)` 读取 `messages` payload 的 `content-block-delta` 与其中的 `delta.text`，其他 channel 或 payload 返回空字符串；流式与非流式消息都按 LangGraph v3 原始 envelope 处理。
 
 创建和自定义 Python package 的完整流程见[编写 Python extension](06-python-extensions.md)。字段说明见[Agent Event Output](../../wizard-pages/agent-event-output-config.md)。
 
@@ -133,9 +133,7 @@ POST /agent-shell/api/main-agents
 {
   "name": "Primary worker",
   "is_model_entry": false,
-  "durability": "async",
   "on_disconnect": "cancel",
-  "checkpoint_mode": "enabled",
   "capability_refs": [
     {
       "type": "model-requirement",
@@ -163,7 +161,7 @@ POST /agent-shell/api/main-agents
 
 `tool_refs`、`middleware_refs`、`mcp_refs`和`subagents`分别保存 Custom Tool、Custom Middleware、MCP Requirement 和 direct synchronous Subagent 的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
 
-`is_model_entry=true` 时，Main Agent name 直接成为 OpenAI-compatible model。`checkpoint_mode=enabled`为每个直接会话建立可复用 Thread，后续交互在同一 Thread 创建新 Run 并延续 AgentState；`disabled`使用官方 Stateless Run。`durability`在界面显示为【checkpoint 保存时机】，控制官方 Run 的 checkpoint 写入时机。`on_disconnect`在界面显示为【用户断开】；每个 Main Agent Run 创建时都冻结该值，不限于请求入口。
+`is_model_entry=true` 时，Main Agent name 直接成为 OpenAI-compatible model。每个直接会话建立持久Thread，后续显式交互可在同一Thread创建新Run并延续AgentState。Run使用Agent Server默认`async` durability。`on_disconnect`在界面显示为【用户断开】；每个Main Agent Run创建时都冻结该值，不限于请求入口。
 
 创建后保存Main Agent UUID。直接运行与Command-launched Run都复用这份装配；Workflow Graph不重复保存模型、Tool或prompt配置。
 

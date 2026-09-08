@@ -16,7 +16,6 @@ class WorkflowStore:
         "description",
         "is_model_entry",
         "workflow_event_output_id",
-        "durability",
         "on_disconnect",
         "enabled",
     )
@@ -33,7 +32,6 @@ class WorkflowStore:
             "description": str(record["description"]),
             "is_model_entry": bool(record.get("is_model_entry", False)),
             "workflow_event_output_id": record.get("workflow_event_output_id"),
-            "durability": str(record.get("durability", "async")),
             "on_disconnect": str(record.get("on_disconnect", "cancel")),
             "enabled": bool(record["enabled"]),
         }

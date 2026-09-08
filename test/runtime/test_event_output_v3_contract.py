@@ -45,9 +45,12 @@ def test_projector_receives_raw_event_and_root_workflow_origin() -> None:
         "caller_run_id": "caller-1",
         "operation_id": "review-report",
         "workflow_id": "workflow-1",
+        "workflow_name": "Review Workflow",
         "main_agent_id": "",
+        "main_agent_name": "",
         "agent_profile_id": "",
         "subagent_profile_id": "",
+        "subagent_name": "",
     }
 
 
@@ -130,4 +133,49 @@ def test_agent_origin_exposes_configured_subagent_without_changing_graph_owner()
     assert resolved.source_type == "subagent"
     assert resolved.output["graph_kind"] == "agent"
     assert resolved.output["main_agent_id"] == "agent-1"
+    assert resolved.output["main_agent_name"] == "Writer"
     assert resolved.output["subagent_profile_id"] == "subagent-1"
+    assert resolved.output["subagent_name"] == "Researcher"
+    assert resolver.run_origin()["subagent_name"] == ""
+
+
+def test_agent_origin_keeps_active_subagent_name_for_nested_events() -> None:
+    identity = AgentRunIdentity(
+        request_id="request-1",
+        lifecycle_id="lifecycle-1",
+        run_id="run-1",
+        main_agent_id="agent-1",
+        main_agent_name="Writer",
+    )
+    resolver = RunEventOriginResolver(
+        identity,
+        main_agent_names=("Writer",),
+        root_agent_profile_id="agent-1",
+        root_subagent_profile_ids={"Researcher": "subagent-1"},
+    )
+    started = {
+        "method": "lifecycle",
+        "params": {
+            "namespace": ["task:research"],
+            "data": {
+                "event": "started",
+                "graph_name": "Researcher",
+                "namespace": ["task:research"],
+            },
+        },
+    }
+    nested_custom = {
+        "method": "custom",
+        "params": {
+            "namespace": ["task:research", "tools:lookup"],
+            "data": {"progress": "working"},
+        },
+    }
+
+    lifecycle_origin = resolver.resolve(started).output
+    nested_origin = resolver.resolve(nested_custom).output
+
+    assert lifecycle_origin["subagent_profile_id"] == "subagent-1"
+    assert lifecycle_origin["subagent_name"] == "Researcher"
+    assert nested_origin["subagent_profile_id"] == "subagent-1"
+    assert nested_origin["subagent_name"] == "Researcher"

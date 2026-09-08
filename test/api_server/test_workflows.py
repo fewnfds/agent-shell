@@ -18,24 +18,21 @@ def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     ]
 
 
-def test_workflow_runtime_options_are_managed(
+def test_workflow_disconnect_policy_is_managed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
         workflow = create_workflow(client, name="Managed boundaries")
-        assert workflow["durability"] == "async"
         assert workflow["on_disconnect"] == "cancel"
         updated = client.put(
             f"/agent-shell/api/workflows/{workflow['id']}",
             json={
                 "name": workflow["name"],
                 "description": workflow["description"],
-                "durability": "sync",
                 "on_disconnect": "continue",
             },
         )
         assert updated.status_code == 200, updated.text
-        assert updated.json()["durability"] == "sync"
         assert updated.json()["on_disconnect"] == "continue"
 
 
@@ -145,7 +142,7 @@ def test_workflow_event_output_delete_preserves_reference_and_reports_owner(
             json={
                 **{key: workflow[key] for key in (
                         "name", "description",
-                        "durability", "on_disconnect",
+                        "on_disconnect",
                     )},
                 "workflow_event_output_id": output.json()["id"],
             },
@@ -187,7 +184,6 @@ def test_workflow_validation_reports_a_missing_event_output_reference(
                     for key in (
                         "name",
                         "description",
-                        "durability",
                         "on_disconnect",
                     )
                 },

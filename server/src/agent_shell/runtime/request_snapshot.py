@@ -244,8 +244,6 @@ class _RunBinding:
 class _OfficialSession:
     client: Any
     stream: Any
-    delete_thread_on_close: bool = False
-    delete_thread_with_lifecycle: bool = False
 
 
 @dataclass(slots=True)
@@ -319,7 +317,6 @@ class LifecycleRunCoordinator:
         init=False,
     )
     _sessions: dict[str, _OfficialSession] = field(default_factory=dict, init=False)
-    _deferred_thread_deletions: set[str] = field(default_factory=set, init=False)
     _relations: dict[str, GraphRunCallRelation] = field(
         default_factory=dict,
         init=False,
@@ -426,7 +423,7 @@ class LifecycleRunCoordinator:
         self._bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
         try:
-            client, _thread_stream = await self._open_run_session(binding)
+            client, thread_stream = await self._open_run_session(binding)
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
@@ -442,7 +439,7 @@ class LifecycleRunCoordinator:
                 },
                 index=False,
             )
-            result = await self._start_bound_run(binding, client)
+            result = await self._start_bound_run(binding, thread_stream)
             self._bind_official_run_id(binding, result)
             await self._record_relation(
                 client,
@@ -496,13 +493,9 @@ class LifecycleRunCoordinator:
         )
         self._agent_bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
-        stateless = main_agent.get("checkpoint_mode") == "disabled"
         client: Any | None = None
         try:
-            client, _thread_stream = await self._open_agent_run_session(
-                binding,
-                stateless=stateless,
-            )
+            client, thread_stream = await self._open_agent_run_session(binding)
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
@@ -519,23 +512,8 @@ class LifecycleRunCoordinator:
                 },
                 index=False,
             )
-            result = await self._start_bound_agent_run(binding, client)
-            run_id, result_thread_id = self._agent_run_result_ids(result)
-            if stateless:
-                binding.thread_id = result_thread_id
-                await client.threads.update(
-                    result_thread_id,
-                    metadata=self._agent_thread_metadata(binding),
-                )
-                await self._attach_agent_run_stream(
-                    binding,
-                    client,
-                    delete_thread_on_close=True,
-                )
-            elif result_thread_id != binding.thread_id:
-                raise RuntimeError(
-                    "the official Main Agent Run returned an unexpected thread_id"
-                )
+            result = await self._start_bound_agent_run(binding, thread_stream)
+            run_id = self._run_id_from_result(result, graph_kind="Main Agent")
             self._bind_agent_run_id(binding, run_id)
             await self._record_relation(
                 client,
@@ -748,8 +726,8 @@ class LifecycleRunCoordinator:
             )
         self._bindings[binding.key] = binding
         try:
-            client, _thread_stream = await self._open_run_session(binding)
-            result = await self._start_bound_run(binding, client)
+            client, thread_stream = await self._open_run_session(binding)
+            result = await self._start_bound_run(binding, thread_stream)
             self._bind_official_run_id(binding, result)
             relation = self._workflow_relation(binding)
             await self._record_relation(client, relation)
@@ -803,12 +781,6 @@ class LifecycleRunCoordinator:
                 raise AgentRuntimeError(
                     "agent_run_thread_id_invalid",
                     "Agent Run thread_id must not be empty when provided.",
-                    status_code=422,
-                )
-            if target.get("checkpoint_mode") == "disabled":
-                raise AgentRuntimeError(
-                    "agent_run_thread_unsupported",
-                    "A stateless Main Agent cannot continue an existing Thread.",
                     status_code=422,
                 )
 
@@ -870,31 +842,14 @@ class LifecycleRunCoordinator:
             execution_ready=loop.create_future(),
         )
         self._agent_bindings[key] = binding
-        stateless = target.get("checkpoint_mode") == "disabled"
         client: Any | None = None
         try:
-            client, _thread_stream = await self._open_agent_run_session(
+            client, thread_stream = await self._open_agent_run_session(
                 binding,
-                stateless=stateless,
                 existing_thread_id=requested_thread_id,
             )
-            result = await self._start_bound_agent_run(binding, client)
-            run_id, result_thread_id = self._agent_run_result_ids(result)
-            if stateless:
-                binding.thread_id = result_thread_id
-                await client.threads.update(
-                    result_thread_id,
-                    metadata=self._agent_thread_metadata(binding),
-                )
-                await self._attach_agent_run_stream(
-                    binding,
-                    client,
-                    delete_thread_with_lifecycle=True,
-                )
-            elif result_thread_id != binding.thread_id:
-                raise RuntimeError(
-                    "the official Main Agent Run returned an unexpected thread_id"
-                )
+            result = await self._start_bound_agent_run(binding, thread_stream)
+            run_id = self._run_id_from_result(result, graph_kind="Main Agent")
             self._bind_agent_run_id(binding, run_id)
             relation = self._agent_relation(binding)
             await self._record_relation(client, relation)
@@ -1138,23 +1093,10 @@ class LifecycleRunCoordinator:
         session = self._sessions.pop(thread_id, None)
         if session is None:
             return
-        if session.delete_thread_with_lifecycle:
-            self._deferred_thread_deletions.add(thread_id)
         try:
             await session.stream.close()
         finally:
-            try:
-                if session.delete_thread_on_close:
-                    await session.client.threads.delete(thread_id)
-            finally:
-                await session.client.aclose()
-        if not self._sessions and self._deferred_thread_deletions:
-            pending = tuple(self._deferred_thread_deletions)
-            self._deferred_thread_deletions.clear()
-            async with self._owner.new_agent_server_client() as client:
-                for pending_thread_id in pending:
-                    with suppress(Exception):
-                        await client.threads.delete(pending_thread_id)
+            await session.client.aclose()
         self._release_if_finished()
 
     def _new_binding(
@@ -1233,7 +1175,6 @@ class LifecycleRunCoordinator:
         self,
         binding: _AgentRunBinding,
         *,
-        stateless: bool = False,
         existing_thread_id: str | None = None,
     ) -> tuple[Any, Any]:
         client = self._owner.new_agent_server_client()
@@ -1248,8 +1189,6 @@ class LifecycleRunCoordinator:
                 assistant_id=main_agent_assistant_id(agent_id),
             )
             binding.assistant_id = str(assistant["assistant_id"])
-            if stateless:
-                return client, None
             if existing_thread_id is not None:
                 if existing_thread_id in self._sessions:
                     raise AgentRuntimeError(
@@ -1287,9 +1226,6 @@ class LifecycleRunCoordinator:
         self,
         binding: _AgentRunBinding,
         client: Any,
-        *,
-        delete_thread_on_close: bool = False,
-        delete_thread_with_lifecycle: bool = False,
     ) -> Any:
         stream = client.threads.stream(
             binding.thread_id,
@@ -1301,12 +1237,7 @@ class LifecycleRunCoordinator:
             self,
             binding.thread_id,
         )
-        self._sessions[binding.thread_id] = _OfficialSession(
-            client,
-            stream,
-            delete_thread_on_close=delete_thread_on_close,
-            delete_thread_with_lifecycle=delete_thread_with_lifecycle,
-        )
+        self._sessions[binding.thread_id] = _OfficialSession(client, stream)
         return stream
 
     @staticmethod
@@ -1320,20 +1251,27 @@ class LifecycleRunCoordinator:
             "operation_id": binding.operation_id,
         }
 
-    async def _start_bound_run(self, binding: _RunBinding, client: Any) -> Mapping[str, Any]:
-        return await client.runs.create(
-            binding.thread_id,
-            binding.assistant_id,
+    def _run_start_config(self, **configurable: str) -> dict[str, Any]:
+        config = dict(self._owner.run_config())
+        existing = config.get("configurable")
+        config["configurable"] = {
+            **(dict(existing) if isinstance(existing, Mapping) else {}),
+            **configurable,
+        }
+        return config
+
+    async def _start_bound_run(self, binding: _RunBinding, stream: Any) -> Mapping[str, Any]:
+        return await stream.run.start(
             input={
                 "shared_vars": deepcopy(dict(binding.initial_shared_vars)),
             },
-            config=self._owner.run_config(),
-            context={
-                "request_id": binding.request_id,
-                "lifecycle_id": binding.lifecycle_id,
-                "caller_run_id": binding.caller_run_id,
-                "operation_id": binding.operation_id,
-            },
+            config=self._run_start_config(
+                workflow_id=str(binding.workflow["id"]),
+                request_id=binding.request_id,
+                lifecycle_id=binding.lifecycle_id,
+                caller_run_id=binding.caller_run_id,
+                operation_id=binding.operation_id,
+            ),
             metadata={
                 "lifecycle_id": binding.lifecycle_id,
                 "request_id": binding.request_id,
@@ -1343,30 +1281,23 @@ class LifecycleRunCoordinator:
                 "caller_run_id": binding.caller_run_id,
                 "operation_id": binding.operation_id,
             },
-            durability=str(binding.workflow["durability"]),
         )
 
     async def _start_bound_agent_run(
         self,
         binding: _AgentRunBinding,
-        client: Any,
+        stream: Any,
     ) -> Mapping[str, Any]:
         agent_id = str(binding.main_agent["id"])
-        return await client.runs.create(
-            (
-                None
-                if binding.main_agent.get("checkpoint_mode") == "disabled"
-                else binding.thread_id
-            ),
-            binding.assistant_id,
+        return await stream.run.start(
             input={"messages": deepcopy(binding.messages)},
-            config=self._owner.run_config(),
-            context={
-                "request_id": binding.request_id,
-                "lifecycle_id": binding.lifecycle_id,
-                "caller_run_id": binding.caller_run_id,
-                "operation_id": binding.operation_id,
-            },
+            config=self._run_start_config(
+                main_agent_id=agent_id,
+                request_id=binding.request_id,
+                lifecycle_id=binding.lifecycle_id,
+                caller_run_id=binding.caller_run_id,
+                operation_id=binding.operation_id,
+            ),
             metadata={
                 "lifecycle_id": binding.lifecycle_id,
                 "request_id": binding.request_id,
@@ -1376,12 +1307,6 @@ class LifecycleRunCoordinator:
                 "caller_run_id": binding.caller_run_id,
                 "operation_id": binding.operation_id,
             },
-            durability=str(binding.main_agent["durability"]),
-            on_completion=(
-                "keep"
-                if binding.main_agent.get("checkpoint_mode") == "disabled"
-                else None
-            ),
         )
 
     @staticmethod
@@ -1397,16 +1322,15 @@ class LifecycleRunCoordinator:
         binding.run_id_ready.set_result(run_id)
 
     @staticmethod
-    def _agent_run_result_ids(
+    def _run_id_from_result(
         result: Mapping[str, Any],
-    ) -> tuple[str, str]:
+        *,
+        graph_kind: str,
+    ) -> str:
         run_id = result.get("run_id")
-        thread_id = result.get("thread_id")
         if not isinstance(run_id, str) or not run_id:
-            raise RuntimeError("the official Main Agent Run did not return run_id")
-        if not isinstance(thread_id, str) or not thread_id:
-            raise RuntimeError("the official Main Agent Run did not return thread_id")
-        return run_id, thread_id
+            raise RuntimeError(f"the official {graph_kind} Run did not return run_id")
+        return run_id
 
     @staticmethod
     def _bind_agent_run_id(
@@ -1576,9 +1500,6 @@ class LifecycleRunCoordinator:
         relation: GraphRunCallRelation,
         run: Mapping[str, Any],
     ) -> AgentRunHandle:
-        checkpoint_mode = relation.checkpoint_mode
-        if checkpoint_mode is None:
-            raise RuntimeError("the Agent Run relation omits checkpoint_mode")
         return AgentRunHandle(
             operation_id=relation.operation_id,
             main_agent_id=relation.resource_id,
@@ -1586,7 +1507,6 @@ class LifecycleRunCoordinator:
             thread_id=relation.thread_id,
             run_id=relation.run_id,
             status=official_status(run),
-            checkpoint_mode=checkpoint_mode,
         )
 
     @staticmethod
@@ -1596,9 +1516,6 @@ class LifecycleRunCoordinator:
         *,
         output: dict[str, Any] | None = None,
     ) -> AgentRunSnapshot:
-        checkpoint_mode = relation.checkpoint_mode
-        if checkpoint_mode is None:
-            raise RuntimeError("the Agent Run relation omits checkpoint_mode")
         return AgentRunSnapshot(
             operation_id=relation.operation_id,
             caller_run_id=relation.caller_run_id,
@@ -1608,7 +1525,6 @@ class LifecycleRunCoordinator:
             thread_id=relation.thread_id,
             run_id=relation.run_id,
             status=status,
-            checkpoint_mode=checkpoint_mode,
             output=output,
         )
 
@@ -1644,11 +1560,6 @@ class LifecycleRunCoordinator:
                 "continue"
                 if binding.main_agent.get("on_disconnect") == "continue"
                 else "cancel"
-            ),
-            checkpoint_mode=(
-                "disabled"
-                if binding.main_agent.get("checkpoint_mode") == "disabled"
-                else "enabled"
             ),
             assistant_id=binding.assistant_id,
             thread_id=binding.thread_id,

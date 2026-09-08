@@ -13,7 +13,7 @@ Stateful Main Agent的messages由AgentState和Thread checkpoint拥有。同一Th
 3. LangGraph在super-step checkpoint中保存messages与marker；
 4. 同一Thread的新Run从该checkpoint继续。
 
-`checkpoint_mode=disabled`的stateless Run没有跨Run State，因此每次独立Run都会重新初始化，这与stateless语义一致。
+每次独立调用创建新的持久 Thread，因此都会初始化一次；显式 continuation 在同一 Thread 创建后续 Run，不会重复初始化。
 
 ## 输入来源
 

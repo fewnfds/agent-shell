@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from agent_shell.runtime.run_calls import RunCheckStatus, RunStatus
-
-
-CheckpointMode = Literal["enabled", "disabled"]
 
 
 class AgentRunHandle(BaseModel):
@@ -19,7 +16,6 @@ class AgentRunHandle(BaseModel):
     thread_id: str
     run_id: str
     status: RunStatus
-    checkpoint_mode: CheckpointMode
 
 
 class AgentRunSnapshot(BaseModel):
@@ -33,8 +29,7 @@ class AgentRunSnapshot(BaseModel):
     thread_id: str = ""
     run_id: str
     status: RunCheckStatus
-    checkpoint_mode: CheckpointMode = "enabled"
     output: dict[str, Any] | None = None
 
 
-__all__ = ["AgentRunHandle", "AgentRunSnapshot", "CheckpointMode"]
+__all__ = ["AgentRunHandle", "AgentRunSnapshot"]

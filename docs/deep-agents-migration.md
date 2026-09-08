@@ -14,7 +14,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 ## 装配
 
 - `enabled=true` 且 `is_model_entry=true` 的 Workflow name，以及 `is_model_entry=true` 的 Main Agent name，均可成为公开 model ID；两类 entry 的规范化名称不得冲突；
-- Main Agent root-run 配置保存`durability=sync|async|exit`、`on_disconnect=cancel|continue`和`checkpoint_mode=enabled|disabled`。durability 原样进入官方 Run API，在界面称为【checkpoint 保存时机】；checkpoint disabled 使用官方 Stateless Run（`thread_id=None`），不把 constructor 的`checkpointer`参数当作产品持久化开关；每个 Run 在 relation 中冻结自己的用户断开策略；
+- Main Agent root-run 配置保存`on_disconnect=cancel|continue`；每个 Run 创建或明确复用持久 Thread，使用 Agent Server 默认 `async` durability，并在 relation 中冻结自己的用户断开策略；
 - Main Agent 必须有模型要求与 Agent Event Output；模型要求在模型映射页绑定模型连接后才能运行；
 - 只有 Main Agent 保存直接 Subagent UUID，Subagent contract 没有 child 引用；
 - Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别继承或替换，不能关闭 required capability，Workflow 不保存 Filesystem ref；
@@ -59,7 +59,7 @@ Agent Filesystem 的 mapped directories 可接入 Deep Agents `FilesystemBackend
 
 Main Agent root Run 直接以官方 `input.messages` 更新 AgentState。AAP 的 private checkpoint marker 使每个已装配 AAP 只在同一 Main Agent Thread 的第一次执行时初始化消息；后续 Run延续现有 messages，不重复追加。固定虚拟文件也用 private marker 每个 Thread 只播种一次。synchronous Subagent 默认从 delegated private `state.messages` 整理 input，并拥有自己的 middleware state scope。
 
-Canvas Start/End只是LangGraph官方virtual `START/END`。Workflow入口的client `messages[]`冻结在application-level LangGraph Store的Lifecycle namespace；不会由Start注入或进入Workflow root State。Main Agent入口的client messages直接作为官方Run input进入AgentState；选择AAP时，其官方`before_agent`Hook从current AgentState messages开始整理，未选择AAP时保留官方input语义。
+Canvas Start/End只是LangGraph官方virtual `START/END`。Workflow入口的client `messages[]`冻结在application-level LangGraph Store的Lifecycle namespace；不会由Start注入或进入Workflow root State。Agent入口的client messages直接作为所选Main Agent的官方Run input进入AgentState；选择AAP时，其官方`before_agent`Hook从current AgentState messages开始整理，未选择AAP时保留官方input语义。
 
 Workflow Command可通过 `runtime.context.agent_runs` 创建独立 Main Agent Assistant/Thread/Run，通过 `workflow_runs`创建独立 Workflow Run。Main Agent默认创建新 Thread；同一 Lifecycle显式提供该 Main Agent既有 Thread可创建新 Run并延续 AgentState。每个被调用 Run由 LangGraph Dev dynamic factory使用冻结配置装配；Server-managed路径使用 LangGraph Dev注入的 Store和 checkpoint owner。每个 Run持有自己的 package runtime与 Event Output projector；状态和结果通过公共 Run API读取，Lifecycle Store只保存最小关系。
 

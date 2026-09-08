@@ -1,6 +1,6 @@
 # Agent Event Output
 
-Agent Event Output 是 Main Agent 配置拥有的 Python 扩展。`main.py` 必须提供同步入口 `output(event, origin)`；`event` 是 LangGraph v3 原始 `ProtocolEvent` envelope，`origin` 是 Agent Shell 对当前 root Graph Run 的显式身份。入口返回 `str`，空字符串过滤公开响应。需要为流式 text/reasoning 定义可中断的展示边界时，可以再提供可选同步入口 `segment_end(event, origin)`。
+Agent Event Output 是 Main Agent 配置拥有的 Python 扩展。`main.py` 必须提供同步入口 `output(event, origin)`；`event` 是 LangGraph v3 原始 `ProtocolEvent` envelope，`origin` 是 Agent Shell 对当前 Main Agent Graph Run 的显式身份，无论该 Run 是请求入口还是被其他 Run 调用。入口返回 `str`，空字符串过滤公开响应。需要为流式 text/reasoning 定义可中断的展示边界时，可以再提供可选同步入口 `segment_end(event, origin)`。
 
 ```python
 def output(event, origin):
@@ -8,9 +8,12 @@ def output(event, origin):
         return ""
     params = event.get("params", {})
     data = params.get("data") if isinstance(params, dict) else None
-    if not isinstance(data, (list, tuple)) or len(data) != 2:
+    if isinstance(data, dict):
+        payload = data
+    elif isinstance(data, (list, tuple)) and len(data) == 2:
+        payload = data[0]
+    else:
         return ""
-    payload = data[0]
     if not isinstance(payload, dict):
         return ""
     if payload.get("event") != "content-block-delta":
@@ -24,7 +27,7 @@ def segment_end(event, origin):
     return ""
 ```
 
-`event` 不经过 JSON round-trip，也不附加产品字段。按 `event["method"]` 读取 `params.namespace`、`params.timestamp` 和 `params.data`；`messages` 的 data 是 `(payload, metadata)`，其中 metadata 通常含 `run_id`、`langgraph_node` 和 provider metadata。`tools`、`custom`、`values`、`updates`、`tasks`、`input`、`input.requested`、`lifecycle` 等 channel 的 data 保持 LangGraph/LangChain Python 对象原样。
+`event` 是官方 SDK 解码后的 ProtocolEvent envelope，Agent Shell 不重新包装或附加产品字段。按 `event["method"]` 读取 `params.namespace`、`params.timestamp` 和 `params.data`。Agent Server stream 中 `messages` 的 data 是含 message event 字段及可选 `metadata` 的 mapping；LangGraph 进程内 v3 iterator 使用 `(payload, metadata)`。可复用模板应同时接受这两种官方 transport shape。metadata 通常含 `run_id`、`langgraph_node` 和 provider metadata。`tools`、`custom`、`values`、`updates`、`tasks`、`input`、`input.requested`、`lifecycle` 等 channel 的 data 保持 SDK 解码结果。
 
 `origin` 只包含产品身份：
 
@@ -38,21 +41,24 @@ def segment_end(event, origin):
 | `caller_run_id` | 调用当前 Run 的 Run ID；请求入口 Run 为空 |
 | `operation_id` | caller 为本次独立 Run 调用指定的 operation ID；请求入口 Run 为空 |
 | `workflow_id` | 空字符串 |
+| `workflow_name` | 空字符串 |
 | `main_agent_id` | Main Agent 配置 UUID |
+| `main_agent_name` | Main Agent name |
 | `agent_profile_id` | `main_agent_id` 的 Event Output profile alias |
 | `subagent_profile_id` | Subagent 配置 UUID（无则为空） |
+| `subagent_name` | 已归属的同步 Subagent name（无则为空） |
 
-model run、Tool call、`seq`、namespace 和 channel-specific 字段一律从官方 `event` 读取，不从 `origin` 重复推导。同步 Deep Agents Subagent 只增加 `subagent_profile_id` 展示归属，不改变 root Main Agent owner。
+model run、Tool call、`seq`、namespace 和 channel-specific 字段一律从官方 `event` 读取，不从 `origin` 重复推导。同步 Deep Agents Subagent 只增加 `subagent_profile_id` 与 `subagent_name` 展示归属，不改变 Main Agent Graph owner。
 
 函数签名必须恰好是 `def output(event, origin)`；定义 `segment_end` 时，其签名也必须恰好是 `def segment_end(event, origin)`。两者都不接受 `async def`、默认参数、额外参数、`*args` 或 `**kwargs`。脚本异常或返回非字符串会以 `event_output.execution_failed`（502）终止本次运行；依赖未准备好时返回 `python_package.dependencies_not_ready`（409）。
 
 ## Streaming 与 Run lifecycle
 
-每个原始 ProtocolEvent 调用一次 `output`。脚本依据官方 message payload 的 `content-block-start`、`content-block-delta` 和 `content-block-finish` 自行决定首文本、delta 和正常尾文本；不要依赖平台伪造的 start/end envelope，也不要修改模块全局状态。当前公开运行流可到达 `messages`、`tools`、`lifecycle`、`values` 和 `custom` method；未来 method 仍可由 fallback 分支作为完整事件显示。
+每个原始 ProtocolEvent 调用一次 `output`。脚本依据官方 message payload 的 `content-block-start`、`content-block-delta` 和 `content-block-finish` 自行决定首文本、delta 和正常尾文本；不要依赖平台伪造的 start/end envelope，也不要修改模块全局状态。Shell 先打开 Thread v3 event session，再在同一个 session 上发送 `run.start`，并从 `/threads/{thread_id}/stream/events` 持续读取 Run 事件。`run.start` 不传旧式 `stream_mode` 参数；LangGraph/LangChain v3 内置 transformer 提供 `messages`、`tools`、`lifecycle` 和 `values`，Shell 的 transparent custom transformer 只声明 `custom` upstream mode。未来 method 仍可由 fallback 分支作为完整事件显示。
 
 只有 text 和 reasoning block 使用流式 presentation segment。Runtime 在对应 `content-block-start` 上额外调用一次可选 `segment_end(event, origin)`，保存它返回的不透明字符串：idle 切换、Run terminal 或 continuation 分段需要释放 writer 时才输出这个字符串。没有定义 hook 或返回空字符串时只释放 writer，不产生尾文本。正常 `content-block-finish` 的 `output` 返回非空字符串时使用该正常尾文本；返回空字符串时使用 start 时保存的 `segment_end`。Scheduler 不解析 HTML，也不假定 `<details>`、闭合标签或任何固定格式。
 
-Tool call declaration、result、error、started 和 progress 若被 `output` 投影为非空文本，均在各自原始事件到达时形成 atomic frame。Scheduler 不配对 Tool call，不解释 model turn，也不改变它们的到达顺序。
+Tool call declaration、argument fragment、finalized call、result、error、started 和 progress 若被 `output` 投影为非空文本，均在各自原始事件到达时形成 atomic frame。Scheduler 不配对 Tool call，不解释 model turn，也不改变它们的到达顺序。
 
 同一 model run 同时出现 streamed message events 与完整 `AIMessage` snapshot 时，runtime 仍调用两次 `output`，但完整 snapshot 的投影结果不会再次进入公开队列，避免重复正文。model run identity 直接读取 message metadata 的官方 `run_id`。
 
@@ -60,7 +66,7 @@ Shell 合成的 Run 状态不是 Agent-owned ProtocolEvent。Agent Event Output 
 
 媒体、usage、官方 Run/State 观测和 Python payload 不由 Event Output 改写；返回空字符串只影响公开文本投影。Subagent 事件沿用所属 Main Agent package，`origin["subagent_profile_id"]` 用于区分来源。
 
-内置 `all-events` 示例将每个当前事件交给独立函数，以默认展开的 `<details open>` 输出正式消息，并在末尾用小号灰字显示 `key=value | key=value` debug metadata。示例只让 assistant text 和 reasoning 流式输出；Tool call、Tool result、生命周期、State、custom 和其他事件都是完整块。
+内置 `all-events` 示例将每个当前事件交给独立函数，以 `Agent [main_agent_name] · <category>` 标题输出 Main Agent 事件；同步 Subagent 事件优先使用 `Agent [subagent_name] · <category>`。每块以默认展开的 `<details open>` 输出正式消息，并在末尾用小号灰字显示 `key=value | key=value` debug metadata。示例只让 assistant text 和 reasoning 流式输出；Tool call 声明/参数片段、finalized call、Tool result、生命周期、State、custom 和其他事件分别显示为完整块。
 
 `all-events` 会公开它收到的完整 State、message、Tool 参数/结果、媒体引用、路径和运行身份。它只适合受信任的诊断环境；面向普通 API 使用方时，应从该示例复制所需分支并显式过滤其余事件。
 

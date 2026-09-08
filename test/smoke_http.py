@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any
 from uuid import UUID
@@ -59,6 +61,135 @@ def _port() -> int:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return int(listener.getsockname()[1])
+
+
+class _StreamingProviderHandler(BaseHTTPRequestHandler):
+    """Minimal DeepSeek-compatible SSE provider for the event smoke."""
+
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, _format: str, *args: object) -> None:
+        del args
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = json.loads(self.rfile.read(length) or b"{}")
+        messages = payload.get("messages")
+        has_tool_result = isinstance(messages, list) and any(
+            isinstance(message, dict) and message.get("role") == "tool"
+            for message in messages
+        )
+        is_persistence_child = isinstance(messages, list) and any(
+            isinstance(message, dict)
+            and message.get("role") == "user"
+            and message.get("content") == "exercise persistence child"
+            for message in messages
+        )
+        if self.path != "/v1/chat/completions" or not payload.get("stream"):
+            self.send_error(404)
+            return
+
+        if is_persistence_child:
+            chunks = [{"role": "assistant", "content": "persisted child"}]
+            finish_reason = "stop"
+        elif not has_tool_result:
+            chunks = [
+                {"role": "assistant", "reasoning_content": "think"},
+                {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "smoke-call-1",
+                            "type": "function",
+                            "function": {
+                                "name": "smoke_tool",
+                                "arguments": '{"value":"observed"}',
+                            },
+                        }
+                    ]
+                },
+            ]
+            finish_reason = "tool_calls"
+        else:
+            chunks = [
+                {"role": "assistant", "content": "runtime "},
+                {"content": "reply"},
+            ]
+            finish_reason = "stop"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        for delta in chunks:
+            self._write_event(delta, None)
+        self._write_event({}, finish_reason)
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+        self.close_connection = True
+
+    def _write_event(self, delta: dict[str, object], finish_reason: str | None) -> None:
+        chunk = {
+            "id": "chatcmpl-smoke",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "deepseek-reasoner",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": delta,
+                    "finish_reason": finish_reason,
+                }
+            ],
+        }
+        body = "data: " + json.dumps(chunk, separators=(",", ":")) + "\n\n"
+        self.wfile.write(body.encode("utf-8"))
+        self.wfile.flush()
+
+
+def _start_streaming_provider() -> tuple[ThreadingHTTPServer, threading.Thread]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _StreamingProviderHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def _stream_completion_text(
+    client: httpx.Client,
+    *,
+    headers: dict[str, str],
+    model: str,
+) -> list[str]:
+    fragments: list[str] = []
+    with client.stream(
+        "POST",
+        "/compat/openai/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": "exercise events"}],
+            "stream": True,
+        },
+    ) as response:
+        if response.status_code != 200:
+            raise AssertionError(
+                f"stream completion failed: {response.status_code}: {response.read()!r}"
+            )
+        for line in response.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            value = line.removeprefix("data: ")
+            if value == "[DONE]":
+                break
+            event = json.loads(value)
+            choices = event.get("choices")
+            if not isinstance(choices, list) or not choices:
+                continue
+            delta = choices[0].get("delta")
+            content = delta.get("content") if isinstance(delta, dict) else None
+            if isinstance(content, str) and content:
+                fragments.append(content)
+    return fragments
 
 
 def _model_connection_payload(
@@ -150,13 +281,100 @@ def _request(
     headers: dict[str, str] | None = None,
     json_body: Any = None,
     expected: int = 200,
+    timeout: float | None = None,
 ) -> httpx.Response:
-    response = client.request(method, path, headers=headers, json=json_body)
+    request_options = {}
+    if timeout is not None:
+        request_options["timeout"] = timeout
+    response = client.request(
+        method,
+        path,
+        headers=headers,
+        json=json_body,
+        **request_options,
+    )
     if response.status_code != expected:
         raise AssertionError(
             f"{method} {path}: expected {expected}, got {response.status_code}: {response.text}"
         )
     return response
+
+
+def _assert_lifecycle_persistence(
+    client: httpx.Client,
+    *,
+    lifecycle_id: str,
+    headers: dict[str, str],
+    expected_graph_kinds: set[str],
+    minimum_run_count: int,
+) -> set[tuple[str, str, str]]:
+    snapshot = _request(
+        client,
+        "GET",
+        f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
+        headers=headers,
+    ).json()
+    assert snapshot["run_count"] >= minimum_run_count
+    observed_runs = [
+        (thread["thread_id"], observation)
+        for thread in snapshot["threads"]
+        for observation in thread["runs"]
+        if observation["run"] is not None
+    ]
+    assert len(observed_runs) >= minimum_run_count
+    identities: set[tuple[str, str, str]] = set()
+    for thread_id, observation in observed_runs:
+        relation = observation["relation"]
+        assert relation is not None
+        graph_kind = relation["graph_kind"]
+        run_id = observation["run_id"]
+        identities.add((graph_kind, thread_id, run_id))
+        graph = _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/graph",
+            headers=headers,
+        ).json()
+        assert graph["run_id"] == run_id
+        assert graph["graph"] is not None
+        assert graph["error"] is None
+        state = _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
+            headers=headers,
+        ).json()
+        assert state["thread_id"] == thread_id
+        assert state["state"]["checkpoint"] is not None
+        history = _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
+            headers=headers,
+        ).json()
+        assert history["thread_id"] == thread_id
+        assert history["history"]
+        official_state = _request(
+            client,
+            "GET",
+            f"/threads/{thread_id}/state",
+            headers=headers,
+        ).json()
+        assert official_state["checkpoint"] is not None
+    assert expected_graph_kinds <= {identity[0] for identity in identities}
+
+    lifecycle_store = _request(
+        client,
+        "GET",
+        f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/store",
+        headers=headers,
+    ).json()
+    namespace_leaves = {
+        namespace["namespace"][-1]
+        for namespace in lifecycle_store["namespaces"]
+    }
+    assert {"input", "runs"} <= namespace_leaves
+    return identities
 
 
 def _stop_process(process: subprocess.Popen[bytes]) -> None:
@@ -184,6 +402,9 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     mode = "authenticated"
     work = scratch_root / mode
     work.mkdir(parents=True, exist_ok=True)
+    provider_server, provider_thread = _start_streaming_provider()
+    provider_port = int(provider_server.server_address[1])
+    provider_base_url = f"http://127.0.0.1:{provider_port}/v1"
     data_dir = work / "data"
     database_path = data_dir / "state" / "agent-shell.sqlite3"
     port = _port()
@@ -234,17 +455,30 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     )
     output_template.mkdir(parents=True, exist_ok=True)
     (output_template / "main.py").write_text(
+        'import json\n'
         'def output(event, origin):\n'
-        '    if event.get("method") != "messages":\n'
-        '        return ""\n'
+        '    method = event.get("method")\n'
+        '    seq = str(event.get("seq") or "")\n'
         '    data = event.get("params", {}).get("data", ())\n'
-        '    if not isinstance(data, (list, tuple)) or len(data) != 2:\n'
+        '    if method == "messages":\n'
+        '        payload = data[0] if isinstance(data, (list, tuple)) and len(data) == 2 else data\n'
+        '        if not isinstance(payload, dict):\n'
+        '            return ""\n'
+        '        event_name = str(payload.get("event") or "")\n'
+        '        block = payload.get("content") or payload.get("delta") or {}\n'
+        '        block_type = str(block.get("type") or "") if isinstance(block, dict) else ""\n'
+        '        if event_name == "content-block-delta" and block_type == "reasoning-delta":\n'
+        '            return "reasoning-delta:" + str(block.get("reasoning") or "") + "|seq=" + seq + "\\n"\n'
+        '        if event_name == "content-block-delta" and block_type == "text-delta":\n'
+        '            return "assistant-text-delta:" + str(block.get("text") or "") + "|seq=" + seq + "\\n"\n'
+        '        if event_name == "content-block-finish" and block_type == "tool_call":\n'
+        '            return "tool-call:" + json.dumps(block.get("args"), sort_keys=True) + "\\n"\n'
         '        return ""\n'
-        '    payload = data[0]\n'
-        '    if isinstance(payload, dict) and payload.get("event") == "content-block-delta":\n'
-        '        delta = payload.get("delta", {})\n'
-        '        return str(delta.get("text", "")) if isinstance(delta, dict) else ""\n'
-        '    return str(getattr(payload, "text", "") or "")\n',
+        '    if method == "tools" and isinstance(data, dict):\n'
+        '        return "tool-execution:" + str(data.get("event") or "") + "\\n"\n'
+        '    if method == "lifecycle" and isinstance(data, dict):\n'
+        '        return "lifecycle:" + str(data.get("event") or "") + "|seq=" + seq + "\\n"\n'
+        '    return ""\n',
         encoding="utf-8",
     )
     workflow_output_template = (
@@ -283,20 +517,30 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         'from langgraph.types import Command\n'
         '\n'
         'def create_command():\n'
-        '    target_workflow_id = Path(__file__).with_name("target.txt").read_text(encoding="utf-8").strip()\n'
+        '    target_workflow_id = Path(__file__).with_name("target-workflow.txt").read_text(encoding="utf-8").strip()\n'
+        '    target_agent_id = Path(__file__).with_name("target-agent.txt").read_text(encoding="utf-8").strip()\n'
         '    async def command(state, runtime):\n'
-        '        runs = runtime.context.workflow_runs\n'
-        '        if runs is None:\n'
-        '            raise RuntimeError("Workflow Run commands are unavailable")\n'
-        '        handle = await runs.start_workflow(\n'
+        '        workflow_runs = runtime.context.workflow_runs\n'
+        '        agent_runs = runtime.context.agent_runs\n'
+        '        if workflow_runs is None or agent_runs is None:\n'
+        '            raise RuntimeError("Graph Run commands are unavailable")\n'
+        '        workflow_handle = await workflow_runs.start_workflow(\n'
         '            target_workflow_id,\n'
-        '            operation_id="smoke-spawn",\n'
+        '            operation_id="smoke-workflow-spawn",\n'
         '        )\n'
-        '        joined = await runs.join([handle.run_id])\n'
+        '        agent_handle = await agent_runs.start(\n'
+        '            target_agent_id,\n'
+        '            [{"role": "user", "content": "exercise persistence child"}],\n'
+        '            operation_id="smoke-agent-spawn",\n'
+        '        )\n'
+        '        joined = await workflow_runs.join([workflow_handle.run_id])\n'
+        '        joined_agent = await agent_runs.join(agent_handle.thread_id, agent_handle.run_id)\n'
         '        return Command(goto="end", update={"shared_vars": {\n'
-        '            "spawned_run_id": handle.run_id,\n'
+        '            "spawned_run_id": workflow_handle.run_id,\n'
         '            "spawned_status": joined[0].status,\n'
         '            "spawned_output": joined[0].output,\n'
+        '            "spawned_agent_run_id": agent_handle.run_id,\n'
+        '            "spawned_agent_status": joined_agent.status,\n'
         '        }})\n'
         '    return command\n',
         encoding="utf-8",
@@ -328,18 +572,19 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
         subprocess, "CREATE_NEW_PROCESS_GROUP", 0
     )
+    server_arguments = [
+        sys.executable,
+        "-X",
+        "utf8",
+        "-m",
+        "agent_shell",
+        "--home",
+        str(work),
+        "--data-dir",
+        str(data_dir),
+    ]
     process = subprocess.Popen(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            "-m",
-            "agent_shell",
-            "--home",
-            str(work),
-            "--data-dir",
-            str(data_dir),
-        ],
+        server_arguments,
         cwd=repo_root / "server",
         env=process_environment,
         stdout=output,
@@ -489,6 +734,74 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "revision": output_templates["catalog"][0]["revision"],
             },
         }
+        persistence_blocks: dict[str, dict] = {}
+        for capability_type in (
+            "filesystem",
+            "filesystem-tools",
+            "model-requirement",
+            "agent-event-output",
+        ):
+            persistence_blocks[capability_type] = _request(
+                client,
+                "POST",
+                f"/agent-shell/api/blocks/{capability_type}",
+                headers=management,
+                json_body=_payload(
+                    capability_type,
+                    f"{mode}-persistence-{capability_type}",
+                    template=template_by_type.get(capability_type),
+                ),
+            ).json()
+        persistence_model_connection = _request(
+            client,
+            "POST",
+            "/agent-shell/api/model-connections",
+            headers=management,
+            json_body={
+                "name": f"{mode}-persistence-model",
+                "provider": "deepseek",
+                "base_url": provider_base_url,
+                "credential": provider_secret,
+                "model": "deepseek-reasoner",
+                "provider_settings": {"streaming": True},
+                "tool_choice": None,
+                "response_format": None,
+                "model_settings": {},
+            },
+        ).json()
+        _request(
+            client,
+            "PUT",
+            (
+                "/agent-shell/api/model-requirements/"
+                f"{persistence_blocks['model-requirement']['id']}/binding"
+            ),
+            headers=management,
+            json_body={"connection_id": persistence_model_connection["id"]},
+        )
+        persistence_main_agent = _request(
+            client,
+            "POST",
+            "/agent-shell/api/main-agents",
+            headers=management,
+            json_body={
+                "name": f"{mode}-persistence-agent",
+                "capability_refs": [
+                    {
+                        "type": capability_type,
+                        "block_id": persistence_blocks[capability_type]["id"],
+                    }
+                    for capability_type in (
+                        "filesystem",
+                        "filesystem-tools",
+                        "model-requirement",
+                        "agent-event-output",
+                    )
+                ],
+                "tool_refs": [],
+                "subagents": [],
+            },
+        ).json()
         workflow_output_template_reference = {
             "key": workflow_output_templates["catalog"][0]["key"],
             "revision": workflow_output_templates["catalog"][0]["revision"],
@@ -544,8 +857,12 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 },
             },
         )
-        (command_template / "target.txt").write_text(
+        (command_template / "target-workflow.txt").write_text(
             target_workflow["id"],
+            encoding="utf-8",
+        )
+        (command_template / "target-agent.txt").write_text(
+            persistence_main_agent["id"],
             encoding="utf-8",
         )
         command_templates = _request(
@@ -647,6 +964,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "model": workflow["name"],
                 "messages": [{"role": "user", "content": "run"}],
             },
+            timeout=20,
         ).json()
         completion_text = completion["choices"][0]["message"]["content"]
         output.flush()
@@ -676,65 +994,71 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 for subject in item["subjects"]
             )
         )
-        assert lifecycle["run_count"] >= 2
+        assert lifecycle["run_count"] >= 3
         assert lifecycle["active_run_count"] == 0
-        lifecycle_id = lifecycle["lifecycle_id"]
-        snapshot = _request(
-            client,
-            "GET",
-            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
-            headers=management,
-        ).json()
-        observed_runs = [
-            (thread["thread_id"], observation)
-            for thread in snapshot["threads"]
-            for observation in thread["runs"]
-            if observation["run"] is not None
-        ]
-        assert len(observed_runs) >= 2
-        inspected_thread_id, inspected_run = observed_runs[0]
-        run_id = inspected_run["run_id"]
-        graph = _request(
-            client,
-            "GET",
-            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/graph",
-            headers=management,
-        ).json()
-        assert graph["run_id"] == run_id
-        state = _request(
-            client,
-            "GET",
-            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/state",
-            headers=management,
-        ).json()
-        assert state["thread_id"] == inspected_thread_id
-        assert state["state"]["checkpoint"] is not None
-        history = _request(
-            client,
-            "GET",
-            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/runs/{run_id}/history?limit=10",
-            headers=management,
-        ).json()
-        assert history["thread_id"] == inspected_thread_id
-        assert history["history"]
-        official_state = _request(
-            client,
-            "GET",
-            f"/threads/{inspected_thread_id}/state",
-            headers=management,
-        ).json()
-        assert official_state["checkpoint"] is not None
-        lifecycle_store = _request(
-            client,
-            "GET",
-            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/store",
-            headers=management,
-        ).json()
-        lifecycle_namespace_leaves = {
-            namespace["namespace"][-1]
-            for namespace in lifecycle_store["namespaces"]
+        assert {"agent", "workflow"} <= {
+            subject["graph_kind"] for subject in lifecycle["subjects"]
         }
-        assert {"input", "runs"} <= lifecycle_namespace_leaves
+        lifecycle_id = lifecycle["lifecycle_id"]
+        persisted_run_identities = _assert_lifecycle_persistence(
+            client,
+            lifecycle_id=lifecycle_id,
+            headers=management,
+            expected_graph_kinds={"agent", "workflow"},
+            minimum_run_count=3,
+        )
+        persistence_dir = data_dir / "state" / "langgraph-dev" / ".langgraph_api"
+        operations_path = persistence_dir / ".langgraph_ops.pckl"
+        operations_mtime = (
+            operations_path.stat().st_mtime_ns if operations_path.exists() else 0
+        )
+        persistence_deadline = time.monotonic() + 12
+        while (
+            not operations_path.exists()
+            or operations_path.stat().st_mtime_ns <= operations_mtime
+        ):
+            if time.monotonic() >= persistence_deadline:
+                raise AssertionError("LangGraph core resources were not persisted")
+            time.sleep(0.1)
+        client.close()
+        _stop_process(process)
+        process = subprocess.Popen(
+            server_arguments,
+            cwd=repo_root / "server",
+            env=process_environment,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            creationflags=creationflags,
+        )
+        client = httpx.Client(base_url=base_url, timeout=3, trust_env=False)
+        deadline = time.monotonic() + 20
+        while True:
+            try:
+                if client.get("/agent-shell/api/health").status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            if process.poll() is not None:
+                output.flush()
+                restart_output = output_path.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                raise AssertionError(
+                    "server exited before restart health became available:\n"
+                    + restart_output
+                )
+            if time.monotonic() >= deadline:
+                raise AssertionError("server did not become healthy after restart")
+            time.sleep(0.1)
+        restarted_run_identities = _assert_lifecycle_persistence(
+            client,
+            lifecycle_id=lifecycle_id,
+            headers=management,
+            expected_graph_kinds={"agent", "workflow"},
+            minimum_run_count=3,
+        )
+        assert restarted_run_identities == persisted_run_identities
         model_connection = _request(
             client,
             "POST",
@@ -819,6 +1143,23 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         ]
         assert updated_model["provider_settings"]["streaming"] is True
         assert updated_model["provider_settings"]["stream_usage"] is True
+        runtime_model_connection = _request(
+            client,
+            "POST",
+            "/agent-shell/api/model-connections",
+            headers=management,
+            json_body={
+                "name": f"{mode}-event-stream-model",
+                "provider": "deepseek",
+                "base_url": provider_base_url,
+                "credential": provider_secret,
+                "model": "deepseek-reasoner",
+                "provider_settings": {"streaming": True},
+                "tool_choice": None,
+                "response_format": None,
+                "model_settings": {},
+            },
+        ).json()
         _request(
             client,
             "PUT",
@@ -827,7 +1168,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 f"{blocks['model-requirement']['id']}/binding"
             ),
             headers=management,
-            json_body={"connection_id": model_connection["id"]},
+            json_body={"connection_id": runtime_model_connection["id"]},
         )
 
         main_agent = _request(
@@ -837,6 +1178,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             headers=management,
             json_body={
                 "name": f"{mode}-main-agent",
+                "is_model_entry": True,
                 "capability_refs": [
                     {
                         "type": "filesystem",
@@ -855,9 +1197,49 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                         "block_id": blocks["agent-event-output"]["id"],
                     },
                 ],
+                "tool_refs": [{"tool_id": blocks["custom-tool"]["id"]}],
                 "subagents": [],
             },
         ).json()
+        stream_fragments = _stream_completion_text(
+            client,
+            headers=inference,
+            model=main_agent["name"],
+        )
+        streamed_output = "".join(stream_fragments)
+        expected_event_text = (
+            "reasoning-delta:think",
+            'tool-call:{"value": "observed"}',
+            "tool-execution:tool-started",
+            "tool-execution:tool-finished",
+            "assistant-text-delta:runtime ",
+            "assistant-text-delta:reply",
+            "lifecycle:running",
+            "lifecycle:completed",
+        )
+        for expected in expected_event_text:
+            assert expected in streamed_output, (expected, stream_fragments)
+        text_chunk = next(
+            index
+            for index in range(len(stream_fragments))
+            if "assistant-text-delta:" in stream_fragments[index]
+        )
+        terminal_chunk = next(
+            index
+            for index in range(len(stream_fragments))
+            if "lifecycle:completed" in stream_fragments[index]
+        )
+        assert text_chunk < terminal_chunk, stream_fragments
+        text_seq_match = re.search(
+            r"assistant-text-delta:[^\n]*\|seq=(\d+)",
+            streamed_output,
+        )
+        terminal_seq_match = re.search(
+            r"lifecycle:completed\|seq=(\d+)",
+            streamed_output,
+        )
+        assert text_seq_match is not None and terminal_seq_match is not None
+        assert int(text_seq_match.group(1)) < int(terminal_seq_match.group(1))
         subagent = _request(
             client,
             "POST",
@@ -926,9 +1308,27 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             assert not ({"blocks", "provider_secrets", "workflows"} & tables)
             assert "checkpoints" not in tables
             assert "store" not in tables
-        assert not (data_dir / "state" / "workflow-checkpoints.sqlite3").exists()
-        assert not (data_dir / "state" / "workflow-store.sqlite3").exists()
-        assert (data_dir / "state" / "langgraph-dev").is_dir()
+        langgraph_state_dir = data_dir / "state" / "langgraph-dev"
+        checkpoint_database_path = langgraph_state_dir / "checkpoints.sqlite3"
+        store_database_path = langgraph_state_dir / "store.sqlite3"
+        assert checkpoint_database_path.is_file()
+        assert store_database_path.is_file()
+        with closing(sqlite3.connect(checkpoint_database_path)) as connection:
+            checkpoint_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            assert {"checkpoints", "writes"} <= checkpoint_tables
+        with closing(sqlite3.connect(store_database_path)) as connection:
+            store_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            assert "store" in store_tables
         event_path = data_dir / "logs" / "security-events.jsonl"
         event_text = event_path.read_text(encoding="utf-8")
         assert provider_secret not in event_text
@@ -941,6 +1341,28 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}",
             headers=management,
         )
+        _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/snapshot",
+            headers=management,
+            expected=404,
+        )
+        _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/store",
+            headers=management,
+            expected=404,
+        )
+        for _graph_kind, thread_id, _run_id in persisted_run_identities:
+            _request(
+                client,
+                "GET",
+                f"/threads/{thread_id}",
+                headers=management,
+                expected=404,
+            )
 
         _request(
             client,
@@ -981,7 +1403,38 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(
             client,
             "DELETE",
+            f"/agent-shell/api/main-agents/{persistence_main_agent['id']}",
+            headers=management,
+        )
+        _request(
+            client,
+            "DELETE",
+            (
+                "/agent-shell/api/model-connections/"
+                f"{persistence_model_connection['id']}"
+            ),
+            headers=management,
+        )
+        for capability_type, block in persistence_blocks.items():
+            _request(
+                client,
+                "DELETE",
+                f"/agent-shell/api/blocks/{capability_type}/{block['id']}",
+                headers=management,
+            )
+        _request(
+            client,
+            "DELETE",
             f"/agent-shell/api/model-connections/{model_id}",
+            headers=management,
+        )
+        _request(
+            client,
+            "DELETE",
+            (
+                "/agent-shell/api/model-connections/"
+                f"{runtime_model_connection['id']}"
+            ),
             headers=management,
         )
         for capability_type, block in blocks.items():
@@ -1005,6 +1458,9 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     finally:
         client.close()
         _stop_process(process)
+        provider_server.shutdown()
+        provider_server.server_close()
+        provider_thread.join(timeout=5)
         output.close()
         if process.returncode not in {0, 1, -15}:
             raise AssertionError(f"server shutdown failed in {mode} mode")

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import runpy
 import warnings
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from pathlib import Path
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.messages import HumanMessage
+from langchain.tools import tool
+from langchain_core.language_models.fake_chat_models import (
+    FakeListChatModel,
+    FakeMessagesListChatModel,
+)
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.outputs import ChatGenerationChunk
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
@@ -24,6 +31,93 @@ from .protocol_event_fixtures import (
 
 class _State(TypedDict, total=False):
     value: str
+
+
+class _StreamingToolCallModel(FakeMessagesListChatModel):
+    """Deterministic LangChain model that exercises the real agent loop."""
+
+    chunks: list[list[AIMessageChunk]]
+    stream_index: int = 0
+
+    def bind_tools(self, _tools: object, **_kwargs: object):
+        return self
+
+    def _stream(
+        self,
+        _messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: object = None,
+        **_kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        del stop, run_manager
+        chunks = self.chunks[self.stream_index]
+        self.stream_index += 1
+        for chunk in chunks:
+            yield ChatGenerationChunk(message=chunk)
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: object = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        for chunk in self._stream(messages, stop, run_manager, **kwargs):
+            yield chunk
+
+
+@tool
+def protocol_lookup(query: str) -> str:
+    """Return one deterministic value for the event-stream contract test."""
+
+    return f"found:{query}"
+
+
+def _streaming_tool_agent():
+    model = _StreamingToolCallModel(
+        responses=[AIMessage(content="unused")],
+        chunks=[
+            [
+                AIMessageChunk(
+                    content=[{"type": "reasoning", "reasoning": "think"}],
+                    id="message-1",
+                ),
+                AIMessageChunk(
+                    content=[],
+                    id="message-1",
+                    tool_call_chunks=[
+                        {
+                            "name": "protocol_lookup",
+                            "args": '{"query":"value"}',
+                            "id": "call-1",
+                            "index": 0,
+                        }
+                    ],
+                ),
+                AIMessageChunk(
+                    content="",
+                    id="message-1",
+                    chunk_position="last",
+                ),
+            ],
+            [
+                AIMessageChunk(
+                    content="done",
+                    id="message-2",
+                    chunk_position="last",
+                )
+            ],
+        ],
+    )
+    return create_agent(model=model, tools=[protocol_lookup])
+
+
+def _message_payload(event: Mapping[str, object]) -> Mapping[str, object] | None:
+    params = event.get("params")
+    data = params.get("data") if isinstance(params, Mapping) else None
+    if not isinstance(data, (list, tuple)) or len(data) != 2:
+        return None
+    return data[0] if isinstance(data[0], Mapping) else None
 
 
 async def _collect(
@@ -107,6 +201,120 @@ def test_locked_message_fixture_matches_real_v3_public_stream() -> None:
     assert isinstance(root_values["params"]["data"]["messages"][0], HumanMessage)
 
 
+def test_real_agent_model_and_tool_events_reach_both_all_events_examples() -> None:
+    agent = _streaming_tool_agent()
+
+    async def run_factory():
+        return await agent.astream_events(
+            {"messages": [{"role": "user", "content": "use the tool"}]},
+            version="v3",
+        )
+
+    events = asyncio.run(_collect(run_factory))
+    messages = [event for event in events if event.get("method") == "messages"]
+    tools = [event for event in events if event.get("method") == "tools"]
+    values = [event for event in events if event.get("method") == "values"]
+
+    def message_event(event_name: str, block_type: str) -> dict[str, object]:
+        return next(
+            event
+            for event in messages
+            if (payload := _message_payload(event)) is not None
+            and payload.get("event") == event_name
+            and isinstance(
+                block := payload.get("content") or payload.get("delta"),
+                Mapping,
+            )
+            and (
+                block.get("type") == block_type
+                or (
+                    block.get("type") == "block-delta"
+                    and isinstance(block.get("fields"), Mapping)
+                    and block["fields"].get("type") == block_type
+                )
+            )
+        )
+
+    reasoning_start = message_event("content-block-start", "reasoning")
+    reasoning_delta = message_event("content-block-delta", "reasoning-delta")
+    reasoning_finish = message_event("content-block-finish", "reasoning")
+    tool_start = message_event("content-block-start", "tool_call_chunk")
+    tool_arguments = message_event("content-block-delta", "tool_call_chunk")
+    tool_finish = message_event("content-block-finish", "tool_call")
+    text_start = message_event("content-block-start", "text")
+    text_delta = message_event("content-block-delta", "text-delta")
+    text_finish = message_event("content-block-finish", "text")
+    tool_started = next(
+        event
+        for event in tools
+        if event["params"]["data"].get("event") == "tool-started"
+    )
+    tool_finished = next(
+        event
+        for event in tools
+        if event["params"]["data"].get("event") == "tool-finished"
+    )
+
+    assert _message_payload(reasoning_delta)["delta"]["reasoning"] == "think"
+    assert _message_payload(tool_arguments)["delta"]["fields"]["args"] == (
+        '{"query":"value"}'
+    )
+    assert _message_payload(tool_finish)["content"]["args"] == {"query": "value"}
+    assert tool_started["params"]["data"]["input"] == {"query": "value"}
+    assert tool_finished["params"]["data"]["output"].content == "found:value"
+    assert _message_payload(text_delta)["delta"]["text"] == "done"
+    assert int(text_delta["seq"]) < int(events[-1]["seq"])
+
+    actual_target_events = (
+        reasoning_start,
+        reasoning_delta,
+        reasoning_finish,
+        tool_start,
+        tool_arguments,
+        tool_finish,
+        tool_started,
+        tool_finished,
+        text_start,
+        text_delta,
+        text_finish,
+        values[-1],
+    )
+    source_root = Path(__file__).resolve().parents[2] / "examples"
+    common_origin = {
+        "lifecycle_id": "lifecycle-1",
+        "run_id": "run-1",
+        "thread_id": "thread-1",
+        "assistant_id": "assistant-1",
+    }
+    for relative_path, origin in (
+        (
+            Path("agent-components/agent-event-output/all-events/main.py"),
+            {
+                **common_origin,
+                "main_agent_id": "agent-1",
+                "main_agent_name": "Writer",
+                "agent_profile_id": "agent-1",
+                "subagent_profile_id": "",
+                "subagent_name": "",
+            },
+        ),
+        (
+            Path("workflow-components/workflow-event-output/all-events/main.py"),
+            {
+                **common_origin,
+                "workflow_id": "workflow-1",
+                "workflow_name": "Research Workflow",
+            },
+        ),
+    ):
+        output = runpy.run_path(str(source_root / relative_path))["output"]
+        rendered = [output(event, origin) for event in actual_target_events]
+        assert all(rendered)
+        assert "think" in rendered[1]
+        assert "query" in rendered[4] and "value" in rendered[4]
+        assert "done" in rendered[9]
+
+
 def test_nested_events_share_one_root_sequence_and_independent_runs_restart_it() -> None:
     def child_node(_state: _State) -> dict[str, str]:
         get_stream_writer()({"kind": "child-progress"})
@@ -164,3 +372,34 @@ def test_nested_events_share_one_root_sequence_and_independent_runs_restart_it()
     assert (node_name, separator) == ("child", ":")
     assert invocation_id
     assert started["params"]["data"]["trigger_call_id"] == invocation_id
+
+    source_root = Path(__file__).resolve().parents[2] / "examples"
+    common_origin = {
+        "lifecycle_id": "lifecycle-1",
+        "run_id": "run-1",
+        "thread_id": "thread-1",
+        "assistant_id": "assistant-1",
+    }
+    for relative_path, origin in (
+        (
+            Path("agent-components/agent-event-output/all-events/main.py"),
+            {
+                **common_origin,
+                "main_agent_id": "agent-1",
+                "main_agent_name": "Writer",
+                "agent_profile_id": "agent-1",
+                "subagent_profile_id": "",
+                "subagent_name": "",
+            },
+        ),
+        (
+            Path("workflow-components/workflow-event-output/all-events/main.py"),
+            {
+                **common_origin,
+                "workflow_id": "workflow-1",
+                "workflow_name": "Research Workflow",
+            },
+        ),
+    ):
+        output = runpy.run_path(str(source_root / relative_path))["output"]
+        assert all(output(event, origin) for event in (started, custom))

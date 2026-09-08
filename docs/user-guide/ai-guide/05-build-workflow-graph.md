@@ -23,7 +23,6 @@ Content-Type: application/json
   "name": "review-pipeline",
   "description": "Run deterministic preparation and an independent review agent.",
   "is_model_entry": true,
-  "durability": "async",
   "on_disconnect": "cancel"
 }
 ```

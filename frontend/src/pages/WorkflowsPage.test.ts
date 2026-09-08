@@ -29,7 +29,6 @@ const workflow: Workflow = {
   description: 'Runs the research agent.',
   is_model_entry: true,
   workflow_event_output_id: null,
-  durability: 'async',
   on_disconnect: 'cancel',
   enabled: true,
 }
@@ -102,7 +101,7 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
     const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
-    expect(assemblyColumns).toHaveLength(4)
+    expect(assemblyColumns).toHaveLength(3)
     expect(assemblyColumns.every((column) => column.classes().includes('col-lg-4'))).toBe(true)
     expect(assemblyColumns.every((column) => column.find('.card').exists())).toBe(true)
     expect(wrapper.get('#workflow-description').element.tagName).toBe('TEXTAREA')
@@ -114,7 +113,6 @@ describe('WorkflowsPage', () => {
     await wrapper.get('textarea').setValue('New description')
     await wrapper.get('#workflow-model-entry').setValue(true)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
-    await wrapper.get('#workflow-durability').setValue('sync')
     await wrapper.get('#workflow-on-disconnect').setValue('continue')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
@@ -124,7 +122,6 @@ describe('WorkflowsPage', () => {
       description: 'New description',
       is_model_entry: true,
       workflow_event_output_id: eventOutput.id,
-      durability: 'sync',
       on_disconnect: 'continue',
     })
 
@@ -181,11 +178,10 @@ describe('WorkflowsPage', () => {
     wrapper.unmount()
   })
 
-  it('round-trips official execution settings and can remove event output', async () => {
+  it('round-trips disconnect policy and can remove event output', async () => {
     const configured = {
       ...workflow,
       workflow_event_output_id: eventOutput.id,
-      durability: 'exit' as const,
       on_disconnect: 'continue' as const,
     }
     mockComponentLists([configured])
@@ -200,7 +196,6 @@ describe('WorkflowsPage', () => {
     await flushPromises()
 
     expect((wrapper.get('#workflow-event-output').element as HTMLSelectElement).value).toBe(eventOutput.id)
-    expect((wrapper.get('#workflow-durability').element as HTMLSelectElement).value).toBe('exit')
     expect((wrapper.get('#workflow-on-disconnect').element as HTMLSelectElement).value).toBe('continue')
     await wrapper.get('#workflow-event-output').setValue('')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
@@ -211,7 +206,6 @@ describe('WorkflowsPage', () => {
       description: workflow.description,
       is_model_entry: true,
       workflow_event_output_id: null,
-      durability: 'exit',
       on_disconnect: 'continue',
     })
     wrapper.unmount()

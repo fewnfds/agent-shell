@@ -531,7 +531,6 @@ export interface WorkflowPayload {
   description: string
   is_model_entry: boolean
   workflow_event_output_id: string | null
-  durability: 'sync' | 'async' | 'exit'
   on_disconnect: 'cancel' | 'continue'
 }
 
@@ -602,7 +601,6 @@ export interface LangGraphRunRelation {
   resource_id: string
   resource_name: string
   on_disconnect: 'cancel' | 'continue'
-  checkpoint_mode: 'enabled' | 'disabled' | null
   assistant_id: string
   thread_id: string
   run_id: string
@@ -749,9 +747,7 @@ export interface ToolReference {
 export interface MainAgentPayload {
   name: string
   is_model_entry: boolean
-  durability: 'sync' | 'async' | 'exit'
   on_disconnect: 'cancel' | 'continue'
-  checkpoint_mode: 'enabled' | 'disabled'
   capability_refs: CapabilityReference[]
   tool_refs: ToolReference[]
   middleware_refs: MiddlewareReference[]

@@ -13,6 +13,7 @@ from langgraph_sdk import Auth
 from langgraph_sdk.runtime import ServerRuntime
 
 from agent_shell.app import create_app
+from agent_shell.langgraph_persistence import configure_persistence
 from agent_shell.runtime.context import (
     AgentRunContext,
     AgentRuntimeContext,
@@ -81,9 +82,9 @@ def configure_runtime(settings: Settings, *, serve_frontend: bool) -> FastAPI:
     """Create the one custom app before LangGraph resolves config exports."""
 
     global app, _settings
-    _configure_windows_curl_blockbuster_compatibility()
     _settings = settings
     app = create_app(settings=settings, serve_frontend=serve_frontend)
+    configure_persistence(settings.resolved_langgraph_dev_dir())
     return app
 
 

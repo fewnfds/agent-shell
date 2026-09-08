@@ -37,6 +37,68 @@ def create_command():
 
 脚本对传入 `state` 副本的原地修改不会自动提交。所有 State 变化都必须放入返回 Command 的 `update`。
 
+## 内置成功示例
+
+内置 catalog 提供四个职责互补的 Command：
+
+| 模板 | 从哪里取值 | 写入 `update.shared_vars` | `goto` 来源 |
+| --- | --- | --- | --- |
+| `state-routing-command` | `shared_vars.items` 与两个目标 Node ID | `item_count`、`review_item_count`、`selected_target_node_id` | 有待复核项时使用 `review_target_node_id`，否则使用 `complete_target_node_id` |
+| `runtime-context-command` | `runtime.context`、`runtime.execution_info`、`shared_vars.runtime_target_node_id` | 显式 JSON-compatible `command_runtime.context/execution_info` projection | `runtime_target_node_id` |
+| `agent-run-command` | `shared_vars.agent_run` 与 `runtime.context.agent_runs` | `agent_run_result` | `agent_run.target_node_id` |
+| `workflow-run-command` | `shared_vars.workflow_run` 与 `runtime.context.workflow_runs` | `workflow_run_result` | `workflow_run.target_node_id` |
+
+State routing 的成功输入例如：
+
+```json
+{
+  "shared_vars": {
+    "items": [
+      {"id": "item-1", "requires_review": true},
+      {"id": "item-2", "requires_review": false}
+    ],
+    "review_target_node_id": "manual-review",
+    "complete_target_node_id": "publish"
+  }
+}
+```
+
+该输入返回 `item_count=2`、`review_item_count=1` 并
+`goto="manual-review"`。`manual-review` 和 `publish` 必须是 Canvas 上真实存在、且
+分别由当前 Command outgoing Edge 声明的 Node ID。
+
+Runtime 示例只从 State 读取 `runtime_target_node_id`。Shell 的 request、Lifecycle、
+caller Run、Workflow、Node 与 invocation identity 来自 `runtime.context`；官方
+checkpoint、Thread、Run、task 与 node attempt 来自 `runtime.execution_info`。模板只把
+这些对象的文档化标量字段投影到 `command_runtime`，不会把 facade 或 Runtime 对象写入
+State。
+
+Agent Run 示例读取以下控制对象：
+
+```json
+{
+  "shared_vars": {
+    "agent_run": {
+      "action": "start",
+      "target_node_id": "wait-for-agent",
+      "main_agent_id": "<main-agent-uuid>",
+      "operation_id": "review:artifact-42",
+      "input": [{"role": "user", "content": "Review the artifact."}]
+    }
+  }
+}
+```
+
+`start` 可额外传 `thread_id` 续接 idle Agent Thread。`check`、`get`、`join`、`cancel`
+则读取 `thread_id` 与 `run_id`，并分别调用同名 Agent facade 方法。结果投影到
+`agent_run_result.action/run`；`get` 是 `check` 的同语义入口。
+
+Workflow Run 示例的 `start` 读取 `workflow_id`、`operation_id` 与可选
+`input_shared_vars`。`check`、`join`、`cancel` 读取非空 `run_ids` 数组；`list` 可读取
+`statuses`，允许 `pending/running/error/success/timeout/interrupted`。所有结果统一投影
+为 `workflow_run_result.action/runs` 数组。每种 action 都从
+`workflow_run.target_node_id` 选择下一 Canvas Node。
+
 ## 返回 contract
 
 返回值必须是 `langgraph.types.Command`。当前允许：
@@ -57,12 +119,15 @@ from langgraph.types import Command
 
 
 async def command(state, runtime):
-    handle = await runtime.context.agent_runs.start(
+    agent_runs = runtime.context.agent_runs
+    if agent_runs is None:
+        raise RuntimeError("Agent Run capability is not configured")
+    handle = await agent_runs.start(
         "<main-agent-uuid>",
         [{"role": "user", "content": "Review this result."}],
         operation_id="review-result",
     )
-    result = (await runtime.context.agent_runs.join([handle.run_id]))[0]
+    result = await agent_runs.join(handle.thread_id, handle.run_id)
     return Command(
         update={"shared_vars": {"review": result.output}},
         goto="finish",

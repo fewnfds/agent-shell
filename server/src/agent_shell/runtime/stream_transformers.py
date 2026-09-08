@@ -1,6 +1,6 @@
 """Small, product-owned stream transformer registrations.
 
-The public output pipeline consumes the raw v3 event iterator.  LangGraph only
+The public output pipeline consumes the raw v3 event iterator. LangGraph only
 requests a stream mode when a registered transformer declares that it needs it,
 so this module registers the ``custom`` mode without creating a second output
 projection (or re-emitting custom events through a ``StreamChannel``).
@@ -18,7 +18,7 @@ class RawCustomEventTransformer(StreamTransformer):
 
     ``get_stream_writer()`` events are emitted on the raw ``custom`` channel.
     This transformer intentionally has no projection and never pushes a second
-    event.  LangGraph creates one instance per mux scope (root and each child),
+    event. LangGraph creates one instance per mux scope (root and each child),
     so scoped child handling cannot duplicate events in the root iterator.
     """
 

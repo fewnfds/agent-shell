@@ -21,7 +21,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 目标必须存在于本次请求已经冻结的 Configuration Repository 快照中，并且 `enabled=true`。内部调用不要求 `is_model_entry=true`；该字段只决定 Workflow 是否出现在 `/compat/openai/v1/models` 并可由 OpenAI-compatible 请求启动。
 
-需要 AI执行时直接启动目标 Main Agent，不需要创建单 Agent wrapper Workflow。目标 Main Agent使用自己的 Graph、AgentState、Component引用、`durability`、checkpoint mode与 Agent Event Output；目标 Workflow使用自己的控制 Graph、`durability`与 Workflow Event Output。全部 Run使用实例级 `recursion_limit`与可选 `max_concurrency`。
+需要 AI执行时直接启动目标 Main Agent，不需要创建单 Agent wrapper Workflow。目标 Main Agent使用自己的Graph、AgentState、Component引用与Agent Event Output；目标Workflow使用自己的控制Graph与Workflow Event Output。全部Run使用持久Thread、Agent Server默认`async` durability、实例级`recursion_limit`与可选`max_concurrency`。
 
 ## 3. Runtime command
 
@@ -39,7 +39,7 @@ finished = await runtime.context.agent_runs.join(agent.thread_id, agent.run_id)
 cancelled = await runtime.context.agent_runs.cancel(agent.thread_id, agent.run_id)
 ```
 
-Main Agent `start()`默认创建新 Thread。checkpoint enabled Agent可在同一 Lifecycle显式传 `thread_id=...`创建新的 Run并延续该 Thread的 AgentState；checkpoint disabled Agent只创建 Stateless Run。
+Main Agent `start()`默认创建新 Thread；可在同一 Lifecycle显式传 `thread_id=...`创建新的 Run并延续该 Thread的 AgentState。
 
 Workflow Run facade为：
 
@@ -58,7 +58,7 @@ active = await runtime.context.workflow_runs.list(
 cancelled = await runtime.context.workflow_runs.cancel([handle.run_id])
 ```
 
-Agent Run handle包含 `operation_id/main_agent_id/assistant_id/thread_id/run_id/status/checkpoint_mode`。Agent snapshot另外包含 caller与 Main Agent名称以及可空 output。`check/get`、`join`和 `cancel`都以 `(thread_id, run_id)`精确寻址。
+Agent Run handle包含 `operation_id/main_agent_id/assistant_id/thread_id/run_id/status`。Agent snapshot另外包含 caller与 Main Agent名称以及可空 output。`check/get`、`join`和 `cancel`都以 `(thread_id, run_id)`精确寻址。
 
 Workflow各命令的作用：
 

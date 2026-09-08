@@ -41,15 +41,23 @@ def create_command():
 需要独立AI工作时调用：
 
 ```python
-handle = await runtime.context.agent_runs.start(
+agent_runs = runtime.context.agent_runs
+if agent_runs is None:
+    raise RuntimeError("Agent Run capability is not configured")
+handle = await agent_runs.start(
     "<main-agent-uuid>",
     [{"role": "user", "content": "Perform the review."}],
     operation_id="review:item-42",
 )
-result = (await runtime.context.agent_runs.join([handle.run_id]))[0]
+result = await agent_runs.join(handle.thread_id, handle.run_id)
 ```
 
 child结果不会自动写入Workflow State。Command明确选择需要的projection并放入`Command.update`。
+内置 `state-routing-command`、`runtime-context-command`、`agent-run-command` 和
+`workflow-run-command` 分别给出 State/update/goto、Runtime identity、Agent Run
+五种操作与 Workflow Run 五种操作的完整成功实现。其输入 key 与输出 projection 见
+[Command Node](../../wizard-pages/command-config.md#内置成功示例)，两类 Run facade 的
+逐方法签名见[独立 Agent 与 Workflow Run 调用](07-cross-workflow-runs.md#3-runtime-command)。
 
 ## 3. Custom Tool
 
@@ -99,7 +107,7 @@ def output(event, origin):
     return str(event.get("params", {}).get("data", ""))
 ```
 
-输入是原始LangGraph v3 ProtocolEvent和Shell origin；返回必须是字符串，空字符串隐藏event。projection不执行阻塞I/O，不修改State、checkpoint或routing。
+输入是原始LangGraph v3 ProtocolEvent和Shell origin；返回必须是字符串，空字符串隐藏event。origin 为每个 Run 提供 Main Agent、同步 Subagent 或 Workflow 的产品 ID 与 name。请求入口可以是 Agent 或 Workflow；Agent 入口运行对应的 Main Agent root graph，被调用 Run 使用相同字段。projection不执行阻塞I/O，不修改State、checkpoint或routing。
 
 Agent Event Output只用于Main Agent Run；Workflow Event Output只用于Workflow Run。不要在Workflow脚本中解析embedded Agent来源。
 

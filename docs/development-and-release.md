@@ -21,7 +21,7 @@
 
 Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按 `packaging/windows/runtime-lock.json` 在 `runtime/app` 准备固定的内置 CPython 3.12 和锁定依赖，后端直接读取当前源码；前端输入变化时执行锁定的 npm build。项目只维护这套内置解释器，不声明兼容宿主 Python。
 
-最终服务进程由锁定的 `langgraph dev --no-reload` 启动。现有 FastAPI 作为 custom app 与官方 Assistant、Thread、Run、State 和 Store route 共用同一个 `host:port`；普通启动不创建第二个 API listener。只有系统设置显式配置 `debug_port` 时才额外创建 DAP 调试 listener。LangGraph Dev 的运行目录固定为实例 `data/state/langgraph-dev/`。
+最终服务进程由锁定的 `langgraph dev --no-reload` 启动。现有 FastAPI 作为 custom app 与官方 Assistant、Thread、Run、State 和 Store route 共用同一个 `host:port`；普通启动不创建第二个 API listener。只有系统设置显式配置 `debug_port` 时才额外创建 DAP 调试 listener。LangGraph Dev 的运行目录固定为实例 `data/state/langgraph-dev/`；Core resource 使用该目录下的 `.langgraph_api/`，官方 SQLite checkpointer 与 Store 分别使用 `checkpoints.sqlite3` 和 `store.sqlite3`。应用通过公共 SDK/API 操作这些资源，不直接读取数据库表。
 
 ```powershell
 .\start_server.bat

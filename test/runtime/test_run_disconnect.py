@@ -71,7 +71,6 @@ def _relation(run_id: str, policy: str, *, caller_run_id: str = ""):
         resource_id=f"agent-{run_id}",
         resource_name=f"Agent {run_id}",
         on_disconnect=policy,
-        checkpoint_mode="enabled",
         assistant_id=f"assistant-{run_id}",
         thread_id=f"thread-{run_id}",
         run_id=run_id,

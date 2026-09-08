@@ -15,7 +15,7 @@
 - active/total Run 数量；
 - error/timeout Run 数量。
 
-入口 Assistant、Thread 或 Run 创建失败时，Lifecycle 直接显示 `error`，并保留 `start_error`、目标 Main Agent/Workflow 和 request identity。这个状态只表示官方 Run 建立前的启动失败，因此 Run 数量可以为零。
+入口 Assistant、Thread 或 Run 创建失败时，Lifecycle 直接显示 `error`，并保留 `start_error`、目标 Agent/Workflow 和 request identity。请求入口可以是 Agent 或 Workflow；这个状态只表示官方 Run 建立前的启动失败，因此 Run 数量可以为零。
 
 官方 Run 执行失败时，根 Lifecycle event 显示可读的 `error`、稳定 `error_code` 和可用的 `exception_type`。Agent Server 内部错误 transport 不直接显示为编码文本；无法识别的官方错误字符串保持原文。消息流中的 error event 不会抢先用通用文案覆盖随后到达的根 Lifecycle 失败原因。
 
@@ -23,13 +23,15 @@
 
 ## 监控页
 
-左侧按 Thread 列出 Main Agent 与 Workflow，当前有 pending/running Run 的 Thread 显示动态状态。右侧顶部按创建顺序显示所选 Thread 的 Run；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。
+左侧按 Thread 列出 Agent 与 Workflow，当前有 pending/running Run 的 Thread 显示动态状态。右侧顶部按创建顺序显示所选 Thread 的 Run；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。消息或 Graph 视图由当前所选 Thread 的 subject kind 决定，与整个 Lifecycle 最初由 Agent 还是 Workflow 发起无关。
 
-Main Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_id`：
+Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_id`：
 
-- 页面进入时先从 latest Thread State 恢复已经 checkpoint 的消息；
-- Thread 仍 active 时，`useStream` 加入官方 Thread stream，继续更新当前 reasoning、assistant text、Tool、interrupt 和 error；
-- reasoning 与 assistant text 使用流式 Markdown 渲染；Tool 调用与结果在同一条记录中更新；
+- 页面进入时从 latest Thread State hydration 已经 checkpoint 的消息；
+- Thread 仍 active 时，`useStream.messages` 按官方 message delta 实时增长 reasoning 与 assistant text，Tool、interrupt 和 error 也沿官方 stream 更新；
+- State snapshot 提供 hydration 和最终权威 State，不承担 token 流的重建；
+- reasoning 与 assistant text 在 Run 结束前使用流式 Markdown 渲染，root Run 结束后同一消息转为 final；Tool 调用与结果在同一条记录中更新；
+- Markdown 跟随管理台当前解析后的 light/dark mode；代码块、行内代码、引用、列表等格式使用 `markstream-vue` 自身对应主题变量；
 - 页面只观察，不提供输入、停止、approve 或 State 写入操作；离开页面只断开观察，不取消 Run。
 
 Workflow Thread 使用只读 Vue Flow 显示 Assistant Graph，以 latest Thread State 的 `next` 高亮一个或多个当前节点。active Lifecycle 每三秒刷新 Lifecycle snapshot、Store 和当前 Workflow State；终态后保留最终 State 并停止自动刷新。
@@ -38,7 +40,7 @@ Workflow Thread 使用只读 Vue Flow 显示 Assistant Graph，以 latest Thread
 
 这些数据以官方 `assistant_id`、`thread_id`、`run_id`、Run status、Graph 和 State 为准。Agent Shell 只保存最小 Run relation，用于把没有 Lifecycle Thread metadata 的已登记 Run 纳入对应 Lifecycle。Lifecycle summary 将 relation/Run metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID、名称、Lifecycle ID 和 request ID。
 
-`checkpoint_mode=disabled` 的 Main Agent 使用官方 Stateless Run。运行期间创建的临时 Thread 可被监控；事件会话结束后临时 Thread 被删除，Lifecycle relation 继续存在，因此该 Run 的历史消息、State 和 checkpoint 显示为 unavailable。Workflow 始终使用持久 Thread，没有 Stateless 模式。
+Agent与Workflow Run都使用持久Thread。事件会话结束只关闭观察连接；已经正常提交的历史消息、State、checkpoint和Lifecycle Run relation在服务重启后继续由官方Thread/Store API提供，直到Lifecycle retention或显式删除流程处理该Thread。
 
 ## 下载
 

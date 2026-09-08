@@ -160,11 +160,20 @@ def test_langgraph_dev_cli_receives_only_the_configured_listener_and_worker_opti
     )
     settings = get_settings(application_home=tmp_path)
     calls: list[dict[str, object]] = []
+    compatibility_cwds: list[Path] = []
+    from agent_shell import langgraph_dev
+
     monkeypatch.setattr(cli, "main", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(
+        langgraph_dev,
+        "_configure_windows_curl_blockbuster_compatibility",
+        lambda: compatibility_cwds.append(Path.cwd()),
+    )
     config_path = launcher._langgraph_config_path()
 
     launcher._run_server(settings=settings, config_path=config_path)
 
+    assert compatibility_cwds == [tmp_path]
     assert calls == [
         {
             "args": [

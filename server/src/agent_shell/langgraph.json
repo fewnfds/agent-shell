@@ -6,6 +6,12 @@
     "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph",
     "agent-shell-agent": "agent_shell.langgraph_dev:agent_graph"
   },
+  "checkpointer": {
+    "path": "agent_shell.langgraph_persistence.generate_checkpointer"
+  },
+  "store": {
+    "path": "agent_shell.langgraph_persistence.generate_store"
+  },
   "auth": {
     "path": "agent_shell.langgraph_dev:auth",
     "openapi": {

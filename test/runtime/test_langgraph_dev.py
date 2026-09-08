@@ -10,7 +10,6 @@ from langgraph.runtime import ExecutionInfo, Runtime
 from agent_shell import langgraph_dev
 from agent_shell.runtime.agent_assistants import main_agent_assistant_id
 from agent_shell.runtime.context import (
-    AgentRunContext,
     AgentRuntimeContext,
     WorkflowRunContext,
     WorkflowRuntimeContext,
@@ -57,29 +56,26 @@ def _start_end_document():
     return document
 
 
-def test_factory_uses_assistant_config_and_product_run_context() -> None:
+def test_factory_uses_configurable_identity_from_run_start() -> None:
     workflow_id, configurable = langgraph_dev._factory_inputs(
         {
             "configurable": {
                 "workflow_id": "workflow-1",
                 "configurable_value": "kept",
-            }
-        }
-    )
-    runtime = SimpleNamespace(
-        execution_runtime=SimpleNamespace(
-            context={
                 "request_id": "request-1",
                 "lifecycle_id": "lifecycle-1",
                 "caller_run_id": "caller-run-1",
                 "operation_id": "operation-1",
-                "workflow_id": "caller-copy-must-be-ignored",
-                "run_id": "caller-copy-must-be-ignored",
             }
-        )
+        }
     )
+    runtime = SimpleNamespace(execution_runtime=None)
 
-    context = langgraph_dev._execution_context(runtime, workflow_id=workflow_id)
+    context = langgraph_dev._execution_context(
+        runtime,
+        workflow_id=workflow_id,
+        configurable=configurable,
+    )
 
     assert configurable["configurable_value"] == "kept"
     assert context == WorkflowRuntimeContext(
@@ -91,26 +87,21 @@ def test_factory_uses_assistant_config_and_product_run_context() -> None:
     )
 
 
-def test_agent_factory_uses_stable_assistant_config_and_product_context() -> None:
+def test_agent_factory_uses_configurable_identity_from_run_start() -> None:
     main_agent_id = "11111111-1111-4111-8111-111111111111"
     resolved_id, configurable = langgraph_dev._agent_factory_inputs(
         {
             "configurable": {
                 "main_agent_id": main_agent_id,
                 "configurable_value": "kept",
+                "request_id": "request-1",
+                "lifecycle_id": "lifecycle-1",
+                "caller_run_id": "caller-1",
+                "operation_id": "operation-1",
             }
         }
     )
-    runtime = SimpleNamespace(
-        execution_runtime=SimpleNamespace(
-            context=AgentRunContext(
-                request_id="request-1",
-                lifecycle_id="lifecycle-1",
-                caller_run_id="caller-1",
-                operation_id="operation-1",
-            )
-        )
-    )
+    runtime = SimpleNamespace(execution_runtime=None)
 
     context = langgraph_dev._agent_execution_context(
         runtime,
@@ -158,13 +149,13 @@ def test_official_resource_auth_keeps_thread_reads_and_store_unmodified() -> Non
     }
 
 
-def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+def test_agent_run_start_uses_stream_command_and_configurable_identity() -> None:
+    calls: list[dict[str, object]] = []
 
-    class Runs:
-        async def create(self, *args, **kwargs):
-            calls.append((args, kwargs))
-            return {"run_id": "run-1", "thread_id": "thread-1"}
+    class Run:
+        async def start(self, **kwargs):
+            calls.append(kwargs)
+            return {"run_id": "run-1"}
 
     owner = SimpleNamespace(run_config=lambda: {"recursion_limit": 10})
     coordinator = LifecycleRunCoordinator(
@@ -173,53 +164,57 @@ def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
         _detached_tasks=SimpleNamespace(),
     )
 
-    async def start(checkpoint_mode: str, thread_id: str) -> None:
+    async def start() -> None:
         binding = _AgentRunBinding(
             main_agent={
                 "id": "agent-1",
                 "name": "Agent",
-                "durability": "exit",
-                "checkpoint_mode": checkpoint_mode,
             },
             messages=[{"role": "user", "content": "hello"}],
             request_id="request-1",
             lifecycle_id="lifecycle-1",
             public_model="Agent",
             assistant_id="assistant-1",
-            thread_id=thread_id,
+            thread_id="thread-1",
         )
         await coordinator._start_bound_agent_run(
             binding,
-            SimpleNamespace(runs=Runs()),
+            SimpleNamespace(run=Run()),
         )
 
-    asyncio.run(start("enabled", "thread-stateful"))
-    asyncio.run(start("disabled", ""))
+    asyncio.run(start())
 
-    assert calls[0][0][:2] == ("thread-stateful", "assistant-1")
-    assert calls[0][1]["config"] == {"recursion_limit": 10}
-    assert calls[0][1]["context"] == {
-        "request_id": "request-1",
-        "lifecycle_id": "lifecycle-1",
-        "caller_run_id": "",
-        "operation_id": "",
-    }
-    assert calls[0][1]["durability"] == "exit"
-    assert calls[0][1]["on_completion"] is None
-    assert calls[1][0][:2] == (None, "assistant-1")
-    assert calls[1][1]["config"] == {"recursion_limit": 10}
-    assert calls[1][1]["context"] == calls[0][1]["context"]
-    assert calls[1][1]["durability"] == "exit"
-    assert calls[1][1]["on_completion"] == "keep"
+    assert calls == [{
+        "input": {"messages": [{"role": "user", "content": "hello"}]},
+        "config": {
+            "recursion_limit": 10,
+            "configurable": {
+                "main_agent_id": "agent-1",
+                "request_id": "request-1",
+                "lifecycle_id": "lifecycle-1",
+                "caller_run_id": "",
+                "operation_id": "",
+            },
+        },
+        "metadata": {
+            "lifecycle_id": "lifecycle-1",
+            "request_id": "request-1",
+            "graph_kind": "agent",
+            "main_agent_id": "agent-1",
+            "main_agent_name": "Agent",
+            "caller_run_id": "",
+            "operation_id": "",
+        },
+    }]
 
 
-def test_workflow_run_creation_uses_context_without_configurable() -> None:
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+def test_workflow_run_start_uses_stream_command_and_configurable_identity() -> None:
+    calls: list[dict[str, object]] = []
 
-    class Runs:
-        async def create(self, *args, **kwargs):
-            calls.append((args, kwargs))
-            return {"run_id": "run-1", "thread_id": "thread-1"}
+    class Run:
+        async def start(self, **kwargs):
+            calls.append(kwargs)
+            return {"run_id": "run-1"}
 
     coordinator = LifecycleRunCoordinator(
         _owner=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
@@ -230,7 +225,6 @@ def test_workflow_run_creation_uses_context_without_configurable() -> None:
         workflow={
             "id": "workflow-1",
             "name": "Workflow",
-            "durability": "async",
         },
         document=_start_end_document(),
         request_id="request-1",
@@ -245,22 +239,35 @@ def test_workflow_run_creation_uses_context_without_configurable() -> None:
     asyncio.run(
         coordinator._start_bound_run(
             binding,
-            SimpleNamespace(runs=Runs()),
+            SimpleNamespace(run=Run()),
         )
     )
 
-    assert calls[0][0] == ("thread-1", "assistant-1")
-    assert calls[0][1]["config"] == {"recursion_limit": 10}
-    assert calls[0][1]["context"] == {
-        "request_id": "request-1",
-        "lifecycle_id": "lifecycle-1",
-        "caller_run_id": "caller-1",
-        "operation_id": "operation-1",
-    }
-    assert calls[0][1]["durability"] == "async"
+    assert calls == [{
+        "input": {"shared_vars": {}},
+        "config": {
+            "recursion_limit": 10,
+            "configurable": {
+                "workflow_id": "workflow-1",
+                "request_id": "request-1",
+                "lifecycle_id": "lifecycle-1",
+                "caller_run_id": "caller-1",
+                "operation_id": "operation-1",
+            },
+        },
+        "metadata": {
+            "lifecycle_id": "lifecycle-1",
+            "request_id": "request-1",
+            "graph_kind": "workflow",
+            "workflow_id": "workflow-1",
+            "workflow_name": "Workflow",
+            "caller_run_id": "caller-1",
+            "operation_id": "operation-1",
+        },
+    }]
 
 
-def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
+def test_agent_opens_persistent_thread_stream_before_starting_run() -> None:
     order: list[str] = []
 
     class Assistants:
@@ -268,8 +275,19 @@ def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
             order.append("assistant")
             return {"assistant_id": "assistant-1", "name": "Agent"}
 
+    class Run:
+        async def start(self, **kwargs):
+            assert kwargs["config"]["configurable"]["main_agent_id"] == (
+                "11111111-1111-4111-8111-111111111111"
+            )
+            order.append("run")
+            return {"run_id": "run-1"}
+
     class Stream:
         events = None
+
+        def __init__(self):
+            self.run = Run()
 
         async def __aenter__(self):
             order.append("stream-enter")
@@ -288,16 +306,9 @@ def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
             assert (thread_id, assistant_id) == ("thread-1", "assistant-1")
             return Stream()
 
-    class Runs:
-        async def create(self, thread_id: str, assistant_id: str, **_kwargs):
-            assert (thread_id, assistant_id) == ("thread-1", "assistant-1")
-            order.append("run")
-            return {"thread_id": thread_id, "run_id": "run-1"}
-
     class Client:
         assistants = Assistants()
         threads = Threads()
-        runs = Runs()
 
         async def aclose(self):
             order.append("client-close")
@@ -317,8 +328,6 @@ def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
         main_agent={
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Agent",
-            "durability": "async",
-            "checkpoint_mode": "enabled",
         },
         messages=[{"role": "user", "content": "hello"}],
         request_id="request-1",
@@ -329,8 +338,7 @@ def test_stateful_agent_opens_thread_stream_before_creating_run() -> None:
     async def scenario() -> None:
         opened_client, stream = await coordinator._open_agent_run_session(binding)
         assert opened_client is client
-        assert stream is not None
-        await coordinator._start_bound_agent_run(binding, opened_client)
+        await coordinator._start_bound_agent_run(binding, stream)
         await coordinator.close_official_session(binding.thread_id)
 
     asyncio.run(scenario())

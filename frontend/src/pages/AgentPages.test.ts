@@ -39,9 +39,7 @@ describe('agent authoring pages', () => {
       expect.objectContaining({
         name: 'Shared name',
         is_model_entry: true,
-        durability: 'sync',
         on_disconnect: 'continue',
-        checkpoint_mode: 'disabled',
       }),
     )
     expect(api.createMainAgent).not.toHaveBeenCalled()

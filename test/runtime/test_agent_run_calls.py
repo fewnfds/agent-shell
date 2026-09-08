@@ -29,10 +29,34 @@ class _Store:
         return {"items": values[offset : offset + limit]}
 
 
+class _StreamRun:
+    def __init__(self, client: "_Client", thread_id: str, assistant_id: str) -> None:
+        self._client = client
+        self._thread_id = thread_id
+        self._assistant_id = assistant_id
+
+    async def start(self, **kwargs):
+        return await self._client.runs.start(
+            self._thread_id,
+            self._assistant_id,
+            **kwargs,
+        )
+
+
 class _Stream:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        client: "_Client" | None = None,
+        thread_id: str = "",
+        assistant_id: str = "",
+    ) -> None:
         self.closed = False
         self.events = self._events()
+        self.run = (
+            _StreamRun(client, thread_id, assistant_id)
+            if client is not None
+            else None
+        )
 
     async def _events(self):
         if False:
@@ -46,7 +70,8 @@ class _Stream:
 
 
 class _Threads:
-    def __init__(self) -> None:
+    def __init__(self, client: "_Client") -> None:
+        self._client = client
         self.values: dict[str, dict] = {}
         self.states: dict[str, dict] = {}
         self.deleted: list[str] = []
@@ -68,8 +93,7 @@ class _Threads:
         return deepcopy(self.values[thread_id])
 
     def stream(self, thread_id: str, *, assistant_id: str):
-        del thread_id, assistant_id
-        return _Stream()
+        return _Stream(self._client, thread_id, assistant_id)
 
     async def get_state(self, thread_id: str):
         return deepcopy(self.states[thread_id])
@@ -102,13 +126,10 @@ class _Runs:
         self.failure: Exception | None = None
         self._next = 0
 
-    async def create(self, thread_id, assistant_id, **kwargs):
+    async def start(self, thread_id, assistant_id, **kwargs):
         if self.failure is not None:
             raise self.failure
         self._next += 1
-        if thread_id is None:
-            created = await self._client.threads.create(metadata={})
-            thread_id = created["thread_id"]
         run_id = f"run-{self._next}"
         value = {
             "thread_id": thread_id,
@@ -159,7 +180,7 @@ class _Assistants:
 class _Client:
     def __init__(self) -> None:
         self.store = _Store()
-        self.threads = _Threads()
+        self.threads = _Threads(self)
         self.runs = None
         self.assistants = _Assistants()
 
@@ -231,8 +252,6 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
         profile = {
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Researcher",
-            "checkpoint_mode": "enabled",
-            "durability": "async",
         }
         coordinator, client, _detached = _coordinator(profile)
         coordinator._lifecycle_id = ""
@@ -275,8 +294,6 @@ def test_start_error_marker_survives_diagnostic_write_failure() -> None:
         profile = {
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Researcher",
-            "checkpoint_mode": "enabled",
-            "durability": "async",
         }
         coordinator, client, _detached = _coordinator(profile)
         coordinator._lifecycle_id = ""
@@ -310,8 +327,6 @@ def test_agent_run_facade_is_idempotent_and_can_continue_a_thread() -> None:
         profile = {
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Researcher",
-            "checkpoint_mode": "enabled",
-            "durability": "async",
         }
         coordinator, client, detached = _coordinator(profile)
         caller = RunCaller("request-1", "lifecycle-1", "caller-run")
@@ -369,13 +384,11 @@ def test_agent_run_facade_is_idempotent_and_can_continue_a_thread() -> None:
     asyncio.run(scenario())
 
 
-def test_stateless_agent_result_lives_until_the_caller_lifecycle_finishes() -> None:
+def test_new_agent_thread_remains_after_its_event_session_closes() -> None:
     async def scenario() -> None:
         profile = {
             "id": "11111111-1111-4111-8111-111111111111",
-            "name": "Stateless worker",
-            "checkpoint_mode": "disabled",
-            "durability": "exit",
+            "name": "Persistent worker",
         }
         coordinator, client, detached = _coordinator(profile)
         caller = RunCaller("request-1", "lifecycle-1", "caller-run")
@@ -383,18 +396,14 @@ def test_stateless_agent_result_lives_until_the_caller_lifecycle_finishes() -> N
         coordinator._sessions["caller-thread"] = SimpleNamespace(
             client=client,
             stream=caller_stream,
-            delete_thread_on_close=False,
-            delete_thread_with_lifecycle=False,
         )
 
         handle = await coordinator.start_agent_run(
             profile["id"],
-            [{"role": "user", "content": "one shot"}],
-            operation_id="one-shot",
+            [{"role": "user", "content": "persist this"}],
+            operation_id="persistent-run",
             caller=caller,
         )
-        assert handle.checkpoint_mode == "disabled"
-        assert client.runs.created[0]["on_completion"] == "keep"
         await asyncio.gather(*detached.tasks)
         assert handle.thread_id in client.threads.values
 
@@ -405,6 +414,7 @@ def test_stateless_agent_result_lives_until_the_caller_lifecycle_finishes() -> N
         )
         assert joined.status == "success"
         await coordinator.close_official_session("caller-thread")
-        assert handle.thread_id in client.threads.deleted
+        assert handle.thread_id in client.threads.values
+        assert handle.thread_id not in client.threads.deleted
 
     asyncio.run(scenario())

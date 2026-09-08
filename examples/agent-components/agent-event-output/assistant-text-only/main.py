@@ -1,4 +1,4 @@
-"""Publish only final assistant text from the Agent event stream.
+"""Publish only assistant text fragments from the Agent event stream.
 
 Agent Event Output receives every raw LangGraph v3 ProtocolEvent. Returning an empty
 string filters an event, so this example hides reasoning, tool activity,
@@ -11,7 +11,7 @@ are owned by Agent Shell. No third-party dependency is required.
 
 
 def output(event, origin):
-    """Return Main Agent response fragments and filter every other event."""
+    """Return Agent response fragments and filter every other event."""
 
     if event.get("method") != "messages" or not origin.get("agent_profile_id"):
         return ""

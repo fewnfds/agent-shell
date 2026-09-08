@@ -34,7 +34,6 @@ function blankWorkflow(): WorkflowResource {
     description: '',
     is_model_entry: false,
     workflow_event_output_id: null,
-    durability: 'async',
     on_disconnect: 'cancel',
     enabled: false,
   }
@@ -48,7 +47,6 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     description: workflow.description ?? '',
     is_model_entry: workflow.is_model_entry ?? false,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
-    durability: workflow.durability ?? 'async',
     on_disconnect: workflow.on_disconnect ?? 'cancel',
     enabled: workflow.enabled ?? false,
   }
@@ -60,7 +58,6 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     description: workflow.description.trim(),
     is_model_entry: workflow.is_model_entry,
     workflow_event_output_id: workflow.workflow_event_output_id || null,
-    durability: workflow.durability,
     on_disconnect: workflow.on_disconnect,
   }
 }
@@ -244,20 +241,6 @@ onMounted(() => { void loadWorkspace() })
                   <select id="workflow-model-entry" v-model="form.is_model_entry" class="form-select">
                     <option :value="true">{{ t('common.yes') }}</option>
                     <option :value="false">{{ t('common.no') }}</option>
-                  </select>
-                </div>
-              </section>
-            </div>
-            <div class="col-lg-4 col-md-6">
-              <section class="card h-100">
-                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <label class="card-title mb-0" for="workflow-durability">{{ t('workflows.fields.durability') }}</label>
-                </header>
-                <div class="card-body">
-                  <select id="workflow-durability" v-model="form.durability" class="form-select">
-                    <option value="sync">{{ t('workflows.durability.sync') }}</option>
-                    <option value="async">{{ t('workflows.durability.async') }}</option>
-                    <option value="exit">{{ t('workflows.durability.exit') }}</option>
                   </select>
                 </div>
               </section>

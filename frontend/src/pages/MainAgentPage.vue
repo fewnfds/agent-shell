@@ -199,7 +199,7 @@ onMounted(() => {
 
         <section class="mb-3" :aria-label="t('agents.mainAgent.runtimeTitle')">
           <div class="row g-3">
-            <div class="col-md-6 col-xxl-3">
+            <div class="col-md-6">
               <section class="card h-100">
                 <header class="card-header">
                   <label class="card-title mb-0" for="main-agent-model-entry">{{ t('agents.mainAgent.fields.isModelEntry') }}</label>
@@ -212,21 +212,7 @@ onMounted(() => {
                 </div>
               </section>
             </div>
-            <div class="col-md-6 col-xxl-3">
-              <section class="card h-100">
-                <header class="card-header">
-                  <label class="card-title mb-0" for="main-agent-durability">{{ t('agents.mainAgent.fields.durability') }}</label>
-                </header>
-                <div class="card-body">
-                  <select id="main-agent-durability" v-model="form.durability" class="form-select">
-                    <option value="sync">{{ t('agents.mainAgent.durability.sync') }}</option>
-                    <option value="async">{{ t('agents.mainAgent.durability.async') }}</option>
-                    <option value="exit">{{ t('agents.mainAgent.durability.exit') }}</option>
-                  </select>
-                </div>
-              </section>
-            </div>
-            <div class="col-md-6 col-xxl-3">
+            <div class="col-md-6">
               <section class="card h-100">
                 <header class="card-header">
                   <label class="card-title mb-0" for="main-agent-disconnect">{{ t('agents.mainAgent.fields.onDisconnect') }}</label>
@@ -235,19 +221,6 @@ onMounted(() => {
                   <select id="main-agent-disconnect" v-model="form.on_disconnect" class="form-select">
                     <option value="cancel">{{ t('agents.mainAgent.onDisconnect.cancel') }}</option>
                     <option value="continue">{{ t('agents.mainAgent.onDisconnect.continue') }}</option>
-                  </select>
-                </div>
-              </section>
-            </div>
-            <div class="col-md-6 col-xxl-3">
-              <section class="card h-100">
-                <header class="card-header">
-                  <label class="card-title mb-0" for="main-agent-checkpoint-mode">{{ t('agents.mainAgent.fields.checkpointMode') }}</label>
-                </header>
-                <div class="card-body">
-                  <select id="main-agent-checkpoint-mode" v-model="form.checkpoint_mode" class="form-select">
-                    <option value="enabled">{{ t('agents.mainAgent.checkpointMode.enabled') }}</option>
-                    <option value="disabled">{{ t('agents.mainAgent.checkpointMode.disabled') }}</option>
                   </select>
                 </div>
               </section>
@@ -429,7 +402,6 @@ onMounted(() => {
           v-model:references="form.subagents"
           :profiles="subagentProfiles"
         />
-
       </template>
       <template #aside>
         <ValidationChecklist

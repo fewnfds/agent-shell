@@ -49,7 +49,6 @@ class GraphRunCallRelation(BaseModel):
     resource_id: str
     resource_name: str
     on_disconnect: OnDisconnect
-    checkpoint_mode: Literal["enabled", "disabled"] | None = None
     assistant_id: str
     thread_id: str
     run_id: str

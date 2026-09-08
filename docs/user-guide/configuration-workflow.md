@@ -11,7 +11,7 @@ Agent Shell 在同一个 Agent Server deployment 中注册两类独立 Graph：
 
 ## Workflow
 
-Workflow metadata 保存 name、description、`is_model_entry`、`durability`、`on_disconnect` 和可选 Workflow Event Output。Graph document 只允许：
+Workflow metadata 保存 name、description、`is_model_entry`、`on_disconnect` 和可选 Workflow Event Output。Graph document 只允许：
 
 - Start：映射 LangGraph `START`；
 - Command：执行配置独占的 async Python，并返回官方 `Command(update, goto)`；
@@ -34,9 +34,9 @@ Main Agent页面装配：
 - 可选capability refs；
 - ordered Custom Tool、Custom Middleware和MCP refs；
 - ordered同步Subagent refs；
-- root-run设置：`is_model_entry`、`checkpoint_mode`、`durability`和`on_disconnect`。
+- root-run设置：`is_model_entry`和`on_disconnect`。
 
-Main Agent UUID 确定稳定 Assistant ID。`checkpoint_mode=enabled`时，同一 Thread 上的后续新 Run 延续 AgentState；`disabled`使用 stateless Run，不承诺跨 Run 消息或 private marker 连续性。`durability=sync|async|exit`直接传给官方 Run，界面名称为【checkpoint 保存时机】。每个 Run 创建时还会冻结该 Main Agent 的【用户断开】策略。
+Main Agent UUID 确定稳定 Assistant ID。每次独立调用创建持久Thread；显式续聊在同一Thread创建后续Run并延续AgentState。durability使用Agent Server默认`async`。每个Run创建时还会冻结该Main Agent的【用户断开】策略。
 
 每次用户交互都是新Run。续聊复用Thread，不复用已结束的Run ID。
 
@@ -50,7 +50,7 @@ Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middlewar
 
 客户端messages作为Main Agent Run input进入AgentState，并作为Lifecycle输入快照保存在Server Store。AAP Custom Middleware在Thread首次运行时整理这份AgentState输入。
 
-AAP使用checkpointed private initialization marker：一个stateful Agent Thread第一次运行时注入一次；同一Thread后续Run延续既有messages，不重复附加。Stateless Run没有跨Runmarker，因此每次独立执行都初始化。
+AAP使用checkpointed private initialization marker：一个Agent Thread第一次运行时注入一次；同一Thread后续Run延续既有messages，不重复附加。每次独立执行使用新Thread并各自初始化。
 
 Subagent默认使用Deep Agents delegated messages；是否增加其他材料由该Subagent自己的ordered Middleware决定。详见[Agent Additional Prompt](agent-additional-prompt.md)。
 

@@ -56,7 +56,6 @@ class _CommandRuntime:
             thread_id="thread-agent",
             run_id="run-agent",
             status="pending",
-            checkpoint_mode="enabled",
         )
 
 

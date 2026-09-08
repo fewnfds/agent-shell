@@ -8,8 +8,6 @@ Main Agent是完整、可复用的Deep Agents assembly和Agent Server root graph
 {
   "name": "Research coordinator",
   "is_model_entry": true,
-  "checkpoint_mode": "enabled",
-  "durability": "async",
   "on_disconnect": "cancel",
   "capability_refs": [
     {"type": "model-requirement", "block_id": "model-requirement-uuid"},

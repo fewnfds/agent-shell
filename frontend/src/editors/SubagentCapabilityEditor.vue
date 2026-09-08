@@ -13,6 +13,8 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: SubagentDraft] }>()
 const { t } = useI18n()
 const draft = useEditorModel(() => props.modelValue, (value) => emit('update:modelValue', value))
+const taskToolName = 'task'
+const availableAgentsPlaceholder = '{available_agents}'
 </script>
 
 <template>
@@ -42,7 +44,7 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
       <div class="list-group list-group-flush">
         <div class="list-group-item" data-testid="tool-description-item">
           <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <label class="form-label font-monospace mb-0" for="subagent-task-description">task</label>
+            <label class="form-label font-monospace mb-0" for="subagent-task-description">{{ taskToolName }}</label>
             <LteButton class="action-button ms-auto" data-action="restore-default" @click="draft.task_description_override = defaults.tool_description">
               <i class="bi bi-arrow-clockwise" aria-hidden="true" />
               {{ t('editors.common.restoreDefault') }}
@@ -55,7 +57,7 @@ const draft = useEditorModel(() => props.modelValue, (value) => emit('update:mod
             :rows="14"
           />
           <p class="form-text mb-0">
-            {{ t('editors.common.requiredVariables') }} <code>{available_agents}</code>
+            {{ t('editors.common.requiredVariables') }} <code>{{ availableAgentsPlaceholder }}</code>
           </p>
         </div>
       </div>
