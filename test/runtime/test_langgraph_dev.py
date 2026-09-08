@@ -132,6 +132,32 @@ def test_agent_factory_uses_stable_assistant_config_and_product_context() -> Non
     assert main_agent_assistant_id(main_agent_id) != main_agent_id
 
 
+def test_official_resource_auth_keeps_thread_reads_and_store_unmodified() -> None:
+    thread_read = {"thread_id": "thread-1", "metadata": {"checkpoint_ns": ""}}
+    store_access = {
+        "namespace": ("workflow-lifecycle", "lifecycle-1", "runs"),
+        "key": "run-1",
+    }
+
+    thread_filter = asyncio.run(
+        langgraph_dev.authorize_single_owner_thread_read(None, thread_read)  # type: ignore[arg-type]
+    )
+    store_filter = asyncio.run(
+        langgraph_dev.authorize_single_owner_store(None, store_access)  # type: ignore[arg-type]
+    )
+
+    assert thread_filter == {"owner": "agent-shell"}
+    assert thread_read == {
+        "thread_id": "thread-1",
+        "metadata": {"checkpoint_ns": ""},
+    }
+    assert store_filter is None
+    assert store_access == {
+        "namespace": ("workflow-lifecycle", "lifecycle-1", "runs"),
+        "key": "run-1",
+    }
+
+
 def test_agent_checkpoint_mode_selects_stateful_or_stateless_run_api() -> None:
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 

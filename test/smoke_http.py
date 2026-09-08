@@ -708,6 +708,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             headers=management,
         ).json()
         assert state["thread_id"] == inspected_thread_id
+        assert state["state"]["checkpoint"] is not None
         history = _request(
             client,
             "GET",
@@ -715,6 +716,25 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             headers=management,
         ).json()
         assert history["thread_id"] == inspected_thread_id
+        assert history["history"]
+        official_state = _request(
+            client,
+            "GET",
+            f"/threads/{inspected_thread_id}/state",
+            headers=management,
+        ).json()
+        assert official_state["checkpoint"] is not None
+        lifecycle_store = _request(
+            client,
+            "GET",
+            f"/agent-shell/api/workflow-lifecycles/{lifecycle_id}/monitoring/store",
+            headers=management,
+        ).json()
+        lifecycle_namespace_leaves = {
+            namespace["namespace"][-1]
+            for namespace in lifecycle_store["namespaces"]
+        }
+        assert {"input", "runs"} <= lifecycle_namespace_leaves
         model_connection = _request(
             client,
             "POST",

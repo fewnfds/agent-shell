@@ -140,6 +140,27 @@ async def authorize_single_owner(
     return {"owner": "agent-shell"}
 
 
+@auth.on.threads.read
+async def authorize_single_owner_thread_read(
+    ctx: Auth.types.AuthContext,
+    value: Auth.types.on.threads.read.value,
+) -> dict[str, str]:
+    """Filter Thread reads without changing checkpoint metadata queries."""
+
+    del ctx, value
+    return {"owner": "agent-shell"}
+
+
+@auth.on.store
+async def authorize_single_owner_store(
+    ctx: Auth.types.AuthContext,
+    value: Auth.types.on.store.value,
+) -> None:
+    """Authorize Server Store namespaces for the sole management owner."""
+
+    del ctx, value
+
+
 def _factory_inputs(config: RunnableConfig) -> tuple[str, dict[str, Any]]:
     configurable = config.get("configurable")
     if not isinstance(configurable, Mapping):
