@@ -51,24 +51,36 @@ def _texts(frames: list[PresentationFrame]) -> list[str]:
     return [frame.text for frame in frames]
 
 
-def test_registered_silent_owner_times_out_and_gives_ready_run_writer() -> None:
-    scheduler = _scheduler(idle_timeout_seconds=2, send_interval_seconds=0)
+def test_registered_silent_run_never_takes_writer_from_output_run() -> None:
+    scheduler = _scheduler(idle_timeout_seconds=10, send_interval_seconds=0)
     scheduler.register_run(*ENTRY, now=0)
     scheduler.register_run(*CHILD, now=0.1)
+
+    assert _publish(
+        scheduler,
+        ENTRY,
+        PresentationFrame(phase="start", text="", block_id="silent-block"),
+        now=0.2,
+    ) == []
+    assert _publish(
+        scheduler,
+        ENTRY,
+        PresentationFrame(phase="delta", text="", block_id="silent-block"),
+        now=0.3,
+    ) == []
     assert _texts(
         _publish(
             scheduler,
             CHILD,
             PresentationFrame(phase="atomic", text="child"),
-            now=0.2,
+            now=0.4,
         )
-    ) == []
+    ) == ["child"]
 
-    scheduler.advance_published(now=1.99)
+    scheduler.finish_run(*CHILD, now=0.5)
+    scheduler.finish_run(*ENTRY, now=0.6)
     assert scheduler.take_published() == []
-    scheduler.advance_published(now=2)
-
-    assert _texts(scheduler.take_published()) == ["child"]
+    assert scheduler.response_complete
 
 
 def test_owner_keeps_all_frames_until_idle_then_resumed_run_queues_at_tail() -> None:
@@ -157,7 +169,7 @@ def test_terminal_owner_immediately_switches_and_terminal_non_owner_drains() -> 
     scheduler = _scheduler(idle_timeout_seconds=20, send_interval_seconds=0)
     scheduler.register_run(*ENTRY, now=0)
     scheduler.register_run(*CHILD, now=0)
-    _publish(
+    frames = _publish(
         scheduler,
         CHILD,
         PresentationFrame(phase="atomic", text="child"),
@@ -166,7 +178,7 @@ def test_terminal_owner_immediately_switches_and_terminal_non_owner_drains() -> 
     scheduler.finish_run(*CHILD, now=0.2)
     scheduler.finish_run(*ENTRY, now=0.3)
 
-    assert _texts(scheduler.take_published()) == ["child"]
+    assert _texts(frames + scheduler.take_published()) == ["child"]
     assert scheduler.all_runs_terminal
     assert scheduler.response_complete
 

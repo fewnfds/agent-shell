@@ -61,8 +61,6 @@ class LifecycleResponseScheduler:
         if key in self._runs:
             return
         self._runs[key] = _RunOutput()
-        self._enqueue_ready(key)
-        self._assign_owner(now)
         self._wakeup.set()
 
     def accepting(self, thread_id: str, run_id: str) -> bool:
@@ -76,7 +74,7 @@ class LifecycleResponseScheduler:
         key = (item.thread_id, item.run_id)
         state = self._runs[key]
         state.pending.append(item.frame)
-        if state.parked:
+        if self._frame_can_emit(item.frame):
             state.parked = False
             self._enqueue_ready(key)
         if self._owner is None:
@@ -107,10 +105,11 @@ class LifecycleResponseScheduler:
         if self._owner == key:
             self._drain_owner(now)
             self._finish_owner(now)
-        elif state.pending:
+        elif self._pending_can_emit(state):
             self._enqueue_ready(key)
         else:
             self._remove_ready(key)
+            state.pending.clear()
             state.blocks.clear()
         if was_owner:
             self._published_frames.extend(self._take_due_batch(now, force=True))
@@ -200,6 +199,14 @@ class LifecycleResponseScheduler:
             item.thread_id, item.run_id
         ):
             raise ValueError("ResponseFrameInput does not belong to this lifecycle scheduler")
+
+    @staticmethod
+    def _frame_can_emit(frame: PresentationFrame) -> bool:
+        return bool(frame.text or frame.segment_end_text)
+
+    @classmethod
+    def _pending_can_emit(cls, state: _RunOutput) -> bool:
+        return any(cls._frame_can_emit(frame) for frame in state.pending)
 
     def _assign_owner(self, now: float) -> None:
         while self._owner is None and self._ready:

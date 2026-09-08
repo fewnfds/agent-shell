@@ -42,7 +42,7 @@ Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`
 
 路由没有分类处理的意外异常使用 `internal_error` code，并直接返回异常类型与具体异常链，同时写入运行诊断。该 catch-all 不把原因替换为固定的 internal operation 文案。
 
-响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的普通 Run 共用 scheduler。Run 在创建后立即进入 FIFO ready queue，因此完全静默的 owner 也从取得 writer 时开始计算 idle timeout；非空 frame 刷新 deadline，超时只让位、不取消 Run，后续再有 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部 scheduler producer terminal 且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用`start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb`与`send_interval_seconds`只控制客户端发送批次，producer 提交不等待 scheduler 消费。
+响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的普通 Run 共用 scheduler。Run 注册只登记 producer；首个含公开文本或可公开 segment end 的 frame 使该 Run 进入 FIFO ready queue，持续返回空字符串的 Agent/Workflow 不取得 writer。取得 writer 后，非空 frame 刷新 idle deadline；超时只让位、不取消 Run，后续再有可公开 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部 scheduler producer terminal 且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用`start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb`与`send_interval_seconds`只控制客户端发送批次，producer 提交不等待 scheduler 消费。
 
 ## 拦截消息
 
