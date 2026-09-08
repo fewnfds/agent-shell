@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { LangGraphRunObservation } from '@/api'
 
 import {
+  monitoringCompactTime,
   monitoringLocalTime,
   monitoringRunStatus,
   monitoringShortId,
@@ -29,15 +30,25 @@ function runTime(observation: LangGraphRunObservation): string {
       v-for="run in runs"
       :key="run.run_id"
       class="runtime-run-item"
-      :class="{ 'runtime-run-item--selected': run.run_id === selectedRunId }"
+      :class="[
+        { 'runtime-run-item--selected': run.run_id === selectedRunId },
+        `runtime-run-item--${monitoringRunStatus(run)}`,
+      ]"
       type="button"
       :aria-current="run.run_id === selectedRunId ? 'true' : undefined"
       @click="emit('select', run.run_id)"
     >
-      <i class="bi" :class="monitoringStatusIcon(monitoringRunStatus(run))" aria-hidden="true" />
-      <span>{{ monitoringLocalTime(runTime(run)) }}</span>
-      <span>{{ monitoringShortId(run.run_id) }}</span>
-      <span>{{ t(`workflowLifecycles.runStatuses.${monitoringRunStatus(run)}`) }}</span>
+      <span class="runtime-run-status">
+        <i class="bi" :class="monitoringStatusIcon(monitoringRunStatus(run))" aria-hidden="true" />
+        <strong>{{ t(`workflowLifecycles.runStatuses.${monitoringRunStatus(run)}`) }}</strong>
+      </span>
+      <span class="runtime-run-meta">
+        <time :datetime="runTime(run)" :title="monitoringLocalTime(runTime(run))">
+          {{ monitoringCompactTime(runTime(run)) }}
+        </time>
+        <span aria-hidden="true">·</span>
+        <span :title="run.run_id">{{ monitoringShortId(run.run_id) }}</span>
+      </span>
     </button>
   </nav>
 </template>
@@ -45,24 +56,23 @@ function runTime(observation: LangGraphRunObservation): string {
 <style scoped>
 .runtime-run-track {
   display: flex;
-  min-height: 3rem;
+  min-height: 2.75rem;
   overflow-x: auto;
   border-block-end: 1px solid var(--bs-border-color);
 }
 
 .runtime-run-item {
+  position: relative;
   display: grid;
-  grid-template-columns: auto auto;
-  align-items: center;
-  gap: .1rem .4rem;
+  align-content: center;
+  gap: .1rem;
   flex: 0 0 auto;
-  min-width: 9.5rem;
-  padding: .45rem .7rem;
+  min-width: 8.75rem;
+  padding: .3rem .65rem;
   border: 0;
-  border-block-end: 2px solid transparent;
+  border-inline-end: 1px solid var(--bs-border-color);
   background: transparent;
-  color: var(--bs-secondary-color);
-  font-size: .7rem;
+  color: var(--bs-body-color);
   text-align: start;
 }
 
@@ -71,7 +81,51 @@ function runTime(observation: LangGraphRunObservation): string {
 }
 
 .runtime-run-item--selected {
-  border-block-end-color: var(--bs-primary);
-  color: var(--bs-body-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.runtime-run-item--selected::after {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: 2px;
+  background: var(--bs-primary);
+  content: '';
+}
+
+.runtime-run-status,
+.runtime-run-meta {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  white-space: nowrap;
+}
+
+.runtime-run-status strong {
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.runtime-run-meta {
+  color: var(--bs-secondary-color);
+  font-size: .7rem;
+}
+
+.runtime-run-item--pending .runtime-run-status i,
+.runtime-run-item--running .runtime-run-status i {
+  color: var(--bs-primary);
+}
+
+.runtime-run-item--success .runtime-run-status i {
+  color: var(--bs-success);
+}
+
+.runtime-run-item--error .runtime-run-status i {
+  color: var(--bs-danger);
+}
+
+.runtime-run-item--timeout .runtime-run-status i,
+.runtime-run-item--interrupted .runtime-run-status i {
+  color: var(--bs-warning);
 }
 </style>

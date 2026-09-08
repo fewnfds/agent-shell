@@ -74,6 +74,19 @@ export function monitoringLocalTime(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
+export function monitoringCompactTime(value: string): string {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }).format(parsed)
+}
+
 export function monitoringShortId(value: string): string {
-  return value.length > 12 ? value.slice(0, 8) : value
+  return value.length > 12 ? `…${value.slice(-8)}` : value
 }

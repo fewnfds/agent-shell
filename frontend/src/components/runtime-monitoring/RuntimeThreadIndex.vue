@@ -4,12 +4,11 @@ import { useI18n } from 'vue-i18n'
 import type { LangGraphThreadObservation } from '@/api'
 
 import {
+  monitoringCompactTime,
   monitoringLocalTime,
   monitoringPrimaryRun,
   monitoringRunName,
   monitoringShortId,
-  monitoringStatusIcon,
-  monitoringThreadActive,
   monitoringThreadGraphKind,
   monitoringThreadStatus,
 } from './presentation'
@@ -45,10 +44,10 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
         v-for="thread in threads"
         :key="thread.thread_id"
         class="runtime-thread-row"
-        :class="{
-          'runtime-thread-row--selected': thread.thread_id === selectedThreadId,
-          'runtime-thread-row--active': monitoringThreadActive(thread),
-        }"
+        :class="[
+          { 'runtime-thread-row--selected': thread.thread_id === selectedThreadId },
+          `runtime-thread-row--${monitoringThreadStatus(thread)}`,
+        ]"
         type="button"
         role="option"
         :aria-selected="thread.thread_id === selectedThreadId"
@@ -64,20 +63,23 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
           />
         </span>
         <span class="runtime-thread-main">
-          <strong>{{ threadName(thread) }}</strong>
-          <span>{{ monitoringShortId(thread.thread_id) }}</span>
-          <span>{{ monitoringLocalTime(threadUpdatedAt(thread)) }}</span>
-        </span>
-        <span class="runtime-thread-status">
-          <i
-            class="bi"
-            :class="[
-              monitoringStatusIcon(monitoringThreadStatus(thread)),
-              { 'runtime-status-spin': monitoringThreadActive(thread) },
-            ]"
-            aria-hidden="true"
-          />
-          {{ t(`workflowLifecycles.runStatuses.${monitoringThreadStatus(thread)}`) }}
+          <span class="runtime-thread-summary">
+            <strong>{{ threadName(thread) }}</strong>
+            <time
+              :datetime="threadUpdatedAt(thread)"
+              :title="monitoringLocalTime(threadUpdatedAt(thread))"
+            >{{ monitoringCompactTime(threadUpdatedAt(thread)) }}</time>
+          </span>
+          <span class="runtime-thread-meta">
+            <span class="runtime-thread-identity" :title="thread.thread_id">
+              {{ monitoringShortId(thread.thread_id) }}
+              <span aria-hidden="true">·</span>
+              {{ thread.runs.length }} {{ t('runtimeMonitoring.runs') }}
+            </span>
+            <span class="runtime-thread-status">
+              {{ t(`workflowLifecycles.runStatuses.${monitoringThreadStatus(thread)}`) }}
+            </span>
+          </span>
         </span>
       </button>
     </div>
@@ -94,8 +96,8 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 3rem;
-  padding-inline: .85rem;
+  min-height: 2.5rem;
+  padding-inline: .75rem;
   border-block-end: 1px solid var(--bs-border-color);
 }
 
@@ -106,24 +108,27 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
 }
 
 .runtime-panel-heading span,
-.runtime-thread-main span,
+.runtime-thread-summary time,
+.runtime-thread-meta,
 .runtime-thread-status {
   color: var(--bs-secondary-color);
   font-size: .75rem;
 }
 
 .runtime-thread-list {
-  height: calc(100% - 3rem);
+  height: calc(100% - 2.5rem);
   overflow: auto;
 }
 
 .runtime-thread-row {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: .65rem;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: .5rem;
   width: 100%;
-  padding: .8rem;
+  min-height: 3.5rem;
+  padding: .5rem .7rem;
   border: 0;
   border-block-end: 1px solid var(--bs-border-color);
   background: transparent;
@@ -145,43 +150,59 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
   content: '';
 }
 
-.runtime-thread-row--active {
-  box-shadow: inset 0 -2px 0 var(--bs-primary-border-subtle);
+.runtime-thread-icon {
+  display: grid;
+  place-items: center;
+  color: var(--bs-secondary-color);
 }
 
-.runtime-thread-icon {
-  padding-block-start: .1rem;
-  color: var(--bs-secondary-color);
+.runtime-thread-row--pending .runtime-thread-icon,
+.runtime-thread-row--running .runtime-thread-icon {
+  color: var(--bs-primary);
+}
+
+.runtime-thread-row--success .runtime-thread-icon {
+  color: var(--bs-success);
+}
+
+.runtime-thread-row--error .runtime-thread-icon {
+  color: var(--bs-danger);
+}
+
+.runtime-thread-row--timeout .runtime-thread-icon,
+.runtime-thread-row--interrupted .runtime-thread-icon {
+  color: var(--bs-warning);
 }
 
 .runtime-thread-main {
   display: grid;
   min-width: 0;
+  gap: .15rem;
 }
 
-.runtime-thread-main strong {
+.runtime-thread-summary,
+.runtime-thread-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.runtime-thread-summary strong,
+.runtime-thread-identity {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.runtime-thread-summary strong {
+  font-weight: 600;
+}
+
+.runtime-thread-summary time,
 .runtime-thread-status {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-}
-
-.runtime-status-spin {
-  animation: runtime-status-spin 1.2s linear infinite;
-}
-
-@keyframes runtime-status-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .runtime-status-spin { animation: none; }
+  flex: 0 0 auto;
 }
 
 @media (max-width: 991.98px) {
