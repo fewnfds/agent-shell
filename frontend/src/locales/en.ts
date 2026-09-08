@@ -303,9 +303,10 @@ export const en: MessageSchema = {
   runtimeMonitoring: {
     title: 'Lifecycle monitoring',
     lifecycleId: 'Lifecycle',
-    backToCatalog: 'Back to Lifecycle catalog',
     download: 'Download',
     threads: 'Threads',
+    resizeThreads: 'Resize Threads and Graph columns',
+    resizeInspector: 'Resize Graph and State / Store columns',
     runs: 'Runs',
     data: 'Runtime data',
     store: 'Store',

@@ -49,7 +49,7 @@
   "styles": {
     "globalCssPaths": ["src/styles/management-console.css"],
     "allowScopedSfcStyles": true,
-    "inlineStylePaths": [],
+    "inlineStylePaths": ["src/pages/RuntimeMonitoringPage.vue"],
     "hardcodedColorsAllowed": false,
     "forbiddenClassNameFragments": ["badge", "pill"]
   }

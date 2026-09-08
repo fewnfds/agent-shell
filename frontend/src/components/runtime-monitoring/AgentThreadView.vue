@@ -335,7 +335,9 @@ watch([stream.messages, stream.toolCalls, stream.interrupts], async () => {
   border-radius: 50%;
 }
 
-:deep(.markdown-body) {
+:deep(.markstream-vue) {
+  --ms-flow-paragraph-y: .75em;
+
   color: inherit;
   background: transparent;
 }

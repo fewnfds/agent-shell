@@ -301,9 +301,10 @@ export const zhCN = {
   runtimeMonitoring: {
     title: 'Lifecycle 监控',
     lifecycleId: 'Lifecycle',
-    backToCatalog: '返回 Lifecycle 目录',
     download: '下载',
     threads: 'Threads',
+    resizeThreads: '调整 Threads 与 Graph 列宽',
+    resizeInspector: '调整 Graph 与 State / Store 列宽',
     runs: 'Runs',
     data: '运行数据',
     store: 'Store',

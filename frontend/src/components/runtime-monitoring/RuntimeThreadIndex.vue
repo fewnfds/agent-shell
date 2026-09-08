@@ -88,7 +88,6 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
 .runtime-thread-index {
   min-width: 0;
   overflow: hidden;
-  border-inline-end: 1px solid var(--bs-border-color);
 }
 
 .runtime-panel-heading {

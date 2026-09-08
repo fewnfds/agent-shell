@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { managementApi, type LangGraphLifecycleSnapshot } from '@/api'
 import { en } from '@/locales/en'
@@ -161,8 +161,27 @@ const WorkflowRuntimeViewStub = defineComponent({
   template: '<div data-testid="workflow-runtime">{{ state?.next?.join(",") }}</div>',
 })
 
+const browserStorage = new Map<string, string>()
+const browserStorageMock = {
+  clear: () => browserStorage.clear(),
+  getItem: (key: string) => browserStorage.get(key) ?? null,
+  key: (index: number) => [...browserStorage.keys()][index] ?? null,
+  get length() {
+    return browserStorage.size
+  },
+  removeItem: (key: string) => browserStorage.delete(key),
+  setItem: (key: string, value: string) => browserStorage.set(key, String(value)),
+}
+
+beforeEach(() => {
+  browserStorage.clear()
+  vi.stubGlobal('localStorage', browserStorageMock)
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
+  browserStorage.clear()
+  vi.unstubAllGlobals()
 })
 
 describe('RuntimeMonitoringPage', () => {
@@ -252,5 +271,64 @@ describe('RuntimeMonitoringPage', () => {
     expect(wrapper.text()).toContain('workspace')
     expect(wrapper.find('pre').exists()).toBe(false)
     wrapper.unmount()
+  })
+
+  it('resizes the three columns and restores their widths from browser storage', async () => {
+    vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockResolvedValue(snapshot)
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [],
+    })
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockResolvedValue({
+      run_id: 'run-agent',
+      thread_id: 'thread-agent',
+      state: { values: {}, next: [] },
+      error: null,
+    })
+    window.localStorage.setItem(
+      'agent-shell.runtime-monitoring.columns.v1',
+      JSON.stringify({ threads: 320, inspector: 360 }),
+    )
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+          component: RuntimeMonitoringPage,
+        },
+      ],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+
+    const mountPage = () => mount(RuntimeMonitoringPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: { AgentThreadView: AgentThreadViewStub },
+      },
+    })
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const workbench = wrapper.get('.runtime-monitoring-workbench')
+    expect((workbench.element as HTMLElement).style.getPropertyValue('--runtime-threads-width'))
+      .toBe('320px')
+    expect((workbench.element as HTMLElement).style.getPropertyValue('--runtime-inspector-width'))
+      .toBe('360px')
+    expect(wrapper.findAll('[role="separator"]')).toHaveLength(2)
+    expect(wrapper.find('.page-action-dock').exists()).toBe(false)
+
+    await wrapper.findAll('[role="separator"]')[0]?.trigger('keydown', { key: 'ArrowRight' })
+    expect(JSON.parse(window.localStorage.getItem(
+      'agent-shell.runtime-monitoring.columns.v1',
+    ) ?? '{}')).toEqual({ threads: 336, inspector: 360 })
+    wrapper.unmount()
+
+    const restoredWrapper = mountPage()
+    await flushPromises()
+    expect((restoredWrapper.get('.runtime-monitoring-workbench').element as HTMLElement)
+      .style.getPropertyValue('--runtime-threads-width')).toBe('336px')
+    restoredWrapper.unmount()
   })
 })

@@ -7,6 +7,12 @@ import SectionNav from '@/components/SectionNav.vue'
 import type { SectionNavItem } from '@/components/sectionNav'
 import { sectionNavigationForPath } from '@/navigation'
 
+withDefaults(defineProps<{
+  fill?: boolean
+}>(), {
+  fill: false,
+})
+
 const { t } = useI18n()
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -33,8 +39,11 @@ function selectSection(path: string): void {
 </script>
 
 <template>
-  <div class="app-content">
-    <div class="container-fluid pt-3">
+  <div class="app-content" :class="{ 'page-shell--fill': fill }">
+    <div
+      class="container-fluid pt-3"
+      :class="{ 'page-shell-content--fill': fill }"
+    >
       <slot v-if="$slots.status" name="status" />
       <SectionNav
         v-if="sectionItems.length"
@@ -56,3 +65,21 @@ function selectSection(path: string): void {
     <slot name="actions" />
   </div>
 </template>
+
+<style scoped>
+.page-shell--fill,
+.page-shell-content--fill {
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+.page-shell--fill {
+  display: flex;
+  overflow: hidden;
+}
+
+.page-shell-content--fill {
+  display: flex;
+  flex-direction: column;
+}
+</style>

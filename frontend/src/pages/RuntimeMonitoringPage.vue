@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
+import type { CSSProperties } from 'vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -24,9 +25,55 @@ import RuntimeRunTrack from '@/components/runtime-monitoring/RuntimeRunTrack.vue
 import RuntimeThreadIndex from '@/components/runtime-monitoring/RuntimeThreadIndex.vue'
 import WorkflowRuntimeView from '@/components/runtime-monitoring/WorkflowRuntimeView.vue'
 import { useManagementError } from '@/composables/useManagementError'
-import { triggerBrowserDownload } from '@/utils/download'
+import { readBrowserStorage, writeBrowserStorage } from '@/browserStorage'
 
 const LIVE_REFRESH_MILLISECONDS = 3000
+const COLUMN_STORAGE_KEY = 'agent-shell.runtime-monitoring.columns.v1'
+const DEFAULT_THREADS_WIDTH = 288
+const DEFAULT_INSPECTOR_WIDTH = 384
+const MIN_THREADS_WIDTH = 176
+const MIN_PRIMARY_WIDTH = 256
+const MIN_INSPECTOR_WIDTH = 208
+const RESIZER_WIDTH = 8
+const KEYBOARD_RESIZE_STEP = 16
+const UNMEASURED_MAX_WIDTH = 4096
+
+interface ColumnPreferences {
+  threads: number
+  inspector: number
+}
+
+interface ActiveResize {
+  target: 'threads' | 'inspector'
+  pointerId: number
+  startX: number
+  startWidth: number
+}
+
+function finitePositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function readColumnPreferences(): ColumnPreferences {
+  const stored = readBrowserStorage(COLUMN_STORAGE_KEY)
+  if (!stored) {
+    return { threads: DEFAULT_THREADS_WIDTH, inspector: DEFAULT_INSPECTOR_WIDTH }
+  }
+  try {
+    const parsed = JSON.parse(stored) as Partial<ColumnPreferences>
+    return {
+      threads: finitePositive(parsed.threads) ? parsed.threads : DEFAULT_THREADS_WIDTH,
+      inspector: finitePositive(parsed.inspector) ? parsed.inspector : DEFAULT_INSPECTOR_WIDTH,
+    }
+  }
+  catch {
+    return { threads: DEFAULT_THREADS_WIDTH, inspector: DEFAULT_INSPECTOR_WIDTH }
+  }
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum))
+}
 
 const { t } = useI18n()
 const managementError = useManagementError()
@@ -40,10 +87,14 @@ const graph = ref<LangGraphGraphResponse | null>(null)
 const state = ref<LangGraphStateResponse | null>(null)
 const loading = ref(false)
 const detailLoading = ref(false)
-const downloading = ref(false)
 const error = ref('')
 const detailError = ref('')
+const workbench = ref<HTMLElement | null>(null)
+const workbenchWidth = ref(0)
+const columnPreferences = ref<ColumnPreferences>(readColumnPreferences())
+const activeResize = ref<ActiveResize | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+let workbenchResizeObserver: ResizeObserver | undefined
 let detailGeneration = 0
 let refreshing = false
 
@@ -67,6 +118,112 @@ const selectedThreadAvailable = computed(() => selectedThread.value?.thread !== 
 const lifecycleActive = computed(() => (
   snapshot.value?.status === 'pending' || snapshot.value?.status === 'running'
 ))
+const maximumThreadsWidth = computed(() => (
+  workbenchWidth.value > 0
+    ? Math.max(
+        MIN_THREADS_WIDTH,
+        workbenchWidth.value
+          - RESIZER_WIDTH * 2
+          - MIN_PRIMARY_WIDTH
+          - MIN_INSPECTOR_WIDTH,
+      )
+    : UNMEASURED_MAX_WIDTH
+))
+const threadsWidth = computed(() => clamp(
+  columnPreferences.value.threads,
+  MIN_THREADS_WIDTH,
+  maximumThreadsWidth.value,
+))
+const detailWidth = computed(() => (
+  workbenchWidth.value > 0
+    ? workbenchWidth.value - threadsWidth.value - RESIZER_WIDTH
+    : 0
+))
+const maximumInspectorWidth = computed(() => (
+  detailWidth.value > 0
+    ? Math.max(
+        MIN_INSPECTOR_WIDTH,
+        detailWidth.value - RESIZER_WIDTH - MIN_PRIMARY_WIDTH,
+      )
+    : UNMEASURED_MAX_WIDTH
+))
+const inspectorWidth = computed(() => clamp(
+  columnPreferences.value.inspector,
+  MIN_INSPECTOR_WIDTH,
+  maximumInspectorWidth.value,
+))
+const columnStyles = computed<CSSProperties>(() => ({
+  '--runtime-threads-width': `${threadsWidth.value}px`,
+  '--runtime-inspector-width': `${inspectorWidth.value}px`,
+} as CSSProperties))
+
+function persistColumnPreferences(): void {
+  writeBrowserStorage(COLUMN_STORAGE_KEY, JSON.stringify(columnPreferences.value))
+}
+
+function syncWorkbenchWidth(): void {
+  workbenchWidth.value = workbench.value?.clientWidth ?? 0
+}
+
+function updateColumnWidth(target: ActiveResize['target'], requestedWidth: number): void {
+  if (target === 'threads') {
+    columnPreferences.value = {
+      ...columnPreferences.value,
+      threads: clamp(requestedWidth, MIN_THREADS_WIDTH, maximumThreadsWidth.value),
+    }
+    return
+  }
+  columnPreferences.value = {
+    ...columnPreferences.value,
+    inspector: clamp(requestedWidth, MIN_INSPECTOR_WIDTH, maximumInspectorWidth.value),
+  }
+}
+
+function resizeColumns(event: PointerEvent): void {
+  const resize = activeResize.value
+  if (!resize || resize.pointerId !== event.pointerId) return
+  const delta = event.clientX - resize.startX
+  updateColumnWidth(
+    resize.target,
+    resize.target === 'threads' ? resize.startWidth + delta : resize.startWidth - delta,
+  )
+}
+
+function finishColumnResize(event?: PointerEvent): void {
+  if (event && activeResize.value?.pointerId !== event.pointerId) return
+  if (activeResize.value) persistColumnPreferences()
+  activeResize.value = null
+  window.removeEventListener('pointermove', resizeColumns)
+  window.removeEventListener('pointerup', finishColumnResize)
+  window.removeEventListener('pointercancel', finishColumnResize)
+}
+
+function startColumnResize(target: ActiveResize['target'], event: PointerEvent): void {
+  syncWorkbenchWidth()
+  activeResize.value = {
+    target,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: target === 'threads' ? threadsWidth.value : inspectorWidth.value,
+  }
+  window.addEventListener('pointermove', resizeColumns)
+  window.addEventListener('pointerup', finishColumnResize)
+  window.addEventListener('pointercancel', finishColumnResize)
+  event.preventDefault()
+}
+
+function resizeColumnWithKeyboard(target: ActiveResize['target'], event: KeyboardEvent): void {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  syncWorkbenchWidth()
+  const direction = event.key === 'ArrowRight' ? 1 : -1
+  const currentWidth = target === 'threads' ? threadsWidth.value : inspectorWidth.value
+  updateColumnWidth(
+    target,
+    currentWidth + KEYBOARD_RESIZE_STEP * (target === 'threads' ? direction : -direction),
+  )
+  persistColumnPreferences()
+  event.preventDefault()
+}
 
 function selectThread(thread: LangGraphThreadObservation): void {
   selectedThreadId.value = thread.thread_id
@@ -187,25 +344,21 @@ function updateAgentState(values: Record<string, unknown>): void {
   } as LangGraphStateResponse
 }
 
-async function downloadLifecycle(): Promise<void> {
-  downloading.value = true
-  error.value = ''
-  try {
-    const download = await managementApi.downloadLangGraphLifecycle(lifecycleId.value)
-    triggerBrowserDownload(download.blob, download.filename)
-  }
-  catch (cause) {
-    error.value = managementError.describe(cause).display
-  }
-  finally {
-    downloading.value = false
-  }
-}
-
 watch(
   () => `${selectedThreadId.value}:${selectedRunId.value}:${selectedGraphKind.value ?? ''}`,
   () => { void loadRunDetails() },
 )
+
+watch(workbench, (element) => {
+  workbenchResizeObserver?.disconnect()
+  workbenchResizeObserver = undefined
+  if (!element) return
+  syncWorkbenchWidth()
+  if (typeof ResizeObserver !== 'undefined') {
+    workbenchResizeObserver = new ResizeObserver(syncWorkbenchWidth)
+    workbenchResizeObserver.observe(element)
+  }
+})
 
 onMounted(() => {
   void loadLifecycle()
@@ -214,28 +367,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  workbenchResizeObserver?.disconnect()
+  finishColumnResize()
 })
 </script>
 
 <template>
-  <PageShell>
-    <template #actions>
-      <RouterLink class="btn btn-outline-secondary action-button" to="/system/workflow-lifecycles">
-        <i class="bi bi-arrow-left" aria-hidden="true" />
-        {{ t('runtimeMonitoring.backToCatalog') }}
-      </RouterLink>
-      <button
-        class="btn btn-primary action-button"
-        type="button"
-        :disabled="downloading || !snapshot"
-        @click="downloadLifecycle"
-      >
-        <span v-if="downloading" class="spinner-border spinner-border-sm" aria-hidden="true" />
-        <i v-else class="bi bi-download" aria-hidden="true" />
-        {{ t('runtimeMonitoring.download') }}
-      </button>
-    </template>
-
+  <PageShell fill>
     <LteAlert v-if="error" theme="danger" :title="t('runtimeMonitoring.snapshot.loadFailed')">
       {{ error }}
     </LteAlert>
@@ -244,11 +382,32 @@ onUnmounted(() => {
       <span class="spinner-border spinner-border-sm" aria-hidden="true" />
     </div>
 
-    <div v-else-if="snapshot" class="runtime-monitoring-workbench">
+    <div
+      v-else-if="snapshot"
+      ref="workbench"
+      class="runtime-monitoring-workbench"
+      :class="{ 'runtime-monitoring-workbench--resizing': activeResize }"
+      :style="columnStyles"
+    >
       <RuntimeThreadIndex
+        id="runtime-monitoring-threads"
         :threads="snapshot.threads"
         :selected-thread-id="selectedThreadId"
         @select="selectThread"
+      />
+
+      <div
+        class="runtime-column-resizer"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        aria-controls="runtime-monitoring-threads runtime-monitoring-primary"
+        :aria-label="t('runtimeMonitoring.resizeThreads')"
+        :aria-valuemin="MIN_THREADS_WIDTH"
+        :aria-valuemax="maximumThreadsWidth"
+        :aria-valuenow="threadsWidth"
+        @keydown="resizeColumnWithKeyboard('threads', $event)"
+        @pointerdown="startColumnResize('threads', $event)"
       />
 
       <main class="runtime-thread-workspace">
@@ -260,7 +419,7 @@ onUnmounted(() => {
         />
 
         <div class="runtime-detail-grid">
-          <section class="runtime-primary-view">
+          <section id="runtime-monitoring-primary" class="runtime-primary-view">
             <AgentThreadView
               v-if="selectedGraphKind === 'agent' && selectedThreadAvailable && selectedAssistantId"
               :key="`${selectedAssistantId}:${selectedThreadId}`"
@@ -281,7 +440,26 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <RuntimeDataInspector :state="state" :store="store" :loading="detailLoading" />
+          <div
+            class="runtime-column-resizer"
+            role="separator"
+            tabindex="0"
+            aria-orientation="vertical"
+            aria-controls="runtime-monitoring-primary runtime-monitoring-inspector"
+            :aria-label="t('runtimeMonitoring.resizeInspector')"
+            :aria-valuemin="MIN_INSPECTOR_WIDTH"
+            :aria-valuemax="maximumInspectorWidth"
+            :aria-valuenow="inspectorWidth"
+            @keydown="resizeColumnWithKeyboard('inspector', $event)"
+            @pointerdown="startColumnResize('inspector', $event)"
+          />
+
+          <RuntimeDataInspector
+            id="runtime-monitoring-inspector"
+            :state="state"
+            :store="store"
+            :loading="detailLoading"
+          />
         </div>
       </main>
     </div>
@@ -291,19 +469,26 @@ onUnmounted(() => {
 <style scoped>
 .runtime-monitoring-loading {
   display: flex;
+  min-height: 0;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  min-height: 20rem;
   color: var(--bs-secondary-color);
 }
 
 .runtime-monitoring-workbench {
   display: grid;
-  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
-  min-height: 42rem;
-  height: calc(100vh - 10rem);
+  min-height: 0;
+  flex: 1 1 0;
+  grid-template-columns: var(--runtime-threads-width) .5rem minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid var(--bs-border-color);
   background: var(--bs-body-bg);
+}
+
+.runtime-monitoring-workbench--resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .runtime-thread-workspace {
@@ -315,8 +500,36 @@ onUnmounted(() => {
 
 .runtime-detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem);
+  grid-template-columns: minmax(16rem, 1fr) .5rem var(--runtime-inspector-width);
   min-height: 0;
+}
+
+.runtime-column-resizer {
+  position: relative;
+  min-width: .5rem;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.runtime-column-resizer::before {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(50% - .5px);
+  width: 1px;
+  background: var(--bs-border-color);
+  content: '';
+}
+
+.runtime-column-resizer:hover::before,
+.runtime-column-resizer:focus-visible::before {
+  inset-inline-start: calc(50% - 1.5px);
+  width: 3px;
+  background: var(--bs-primary);
+}
+
+.runtime-column-resizer:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
 }
 
 .runtime-primary-view {
@@ -337,12 +550,16 @@ onUnmounted(() => {
 
 @media (max-width: 991.98px) {
   .runtime-monitoring-workbench {
-    grid-template-columns: 1fr;
-    height: auto;
+    display: block;
+    overflow: auto;
   }
 
   .runtime-detail-grid {
-    grid-template-columns: 1fr;
+    display: block;
+  }
+
+  .runtime-column-resizer {
+    display: none;
   }
 
   .runtime-primary-view {

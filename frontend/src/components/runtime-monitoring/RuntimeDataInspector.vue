@@ -84,7 +84,6 @@ function namespaceItems(namespace: LangGraphStoreNamespace): Record<string, Json
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-inline-start: 1px solid var(--bs-border-color);
 }
 
 .runtime-inspector-tabs {
