@@ -20,18 +20,13 @@ const bundleInput = ref<HTMLInputElement | null>(null)
 const bundleFile = ref<File | null>(null)
 const bundlePreview = ref<ConfigurationBundlePreview | null>(null)
 const bundleNames = ref<Record<string, string>>({})
-const bundleBindings = ref<Record<string, { value: string; path_origin?: 'absolute' | 'data-root-relative' }>>({})
+const bundleBindings = ref<Record<string, { value: string; path_origin: 'absolute' | 'data-root-relative' }>>({})
 const bundleBusy = ref(false)
 const bundleError = ref('')
 
 function bindingIsComplete(binding: ConfigurationBundlePreview['filesystem_bindings'][number]): boolean {
   const resolution = bundleBindings.value[binding.binding_id]
-  if (!resolution?.value.trim()) return false
-  return !bindingNeedsPathOrigin(binding) || Boolean(resolution.path_origin)
-}
-
-function bindingNeedsPathOrigin(binding: ConfigurationBundlePreview['filesystem_bindings'][number]): boolean {
-  return binding.kind === 'mapped-directory' || binding.kind === 'local-shell-workspace'
+  return Boolean(resolution?.value.trim() && resolution.path_origin)
 }
 
 const bundleBlockingErrors = computed(() => {
@@ -77,7 +72,7 @@ async function selectBundle(event: Event): Promise<void> {
     ]))
     bundleBindings.value = Object.fromEntries(preview.filesystem_bindings.map((binding) => [binding.binding_id, {
       value: binding.target_value ?? '',
-      ...(binding.source_path_origin === 'data-root-relative' ? { path_origin: 'data-root-relative' as const } : {}),
+      path_origin: binding.source_path_origin,
     }]))
   } catch (cause) {
     bundleError.value = managementError.describe(cause).display
@@ -135,7 +130,7 @@ async function importBundle(): Promise<void> {
     <template v-if="bundlePreview">
       <p class="small font-monospace text-break">{{ t('library.bundle.digest') }}: {{ bundlePreview.bundle_sha256 }}</p>
       <div class="table-responsive mb-3"><table class="table table-striped align-middle"><thead><tr><th>{{ t('library.bundle.originalName') }}</th><th>{{ t('library.bundle.importName') }}</th><th>{{ t('library.bundle.targetId') }}</th></tr></thead><tbody><tr v-for="record in bundlePreview.records" :key="record.source_id"><td>{{ record.original_name }}</td><td><input v-model="bundleNames[record.source_id]" class="form-control" :placeholder="record.requires_confirmation ? record.suggested_name : undefined" required></td><td class="small font-monospace text-break">{{ record.target_id }}</td></tr></tbody></table></div>
-      <section v-if="bundlePreview.filesystem_bindings.length" class="mb-3"><h3 class="h5">{{ t('library.bundle.bindings') }}</h3><div v-for="binding in bundlePreview.filesystem_bindings" :key="binding.binding_id" class="row g-3 align-items-end mb-2"><div v-if="bindingNeedsPathOrigin(binding)" class="col-lg-4"><label class="form-label">{{ t('library.bundle.pathOrigin') }}</label><select v-model="bundleBindings[binding.binding_id]!.path_origin" class="form-select" data-testid="bundle-path-origin"><option disabled value="">{{ t('library.bundle.selectPathOrigin') }}</option><option value="absolute">{{ t('library.bundle.absolute') }}</option><option value="data-root-relative">{{ t('library.bundle.dataRootRelative') }}</option></select></div><div class="col"><label class="form-label">{{ binding.configuration_name }} · {{ binding.path }}</label><input v-model="bundleBindings[binding.binding_id]!.value" class="form-control" data-testid="bundle-binding-value" required></div></div></section>
+      <section v-if="bundlePreview.filesystem_bindings.length" class="mb-3"><h3 class="h5">{{ t('library.bundle.bindings') }}</h3><div v-for="binding in bundlePreview.filesystem_bindings" :key="binding.binding_id" class="row g-3 align-items-end mb-2"><div class="col-lg-4"><label class="form-label">{{ t('library.bundle.pathOrigin') }}</label><select v-model="bundleBindings[binding.binding_id]!.path_origin" class="form-select" data-testid="bundle-path-origin"><option value="absolute">{{ t('library.bundle.absolute') }}</option><option value="data-root-relative">{{ t('library.bundle.dataRootRelative') }}</option></select></div><div class="col"><label class="form-label">{{ binding.configuration_name }} · {{ binding.path }}</label><input v-model="bundleBindings[binding.binding_id]!.value" class="form-control" data-testid="bundle-binding-value" required></div></div></section>
       <LteAlert v-if="bundleBlockingErrors.length" :title="t('library.bundle.blockers')" theme="danger"><p v-for="issue in bundleBlockingErrors" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
       <LteAlert v-if="bundlePreview.warnings.length" :title="t('library.bundle.warnings')" theme="warning"><p v-for="issue in bundlePreview.warnings" :key="`${issue.code}:${issue.source_id}:${issue.path}`" class="mb-1">{{ bundleIssueText(issue) }}</p></LteAlert>
     </template>

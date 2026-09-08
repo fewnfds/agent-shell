@@ -30,13 +30,15 @@ CompositeBackend 组合请求级 `StateBackend`、真实目录映射、请求开
     {
       "virtual_path": "/drafts/",
       "source_path": "H:\\novel\\drafts",
+      "path_origin": "absolute",
       "permission": "read-write"
     }
   ],
   "virtual_files": [
     {
       "virtual_path": "/instructions/AGENT.md",
-      "source_path": "H:\\novel\\AGENT.md",
+      "source_path": "files\\AGENT.md",
+      "path_origin": "data-root-relative",
       "permission": "no-access"
     }
   ],
@@ -45,13 +47,13 @@ CompositeBackend 组合请求级 `StateBackend`、真实目录映射、请求开
 }
 ```
 
-每条来源自己的 `permission` 可选 `read-write`、`read-only`、`no-access`，默认 `read-write`。来源发生父子嵌套时，更具体的虚拟路径权限优先生效。权限只约束 Deep Agents FilesystemMiddleware 提供的文件操作；Custom Tool、Custom Middleware、外部程序和管理台文件管理使用各自的权限边界。
+每条来源的本地路径都显式选择 `path_origin=absolute|data-root-relative`。`absolute` 使用宿主绝对路径；`data-root-relative` 以当前实例 `data/` 为根解析。每条 Composite 来源自己的 `permission` 可选 `read-write`、`read-only`、`no-access`，默认 `read-write`。来源发生父子嵌套时，更具体的虚拟路径权限优先生效。权限只约束 Deep Agents FilesystemMiddleware 提供的文件操作；Custom Tool、Custom Middleware、外部程序和管理台文件管理使用各自的权限边界。
 
 来源类型：
 
-- `mapped_directories` 把虚拟目录实时映射到宿主目录，允许的写入直接落盘。`path_origin=absolute` 要求宿主绝对路径；`path_origin=data-root-relative` 以实例 `data/` 为根解析。`lifecycle_mode=fixed` 直接使用配置目录；`lifecycle_mode=dynamic` 在配置目录下为每个请求 Lifecycle 创建一次 `lifecycle-{uuid}` 子目录，同一 Lifecycle 的所有 Workflow Run 复用该路径；
-- `virtual_directories` 在每次请求开始时把现有目录复制到请求级 StateBackend，来源目录保持原样；
-- `virtual_files` 在每次请求开始时把现有普通文件复制到请求级 StateBackend，来源文件保持原样。
+- `mapped_directories` 把虚拟目录实时映射到宿主目录，允许的写入直接落盘。`lifecycle_mode=fixed` 直接使用配置目录；`lifecycle_mode=dynamic` 在配置目录下为每个请求 Lifecycle 创建一次 `lifecycle-{uuid}` 子目录，同一 Lifecycle 的所有 Workflow Run 复用该路径；
+- `virtual_directories` 在每次请求开始时把 `source_path` 指向的现有目录复制到请求级 StateBackend，来源目录保持原样；
+- `virtual_files` 在每次请求开始时把 `source_path` 指向的现有普通文件复制到请求级 StateBackend，来源文件保持原样。
 
 `skill_package_id` 可选择一份由 Skill Component 制作的 Skill 独立包。运行时把该包只读挂载到 `/skills/`，并装配官方 SkillsMiddleware。Skill 包引用属于 Filesystem Backend，因此 Subagent 继承该 Backend 时同时继承包、路径和权限；替换 Backend 时使用新 Backend 的完整配置。Agent 不直接选择 Skill Component。
 
@@ -73,13 +75,13 @@ LocalShellBackend 把一个已经存在的真实目录作为虚拟根 `/`：
 }
 ```
 
-`workspace` 只包含 `local_path` 与 `path_origin=absolute|data-root-relative`。它是固定工作区，不提供 lifecycle dynamic 模式；运行时直接构造 `LocalShellBackend(root_dir=workspace, virtual_mode=True)`，不创建空执行目录，也没有对应的目录清理程序。Deep Agents 不需要为这个直接 Backend 追加虚拟路径到宿主路径的 mapping 提示。
+`workspace` 只包含 `local_path` 与 `path_origin=absolute|data-root-relative`。相对路径同样以当前实例 `data/` 为根。它是固定工作区，不提供 lifecycle dynamic 模式；运行时直接构造 `LocalShellBackend(root_dir=workspace, virtual_mode=True)`，不创建空执行目录，也没有对应的目录清理程序。Deep Agents 不需要为这个直接 Backend 追加虚拟路径到宿主路径的 mapping 提示。
 
 LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有来源级权限。需要 Skill、混合映射或路径权限时使用 CompositeBackend；需要在真实单工作区中执行命令时使用 LocalShellBackend，并在文件系统工具中显式开启 `execute`。`execute` 直接以 Agent Shell 服务账号权限在宿主机运行命令，没有 sandbox；workspace 只是默认工作目录，命令仍可访问该账号有权访问的其他文件、进程、网络和系统资源。
 
 ## 路径与运行边界
 
-虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。不允许 `..`、重叠 route、重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：`/large_tool_results/`、`/conversation_history/`、`/skills/`、`/memory/`、`/memories/`。
+虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。`data-root-relative` 本地路径拒绝盘符、绝对/UNC 路径、冒号和 `.`/`..` 段，也不能逃出实例 `data/`。所有来源均不允许重叠 route、重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：`/large_tool_results/`、`/conversation_history/`、`/skills/`、`/memory/`、`/memories/`。
 
 Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为 Deep Agents 0.7.7 会为 Composite + execute 无条件追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
 

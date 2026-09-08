@@ -9,7 +9,7 @@ from agent_shell.configuration.identity import ConfigurationId, ConfigurationNam
 
 
 BUNDLE_FORMAT = "agent-shell.configuration-bundle"
-BUNDLE_FORMAT_VERSION = 4
+BUNDLE_FORMAT_VERSION = 5
 
 
 class BundleRoot(BaseModel):
@@ -128,7 +128,7 @@ class FilesystemBindingResolution(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     value: str = Field(min_length=1)
-    path_origin: Literal["absolute", "data-root-relative"] | None = None
+    path_origin: Literal["absolute", "data-root-relative"]
 
 
 class ImportResolutions(BaseModel):

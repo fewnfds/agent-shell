@@ -161,6 +161,12 @@ describe('dedicated block editors', () => {
       global: { plugins: [localizedI18n] },
     })
     expect(filesystem.findAll('[data-testid="mapped-directory-row"]')).toHaveLength(1)
+    const mappedRow = filesystem.get('[data-testid="mapped-directory-row"] .row')
+    expect(mappedRow.find('#mapped-directory-local-path-0').exists()).toBe(true)
+    expect(mappedRow.find('#mapped-directory-path-origin-0').exists()).toBe(true)
+    expect(mappedRow.find('#mapped-directory-virtual-path-0').exists()).toBe(true)
+    expect(mappedRow.find('#mapped-directory-permission-0').exists()).toBe(true)
+    expect(mappedRow.find('#mapped-directory-lifecycle-mode-0').exists()).toBe(true)
     await filesystem.get('#filesystem-backend-local-shell').setValue(true)
     expect((filesystem.emitted('update:modelValue')?.at(-1)?.[0] as { backend_type: string }).backend_type).toBe('local-shell')
   })

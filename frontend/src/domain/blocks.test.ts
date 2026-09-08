@@ -226,6 +226,12 @@ describe('block adapters', () => {
         permission: 'read-only',
       },
     )
+    blank.virtual_files.push({
+      virtual_path: ' /config/default.md ',
+      source_path: ' config/default.md ',
+      path_origin: 'data-root-relative',
+      permission: 'read-only',
+    })
     const payload = filesystemAdapter.toPayload(blank, filesystemDefaults)
     expect(payload.mapped_directories).toEqual([
       {
@@ -236,6 +242,12 @@ describe('block adapters', () => {
         permission: 'read-only',
       },
     ])
+    expect(payload.virtual_files).toEqual([{
+      virtual_path: '/config/default.md',
+      source_path: 'config/default.md',
+      path_origin: 'data-root-relative',
+      permission: 'read-only',
+    }])
     expect(payload.system_prompt_override).toBeNull()
     const tools = filesystemToolsAdapter.blank(filesystemToolsDefaults)
     tools.tool_configs.execute!.visible = true

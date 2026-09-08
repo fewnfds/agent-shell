@@ -102,6 +102,27 @@ def resolve_data_root_relative_path(
     return resolved
 
 
+def resolve_configured_local_path(
+    data_root: Path,
+    value: object,
+    *,
+    path_origin: str,
+    label: str = "configured local path",
+) -> Path:
+    """Resolve a configured host path using its declared origin."""
+
+    if not isinstance(value, str) or not value:
+        raise OwnedPathError(f"{label} must not be empty")
+    configured = Path(value)
+    if path_origin == "absolute":
+        if not configured.is_absolute():
+            raise OwnedPathError(f"{label} must be absolute")
+        return configured.resolve(strict=False)
+    if path_origin != "data-root-relative":
+        raise OwnedPathError(f"{label} has an unsupported path origin")
+    return resolve_data_root_relative_path(data_root, value, label=label)
+
+
 def resolve_owned_relative_path(
     root: Path,
     value: object,
@@ -156,6 +177,7 @@ __all__ = [
     "is_reparse_point",
     "require_data_root_relative_path",
     "require_single_path_segment",
+    "resolve_configured_local_path",
     "resolve_data_root_relative_path",
     "resolve_owned_relative_path",
 ]

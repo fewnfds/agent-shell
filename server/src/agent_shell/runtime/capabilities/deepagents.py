@@ -14,7 +14,11 @@ from agent_shell.contracts import (
     FilesystemToolsBlock,
     SkillBlock,
 )
-from agent_shell.storage.owned_paths import is_plain_tree
+from agent_shell.storage.owned_paths import (
+    OwnedPathError,
+    is_plain_tree,
+    resolve_configured_local_path,
+)
 from agent_shell.validation.capability_assembly import FilesystemMode
 
 
@@ -321,16 +325,46 @@ def _walk_plain_sources(directory: Path) -> Iterator[Path]:
             yield filepath
 
 
+def _resolve_local_path(
+    value: str,
+    path_origin: str,
+    data_root: Path | None,
+    *,
+    label: str,
+) -> Path:
+    if data_root is None:
+        if path_origin == "data-root-relative":
+            raise DeepAgentsCapabilityError(
+                f"{label} requires the instance data root"
+            )
+        return Path(value).resolve(strict=False)
+    try:
+        return resolve_configured_local_path(
+            data_root,
+            value,
+            path_origin=path_origin,
+            label=label,
+        )
+    except OwnedPathError as exc:
+        raise DeepAgentsCapabilityError(str(exc)) from exc
+
+
 def _seed_virtual_sources(
     block: FilesystemBlock,
     create_file_data: Any,
+    data_root: Path | None,
 ) -> dict[str, Any]:
     seeded: dict[str, Any] = {}
     origins: dict[str, Path] = {}
     directory_origins: dict[str, Path] = {}
 
     for binding in block.virtual_directories:
-        source = Path(binding.source_path)
+        source = _resolve_local_path(
+            binding.source_path,
+            binding.path_origin,
+            data_root,
+            label="virtual directory source_path",
+        )
         source_stat = _assert_plain_source(source)
         if not stat.S_ISDIR(source_stat.st_mode):
             raise DeepAgentsCapabilityError(
@@ -373,7 +407,12 @@ def _seed_virtual_sources(
             origins[target] = filepath
 
     for binding in block.virtual_files:
-        source = Path(binding.source_path)
+        source = _resolve_local_path(
+            binding.source_path,
+            binding.path_origin,
+            data_root,
+            label="virtual file source_path",
+        )
         source_stat = _assert_plain_source(source)
         if not stat.S_ISREG(source_stat.st_mode):
             raise DeepAgentsCapabilityError(
@@ -446,6 +485,7 @@ def build_deepagents_capabilities(
     filesystem_tools: FilesystemToolsBlock | None = None,
     filesystem_mode: FilesystemMode,
     skills_dir: Path,
+    data_root: Path | None = None,
     workspace: DeepAgentsWorkspace | None = None,
     mapped_directory_paths: Mapping[str, Path] | None = None,
 ) -> DeepAgentsCapabilities:
@@ -519,7 +559,12 @@ def build_deepagents_capabilities(
         workspace_root = (
             mapped_directory_paths.get("/")
             if mapped_directory_paths is not None
-            else Path(filesystem.workspace.local_path)
+            else _resolve_local_path(
+                filesystem.workspace.local_path,
+                filesystem.workspace.path_origin,
+                data_root,
+                label="LocalShellBackend workspace",
+            )
         )
         if workspace_root is None or not workspace_root.is_dir():
             raise DeepAgentsCapabilityError(
@@ -537,7 +582,12 @@ def build_deepagents_capabilities(
             local_path = (
                 mapped_directory_paths.get(route.virtual_path)
                 if mapped_directory_paths is not None
-                else Path(route.local_path)
+                else _resolve_local_path(
+                    route.local_path,
+                    route.path_origin,
+                    data_root,
+                    label="mapped local_path",
+                )
             )
             if local_path is None:
                 raise DeepAgentsCapabilityError(
@@ -552,7 +602,7 @@ def build_deepagents_capabilities(
                 root_dir=local_path,
                 virtual_mode=True,
             )
-        initial_files = _seed_virtual_sources(filesystem, create_file_data)
+        initial_files = _seed_virtual_sources(filesystem, create_file_data, data_root)
         workspace = DeepAgentsWorkspace(
             default_backend=shared_default_backend,
             routes=agent_routes,

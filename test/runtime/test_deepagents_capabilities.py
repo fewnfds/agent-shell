@@ -25,7 +25,10 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
     filesystem = FilesystemBlock.model_validate({
         "name": "Local workspace",
         "backend_type": "local-shell",
-        "workspace": {"local_path": str(workspace)},
+        "workspace": {
+            "local_path": "workspace",
+            "path_origin": "data-root-relative",
+        },
     })
     tools = FilesystemToolsBlock.model_validate({
         "name": "Local tools",
@@ -35,7 +38,7 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
     capabilities = build_deepagents_capabilities(
         filesystem, None, filesystem_tools=tools,
         filesystem_mode="local-shell", skills_dir=tmp_path / "skills",
-        mapped_directory_paths={"/": workspace},
+        data_root=tmp_path,
     )
 
     assert "execute" in {tool.name for tool in capabilities.middleware[-1].tools}
@@ -249,7 +252,12 @@ def test_composite_sources_compile_atomic_path_permissions(
             "name": "Workspace",
             "system_prompt_override": "Base filesystem prompt",
             "virtual_directories": [
-                {"virtual_path": "/source/", "source_path": str(tmp_path / "source"), "permission": "read-only"},
+                {
+                    "virtual_path": "/source/",
+                    "source_path": "source",
+                    "path_origin": "data-root-relative",
+                    "permission": "read-only",
+                },
                 {"virtual_path": "/private/", "source_path": str(tmp_path / "private"), "permission": "no-access"},
             ],
         }
@@ -273,6 +281,7 @@ def test_composite_sources_compile_atomic_path_permissions(
         filesystem_tools=tools,
         filesystem_mode="composite",
         skills_dir=skills_dir,
+        data_root=tmp_path,
     )
     middleware = capabilities.middleware[0]
 
@@ -391,7 +400,11 @@ def test_request_seed_file_data_uses_string_content_for_text_and_binary(
         {
             "name": "Seed files",
             "virtual_files": [
-                {"virtual_path": "/input/note.txt", "source_path": str(text_source)},
+                {
+                    "virtual_path": "/input/note.txt",
+                    "source_path": "note.txt",
+                    "path_origin": "data-root-relative",
+                },
                 {
                     "virtual_path": "/input/payload.bin",
                     "source_path": str(binary_source),
@@ -405,6 +418,7 @@ def test_request_seed_file_data_uses_string_content_for_text_and_binary(
         None,
         filesystem_mode="composite",
         skills_dir=skills_dir,
+        data_root=tmp_path,
     )
 
     text_data = capabilities.initial_files["/input/note.txt"]

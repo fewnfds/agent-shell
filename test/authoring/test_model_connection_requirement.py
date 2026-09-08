@@ -56,6 +56,7 @@ def runtime_builder(
     return AgentBuilder(
         ProviderSecretResolver(repository, resources),
         python_packages_dir=tmp_path / "python-packages",
+        data_root=tmp_path,
         runtime_dir=tmp_path / "runtime",
         skills_dir=tmp_path / "skills",
         validation=object(),

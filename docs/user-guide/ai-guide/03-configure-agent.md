@@ -302,6 +302,8 @@ POST /agent-shell/api/blocks/filesystem-tools
 
 保存两个 response UUID，并分别作为 Main Agent 的 `filesystem` 与 `filesystem-tools` capability reference。需要执行命令时把 Backend 改为 `backend_type=local-shell`，只提交一个现有 `workspace`，并把 Tools 的 `execute.visible` 设为 `true`。CompositeBackend 会自动隐藏 execute。
 
+Filesystem Backend 中的 mapped directory、request-scoped virtual directory/file 和 LocalShell workspace 都通过 `path_origin` 明确选择宿主绝对路径或相对实例 `data/` 的路径。
+
 Main Agent 和 synchronous Subagent 共享 current Run 的 Deep Agents StateBackend 文件状态，但可以分别继承或替换 Backend 与 Tools。跨 Workflow 调用创建的独立 Run 不自动复制该 StateBackend `files` channel。
 
 路径、来源权限和 Skill package 见[Filesystem Backend](../../wizard-pages/filesystem-config.md)，工具字段见[Filesystem Tools](../../wizard-pages/filesystem-tools-config.md)。

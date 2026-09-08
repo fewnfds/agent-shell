@@ -72,3 +72,32 @@ def test_workflow_data_rejects_data_relative_mapping_escape(tmp_path: Path) -> N
                 ],
             }
         )
+
+
+def test_workflow_data_resolves_data_relative_mapping(tmp_path: Path) -> None:
+    async def scenario() -> Path:
+        data_root = tmp_path / "data"
+        mapping_root = data_root / "mapped"
+        mapping_root.mkdir(parents=True)
+        filesystem = FilesystemBlock.model_validate(
+            {
+                "name": "Relative workflow filesystem",
+                "mapped_directories": [
+                    {
+                        "virtual_path": "/workspace/",
+                        "local_path": "mapped",
+                        "path_origin": "data-root-relative",
+                    }
+                ],
+            }
+        )
+        return (
+            await WorkflowDataService(data_root).resolve_mapped_directories(
+                InMemoryStore(),
+                "lifecycle-1",
+                "filesystem-1",
+                filesystem,
+            )
+        )["/workspace/"]
+
+    assert asyncio.run(scenario()) == (tmp_path / "data" / "mapped").resolve()

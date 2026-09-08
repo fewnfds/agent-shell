@@ -395,7 +395,7 @@ export interface ConfigurationBundleFilesystemBinding {
   path: string
   kind: 'mapped-directory' | 'local-shell-workspace' | 'virtual-directory' | 'virtual-file'
   source_value: string
-  source_path_origin: 'absolute' | 'data-root-relative' | null
+  source_path_origin: 'absolute' | 'data-root-relative'
   required: boolean
   status: 'ready' | 'target-missing' | 'binding-required'
   target_value: string | null
@@ -434,7 +434,7 @@ export interface ConfigurationBundleResolutions {
   names: Record<string, string>
   filesystem_bindings: Record<string, {
     value: string
-    path_origin?: 'absolute' | 'data-root-relative'
+    path_origin: 'absolute' | 'data-root-relative'
   }>
 }
 

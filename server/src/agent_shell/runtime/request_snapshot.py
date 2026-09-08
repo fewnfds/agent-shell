@@ -1697,6 +1697,7 @@ class RequestSnapshotRuntime:
                 AgentBuilder(
                     secrets,
                     python_packages_dir=python_packages_dir,
+                    data_root=repository.data_root,
                     runtime_dir=self._runtime_dir,
                     skills_dir=skills_dir,
                     validation=validation,

@@ -8,7 +8,7 @@ from langgraph.store.base import BaseStore
 
 from agent_shell.contracts import FilesystemBlock
 from agent_shell.runtime.lifecycle_store import lifecycle_filesystem_namespace
-from agent_shell.storage.owned_paths import resolve_data_root_relative_path
+from agent_shell.storage.owned_paths import resolve_configured_local_path
 
 
 LIFECYCLE_FILESYSTEM_RECORD_VERSION = 1
@@ -22,15 +22,11 @@ class WorkflowDataService:
         self._filesystem_lock = asyncio.Lock()
 
     def _configured_mapping_root(self, local_path: str, path_origin: str) -> Path:
-        configured = Path(local_path)
-        if path_origin == "absolute":
-            if not configured.is_absolute():
-                raise ValueError("absolute mapped local_path must be absolute")
-            return configured.resolve()
-        return resolve_data_root_relative_path(
+        return resolve_configured_local_path(
             self._data_root,
             local_path,
-            label="data-root-relative mapped local_path",
+            path_origin=path_origin,
+            label="configured filesystem root",
         )
 
     @staticmethod

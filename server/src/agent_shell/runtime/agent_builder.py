@@ -149,6 +149,7 @@ class AgentBuilder:
         secrets: ProviderSecretResolver,
         *,
         python_packages_dir: Path,
+        data_root: Path,
         runtime_dir: Path,
         skills_dir: Path,
         validation: ConfigurationValidationService,
@@ -160,6 +161,7 @@ class AgentBuilder:
     ) -> None:
         self._secrets = secrets
         self._python_packages_dir = python_packages_dir
+        self._data_root = data_root.resolve()
         self._runtime_dir = runtime_dir
         self._skills_dir = skills_dir
         self._validation = validation
@@ -426,6 +428,7 @@ class AgentBuilder:
                 filesystem_tools=filesystem_tools_block,
                 filesystem_mode=filesystem_mode,
                 skills_dir=self._skills_dir,
+                data_root=self._data_root,
                 workspace=workspace,
                 mapped_directory_paths=(
                     mapped_directory_paths_by_filesystem.get(

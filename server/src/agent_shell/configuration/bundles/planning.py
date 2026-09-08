@@ -38,7 +38,7 @@ from agent_shell.configuration.dependencies import (
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.owned_paths import (
     OwnedPathError,
-    resolve_data_root_relative_path,
+    resolve_configured_local_path,
 )
 
 
@@ -150,18 +150,24 @@ class BundleImportPlanner:
                 )
             elif selected_origin == "data-root-relative":
                 try:
-                    relative_target = resolve_data_root_relative_path(
+                    relative_target = resolve_configured_local_path(
                         self._repository.data_root,
                         selected_value,
-                        label="mapped directory binding",
+                        path_origin=selected_origin,
+                        label="filesystem binding",
                     )
                 except OwnedPathError:
                     continue
-                if not relative_target.is_dir():
+                exists = (
+                    relative_target.is_file()
+                    if binding.kind == "virtual-file"
+                    else relative_target.is_dir()
+                )
+                if not exists:
                     warnings.append(
                         bundle_issue(
                             "filesystem_relative_target_missing",
-                            "The data-root-relative mapped directory does not exist on this instance.",
+                            "The data-root-relative filesystem target does not exist on this instance.",
                             source_id=binding.source_id,
                             path=binding.path,
                         )

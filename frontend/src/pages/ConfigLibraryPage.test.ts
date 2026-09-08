@@ -493,12 +493,16 @@ describe('ConfigLibraryPage', () => {
     expect(router.currentRoute.value.fullPath).toBe('/library/model')
   })
 
-  it.each(['mapped-directory', 'local-shell-workspace'] as const)('keeps Bundle import disabled until a %s resolution is ready', async (bindingKind) => {
+  it.each(['mapped-directory', 'local-shell-workspace', 'virtual-directory', 'virtual-file'] as const)('keeps Bundle import disabled until a %s resolution is ready', async (bindingKind) => {
     const api = createApi()
     const file = new File(['bundle'], 'filesystem.zip', { type: 'application/zip' })
     const bindingPath = bindingKind === 'mapped-directory'
       ? 'mapped_directories[0].local_path'
-      : 'workspace.local_path'
+      : bindingKind === 'local-shell-workspace'
+        ? 'workspace.local_path'
+        : bindingKind === 'virtual-directory'
+          ? 'virtual_directories[0].source_path'
+          : 'virtual_files[0].source_path'
     vi.mocked(api.service.previewConfigurationBundle).mockResolvedValue({
       bundle_sha256: 'a'.repeat(64), manifest_sha256: 'b'.repeat(64),
       plan_token: 'c'.repeat(64),
@@ -529,8 +533,6 @@ describe('ConfigLibraryPage', () => {
     expect(importButton.attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('Blockers')
     await wrapper.get('[data-testid="bundle-binding-value"]').setValue('D:/target')
-    expect(importButton.attributes('disabled')).toBeDefined()
-    await wrapper.get('[data-testid="bundle-path-origin"]').setValue('absolute')
     expect(importButton.attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).not.toContain('Blockers')
     await wrapper.get('table input').setValue('')

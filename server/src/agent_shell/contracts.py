@@ -151,16 +151,23 @@ def _validate_virtual_file_path(value: str) -> str:
     return normalized
 
 
-def _validate_local_path(value: str) -> str:
-    if value and not Path(value).is_absolute():
-        raise ValueError("local path must be absolute")
-    return value
-
-
-def _validate_required_local_path(value: str) -> str:
+def _validate_required_local_path(
+    value: str,
+    *,
+    path_origin: str,
+    label: str,
+) -> str:
     if not value:
-        raise ValueError("local path must not be empty")
-    return _validate_local_path(value)
+        raise ValueError(f"{label} must not be empty")
+    if path_origin == "absolute":
+        if not Path(value).is_absolute():
+            raise ValueError(f"absolute {label} must be absolute")
+        return value
+    require_data_root_relative_path(
+        value,
+        label=f"data-root-relative {label}",
+    )
+    return value
 
 
 def _reserved_virtual_namespace(path: str, *, is_directory: bool) -> str | None:
@@ -384,10 +391,19 @@ class VirtualDirectorySource(BaseModel):
 
     virtual_path: VirtualPath
     source_path: LocalPath
+    path_origin: Literal["absolute", "data-root-relative"] = "absolute"
     permission: FilesystemPermissionValue = "read-write"
 
     _virtual_path = field_validator("virtual_path")(_validate_virtual_directory_path)
-    _source_path = field_validator("source_path")(_validate_required_local_path)
+
+    @model_validator(mode="after")
+    def validate_source_path(self) -> "VirtualDirectorySource":
+        _validate_required_local_path(
+            self.source_path,
+            path_origin=self.path_origin,
+            label="virtual directory source_path",
+        )
+        return self
 
 
 class MappedDirectory(BaseModel):
@@ -403,16 +419,10 @@ class MappedDirectory(BaseModel):
 
     @model_validator(mode="after")
     def validate_local_path(self) -> "MappedDirectory":
-        if not self.local_path:
-            raise ValueError("local path must not be empty")
-        local = Path(self.local_path)
-        if self.path_origin == "absolute":
-            if not local.is_absolute():
-                raise ValueError("absolute mapped local_path must be absolute")
-            return self
-        require_data_root_relative_path(
+        _validate_required_local_path(
             self.local_path,
-            label="data-root-relative mapped local_path",
+            path_origin=self.path_origin,
+            label="mapped local_path",
         )
         return self
 
@@ -422,10 +432,19 @@ class VirtualFileSource(BaseModel):
 
     virtual_path: VirtualPath
     source_path: LocalPath
+    path_origin: Literal["absolute", "data-root-relative"] = "absolute"
     permission: FilesystemPermissionValue = "read-write"
 
     _virtual_path = field_validator("virtual_path")(_validate_virtual_file_path)
-    _source_path = field_validator("source_path")(_validate_required_local_path)
+
+    @model_validator(mode="after")
+    def validate_source_path(self) -> "VirtualFileSource":
+        _validate_required_local_path(
+            self.source_path,
+            path_origin=self.path_origin,
+            label="virtual file source_path",
+        )
+        return self
 
 
 class FilesystemToolConfig(BaseModel):
@@ -470,21 +489,16 @@ class FilesystemWorkspace(BaseModel):
 
     @model_validator(mode="after")
     def validate_local_path(self) -> "FilesystemWorkspace":
-        if not self.local_path:
-            raise ValueError("workspace local_path must not be empty")
-        local = Path(self.local_path)
-        if self.path_origin == "absolute":
-            if not local.is_absolute():
-                raise ValueError("absolute workspace local_path must be absolute")
-            if not local.is_dir():
-                raise ValueError(
-                    f"workspace local_path must be an existing directory: {local}"
-                )
-            return self
-        require_data_root_relative_path(
+        _validate_required_local_path(
             self.local_path,
-            label="data-root-relative workspace local_path",
+            path_origin=self.path_origin,
+            label="workspace local_path",
         )
+        local = Path(self.local_path)
+        if self.path_origin == "absolute" and not local.is_dir():
+            raise ValueError(
+                f"workspace local_path must be an existing directory: {local}"
+            )
         return self
 
 
@@ -568,15 +582,16 @@ class FilesystemBlock(StrictBlock):
 
         for item in self.virtual_directories:
             source = Path(item.source_path)
-            if is_reparse_point(source):
-                raise ValueError(
-                    "virtual directory source_path must not be a link or reparse point: "
-                    f"{source}"
-                )
-            if not source.is_dir():
-                raise ValueError(
-                    f"virtual directory source_path must be an existing directory: {source}"
-                )
+            if item.path_origin == "absolute":
+                if is_reparse_point(source):
+                    raise ValueError(
+                        "virtual directory source_path must not be a link or reparse point: "
+                        f"{source}"
+                    )
+                if not source.is_dir():
+                    raise ValueError(
+                        f"virtual directory source_path must be an existing directory: {source}"
+                    )
             for route in mapped_paths:
                 if item.virtual_path.startswith(route) or route.startswith(item.virtual_path):
                     raise ValueError(
@@ -596,6 +611,8 @@ class FilesystemBlock(StrictBlock):
                     f"{item.virtual_path} ({previous_directory}, {source})"
                 )
             directory_origins[directory_key] = str(source)
+            if item.path_origin != "absolute":
+                continue
             for filepath in sorted(source.rglob("*")):
                 if is_reparse_point(filepath):
                     raise ValueError(
@@ -633,15 +650,16 @@ class FilesystemBlock(StrictBlock):
 
         for item in self.virtual_files:
             source = Path(item.source_path)
-            if is_reparse_point(source):
-                raise ValueError(
-                    "virtual file source_path must not be a link or reparse point: "
-                    f"{source}"
-                )
-            if not source.is_file():
-                raise ValueError(
-                    f"virtual file source_path must be an existing file: {source}"
-                )
+            if item.path_origin == "absolute":
+                if is_reparse_point(source):
+                    raise ValueError(
+                        "virtual file source_path must not be a link or reparse point: "
+                        f"{source}"
+                    )
+                if not source.is_file():
+                    raise ValueError(
+                        f"virtual file source_path must be an existing file: {source}"
+                    )
             if PurePosixPath(item.virtual_path).name != source.name:
                 raise ValueError(
                     "virtual file name must match source file name: "

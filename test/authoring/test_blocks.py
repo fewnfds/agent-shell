@@ -650,6 +650,34 @@ def test_filesystem_mapped_directory_modes_are_explicit(
         }
     ]
 
+    request_sources = client.post(
+        "/agent-shell/api/blocks/filesystem",
+        json={
+            "name": "Relative request sources",
+            "virtual_directories": [
+                {
+                    "virtual_path": "/templates/",
+                    "source_path": "files/templates",
+                    "path_origin": "data-root-relative",
+                }
+            ],
+            "virtual_files": [
+                {
+                    "virtual_path": "/config/default.md",
+                    "source_path": "files/default.md",
+                    "path_origin": "data-root-relative",
+                }
+            ],
+        },
+    )
+    assert request_sources.status_code == 200, request_sources.text
+    assert request_sources.json()["virtual_directories"][0]["path_origin"] == (
+        "data-root-relative"
+    )
+    assert request_sources.json()["virtual_files"][0]["path_origin"] == (
+        "data-root-relative"
+    )
+
     for path_origin, local_path in (
         ("absolute", "relative/path"),
         ("data-root-relative", str(tmp_path.resolve())),

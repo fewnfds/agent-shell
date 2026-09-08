@@ -206,3 +206,26 @@ def test_local_shell_workspace_is_a_rebindable_filesystem_directory(
         "local_path": str(target.resolve()),
         "path_origin": "absolute",
     }
+
+
+def test_relative_virtual_source_binding_is_portable(tmp_path) -> None:
+    filesystem_id = "11111111-1111-4111-8111-111111111111"
+    payload = {
+        "backend_type": "composite",
+        "virtual_files": [
+            {
+                "virtual_path": "/config/default.md",
+                "source_path": "files/default.md",
+                "path_origin": "data-root-relative",
+            }
+        ],
+    }
+    bindings = collect_filesystem_bindings(
+        {filesystem_id: ("filesystem", "Request files", payload)}
+    )
+
+    assert len(bindings) == 1
+    assert bindings[0].kind == "virtual-file"
+    assert bindings[0].source_path_origin == "data-root-relative"
+    assert bindings[0].required is False
+    assert bindings[0].as_dict(tmp_path)["target_value"] == "files/default.md"

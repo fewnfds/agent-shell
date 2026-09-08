@@ -16,6 +16,7 @@ export interface MappedDirectory {
 export interface VirtualSource {
   virtual_path: string
   source_path: string
+  path_origin: 'absolute' | 'data-root-relative'
   permission: FilesystemPermissionValue
 }
 export interface FilesystemWorkspace {
@@ -74,6 +75,7 @@ function virtualRows(value: unknown): VirtualSource[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => isRecord(item) ? [{
     virtual_path: stringValue(item.virtual_path), source_path: stringValue(item.source_path),
+    path_origin: item.path_origin === 'data-root-relative' ? 'data-root-relative' as const : 'absolute' as const,
     permission: permission(item.permission),
   }] : [])
 }

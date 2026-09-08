@@ -7,7 +7,7 @@ from typing import Annotated
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import PrivateStateAttr
 from langgraph.store.memory import InMemoryStore
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 from agent_shell.runtime import agent_builder, subagent_middleware
 from agent_shell.runtime.agent_builder import AgentBuilder
@@ -126,6 +126,7 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
     builder = AgentBuilder(
         SimpleNamespace(),
         python_packages_dir=tmp_path / "python-packages",
+        data_root=tmp_path,
         runtime_dir=tmp_path / "runtime",
         skills_dir=tmp_path / "skills",
         validation=validation,
@@ -188,9 +189,12 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
 def test_task_description_override_keeps_shell_middleware_private_state_keys(
     monkeypatch,
 ) -> None:
-    class PackageState(TypedDict):
+    class ParentPackageState(TypedDict):
+        inherited_private_value: Annotated[str, PrivateStateAttr]
+
+    class PackageState(ParentPackageState):
         public_value: str
-        private_value: Annotated[str, PrivateStateAttr]
+        private_value: NotRequired[Annotated[list[str], PrivateStateAttr]]
 
     captured: dict[str, object] = {}
 
@@ -221,5 +225,7 @@ def test_task_description_override_keeps_shell_middleware_private_state_keys(
     assert captured["task_description"] == "Delegate to {available_agents}."
     private_state_keys = captured["private_state_keys"]
     assert "private_value" in private_state_keys
+    assert "inherited_private_value" in private_state_keys
     assert "jump_to" in private_state_keys
+    assert "_summarization_event" in private_state_keys
     assert "public_value" not in private_state_keys

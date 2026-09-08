@@ -9,7 +9,7 @@ from agent_shell.configuration.bundles.contracts import FilesystemBindingResolut
 from agent_shell.configuration.bundles.errors import bundle_issue
 from agent_shell.storage.owned_paths import (
     OwnedPathError,
-    resolve_data_root_relative_path,
+    resolve_configured_local_path,
 )
 
 
@@ -29,13 +29,27 @@ class FilesystemBinding:
     path: str
     kind: BindingKind
     source_value: str
-    source_path_origin: str | None
+    source_path_origin: str
     location: tuple[str | int, ...]
     required: bool
 
     def as_dict(self, data_root: Path) -> dict[str, object]:
         if self.source_path_origin == "data-root-relative":
-            exists = (data_root / self.source_value).is_dir()
+            try:
+                target = resolve_configured_local_path(
+                    data_root,
+                    self.source_value,
+                    path_origin=self.source_path_origin,
+                    label="filesystem binding",
+                )
+            except OwnedPathError:
+                exists = False
+            else:
+                exists = (
+                    target.is_file()
+                    if self.kind == "virtual-file"
+                    else target.is_dir()
+                )
             status = "ready" if exists else "target-missing"
             target_value: str | None = self.source_value
         else:
@@ -109,6 +123,7 @@ def collect_filesystem_bindings(
         ):
             for index, item in enumerate(_records(payload.get(field))):
                 value = str(item.get("source_path", ""))
+                origin = str(item.get("path_origin", "absolute"))
                 path = f"{field}[{index}].source_path"
                 bindings.append(
                     FilesystemBinding(
@@ -118,9 +133,9 @@ def collect_filesystem_bindings(
                         path=path,
                         kind=kind,  # type: ignore[arg-type]
                         source_value=value,
-                        source_path_origin=None,
+                        source_path_origin=origin,
                         location=(field, index, "source_path"),
-                        required=True,
+                        required=origin == "absolute",
                     )
                 )
     return tuple(bindings)
@@ -160,62 +175,41 @@ def apply_filesystem_bindings(
                     )
                 )
             continue
-        target = Path(resolution.value)
-        if binding.kind in {"mapped-directory", "local-shell-workspace"}:
-            if resolution.path_origin is None:
-                errors.append(
-                    bundle_issue(
-                        "filesystem_path_origin_required",
-                        "A filesystem directory binding must declare its path origin.",
-                        source_id=binding.source_id,
-                        path=binding.path,
-                    )
-                )
-                continue
-            if resolution.path_origin == "absolute":
-                valid = target.is_absolute() and target.is_dir()
-            else:
-                try:
-                    resolve_data_root_relative_path(
-                        data_root,
-                        resolution.value,
-                        label="filesystem directory binding",
-                    )
-                except OwnedPathError:
-                    valid = False
-                else:
-                    valid = True
-            if not valid:
-                errors.append(
-                    bundle_issue(
-                        "filesystem_directory_invalid",
-                        "The target filesystem directory binding is invalid.",
-                        source_id=binding.source_id,
-                        path=binding.path,
-                    )
-                )
-                continue
-            parent: Any = output[binding.source_id]
-            for segment in binding.location[:-1]:
-                parent = parent[segment]
-            parent["path_origin"] = resolution.path_origin
+        try:
+            resolved_target = resolve_configured_local_path(
+                data_root,
+                resolution.value,
+                path_origin=resolution.path_origin,
+                label="filesystem binding",
+            )
+        except OwnedPathError:
+            valid = False
         else:
-            if resolution.path_origin is not None or not target.is_absolute():
-                valid = False
-            elif binding.kind == "virtual-directory":
-                valid = target.is_dir()
+            if resolution.path_origin == "data-root-relative":
+                valid = True
+            elif binding.kind == "virtual-file":
+                valid = resolved_target.is_file()
             else:
-                valid = target.is_file()
-            if not valid:
-                errors.append(
-                    bundle_issue(
-                        "filesystem_source_invalid",
-                        "The target virtual source path is invalid.",
-                        source_id=binding.source_id,
-                        path=binding.path,
-                    )
+                valid = resolved_target.is_dir()
+        if not valid:
+            issue_code = (
+                "filesystem_directory_invalid"
+                if binding.kind in {"mapped-directory", "local-shell-workspace"}
+                else "filesystem_source_invalid"
+            )
+            errors.append(
+                bundle_issue(
+                    issue_code,
+                    "The target filesystem binding is invalid.",
+                    source_id=binding.source_id,
+                    path=binding.path,
                 )
-                continue
+            )
+            continue
+        parent: Any = output[binding.source_id]
+        for segment in binding.location[:-1]:
+            parent = parent[segment]
+        parent["path_origin"] = resolution.path_origin
         _set_value(output[binding.source_id], binding.location, resolution.value)
     return output, errors
 
@@ -241,11 +235,10 @@ def apply_validation_placeholders(
         else:
             target.mkdir(parents=True, exist_ok=True)
         _set_value(output[binding.source_id], binding.location, str(target.resolve()))
-        if binding.kind in {"mapped-directory", "local-shell-workspace"}:
-            parent: Any = output[binding.source_id]
-            for segment in binding.location[:-1]:
-                parent = parent[segment]
-            parent["path_origin"] = "absolute"
+        parent: Any = output[binding.source_id]
+        for segment in binding.location[:-1]:
+            parent = parent[segment]
+        parent["path_origin"] = "absolute"
     return output
 
 

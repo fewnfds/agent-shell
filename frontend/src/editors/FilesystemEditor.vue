@@ -46,6 +46,7 @@ function addVirtualDirectory(): void {
   draft.virtual_directories.push({
     virtual_path: '',
     source_path: '',
+    path_origin: 'absolute',
     permission: 'read-write',
   })
 }
@@ -54,6 +55,7 @@ function addVirtualFile(): void {
   draft.virtual_files.push({
     virtual_path: '',
     source_path: '',
+    path_origin: 'absolute',
     permission: 'read-write',
   })
 }
@@ -118,38 +120,21 @@ function hasSkillPackage(id: string): boolean {
             class="list-group-item"
             data-testid="mapped-directory-row"
           >
-            <div class="mb-2">
-              <div class="row g-3 align-items-end">
-                <FormField
-                  class="col"
-                  :control-id="`mapped-directory-local-path-${index}`"
-                  :field-path="`mapped_directories[${index}].local_path`"
-                >
-                  <input
-                    :id="`mapped-directory-local-path-${index}`"
-                    v-model="item.local_path"
-                    class="form-control"
-                    :placeholder="t('editors.filesystem.mappingExamples.localDirectory')"
-                  >
-                </FormField>
-                <div class="col-auto mb-3 pb-2" aria-hidden="true"><i class="bi bi-arrow-right" /></div>
-                <FormField
-                  class="col"
-                  :control-id="`mapped-directory-virtual-path-${index}`"
-                  :field-path="`mapped_directories[${index}].virtual_path`"
-                >
-                  <input
-                    :id="`mapped-directory-virtual-path-${index}`"
-                    v-model="item.virtual_path"
-                    class="form-control"
-                    :placeholder="t('editors.filesystem.mappingExamples.virtualDirectory')"
-                  >
-                </FormField>
-              </div>
-            </div>
-            <div class="row g-3">
+            <div class="row g-3 align-items-end">
               <FormField
-                class="col-md-4"
+                class="col-lg"
+                :control-id="`mapped-directory-local-path-${index}`"
+                :field-path="`mapped_directories[${index}].local_path`"
+              >
+                <input
+                  :id="`mapped-directory-local-path-${index}`"
+                  v-model="item.local_path"
+                  class="form-control"
+                  :placeholder="t('editors.filesystem.mappingExamples.localDirectory')"
+                >
+              </FormField>
+              <FormField
+                class="col-lg-2"
                 :control-id="`mapped-directory-path-origin-${index}`"
                 :field-path="`mapped_directories[${index}].path_origin`"
               >
@@ -159,17 +144,19 @@ function hasSkillPackage(id: string): boolean {
                 </select>
               </FormField>
               <FormField
-                class="col-md-4"
-                :control-id="`mapped-directory-lifecycle-mode-${index}`"
-                :field-path="`mapped_directories[${index}].lifecycle_mode`"
+                class="col-lg"
+                :control-id="`mapped-directory-virtual-path-${index}`"
+                :field-path="`mapped_directories[${index}].virtual_path`"
               >
-                <select :id="`mapped-directory-lifecycle-mode-${index}`" v-model="item.lifecycle_mode" class="form-select">
-                  <option value="fixed">{{ t('editors.filesystem.lifecycle.fixed') }}</option>
-                  <option value="dynamic">{{ t('editors.filesystem.lifecycle.dynamic') }}</option>
-                </select>
+                <input
+                  :id="`mapped-directory-virtual-path-${index}`"
+                  v-model="item.virtual_path"
+                  class="form-control"
+                  :placeholder="t('editors.filesystem.mappingExamples.virtualDirectory')"
+                >
               </FormField>
               <FormField
-                class="col-md-4"
+                class="col-lg-2"
                 :control-id="`mapped-directory-permission-${index}`"
                 :field-path="`mapped_directories[${index}].permission`"
               >
@@ -179,17 +166,27 @@ function hasSkillPackage(id: string): boolean {
                   </option>
                 </select>
               </FormField>
-            </div>
-            <div class="d-flex">
-              <LteButton
-                class="icon-action-button ms-auto"
-                type="button"
-                :aria-label="t('editors.common.remove')"
-                :title="t('editors.common.remove')"
-                @click="draft.mapped_directories.splice(index, 1)"
+              <FormField
+                class="col-lg-2"
+                :control-id="`mapped-directory-lifecycle-mode-${index}`"
+                :field-path="`mapped_directories[${index}].lifecycle_mode`"
               >
-                <i class="bi bi-trash" aria-hidden="true" />
-              </LteButton>
+                <select :id="`mapped-directory-lifecycle-mode-${index}`" v-model="item.lifecycle_mode" class="form-select">
+                  <option value="fixed">{{ t('editors.filesystem.lifecycle.fixed') }}</option>
+                  <option value="dynamic">{{ t('editors.filesystem.lifecycle.dynamic') }}</option>
+                </select>
+              </FormField>
+              <div class="col-auto mb-3">
+                <LteButton
+                  class="icon-action-button"
+                  type="button"
+                  :aria-label="t('editors.common.remove')"
+                  :title="t('editors.common.remove')"
+                  @click="draft.mapped_directories.splice(index, 1)"
+                >
+                  <i class="bi bi-trash" aria-hidden="true" />
+                </LteButton>
+              </div>
             </div>
           </article>
         </div>
@@ -222,9 +219,10 @@ function hasSkillPackage(id: string): boolean {
           <article v-for="(item, index) in draft[kind]" :key="index" class="list-group-item">
             <div class="row g-3 align-items-end">
               <FormField
-                class="col"
+                class="col-lg"
                 :control-id="`${kind}-source-path-${index}`"
                 :field-path="`${kind}[${index}].source_path`"
+                label-key="fields.local_path"
               >
                 <input
                   :id="`${kind}-source-path-${index}`"
@@ -233,9 +231,18 @@ function hasSkillPackage(id: string): boolean {
                   :placeholder="t(`editors.filesystem.mappingExamples.${kind === 'virtual_directories' ? 'sourceDirectory' : 'sourceFile'}`)"
                 >
               </FormField>
-              <div class="col-auto mb-3 pb-2" aria-hidden="true"><i class="bi bi-arrow-right" /></div>
               <FormField
-                class="col"
+                class="col-lg-2"
+                :control-id="`${kind}-path-origin-${index}`"
+                :field-path="`${kind}[${index}].path_origin`"
+              >
+                <select :id="`${kind}-path-origin-${index}`" v-model="item.path_origin" class="form-select">
+                  <option value="absolute">{{ t('editors.filesystem.pathOrigin.absolute') }}</option>
+                  <option value="data-root-relative">{{ t('editors.filesystem.pathOrigin.dataRootRelative') }}</option>
+                </select>
+              </FormField>
+              <FormField
+                class="col-lg"
                 :control-id="`${kind}-virtual-path-${index}`"
                 :field-path="`${kind}[${index}].virtual_path`"
               >
@@ -247,7 +254,7 @@ function hasSkillPackage(id: string): boolean {
                 >
               </FormField>
               <FormField
-                class="col-md-3"
+                class="col-lg-2"
                 :control-id="`${kind}-permission-${index}`"
                 :field-path="`${kind}[${index}].permission`"
               >
@@ -306,7 +313,7 @@ function hasSkillPackage(id: string): boolean {
       <div v-if="draft.workspace" class="card-body">
         <div class="row g-3">
           <FormField
-            class="col-md-8"
+            class="col-lg"
             control-id="filesystem-workspace-local-path"
             field-path="workspace.local_path"
           >
@@ -318,7 +325,7 @@ function hasSkillPackage(id: string): boolean {
             >
           </FormField>
           <FormField
-            class="col-md-4"
+            class="col-lg-3"
             control-id="filesystem-workspace-path-origin"
             field-path="workspace.path_origin"
           >
