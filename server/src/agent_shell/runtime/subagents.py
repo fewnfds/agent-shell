@@ -13,6 +13,9 @@ from agent_shell.runtime.agent_compilation import (
     validate_model_visible_tool_names,
 )
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
+from agent_shell.runtime.deepagents_compatibility import (
+    EmptySystemMessageMiddleware,
+)
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.limits import (
     ProviderErrorBoundaryMiddleware,
@@ -110,6 +113,7 @@ def _build_subagent_spec(
     if child.exception_retry is not None:
         middleware.extend(child.exception_retry.after_provider_boundary)
     middleware.extend(child.package_middleware)
+    middleware.append(EmptySystemMessageMiddleware())
 
     try:
         validate_middleware_names(middleware, owner=f"Subagent {node.name}")

@@ -27,5 +27,6 @@
 - [源码运行、Debug 与版本](development-and-release.md)
 - [LangChain 系依赖升级](langchain-dependency-upgrades.md)
 - [Deep Agents runtime 基线](deep-agents-migration.md)
+- [Deep Agents 二次开发清单](deep-agents-customizations.md)
 
 当前运行时与依赖基线以 [源码运行、Debug 与版本](development-and-release.md) 和 `server/pyproject.toml` 为准。

@@ -51,6 +51,9 @@ from agent_shell.runtime.agent_compilation import (
     validate_middleware_names,
     validate_model_visible_tool_names,
 )
+from agent_shell.runtime.deepagents_compatibility import (
+    EmptySystemMessageMiddleware,
+)
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.input_messages import validate_client_messages
@@ -803,6 +806,7 @@ class AgentBuilder:
                 if replacement is not None:
                     middleware.append(replacement)
             middleware.extend(materialized.package_middleware)
+            middleware.append(EmptySystemMessageMiddleware())
             validate_middleware_names(middleware, owner="Main Agent")
             main_agent_middleware_names = {
                 getattr(item, "name", None) for item in middleware

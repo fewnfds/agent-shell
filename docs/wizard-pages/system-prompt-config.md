@@ -1,6 +1,6 @@
 # System Prompt
 
-类型为 `system-prompt`，是可选能力；Main Agent 未选择时不向 `create_deep_agent` 传递基础 system prompt，使用框架默认行为。
+类型为 `system-prompt`，是可选能力；Main Agent 未选择时不提供 authored system prompt。Filesystem、Skill、Memory、Harness Profile 或 Custom Middleware 产生非空 system content 时照常发送；最终没有 system content 时，Provider 请求从用户消息开始。
 
 ```json
 {"name": "Concise assistant", "system_prompt": "Be concise."}

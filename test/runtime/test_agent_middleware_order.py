@@ -12,6 +12,9 @@ from typing_extensions import NotRequired, TypedDict
 from agent_shell.runtime import agent_builder, subagent_middleware
 from agent_shell.runtime.agent_builder import AgentBuilder
 from agent_shell.runtime.agent_compilation import MaterializedAgentProfile
+from agent_shell.runtime.deepagents_compatibility import (
+    EmptySystemMessageMiddleware,
+)
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
@@ -51,7 +54,7 @@ def _profile(
     )
 
 
-def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagent(
+def test_empty_system_guard_follows_package_middleware_for_main_and_subagent(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -176,8 +179,10 @@ def test_custom_package_middleware_is_the_shell_caller_tail_for_main_and_subagen
     child_middleware = constructor["subagents"][0]["middleware"]
     delegation_input = captured["delegation_input"]
 
-    assert main_middleware[-2:] == list(main_packages)
-    assert child_middleware[-2:] == list(child_packages)
+    assert main_middleware[-3:-1] == list(main_packages)
+    assert child_middleware[-3:-1] == list(child_packages)
+    assert isinstance(main_middleware[-1], EmptySystemMessageMiddleware)
+    assert isinstance(child_middleware[-1], EmptySystemMessageMiddleware)
     assert main_middleware.index(main_extra) < main_middleware.index(main_packages[0])
     assert child_middleware.index(child_extra) < child_middleware.index(child_packages[0])
     assert main_middleware.index(main_retry) < main_middleware.index(main_packages[0])

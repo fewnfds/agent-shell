@@ -27,6 +27,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - Summarization 与 Prompt Caching 是两个独立 capability，每个身份显式物化自己的官方 middleware；
 - Agent Shell 传给 `create_deep_agent(middleware=...)` 的 caller 列表属于官方 User slot：同名的 Summarization/Prompt Caching replacement 在各自默认位置生效，Todo replacement 和 `custom-middleware` 按用户列表顺序进入 User slot；
 - Deep Agents `0.7.9+` 的 Filesystem、Skills、SubAgent、Summarization 和 PatchToolCalls Middleware 默认以 `TracePolicy(process_inputs=omit_payload)` 裁剪 hook inputs。Agent Shell 使用这些官方默认或同名 replacement 自带的官方策略；运行监控直接消费 LangGraph Server 的公共 Thread stream 与 latest State，不依赖 Middleware hook input，也不修改 Middleware 实例、类属性或进程级 trace policy；
+- Main Agent 与同步 Subagent 的 caller middleware 尾部装配 `EmptySystemMessageMiddleware`。当最终 authored system message 的内容精确等于空字符串时，它在 Provider 调用前投影为 `None`；非空 system content 保持原值；
 - Deep Agents 仍按 Base -> User -> Tail 的固定 stack 合并。新名称不能越过 profile、provider prompt caching、memory 或 HITL 等官方 Tail；同名 replacement 也不会从最终 middleware 列表物理移除；
 - Main Agent 未选择、或 Subagent 选择 `disabled` 的可选 default Middleware，必须保留为主动禁用状态，并以官方支持的 same-name
   no-op replacement 阻止 Deep Agents 默认 stack 回填；仅省略 constructor 参数不表示禁用；
@@ -63,4 +64,4 @@ Canvas Start/End只是LangGraph官方virtual `START/END`。Workflow入口的clie
 
 Workflow Command可通过 `runtime.context.agent_runs` 创建独立 Main Agent Assistant/Thread/Run，通过 `workflow_runs`创建独立 Workflow Run。Main Agent默认创建新 Thread；同一 Lifecycle显式提供该 Main Agent既有 Thread可创建新 Run并延续 AgentState。每个被调用 Run由 LangGraph Dev dynamic factory使用冻结配置装配；Server-managed路径使用 LangGraph Dev注入的 Store和 checkpoint owner。每个 Run持有自己的 package runtime与 Event Output projector；状态和结果通过公共 Run API读取，Lifecycle Store只保存最小关系。
 
-更新 Deep Agents 版本时重新核对 `create_deep_agent` constructor、同步 SubAgent dictionary fields、default Middleware、same-name replacement 与 `HarnessProfile.excluded_middleware`、各 Provider Prompt Caching 变体、Codex TodoList extra Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义和 v3 event namespace，并只为 Shell 自有转换保留行为测试。
+更新 Deep Agents 版本时按照 [Deep Agents 二次开发清单](deep-agents-customizations.md) 逐项复核 `create_deep_agent` constructor、同步 SubAgent dictionary fields、default Middleware、same-name replacement 与 `HarnessProfile.excluded_middleware`、各 Provider Prompt Caching 变体、Codex TodoList extra Middleware、backend/state transfer、摘要归档的 session 隔离、`glob` 语义和 v3 event namespace，并只为 Shell 自有转换保留行为测试。
