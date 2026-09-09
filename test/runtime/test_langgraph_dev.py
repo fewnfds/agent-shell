@@ -20,6 +20,7 @@ from agent_shell.runtime.request_snapshot import (
     _RunBinding,
     _ensure_assistant,
 )
+from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.compiler import _node_runtime_context, compile_workflow
@@ -54,6 +55,15 @@ def _start_end_document():
     assert report.valid
     assert document is not None
     return document
+
+
+def test_graph_module_registers_raw_custom_stream_mode() -> None:
+    first = langgraph_dev.stream_transformers()
+    second = langgraph_dev.stream_transformers()
+
+    assert first == [RawCustomEventTransformer]
+    assert first is not second
+    assert first[0].required_stream_modes == ("custom",)
 
 
 def test_factory_uses_configurable_identity_from_run_start() -> None:

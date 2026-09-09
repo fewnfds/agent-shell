@@ -24,6 +24,7 @@ from agent_shell.runtime.request_snapshot import (
     LANGGRAPH_AGENT_GRAPH_ID,
     LANGGRAPH_WORKFLOW_GRAPH_ID,
 )
+from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.security import (
     SecurityFailure,
     authenticate_bearer_token,
@@ -37,6 +38,12 @@ AGENT_GRAPH_ID = LANGGRAPH_AGENT_GRAPH_ID
 
 app: FastAPI | None = None
 _settings: Settings | None = None
+
+
+def stream_transformers() -> list[type[RawCustomEventTransformer]]:
+    """Enable raw custom writer events for Agent Server v3 streams."""
+
+    return [RawCustomEventTransformer]
 
 
 def _allow_windows_curl_selector_socketpair(blockbuster: Any) -> None:
@@ -366,5 +373,6 @@ __all__ = [
     "app",
     "auth",
     "configure_runtime",
+    "stream_transformers",
     "workflow_graph",
 ]

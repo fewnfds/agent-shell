@@ -491,10 +491,13 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     workflow_output_template.mkdir(parents=True, exist_ok=True)
     (workflow_output_template / "main.py").write_text(
         'def output(event, origin):\n'
-        '    if event.get("method") != "values":\n'
-        '        return ""\n'
+        '    method = event.get("method")\n'
         '    params = event.get("params")\n'
         '    data = params.get("data") if isinstance(params, dict) else None\n'
+        '    if method == "custom" and data == {"kind": "smoke-command-progress"}:\n'
+        '        return "workflow custom progress\\n"\n'
+        '    if method != "values":\n'
+        '        return ""\n'
         '    if not isinstance(data, dict) or "shared_vars" not in data:\n'
         '        return ""\n'
         '    return "workflow values\\n"\n'
@@ -514,12 +517,14 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
     command_template.mkdir(parents=True, exist_ok=True)
     (command_template / "main.py").write_text(
         'from pathlib import Path\n'
+        'from langgraph.config import get_stream_writer\n'
         'from langgraph.types import Command\n'
         '\n'
         'def create_command():\n'
         '    target_workflow_id = Path(__file__).with_name("target-workflow.txt").read_text(encoding="utf-8").strip()\n'
         '    target_agent_id = Path(__file__).with_name("target-agent.txt").read_text(encoding="utf-8").strip()\n'
         '    async def command(state, runtime):\n'
+        '        get_stream_writer()({"kind": "smoke-command-progress"})\n'
         '        workflow_runs = runtime.context.workflow_runs\n'
         '        agent_runs = runtime.context.agent_runs\n'
         '        if workflow_runs is None or agent_runs is None:\n'
@@ -977,6 +982,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             smoke_runtime_output,
         )
         assert completion_text.count("workflow values\n") >= 2, completion
+        assert "workflow custom progress\n" in completion_text, completion
         assert completion["choices"][0]["finish_reason"] == "stop"
         lifecycle_page = _request(
             client,
