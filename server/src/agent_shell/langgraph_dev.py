@@ -301,7 +301,7 @@ async def agent_graph(
     graph_runtime = await snapshot.new_runtime(store=runtime.store)
     built = await graph_runtime.build_main_agent_graph(
         main_agent_id,
-        lifecycle_id=context.lifecycle_id or f"inspection-{main_agent_id}",
+        lifecycle_id=context.lifecycle_id or None,
         request_id=context.request_id,
     )
     try:

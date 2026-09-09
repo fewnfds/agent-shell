@@ -746,15 +746,19 @@ class AgentRuntime:
         self,
         main_agent_id: str,
         *,
-        lifecycle_id: str,
+        lifecycle_id: str | None,
         request_id: str = "",
     ) -> BuiltAgent:
         """Build a Main Agent as an Agent Server root graph."""
 
         assembly = await self._builder.aresolve(main_agent_id)
-        mapped_directories = await self._resolved_mapped_directory_paths_by_filesystem(
-            lifecycle_id,
-            assembly,
+        mapped_directories = (
+            await self._resolved_mapped_directory_paths_by_filesystem(
+                lifecycle_id,
+                assembly,
+            )
+            if lifecycle_id
+            else None
         )
         mcp_runtime = await self._builder.discover_mcp(
             tuple(

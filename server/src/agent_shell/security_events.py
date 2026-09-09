@@ -159,24 +159,25 @@ class SecurityEventLogger:
     def _public_record(self, record: Mapping[str, Any]) -> dict[str, object]:
         event = str(record.get("event", ""))
         metadata = record.get("metadata", {})
-        public = {
+        projected_metadata = self._redact(
+            dict(metadata) if isinstance(metadata, Mapping) else {}
+        )
+        if not isinstance(projected_metadata, dict):
+            projected_metadata = {"status": "[UNAVAILABLE]"}
+        projected_request_id = self._redact(str(record.get("request_id", "")))
+        projected_actor = self._redact(str(record.get("actor", "")))
+        return {
             "timestamp": str(record.get("timestamp", "")),
             "event": event,
             "category": SYSTEM_EVENT_CATEGORIES.get(event, "system"),
             "level": SYSTEM_EVENT_LEVELS.get(event, "info"),
-            "request_id": str(record.get("request_id", "")),
-            "actor": str(record.get("actor", "")),
-            "metadata": dict(metadata) if isinstance(metadata, Mapping) else {},
-        }
-        projected = self._redact(public)
-        return projected if isinstance(projected, dict) else {
-            "timestamp": "",
-            "event": event,
-            "category": SYSTEM_EVENT_CATEGORIES.get(event, "system"),
-            "level": SYSTEM_EVENT_LEVELS.get(event, "info"),
-            "request_id": "",
-            "actor": "",
-            "metadata": {"status": "[UNAVAILABLE]"},
+            "request_id": (
+                projected_request_id
+                if isinstance(projected_request_id, str)
+                else ""
+            ),
+            "actor": projected_actor if isinstance(projected_actor, str) else "",
+            "metadata": projected_metadata,
         }
 
     def public_records(self) -> list[dict[str, object]]:

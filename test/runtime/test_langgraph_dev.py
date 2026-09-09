@@ -9,6 +9,7 @@ from langgraph.runtime import ExecutionInfo, Runtime
 
 from agent_shell import langgraph_dev
 from agent_shell.runtime.agent_assistants import main_agent_assistant_id
+from agent_shell.runtime.agent_runtime import AgentRuntime
 from agent_shell.runtime.context import (
     AgentRuntimeContext,
     WorkflowRunContext,
@@ -131,6 +132,99 @@ def test_agent_factory_uses_configurable_identity_from_run_start() -> None:
         main_agent_id
     )
     assert main_agent_assistant_id(main_agent_id) != main_agent_id
+
+
+def test_agent_graph_inspection_does_not_create_lifecycle_filesystem_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    main_agent_id = "11111111-1111-4111-8111-111111111111"
+    graph = object()
+    build_kwargs: dict[str, object] = {}
+
+    class Builder:
+        async def aresolve(self, resolved_id: str):
+            assert resolved_id == main_agent_id
+            return SimpleNamespace(
+                blocks={
+                    "filesystem": {
+                        "id": "filesystem-1",
+                        "name": "Filesystem",
+                        "mapped_directories": [],
+                    }
+                },
+                mcp_references=(),
+                subagent_nodes={},
+            )
+
+        async def discover_mcp(self, references):
+            assert references == ()
+            return object()
+
+        def bind_mcp_runtime(self, _runtime) -> None:
+            return None
+
+        async def build_resolved(self, _assembly, _messages, **kwargs):
+            build_kwargs.update(kwargs)
+            return SimpleNamespace(
+                graph=graph,
+                tool_runtime=None,
+                middleware_runtime=SimpleNamespace(close=_close),
+            )
+
+        async def close_failed_build(self) -> None:
+            return None
+
+    async def _close() -> None:
+        return None
+
+    class WorkflowData:
+        async def resolve_mapped_directories(self, *_args, **_kwargs):
+            raise AssertionError(
+                "Graph inspection must not create Lifecycle filesystem data"
+            )
+
+    graph_runtime = AgentRuntime(
+        Builder(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        workflow_data=WorkflowData(),  # type: ignore[arg-type]
+        graph_store=object(),  # type: ignore[arg-type]
+    )
+
+    class Snapshot:
+        def main_agent_by_id(self, resolved_id: str):
+            assert resolved_id == main_agent_id
+            return {"id": main_agent_id}
+
+        async def new_runtime(self, *, store):
+            assert store is runtime.store
+            return graph_runtime
+
+    class RuntimeOwner:
+        async def capture(self):
+            return Snapshot()
+
+        def active_lifecycle(self, lifecycle_id: str):
+            assert lifecycle_id == ""
+            return None
+
+    monkeypatch.setattr(
+        langgraph_dev,
+        "app",
+        SimpleNamespace(
+            state=SimpleNamespace(agent_runtime=RuntimeOwner()),
+        ),
+    )
+    runtime = SimpleNamespace(store=object(), execution_runtime=None)
+
+    async def inspect() -> None:
+        async with langgraph_dev.agent_graph(
+            {"configurable": {"main_agent_id": main_agent_id}},
+            runtime,
+        ) as inspected:
+            assert inspected is graph
+
+    asyncio.run(inspect())
+    assert build_kwargs["mapped_directory_paths_by_filesystem"] is None
 
 
 @pytest.mark.parametrize(

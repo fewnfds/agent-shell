@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from agent_shell.app import create_app
+from agent_shell.event_feed import EventFeedService
 from agent_shell import security_events
 from agent_shell.security_events import SecurityEventLogger
 from agent_shell.storage.environment import EnvironmentSnapshot
@@ -154,6 +156,56 @@ def test_event_logger_redacts_stored_secrets_and_keeps_debug_metadata(
     assert "unregistered-secret-sentinel" not in raw
     assert logger.directory_permission.enforced is True
     assert logger.file_permission.enforced is True
+
+
+def test_public_event_projection_preserves_timestamp_that_contains_a_short_secret(
+    tmp_path: Path,
+) -> None:
+    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": "111"})
+    logger = SecurityEventLogger(
+        tmp_path / "logs",
+        redact=snapshot.redact_secrets,
+    )
+    timestamp = "2026-09-09T16:48:53.111+00:00"
+    logger.path.write_text(
+        json.dumps(
+            {
+                "timestamp": timestamp,
+                "event": "service_stopped",
+                "request_id": "request-111",
+                "actor": "actor-111",
+                "metadata": {"reason": "test credential 111"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    records = logger.public_records()
+
+    assert records == [
+        {
+            "timestamp": timestamp,
+            "event": "service_stopped",
+            "category": "lifecycle",
+            "level": "info",
+            "request_id": "request-[REDACTED]",
+            "actor": "actor-[REDACTED]",
+            "metadata": {"reason": "test credential [REDACTED]"},
+        }
+    ]
+    feed = EventFeedService(logger, None, None)  # type: ignore[arg-type]
+    result = feed.list_events(
+        page=1,
+        page_size=50,
+        started_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        ended_at=datetime(2026, 9, 10, tzinfo=timezone.utc),
+        sources={"system"},
+        levels=set(),
+        query="",
+    )
+    assert result["total"] == 1
+    assert result["items"][0]["occurred_at"] == timestamp  # type: ignore[index]
 
 
 def test_event_persistence_failure_does_not_reverse_committed_configuration(

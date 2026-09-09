@@ -2,11 +2,11 @@
 
 ## 日志中心
 
-【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目直接显示 Provider、Tool 或 Graph 的具体异常链、源异常类型以及 request、Lifecycle、Run 和 Thread ID；附件包含本地消费 traceback，跨 Agent Server 的异常还包含 Agent Server source traceback。错误码用于检索和程序分类，不替代异常原因。诊断写入自身失败时，服务端 stderr 会输出具体的持久化异常。日志不是已经建立的官方 Run 状态来源。
+【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目直接显示 Provider、Tool 或 Graph 的具体异常链、源异常类型以及 request、Lifecycle、Run 和 Thread ID；附件包含本地消费 traceback，跨 Agent Server 的异常还包含 Agent Server source traceback。错误码用于检索和程序分类，不替代异常原因。系统事件的 timestamp、event、category 和 level 保持可解析的结构值；request ID、actor 和 metadata 按实例已保存的 credential 值公开投影。诊断写入自身失败时，服务端 stderr 会输出具体的持久化异常。日志不是已经建立的官方 Run 状态来源。
 
 ## 运行监控
 
-【系统 / 运行监控】按 `Lifecycle -> Thread -> Run` 展示本次请求启动的官方 LangGraph 工作。Lifecycle 只是观察、下载和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。
+【系统 / 运行监控】按 `Lifecycle -> Thread -> Run` 展示本次请求启动的官方 LangGraph 工作。Lifecycle 只是观察、下载和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。Studio与Assistant的Graph结构检查不创建Lifecycle记录。
 
 目录列出：
 
