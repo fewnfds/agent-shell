@@ -133,6 +133,53 @@ def test_agent_factory_uses_configurable_identity_from_run_start() -> None:
     assert main_agent_assistant_id(main_agent_id) != main_agent_id
 
 
+@pytest.mark.parametrize(
+    ("factory", "identity_key"),
+    [
+        (langgraph_dev.agent_graph, "main_agent_id"),
+        (langgraph_dev.workflow_graph, "workflow_id"),
+    ],
+)
+def test_lifecycle_factory_does_not_fall_back_to_live_configuration(
+    factory,
+    identity_key: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class SnapshotRuntime:
+        async def load_lifecycle_snapshot(self, _store, lifecycle_id: str):
+            calls.append(f"load:{lifecycle_id}")
+            raise RuntimeError("the Lifecycle configuration snapshot is unavailable")
+
+        async def capture(self):
+            calls.append("capture")
+            raise AssertionError("live configuration must not be captured")
+
+    monkeypatch.setattr(
+        langgraph_dev,
+        "app",
+        SimpleNamespace(
+            state=SimpleNamespace(agent_runtime=SnapshotRuntime()),
+        ),
+    )
+    config = {
+        "configurable": {
+            identity_key: "11111111-1111-4111-8111-111111111111",
+            "lifecycle_id": "lifecycle-1",
+        }
+    }
+    runtime = SimpleNamespace(store=object(), execution_runtime=None)
+
+    async def enter_factory() -> None:
+        async with factory(config, runtime):
+            raise AssertionError("factory must fail before yielding a live Graph")
+
+    with pytest.raises(RuntimeError, match="snapshot is unavailable"):
+        asyncio.run(enter_factory())
+    assert calls == ["load:lifecycle-1"]
+
+
 def test_official_resource_auth_keeps_thread_reads_and_store_unmodified() -> None:
     thread_read = {"thread_id": "thread-1", "metadata": {"checkpoint_ns": ""}}
     store_access = {
@@ -170,7 +217,7 @@ def test_agent_run_start_uses_stream_command_and_configurable_identity() -> None
     owner = SimpleNamespace(run_config=lambda: {"recursion_limit": 10})
     coordinator = LifecycleRunCoordinator(
         _owner=owner,
-        _snapshot=SimpleNamespace(),
+        _snapshot=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
         _detached_tasks=SimpleNamespace(),
     )
 
@@ -228,7 +275,7 @@ def test_workflow_run_start_uses_stream_command_and_configurable_identity() -> N
 
     coordinator = LifecycleRunCoordinator(
         _owner=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
-        _snapshot=SimpleNamespace(),
+        _snapshot=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
         _detached_tasks=SimpleNamespace(),
     )
     binding = _RunBinding(
@@ -331,7 +378,7 @@ def test_agent_opens_persistent_thread_stream_before_starting_run() -> None:
     )
     coordinator = LifecycleRunCoordinator(
         _owner=owner,
-        _snapshot=SimpleNamespace(),
+        _snapshot=SimpleNamespace(run_config=lambda: {"recursion_limit": 10}),
         _detached_tasks=SimpleNamespace(),
     )
     binding = _AgentRunBinding(

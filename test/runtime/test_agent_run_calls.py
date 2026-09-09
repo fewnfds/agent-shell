@@ -16,10 +16,16 @@ from agent_shell.runtime.run_calls import RunCaller
 class _Store:
     def __init__(self) -> None:
         self.items: dict[tuple[str, ...], dict[str, dict]] = {}
+        self.events: list[str] = []
 
     async def put_item(self, namespace, key, value, *, index=False):
         del index
+        self.events.append(f"store:{tuple(namespace)[-1]}:{key}")
         self.items.setdefault(tuple(namespace), {})[key] = deepcopy(value)
+
+    async def get_item(self, namespace, key):
+        value = self.items.get(tuple(namespace), {}).get(key)
+        return None if value is None else {"key": key, "value": deepcopy(value)}
 
     async def search_items(self, namespace, *, limit: int, offset: int):
         values = [
@@ -170,7 +176,11 @@ class _Runs:
 
 
 class _Assistants:
+    def __init__(self, store: _Store) -> None:
+        self._store = store
+
     async def create(self, _graph_id, *, assistant_id, **_kwargs):
+        self._store.events.append("assistant")
         return {"assistant_id": assistant_id, "name": _kwargs["name"]}
 
     async def update(self, *_args, **_kwargs):
@@ -182,7 +192,7 @@ class _Client:
         self.store = _Store()
         self.threads = _Threads(self)
         self.runs = None
-        self.assistants = _Assistants()
+        self.assistants = _Assistants(self.store)
 
     async def aclose(self) -> None:
         return None
@@ -239,6 +249,10 @@ def _coordinator(profile: dict) -> tuple[LifecycleRunCoordinator, _Client, _Deta
         _snapshot=SimpleNamespace(
             main_agent_by_id=lambda _agent_id: profile,
             response_stream_policy=lambda: ResponseStreamPolicy(),
+            run_config=lambda: {"recursion_limit": 100},
+            lifecycle_configuration=lambda **_kwargs: SimpleNamespace(
+                as_store_value=lambda: {"schema_version": 1}
+            ),
         ),
         _detached_tasks=detached,
     )
@@ -272,9 +286,9 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
             lifecycle_input_namespace(coordinator.lifecycle_id)
         ][LIFECYCLE_START_ERROR_KEY]
         diagnostics = coordinator._owner.runtime_diagnostics
-        return marker, diagnostics
+        return marker, diagnostics, client.store.events
 
-    marker, diagnostics = asyncio.run(scenario())
+    marker, diagnostics, events = asyncio.run(scenario())
     assert marker["status"] == "error"
     assert marker["code"] == "run_start_failed"
     assert marker["message"] == "RuntimeError: run creation exploded"
@@ -287,6 +301,7 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
     assert kwargs["detail_exception"].args == ("run creation exploded",)
     assert kwargs["context"].lifecycle_id
     assert diagnostics.observation_errors == []
+    assert events[:2] == ["store:configuration:snapshot", "assistant"]
 
 
 def test_start_error_marker_survives_diagnostic_write_failure() -> None:

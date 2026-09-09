@@ -298,6 +298,7 @@ class SystemSettingsService:
                             remove_keys=remove_keys,
                         )
                     self._configuration.update_system(mutate)
+                    self._saved = candidate
                 except BaseException:
                     try:
                         self._environment.replace_owned(
@@ -314,5 +315,4 @@ class SystemSettingsService:
                 "errors.systemSettingsWriteFailed",
                 "The system settings could not be saved.",
             ) from exc
-        self._saved = candidate
         return self.get()

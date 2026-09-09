@@ -289,6 +289,7 @@ def create_app(
         runtime_diagnostics=runtime_diagnostics,
         workflow_lifecycle_settings=workflow_lifecycle_settings,
         response_stream_policy_provider=system_settings.response_stream_policy,
+        configuration_mutations=configuration_mutations,
         model_resources=model_resources,
         mcp_resources=mcp_resources,
         run_config={

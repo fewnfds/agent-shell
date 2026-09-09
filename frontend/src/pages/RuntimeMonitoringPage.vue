@@ -429,7 +429,9 @@ onUnmounted(() => {
             />
             <WorkflowRuntimeView
               v-else-if="selectedGraphKind === 'workflow'"
-              :graph="graph?.graph ?? null"
+              :graph="graph?.workflow_document ?? null"
+              :node-catalog="graph?.workflow_node_catalog ?? []"
+              :commands="graph?.workflow_commands ?? []"
               :state="state?.state ?? null"
               :loading="detailLoading"
               :error="detailError"

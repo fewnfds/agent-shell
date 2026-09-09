@@ -18,6 +18,68 @@ from agent_shell.runtime.langgraph_lifecycle import (
 from agent_shell.runtime.lifecycle_store import LIFECYCLE_START_ERROR_KEY
 
 
+def _configuration_snapshot() -> dict:
+    return {
+        "schema_version": 1,
+        "repository": {
+            "id": "repository-1",
+            "name": "Repository",
+            "root": "C:/data/config_repos/repository-1",
+            "python_packages_root": "C:/data/config_repos/repository-1/python_packages",
+            "skill_packages_root": "C:/data/config_repos/repository-1/skill_packages",
+            "config": {
+                "components": {
+                    "command": [{"id": "command-1", "name": "Frozen Command"}],
+                },
+                "main_agents": [],
+                "subagents": [],
+                "workflows": [
+                    {
+                        "id": "workflow-entry",
+                        "name": "Entry Workflow",
+                        "enabled": True,
+                        "definition": {
+                            "schema_version": 1,
+                            "state_contract": "agent-shell.workflow.control.v1",
+                            "nodes": [
+                                {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                                {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                            ],
+                            "edges": [
+                                {
+                                    "id": "start-end",
+                                    "source": "start",
+                                    "source_handle": "next",
+                                    "target": "end",
+                                    "target_handle": "in",
+                                }
+                            ],
+                        },
+                        "layout": {
+                            "nodes": {
+                                "start": {"x": 80, "y": 160},
+                                "end": {"x": 640, "y": 160},
+                            },
+                            "viewport": {"x": 12, "y": 24, "zoom": 0.8},
+                        },
+                    }
+                ],
+            },
+        },
+        "model": {"bindings": {}, "connections": []},
+        "mcp": {"bindings": {}, "connections": []},
+        "runtime": {
+            "response_stream_scheduling": {
+                "idle_timeout_seconds": 10,
+                "max_batch_kb": 64,
+                "send_interval_seconds": 0.05,
+            },
+            "run_config": {"recursion_limit": 100},
+        },
+        "entry_graph": {"graph_kind": "workflow", "resource_id": "workflow-entry"},
+    }
+
+
 class _NotFound(LookupError):
     status_code = 404
 
@@ -201,6 +263,9 @@ class _Client:
             "thread-peer": [{"checkpoint_id": "checkpoint-peer"}],
         }
         self.store_items = {
+            ("workflow-lifecycle", "lifecycle-1", "configuration"): {
+                "snapshot": _configuration_snapshot()
+            },
             ("workflow-lifecycle", "lifecycle-1", "input"): {"request": {}},
             ("workflow-lifecycle", "lifecycle-1", "runs"): {
                 "run-entry": {
@@ -251,6 +316,7 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         page = await service.list_page(page=1, page_size=10)
         snapshot = await service.snapshot("lifecycle-1")
         graph = await service.graph("lifecycle-1", "run-peer")
+        workflow_graph = await service.graph("lifecycle-1", "run-entry")
         state = await service.state("lifecycle-1", "run-entry")
         history = await service.history("lifecycle-1", "run-peer", limit=5)
         client.run_values["thread-peer"].append(
@@ -271,9 +337,9 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         )
         with pytest.raises(LangGraphRunNotFound):
             await service.state("lifecycle-1", "missing")
-        return page, snapshot, graph, state, history, filtered
+        return client, page, snapshot, graph, workflow_graph, state, history, filtered
 
-    page, snapshot, graph, state, history, filtered = asyncio.run(scenario())
+    client, page, snapshot, graph, workflow_graph, state, history, filtered = asyncio.run(scenario())
     assert page["total"] == 1
     assert page["items"][0]["status"] == "running"
     assert page["items"][0]["run_count"] == 2
@@ -297,6 +363,16 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
     assert peer_thread["runs"][0]["run"]["status"] == "running"
     assert peer_thread["runs"][0]["relation"]["resource_name"] == "Peer Agent"
     assert graph["assistant_id"] == "assistant-peer"
+    assert workflow_graph["graph"] is None
+    assert workflow_graph["workflow_document"]["layout"]["viewport"] == {
+        "x": 12,
+        "y": 24,
+        "zoom": 0.8,
+    }
+    assert workflow_graph["workflow_commands"] == [
+        {"id": "command-1", "name": "Frozen Command"}
+    ]
+    assert client.assistants.graph_reads == ["assistant-peer"]
     assert state["state"]["values"]["shared_vars"] == {"answer": 42}
     assert history["history"] == [{"checkpoint_id": "checkpoint-peer"}]
     assert filtered["total"] == 1
@@ -401,6 +477,7 @@ def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> 
     assert set(client.deleted_threads) == {"thread-entry", "thread-peer"}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "configuration")] == {}
 
 
 def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
@@ -507,6 +584,7 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     ]
     assert snapshot["run_count"] == 3
     assert [namespace["namespace"][-1] for namespace in store["namespaces"]] == [
+        "configuration",
         "input",
         "runs",
     ]
@@ -521,11 +599,37 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     assert manifest["atomic"] is False
     assert all(item["status"] == "available" for item in manifest["files"])
     assert "assistants/assistant-peer/graph.json" in names
+    assert "configuration/snapshot.json" in names
+    assert "workflows/workflow-entry/graph.json" in names
     assert "threads/thread-peer/state.json" in names
     assert "threads/thread-peer/history.json" in names
     assert archived_snapshot["run_count"] == 3
-    assert len(archived_store["namespaces"]) == 2
+    assert len(archived_store["namespaces"]) == 3
     assert client.assistants.graph_reads.count("assistant-peer") == 1
+
+
+def test_export_reports_a_missing_frozen_workflow_as_a_local_file_error() -> None:
+    async def scenario():
+        client = _Client()
+        configuration = client.store_items[
+            ("workflow-lifecycle", "lifecycle-1", "configuration")
+        ]["snapshot"]
+        configuration["repository"]["config"]["workflows"] = []
+        archive = await LangGraphLifecycleService(lambda: client).export("lifecycle-1")
+        return archive
+
+    exported = asyncio.run(scenario())
+    with ZipFile(BytesIO(exported.content)) as archive:
+        names = set(archive.namelist())
+        manifest = json.loads(archive.read("manifest.json"))
+
+    workflow_path = "workflows/workflow-entry/graph.json"
+    result = next(item for item in manifest["files"] if item["path"] == workflow_path)
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "unavailable"
+    assert workflow_path not in names
+    assert "configuration/snapshot.json" in names
+    assert "snapshot.json" in names
 
 
 def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:
@@ -572,3 +676,4 @@ def test_retention_excludes_active_then_deletes_terminal_lifecycle_data() -> Non
     assert set(client.deleted_threads) == {"thread-entry", "thread-peer"}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "configuration")] == {}

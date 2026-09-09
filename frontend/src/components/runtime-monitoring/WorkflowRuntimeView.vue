@@ -2,27 +2,28 @@
 import {
   ConnectionLineType,
   VueFlow,
-  type Edge,
-  type GraphNode,
   type VueFlowStore,
 } from '@vue-flow/core'
 import { computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-interface OfficialGraphNode {
-  id: string
-  type?: string
-  data?: unknown
-}
-
-interface OfficialGraphEdge {
-  source: string
-  target: string
-  conditional?: boolean
-}
+import type {
+  ConfigurationSummary,
+  WorkflowGraphDocument,
+  WorkflowNodeCatalogItem,
+  WorkflowNodeType,
+} from '@/api'
+import WorkflowNodeEndpoints from '@/components/workflow/WorkflowNodeEndpoints.vue'
+import {
+  workflowCanvasNodeEndpoints,
+  workflowDocumentToCanvas,
+  type WorkflowEndpointDirection,
+} from '@/domain/workflowGraph'
 
 const props = defineProps<{
-  graph: Record<string, unknown> | null
+  graph: WorkflowGraphDocument | null
+  nodeCatalog: WorkflowNodeCatalogItem[]
+  commands: ConfigurationSummary[]
   state: Record<string, unknown> | null
   loading: boolean
   error?: string
@@ -31,113 +32,59 @@ const props = defineProps<{
 const { t } = useI18n()
 let flow: VueFlowStore | null = null
 
-const officialNodes = computed<OfficialGraphNode[]>(() => {
-  const nodes = props.graph?.nodes
-  return Array.isArray(nodes) ? nodes.filter(isOfficialNode) : []
-})
-
-const officialEdges = computed<OfficialGraphEdge[]>(() => {
-  const edges = props.graph?.edges
-  return Array.isArray(edges) ? edges.filter(isOfficialEdge) : []
-})
-
 const activeNodeIds = computed(() => {
   const next = props.state?.next
   return new Set(Array.isArray(next) ? next.filter((value): value is string => typeof value === 'string') : [])
 })
 
-const ranks = computed(() => graphRanks(officialNodes.value, officialEdges.value))
-const nodes = computed<GraphNode[]>(() => {
-  const grouped = new Map<number, OfficialGraphNode[]>()
-  for (const node of officialNodes.value) {
-    const rank = ranks.value.get(node.id) ?? 0
-    grouped.set(rank, [...(grouped.get(rank) ?? []), node])
+const canvas = computed(() => {
+  if (!props.graph) return null
+  const projected = workflowDocumentToCanvas(props.graph, props.nodeCatalog, {
+    addDefaultTerminals: false,
+  })
+  return {
+    viewport: projected.viewport,
+    nodes: projected.nodes.map((node) => ({
+      ...node,
+      draggable: false,
+      connectable: false,
+      selectable: false,
+      deletable: false,
+      data: { ...node.data, active: activeNodeIds.value.has(node.id) },
+    })),
+    edges: projected.edges.map((edge) => ({
+      ...edge,
+      animated: false,
+      selectable: false,
+      updatable: false,
+      deletable: false,
+    })),
   }
-  const positions = new Map<string, { x: number, y: number }>()
-  for (const [rank, values] of grouped) {
-    values.forEach((node, index) => {
-      positions.set(node.id, { x: index * 220, y: rank * 120 })
-    })
-  }
-  return officialNodes.value.map((node) => ({
-    id: node.id,
-    type: 'runtime',
-    position: positions.get(node.id) ?? { x: 0, y: 0 },
-    data: {
-      label: graphNodeLabel(node),
-      active: activeNodeIds.value.has(node.id),
-      terminal: node.id === '__start__' || node.id === '__end__',
-    },
-    draggable: false,
-    connectable: false,
-    selectable: false,
-  }))
 })
 
-const edges = computed<Edge[]>(() => officialEdges.value.map((edge, index) => ({
-  id: `${edge.source}-${edge.target}-${index}`,
-  source: edge.source,
-  target: edge.target,
-  animated: false,
-  selectable: false,
-})))
+const nodes = computed(() => canvas.value?.nodes ?? [])
+const edges = computed(() => canvas.value?.edges ?? [])
 
-function isOfficialNode(value: unknown): value is OfficialGraphNode {
-  return value !== null && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string'
+function nodeEndpoints(nodeType: WorkflowNodeType, direction: WorkflowEndpointDirection) {
+  return workflowCanvasNodeEndpoints(props.nodeCatalog, nodeType, direction)
 }
 
-function isOfficialEdge(value: unknown): value is OfficialGraphEdge {
-  if (value === null || typeof value !== 'object') return false
-  const edge = value as { source?: unknown, target?: unknown }
-  return typeof edge.source === 'string' && typeof edge.target === 'string'
+function commandName(commandId: string): string {
+  return props.commands.find((item) => item.id === commandId)?.name ?? commandId
 }
 
-function graphNodeLabel(node: OfficialGraphNode): string {
-  if (node.data !== null && typeof node.data === 'object') {
-    const name = (node.data as { name?: unknown }).name
-    if (typeof name === 'string' && name) return name
-  }
-  return node.id
-}
-
-function graphRanks(
-  graphNodes: OfficialGraphNode[],
-  graphEdges: OfficialGraphEdge[],
-): Map<string, number> {
-  const ids = new Set(graphNodes.map((node) => node.id))
-  const incoming = new Map([...ids].map((id) => [id, 0]))
-  const outgoing = new Map([...ids].map((id) => [id, [] as string[]]))
-  for (const edge of graphEdges) {
-    if (!ids.has(edge.source) || !ids.has(edge.target)) continue
-    incoming.set(edge.target, (incoming.get(edge.target) ?? 0) + 1)
-    outgoing.get(edge.source)?.push(edge.target)
-  }
-  const queue = [...ids].filter((id) => incoming.get(id) === 0)
-  const result = new Map<string, number>(queue.map((id) => [id, 0]))
-  while (queue.length > 0) {
-    const current = queue.shift() as string
-    for (const target of outgoing.get(current) ?? []) {
-      result.set(target, Math.max(result.get(target) ?? 0, (result.get(current) ?? 0) + 1))
-      incoming.set(target, (incoming.get(target) ?? 1) - 1)
-      if (incoming.get(target) === 0) queue.push(target)
-    }
-  }
-  graphNodes.forEach((node, index) => {
-    if (!result.has(node.id)) result.set(node.id, index)
-  })
-  return result
+async function applyFrozenViewport(): Promise<void> {
+  if (!flow || !canvas.value) return
+  await nextTick()
+  await flow.setViewport(canvas.value.viewport)
 }
 
 async function initialize(instance: VueFlowStore): Promise<void> {
   flow = instance
-  await nextTick()
-  await flow.fitView({ padding: .2 })
+  await applyFrozenViewport()
 }
 
-watch(officialNodes, async () => {
-  await nextTick()
-  await flow?.fitView({ padding: .2 })
-})
+watch(() => props.graph, () => { void applyFrozenViewport() })
 </script>
 
 <template>
@@ -151,10 +98,11 @@ watch(officialNodes, async () => {
     </div>
     <VueFlow
       v-else-if="nodes.length"
-      class="workflow-runtime-flow"
+      class="workflow-canvas-flow workflow-runtime-flow"
       :nodes="nodes"
       :edges="edges"
       :connection-line-type="ConnectionLineType.Bezier"
+      default-marker-color="var(--bs-primary)"
       :nodes-draggable="false"
       :nodes-connectable="false"
       :edges-updatable="false"
@@ -164,20 +112,31 @@ watch(officialNodes, async () => {
       :max-zoom="2"
       @init="initialize"
     >
-      <template #node-runtime="{ data }">
-        <div
-          class="workflow-runtime-node"
-          :class="{
-            'workflow-runtime-node--active': data.active,
-            'workflow-runtime-node--terminal': data.terminal,
-          }"
-        >
-          <i
-            class="bi"
-            :class="data.active ? 'bi-arrow-repeat' : data.terminal ? 'bi-record-circle' : 'bi-square'"
-            aria-hidden="true"
-          />
-          <span>{{ data.label }}</span>
+      <template #node-start="{ id, data }">
+        <div class="workflow-node workflow-node--terminal workflow-runtime-node" :data-running="data.active">
+          <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-play-fill" /></span>
+          <span class="workflow-node-title">{{ id }}</span>
+          <WorkflowNodeEndpoints direction="output" :endpoints="nodeEndpoints('start', 'output')" />
+        </div>
+      </template>
+
+      <template #node-command="{ id, data }">
+        <div class="workflow-node workflow-node--command workflow-runtime-node" :data-running="data.active">
+          <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('command', 'input')" />
+          <div class="workflow-node-header">
+            <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-circle-half" /></span>
+            <span class="workflow-node-title">{{ id }}</span>
+          </div>
+          <span class="workflow-node-summary">{{ commandName(data.commandId ?? '') }}</span>
+          <WorkflowNodeEndpoints direction="output" :endpoints="nodeEndpoints('command', 'output')" />
+        </div>
+      </template>
+
+      <template #node-end="{ id, data }">
+        <div class="workflow-node workflow-node--terminal workflow-runtime-node" :data-running="data.active">
+          <WorkflowNodeEndpoints direction="input" :endpoints="nodeEndpoints('end', 'input')" />
+          <span class="workflow-node-icon" aria-hidden="true"><i class="bi bi-stop-fill" /></span>
+          <span class="workflow-node-title">{{ id }}</span>
         </div>
       </template>
     </VueFlow>
@@ -195,7 +154,6 @@ watch(officialNodes, async () => {
 .workflow-runtime-flow {
   height: 100%;
   min-height: 30rem;
-  background: var(--bs-body-bg);
 }
 
 .workflow-runtime-loading,
@@ -213,37 +171,9 @@ watch(officialNodes, async () => {
   color: var(--bs-danger-text-emphasis);
 }
 
-.workflow-runtime-node {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  min-width: 9rem;
-  padding: .7rem .85rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
-  background: var(--bs-body-bg);
-  color: var(--bs-body-color);
-  box-shadow: var(--bs-box-shadow-sm);
-}
-
-.workflow-runtime-node--terminal {
-  background: var(--bs-tertiary-bg);
-}
-
-.workflow-runtime-node--active {
-  border: 2px solid var(--bs-primary);
-  box-shadow: 0 0 0 .2rem var(--bs-primary-bg-subtle);
-}
-
-.workflow-runtime-node--active .bi {
-  animation: workflow-runtime-spin 1.2s linear infinite;
-}
-
-@keyframes workflow-runtime-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workflow-runtime-node--active .bi { animation: none; }
+.workflow-runtime-node[data-running='true'] {
+  border-color: var(--bs-success);
+  background: var(--bs-success-bg-subtle);
+  box-shadow: 0 0 0 3px var(--bs-success-border-subtle), var(--bs-box-shadow-sm);
 }
 </style>

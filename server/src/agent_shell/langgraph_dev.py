@@ -275,6 +275,14 @@ async def agent_graph(
         main_agent_id=main_agent_id,
         configurable=configurable,
     )
+    snapshot = (
+        await application.state.agent_runtime.load_lifecycle_snapshot(
+            runtime.store,
+            context.lifecycle_id,
+        )
+        if context.lifecycle_id
+        else await application.state.agent_runtime.capture()
+    )
     coordinator = application.state.agent_runtime.active_lifecycle(
         context.lifecycle_id
     )
@@ -283,13 +291,13 @@ async def agent_graph(
             main_agent_id=main_agent_id,
             store=runtime.store,
             context=context,
+            snapshot=snapshot,
         )
         yield graph
         return
-    snapshot = await application.state.agent_runtime.capture()
     main_agent = snapshot.main_agent_by_id(main_agent_id)
     if main_agent is None:
-        raise ValueError("Main Agent is absent")
+        raise ValueError(f"Main Agent {main_agent_id} is not in the Lifecycle snapshot")
     graph_runtime = await snapshot.new_runtime(store=runtime.store)
     built = await graph_runtime.build_main_agent_graph(
         main_agent_id,
@@ -318,6 +326,14 @@ async def workflow_graph(
         workflow_id=workflow_id,
         configurable=configurable,
     )
+    snapshot = (
+        await application.state.agent_runtime.load_lifecycle_snapshot(
+            runtime.store,
+            context.lifecycle_id,
+        )
+        if context.lifecycle_id
+        else await application.state.agent_runtime.capture()
+    )
     coordinator = application.state.agent_runtime.active_lifecycle(
         context.lifecycle_id
     )
@@ -326,15 +342,15 @@ async def workflow_graph(
             workflow_id=workflow_id,
             store=runtime.store,
             context=context,
+            snapshot=snapshot,
         )
         yield graph
         return
 
-    snapshot = await application.state.agent_runtime.capture()
     workflow = snapshot.workflow_by_id(workflow_id)
     document = snapshot.workflow_document(workflow_id)
     if workflow is None or not workflow.get("enabled") or document is None:
-        raise ValueError("Workflow is absent or disabled")
+        raise ValueError(f"Workflow {workflow_id} is not in the Lifecycle snapshot")
 
     graph_runtime = await snapshot.new_runtime(store=runtime.store)
     if runtime.execution_runtime is None:

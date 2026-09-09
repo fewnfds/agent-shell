@@ -382,6 +382,10 @@ class FileConfigRepository:
         cls,
         data_root: Path,
         config: dict[str, Any],
+        *,
+        repository_id: str = "",
+        repository_name: str = "",
+        repository_root: Path | None = None,
     ) -> "FileConfigRepository":
         """Build an isolated repository view for validation without persistence."""
 
@@ -390,6 +394,11 @@ class FileConfigRepository:
             _config=config,
             _system=_default_system(),
             _persist=False,
+            _repository=ConfigurationRepositoryDescriptor(
+                id=repository_id,
+                name=repository_name,
+                root=(repository_root or data_root / "config").resolve(),
+            ),
         )
 
     def clone(self) -> "FileConfigRepository":

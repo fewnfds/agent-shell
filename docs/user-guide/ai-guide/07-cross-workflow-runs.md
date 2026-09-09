@@ -19,7 +19,9 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 ## 2. 准备目标 Workflow
 
-目标必须存在于本次请求已经冻结的 Configuration Repository 快照中，并且 `enabled=true`。内部调用不要求 `is_model_entry=true`；该字段只决定 Workflow 是否出现在 `/compat/openai/v1/models` 并可由 OpenAI-compatible 请求启动。
+Lifecycle入口启动时自动冻结active Configuration Repository中的全部已保存Main Agent、全部Component/Subagent和全部`enabled=true` Workflow，无需为调用范围另写声明。目标必须存在于该持久快照；Workflow在捕获时已经满足`enabled=true`。内部调用不要求`is_model_entry=true`，该字段只决定Graph是否可由OpenAI-compatible请求作为入口启动。目标不在范围内时返回`lifecycle_graph_not_in_snapshot`，运行时不会查询live配置扩大范围。
+
+Model/MCP binding与被绑定Connection declaration、本次response scheduling和Run config一并冻结。Python/Skill package、Filesystem或mapped directory、Managed MCP installation和远端服务只冻结路径或declaration reference；这些外部对象失效时Lifecycle运行失败。credential实际值仍由Environment owner保管，绝不写入Lifecycle snapshot。
 
 需要 AI执行时直接启动目标 Main Agent，不需要创建单 Agent wrapper Workflow。目标 Main Agent使用自己的Graph、AgentState、Component引用与Agent Event Output；目标Workflow使用自己的控制Graph与Workflow Event Output。全部Run使用持久Thread、Agent Server默认`async` durability、实例级`recursion_limit`与可选`max_concurrency`。
 
@@ -155,7 +157,7 @@ Main Agent 与 Workflow 分别保存`on_disconnect=cancel|continue`。每个 Run
 
 ## 10. 观测与交付检查
 
-运行监控按 `Lifecycle -> Thread -> Run` 显示本次请求的全部官方执行。选择 Main Agent Thread 时显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；选择 Workflow Thread 时显示只读 Graph、当前活动 Node 和 latest State。旁侧字段树显示 Thread State 与 Lifecycle Store，监控 ZIP 包含公共 API 可读取的完整 checkpoint history。`caller_run_id` 只用于理解调用关系，不形成 Parent/Child 能力层级。
+运行监控按`Lifecycle -> Thread -> Run`显示本次请求的全部官方执行。选择Main Agent Thread时显示由官方stream/latest State恢复的连续消息、reasoning、Tool与错误；选择Workflow Thread时显示冻结Graph document的原始Vue Flow位置、handle、Edge和viewport，并高亮当前活动Node。旁侧字段树显示Thread State与Lifecycle Store，监控ZIP包含configuration snapshot、冻结Workflow document和公共API可读取的完整checkpoint history。`caller_run_id`只用于理解调用关系，不形成Parent/Child能力层级。
 
 交付前确认：
 

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import threading
 from typing import Any, cast
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.request_snapshot import RequestRuntimeSnapshot
+from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_CONFIGURATION_KEY,
+    lifecycle_configuration_namespace,
+)
 
 from .support import *
 
@@ -43,8 +48,23 @@ def test_snapshot_freezes_workflow_metadata(
             client,
             name="Frozen Workflow",
         )
+        main_agent = create_main_agent(client)
+        save_linear_workflow_graph(client, workflow, main_agent)
+        draft = create_workflow(client, name="Excluded Draft")
 
         snapshot = asyncio.run(client.app.state.agent_runtime.capture())
+        frozen_configuration = snapshot.lifecycle_configuration(
+            graph_kind="workflow",
+            resource_id=workflow["id"],
+        ).as_store_value()
+        assert [
+            item["id"]
+            for item in frozen_configuration["repository"]["config"]["workflows"]
+        ] == [workflow["id"]]
+        assert snapshot.workflow_by_id(draft["id"]) is None
+        assert snapshot.main_agent_by_id(main_agent["id"]) is not None
+        assert frozen_configuration["repository"]["config"]["components"]
+        assert "provider-test-secret" not in json.dumps(frozen_configuration)
         snapshot_fields = snapshot.__dataclass_fields__
         assert "_response_scheduler" not in snapshot_fields
         assert "_workflow_lifecycle" not in snapshot_fields
@@ -69,6 +89,30 @@ def test_snapshot_freezes_workflow_metadata(
         current_workflow = next_snapshot.workflow_by_name(workflow["name"])
         assert current_workflow is not None
         assert current_workflow["description"] == "Changed after snapshot"
+
+        async def reload_frozen():
+            store = InMemoryStore()
+            await store.aput(
+                lifecycle_configuration_namespace("lifecycle-frozen"),
+                LIFECYCLE_CONFIGURATION_KEY,
+                frozen_configuration,
+                index=False,
+            )
+            loaded = await client.app.state.agent_runtime.load_lifecycle_snapshot(
+                store,
+                "lifecycle-frozen",
+            )
+            with pytest.raises(RuntimeError, match="snapshot is unavailable"):
+                await client.app.state.agent_runtime.load_lifecycle_snapshot(
+                    store,
+                    "missing-lifecycle",
+                )
+            return loaded
+
+        loaded = asyncio.run(reload_frozen())
+        reloaded_workflow = loaded.workflow_by_id(workflow["id"])
+        assert reloaded_workflow is not None
+        assert reloaded_workflow["description"] == workflow["description"]
 
 
 def test_snapshot_freezes_response_stream_scheduling(
@@ -95,6 +139,7 @@ def test_snapshot_freezes_response_stream_scheduling(
                     "langsmith_workspace_id",
                     "cors_origins",
                     "trusted_proxy_cidrs",
+                    "provider_http",
                 )
             }
             | {

@@ -34,17 +34,17 @@ Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_
 - Markdown 跟随管理台当前解析后的 light/dark mode；代码块、行内代码、引用、列表等格式使用 `markstream-vue` 自身对应主题变量；
 - 页面只观察，不提供输入、停止、approve 或 State 写入操作；离开页面只断开观察，不取消 Run。
 
-Workflow Thread 使用只读 Vue Flow 显示 Assistant Graph，以 latest Thread State 的 `next` 高亮一个或多个当前节点。active Lifecycle 每三秒刷新 Lifecycle snapshot、Store 和当前 Workflow State；终态后保留最终 State 并停止自动刷新。
+Workflow Thread使用只读Vue Flow显示该Lifecycle启动时冻结的原始Workflow画布。Node位置、Control Edge、source/target handle和viewport与当时正式保存的Graph document一致；Node模板、端点和Edge样式与Workflow编辑器共用，以latest Thread State的`next`高亮一个或多个当前节点。active Lifecycle每三秒刷新Lifecycle snapshot、Store和当前Workflow State；终态后保留最终State并停止自动刷新。
 
 右侧数据检查器以可展开字段树显示所选 Thread 的 State 和 Lifecycle namespace 下的 Store item，不把它们转换为第二套字段协议。页面不从 checkpoint history 合成 Agent 信息流，不从事件时间或 namespace 推测 Workflow 执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
 
-这些数据以官方 `assistant_id`、`thread_id`、`run_id`、Run status、Graph 和 State 为准。Agent Shell 只保存最小 Run relation，用于把没有 Lifecycle Thread metadata 的已登记 Run 纳入对应 Lifecycle。Lifecycle summary 将 relation/Run metadata 投影为统一 Graph subject；搜索覆盖 Graph kind、配置 ID、名称、Lifecycle ID 和 request ID。
+这些数据以官方`assistant_id`、`thread_id`、`run_id`、Run status和State，以及Lifecycle configuration snapshot中的Workflow document为准。每个Lifecycle在入口Run创建前持久化一次配置：全部已保存Main Agent、全部Component/Subagent、全部enabled Workflow、当前Repository binding/Connection声明和本次运行设置。Python/Skill package、Filesystem、Managed MCP安装与远端服务只保存引用，credential实际值不写入快照。Agent Shell另保存最小Run relation，用于把没有Lifecycle Thread metadata的已登记Run纳入对应Lifecycle。Lifecycle summary将relation/Run metadata投影为统一Graph subject；搜索覆盖Graph kind、配置ID、名称、Lifecycle ID和request ID。
 
 Agent与Workflow Run都使用持久Thread。事件会话结束只关闭观察连接；已经正常提交的历史消息、State、checkpoint和Lifecycle Run relation在服务重启后继续由官方Thread/Store API提供，直到Lifecycle retention或显式删除流程处理该Thread。
 
 ## 下载
 
-Lifecycle 列表与监控页都可以按需生成监控 ZIP。ZIP 包含 `manifest.json`、Lifecycle snapshot、Lifecycle Store、去重后的 Assistant Graph、Thread latest State 和完整 checkpoint history。manifest 记录 schema version、导出时间、Lifecycle 状态以及每个文件的读取结果。
+Lifecycle列表与监控页都可以按需生成监控ZIP。ZIP包含`manifest.json`、Lifecycle snapshot、Lifecycle Store、configuration snapshot、冻结Workflow document、Main Agent Assistant Graph、Thread latest State和完整checkpoint history。manifest记录schema version、导出时间、Lifecycle状态以及每个文件的读取结果。
 
 active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 manifest 的 `atomic` 为 `false`。某一 Graph、Thread、State 或 history 已不可用时，manifest 为该项记录局部错误；下载不会读取 LangGraph Dev 内部数据库文件，也不会把缺失数据伪装为空成功。
 
@@ -52,7 +52,7 @@ active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 ma
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
 
-删除 Lifecycle 会删除其入口与内部启动 Run 的官方 Thread、Run/checkpoint/State，并删除 Agent Shell 在 Server Store 中以该 Lifecycle 为前缀的数据。普通文件、输出媒体和 mapped directory 是用户产出，不随运行记录删除。
+删除Lifecycle会删除其入口与内部启动Run的官方Thread、Run/checkpoint/State，并删除Agent Shell在Server Store中以该Lifecycle为前缀的configuration、input、run relation和filesystem route数据。普通文件、输出媒体和mapped directory是用户产出，不随运行记录删除。
 
 运行错误、诊断附件、监控 ZIP、Lifecycle Store、State、消息和 Tool payload 保留其 owner 提供的业务内容与本机路径；监控数据沿 LangGraph 官方对象读取。错误与 credential 的投影规则见[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。
 

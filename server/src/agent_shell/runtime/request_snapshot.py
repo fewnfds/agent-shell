@@ -31,6 +31,10 @@ from agent_shell.runtime.errors import (
 )
 from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
 from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleService
+from agent_shell.runtime.lifecycle_configuration import (
+    LIFECYCLE_CONFIGURATION_SCHEMA_VERSION,
+    LifecycleConfigurationSnapshot,
+)
 from agent_shell.runtime.response_scheduler import LifecycleResponseScheduler
 from agent_shell.runtime.run_calls import (
     ACTIVE_RUN_STATUSES,
@@ -44,8 +48,10 @@ from agent_shell.runtime.run_calls import (
     select_run_relations,
 )
 from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_CONFIGURATION_KEY,
     LIFECYCLE_INPUT_KEY,
     LIFECYCLE_START_ERROR_KEY,
+    lifecycle_configuration_namespace,
     lifecycle_input_namespace,
 )
 from agent_shell.runtime.workflow_data import WorkflowDataService
@@ -55,9 +61,10 @@ from agent_shell.runtime.workflow_run_calls import (
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
+from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 from agent_shell.storage.file_config import FileConfigRepository
-from agent_shell.storage.mcp_connections import McpResourceStore
-from agent_shell.storage.model_connections import ModelResourceStore
+from agent_shell.storage.mcp_connections import McpResourceSnapshot, McpResourceStore
+from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
@@ -276,6 +283,8 @@ class RequestRuntimeSnapshot:
     _agents: AgentConfigStore
     _runtime_factory: Callable[[BaseStore | None], AgentRuntime]
     _response_stream_policy: ResponseStreamPolicy
+    _configuration: dict[str, Any] = field(default_factory=dict)
+    _run_config: dict[str, Any] = field(default_factory=dict)
 
     def workflow_by_name(self, name: str) -> dict[str, Any] | None:
         return self._workflows.get_item_by_name(name)
@@ -297,6 +306,25 @@ class RequestRuntimeSnapshot:
 
     def response_stream_policy(self) -> ResponseStreamPolicy:
         return self._response_stream_policy.model_copy(deep=True)
+
+    def run_config(self) -> dict[str, Any]:
+        return deepcopy(self._run_config)
+
+    def lifecycle_configuration(
+        self,
+        *,
+        graph_kind: str,
+        resource_id: str,
+    ) -> LifecycleConfigurationSnapshot:
+        return LifecycleConfigurationSnapshot.model_validate(
+            {
+                **deepcopy(self._configuration),
+                "entry_graph": {
+                    "graph_kind": graph_kind,
+                    "resource_id": resource_id,
+                },
+            }
+        )
 
 
 @dataclass(slots=True)
@@ -336,6 +364,31 @@ class LifecycleRunCoordinator:
             self._snapshot.response_stream_policy(),
             lifecycle_id=lifecycle_id,
         )
+
+    async def _persist_configuration(
+        self,
+        *,
+        graph_kind: str,
+        resource_id: str,
+    ) -> None:
+        value = self._snapshot.lifecycle_configuration(
+            graph_kind=graph_kind,
+            resource_id=resource_id,
+        ).as_store_value()
+        async with self._owner.new_agent_server_client() as client:
+            namespace = lifecycle_configuration_namespace(self._lifecycle_id)
+            existing = await client.store.get_item(
+                namespace,
+                LIFECYCLE_CONFIGURATION_KEY,
+            )
+            if existing is not None:
+                raise RuntimeError("the Lifecycle configuration snapshot already exists")
+            await client.store.put_item(
+                namespace,
+                LIFECYCLE_CONFIGURATION_KEY,
+                value,
+                index=False,
+            )
 
     async def _record_entry_start_failure(
         self,
@@ -423,6 +476,10 @@ class LifecycleRunCoordinator:
         self._bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
         try:
+            await self._persist_configuration(
+                graph_kind="workflow",
+                resource_id=str(workflow["id"]),
+            )
             client, thread_stream = await self._open_run_session(binding)
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
@@ -495,6 +552,10 @@ class LifecycleRunCoordinator:
         self._owner.register_active_lifecycle(self)
         client: Any | None = None
         try:
+            await self._persist_configuration(
+                graph_kind="agent",
+                resource_id=str(main_agent["id"]),
+            )
             client, thread_stream = await self._open_agent_run_session(binding)
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
@@ -547,6 +608,7 @@ class LifecycleRunCoordinator:
         main_agent_id: str,
         store: BaseStore,
         context: Any,
+        snapshot: RequestRuntimeSnapshot,
     ) -> Any:
         key = relation_key(context.caller_run_id, context.operation_id)
         binding = self._agent_bindings.get(key)
@@ -561,7 +623,13 @@ class LifecycleRunCoordinator:
         assert binding.execution_ready is not None
         try:
             run_id = await binding.run_id_ready
-            runtime = await self._snapshot.new_runtime(store=store)
+            if snapshot.main_agent_by_id(main_agent_id) is None:
+                raise AgentRuntimeError(
+                    "lifecycle_graph_not_in_snapshot",
+                    f"Main Agent {main_agent_id} is not in the Lifecycle snapshot.",
+                    status_code=422,
+                )
+            runtime = await snapshot.new_runtime(store=store)
             execution = await runtime.start_main_agent(
                 main_agent_id,
                 binding.messages,
@@ -601,6 +669,7 @@ class LifecycleRunCoordinator:
         workflow_id: str,
         store: BaseStore,
         context: Any,
+        snapshot: RequestRuntimeSnapshot,
     ) -> Any:
         key = relation_key(context.caller_run_id, context.operation_id)
         binding = self._bindings.get(key)
@@ -626,11 +695,19 @@ class LifecycleRunCoordinator:
             )
             if not isinstance(messages, list):
                 raise RuntimeError("the Workflow Lifecycle input is unavailable")
-            runtime = await self._snapshot.new_runtime(store=store)
+            workflow = snapshot.workflow_by_id(workflow_id)
+            document = snapshot.workflow_document(workflow_id)
+            if workflow is None or document is None:
+                raise AgentRuntimeError(
+                    "lifecycle_graph_not_in_snapshot",
+                    f"Workflow {workflow_id} is not in the Lifecycle snapshot.",
+                    status_code=422,
+                )
+            runtime = await snapshot.new_runtime(store=store)
             execution = await runtime.start_workflow(
-                binding.document,
+                document,
                 messages,
-                workflow_snapshot=binding.workflow,
+                workflow_snapshot=workflow,
                 request_id=binding.request_id,
                 public_model=binding.public_model,
                 lifecycle_id=binding.lifecycle_id,
@@ -690,8 +767,8 @@ class LifecycleRunCoordinator:
         document = self._snapshot.workflow_document(target_workflow_id)
         if target is None or not target["enabled"] or document is None:
             raise AgentRuntimeError(
-                "workflow_run_target_not_found",
-                "The selected Workflow does not exist or is disabled.",
+                "lifecycle_graph_not_in_snapshot",
+                f"Workflow {target_workflow_id} is not in the Lifecycle snapshot.",
                 status_code=422,
             )
         existing = await self._relation_for_operation(
@@ -769,8 +846,8 @@ class LifecycleRunCoordinator:
         target = self._snapshot.main_agent_by_id(main_agent_id)
         if target is None:
             raise AgentRuntimeError(
-                "agent_run_target_not_found",
-                "The selected Main Agent does not exist.",
+                "lifecycle_graph_not_in_snapshot",
+                f"Main Agent {main_agent_id} is not in the Lifecycle snapshot.",
                 status_code=422,
             )
         messages = validate_client_messages(input)
@@ -1252,7 +1329,7 @@ class LifecycleRunCoordinator:
         }
 
     def _run_start_config(self, **configurable: str) -> dict[str, Any]:
-        config = dict(self._owner.run_config())
+        config = self._snapshot.run_config()
         existing = config.get("configurable")
         config["configurable"] = {
             **(dict(existing) if isinstance(existing, Mapping) else {}),
@@ -1588,6 +1665,7 @@ class RequestSnapshotRuntime:
         runtime_diagnostics: RuntimeDiagnostics,
         workflow_lifecycle_settings: WorkflowLifecycleSettingsStore,
         response_stream_policy_provider: Callable[[], ResponseStreamPolicy],
+        configuration_mutations: ConfigurationMutationCoordinator,
         model_resources: ModelResourceStore | None = None,
         mcp_resources: McpResourceStore | None = None,
         run_config: Mapping[str, Any],
@@ -1604,6 +1682,7 @@ class RequestSnapshotRuntime:
         self._detached_tasks = detached_tasks
         self._runtime_diagnostics = runtime_diagnostics
         self._response_stream_policy_provider = response_stream_policy_provider
+        self._configuration_mutations = configuration_mutations
         self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
         self._mcp_resources = mcp_resources or McpResourceStore(configuration.data_root)
         self._run_config = dict(run_config)
@@ -1618,9 +1697,6 @@ class RequestSnapshotRuntime:
 
     def new_agent_server_client(self):
         return get_client(url=self._agent_server_url, headers=self._agent_server_headers)
-
-    def run_config(self) -> dict[str, Any]:
-        return dict(self._run_config)
 
     @property
     def langgraph_lifecycles(self) -> LangGraphLifecycleService:
@@ -1670,14 +1746,77 @@ class RequestSnapshotRuntime:
         return await asyncio.to_thread(self._capture)
 
     def _capture(self) -> RequestRuntimeSnapshot:
-        response_stream_policy = self._response_stream_policy_provider()
-        with self._configuration.request_snapshot_context() as context:
-            repository, python_packages_dir, skills_dir, repository_id = context
+        with self._configuration_mutations.mutation():
+            response_stream_policy = self._response_stream_policy_provider()
+            with self._configuration.request_snapshot_context() as context:
+                current_repository, python_packages_dir, skills_dir, repository_id = context
+            repository_config = current_repository.config()
+            repository_config["workflows"] = [
+                workflow
+                for workflow in repository_config.get("workflows", [])
+                if isinstance(workflow, dict) and workflow.get("enabled") is True
+            ]
+            repository = FileConfigRepository.from_snapshot(
+                current_repository.data_root,
+                repository_config,
+                repository_id=repository_id,
+                repository_name=current_repository.repository_name,
+                repository_root=current_repository.config_root,
+            )
+            model_resources = self._model_resources.snapshot()
+            mcp_resources = self._mcp_resources.snapshot()
+            configuration = {
+                "schema_version": LIFECYCLE_CONFIGURATION_SCHEMA_VERSION,
+                "repository": {
+                    "id": repository_id,
+                    "name": repository.repository_name,
+                    "root": str(repository.config_root),
+                    "python_packages_root": str(python_packages_dir),
+                    "skill_packages_root": str(skills_dir),
+                    "config": repository_config,
+                },
+                "model": model_resources.frozen_projection(repository_id),
+                "mcp": mcp_resources.frozen_projection(repository_id),
+                "runtime": {
+                    "response_stream_scheduling": response_stream_policy.model_dump(
+                        mode="json"
+                    ),
+                    "run_config": deepcopy(self._run_config),
+                },
+            }
+            validated = LifecycleConfigurationSnapshot.model_validate(
+                {
+                    **configuration,
+                    "entry_graph": {"graph_kind": "agent", "resource_id": ""},
+                }
+            ).as_store_value()
+            validated.pop("entry_graph")
+            configuration = validated
+        return self._materialize_snapshot(
+            repository,
+            model_resources=model_resources,
+            mcp_resources=mcp_resources,
+            response_stream_policy=response_stream_policy,
+            run_config=self._run_config,
+            configuration=configuration,
+        )
+
+    def _materialize_snapshot(
+        self,
+        repository: FileConfigRepository,
+        *,
+        model_resources: ModelResourceSnapshot,
+        mcp_resources: McpResourceSnapshot,
+        response_stream_policy: ResponseStreamPolicy,
+        run_config: Mapping[str, Any],
+        configuration: dict[str, Any],
+    ) -> RequestRuntimeSnapshot:
+        python_packages_dir = repository.python_packages_root
+        skills_dir = repository.skill_packages_root
+        repository_id = repository.repository_id
         blocks = BlockStore(repository)
         configs = AgentConfigStore(repository)
         workflows = WorkflowStore(repository)
-        model_resources = self._model_resources.snapshot()
-        mcp_resources = self._mcp_resources.snapshot()
         secrets = ProviderSecretResolver(repository, model_resources)
         python_package_validation = PythonPackageValidationService(
             packages_dir=python_packages_dir,
@@ -1713,7 +1852,7 @@ class RequestSnapshotRuntime:
                 blocks=blocks,
                 workflow_data=self._workflow_data,
                 runtime_diagnostics=self._runtime_diagnostics,
-                run_config=self._run_config,
+                run_config=run_config,
                 graph_store=graph_store,
             )
 
@@ -1722,6 +1861,68 @@ class RequestSnapshotRuntime:
             _agents=configs,
             _runtime_factory=runtime_factory,
             _response_stream_policy=response_stream_policy,
+            _configuration=deepcopy(configuration),
+            _run_config=deepcopy(dict(run_config)),
+        )
+
+    async def load_lifecycle_snapshot(
+        self,
+        store: BaseStore,
+        lifecycle_id: str,
+    ) -> RequestRuntimeSnapshot:
+        """Load the persisted configuration owner for a Lifecycle Graph factory."""
+
+        item = await store.aget(
+            lifecycle_configuration_namespace(lifecycle_id),
+            LIFECYCLE_CONFIGURATION_KEY,
+        )
+        if item is None or not isinstance(item.value, Mapping):
+            raise RuntimeError("the Lifecycle configuration snapshot is unavailable")
+        frozen = LifecycleConfigurationSnapshot.model_validate(item.value)
+        return await asyncio.to_thread(self._hydrate_lifecycle_snapshot, frozen)
+
+    def _hydrate_lifecycle_snapshot(
+        self,
+        frozen: LifecycleConfigurationSnapshot,
+    ) -> RequestRuntimeSnapshot:
+        repository_value = frozen.repository
+        with self._configuration_mutations.mutation():
+            repository = FileConfigRepository.from_snapshot(
+                self._configuration.data_root,
+                repository_value.config,
+                repository_id=repository_value.id,
+                repository_name=repository_value.name,
+                repository_root=Path(repository_value.root),
+            )
+            if (
+                Path(repository_value.python_packages_root).resolve()
+                != repository.python_packages_root
+                or Path(repository_value.skill_packages_root).resolve()
+                != repository.skill_packages_root
+            ):
+                raise ValueError("Lifecycle Repository asset roots are invalid")
+            model_resources = self._model_resources.snapshot_from_frozen_projection(
+                repository_value.id,
+                frozen.model.model_dump(mode="json"),
+            )
+            mcp_resources = self._mcp_resources.snapshot_from_frozen_projection(
+                repository_value.id,
+                frozen.mcp.model_dump(mode="json"),
+            )
+        runtime_value = frozen.runtime
+        response_value = runtime_value.get("response_stream_scheduling")
+        run_config = runtime_value.get("run_config")
+        if not isinstance(response_value, Mapping) or not isinstance(run_config, Mapping):
+            raise ValueError("Lifecycle runtime configuration snapshot is invalid")
+        configuration = frozen.as_store_value()
+        configuration.pop("entry_graph", None)
+        return self._materialize_snapshot(
+            repository,
+            model_resources=model_resources,
+            mcp_resources=mcp_resources,
+            response_stream_policy=ResponseStreamPolicy.model_validate(response_value),
+            run_config=run_config,
+            configuration=configuration,
         )
 
     def create_lifecycle_coordinator(

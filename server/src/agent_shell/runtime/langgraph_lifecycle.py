@@ -11,10 +11,13 @@ from agent_shell.runtime.lifecycle_monitoring_archive import (
     LifecycleMonitoringArchive,
     build_lifecycle_monitoring_archive,
 )
+from agent_shell.runtime.lifecycle_configuration import LifecycleConfigurationSnapshot
 from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_CONFIGURATION_KEY,
     LIFECYCLE_INPUT_KEY,
     LIFECYCLE_NAMESPACE_ROOT,
     LIFECYCLE_START_ERROR_KEY,
+    lifecycle_configuration_namespace,
     lifecycle_input_namespace,
 )
 from agent_shell.runtime.run_calls import (
@@ -26,6 +29,7 @@ from agent_shell.runtime.run_calls import (
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
+from agent_shell.workflow.catalog import node_catalog_payload
 
 
 class LangGraphLifecycleNotFound(LookupError):
@@ -152,6 +156,60 @@ class LangGraphLifecycleService:
     ) -> None:
         self._client_factory = client_factory
         self._settings = settings
+
+    @staticmethod
+    async def _configuration_snapshot(
+        client: Any,
+        lifecycle_id: str,
+    ) -> LifecycleConfigurationSnapshot:
+        item = await client.store.get_item(
+            lifecycle_configuration_namespace(lifecycle_id),
+            LIFECYCLE_CONFIGURATION_KEY,
+        )
+        value = item.get("value") if isinstance(item, Mapping) else None
+        if not isinstance(value, Mapping):
+            raise RuntimeError("The Lifecycle configuration snapshot is unavailable.")
+        return LifecycleConfigurationSnapshot.model_validate(value)
+
+    @staticmethod
+    def _workflow_document(
+        snapshot: LifecycleConfigurationSnapshot,
+        workflow_id: str,
+    ) -> dict[str, Any]:
+        workflows = snapshot.repository.config.get("workflows")
+        if not isinstance(workflows, list):
+            raise ValueError("The Lifecycle Workflow snapshot is invalid.")
+        workflow = next(
+            (
+                item
+                for item in workflows
+                if isinstance(item, dict) and item.get("id") == workflow_id
+            ),
+            None,
+        )
+        if workflow is None:
+            raise LookupError(
+                f"Workflow {workflow_id} is not in the Lifecycle snapshot."
+            )
+        definition = workflow.get("definition")
+        layout = workflow.get("layout")
+        if not isinstance(definition, dict) or not isinstance(layout, dict):
+            raise ValueError("The Lifecycle Workflow document is invalid.")
+        return {"definition": definition, "layout": layout}
+
+    @staticmethod
+    def _workflow_commands(
+        snapshot: LifecycleConfigurationSnapshot,
+    ) -> list[dict[str, str]]:
+        components = snapshot.repository.config.get("components")
+        commands = components.get("command") if isinstance(components, dict) else None
+        if not isinstance(commands, list):
+            return []
+        return [
+            {"id": str(item["id"]), "name": str(item["name"])}
+            for item in commands
+            if isinstance(item, dict) and "id" in item and "name" in item
+        ]
 
     async def _threads(self, client: Any, lifecycle_id: str | None = None) -> list[dict[str, Any]]:
         threads: list[dict[str, Any]] = []
@@ -585,15 +643,35 @@ class LangGraphLifecycleService:
         async with self._client_factory() as client:
             relation = await self._require_relation(client, lifecycle_id, run_id)
             try:
-                graph = await client.assistants.get_graph(relation.assistant_id)
+                if relation.graph_kind == "workflow":
+                    snapshot = await self._configuration_snapshot(client, lifecycle_id)
+                    graph = None
+                    workflow_document = self._workflow_document(
+                        snapshot,
+                        relation.resource_id,
+                    )
+                    workflow_node_catalog = node_catalog_payload()
+                    workflow_commands = self._workflow_commands(snapshot)
+                else:
+                    graph = await client.assistants.get_graph(relation.assistant_id)
+                    workflow_document = None
+                    workflow_node_catalog = None
+                    workflow_commands = None
                 error = None
             except Exception as exc:
                 graph = None
+                workflow_document = None
+                workflow_node_catalog = None
+                workflow_commands = None
                 error = _unavailable("graph_unavailable", exc)
         return {
             "run_id": run_id,
             "assistant_id": relation.assistant_id,
+            "graph_kind": relation.graph_kind,
             "graph": graph,
+            "workflow_document": workflow_document,
+            "workflow_node_catalog": workflow_node_catalog,
+            "workflow_commands": workflow_commands,
             "error": error,
         }
 
@@ -684,16 +762,39 @@ class LangGraphLifecycleService:
             results.append({"path": "snapshot.json", "status": "available"})
             await capture("store.json", lambda: self._store_data(client, lifecycle_id))
 
+            configuration = await capture(
+                "configuration/snapshot.json",
+                lambda: self._configuration_snapshot(client, lifecycle_id),
+            )
+            if isinstance(configuration, LifecycleConfigurationSnapshot):
+                files["configuration/snapshot.json"] = configuration.as_store_value()
+
             assistant_ids = sorted(
                 {
                     relation.assistant_id
                     for relation in observation.relations
-                    if relation.assistant_id
+                    if relation.assistant_id and relation.graph_kind == "agent"
                 }
             )
             for assistant_id in assistant_ids:
                 path = f"assistants/{quote(assistant_id, safe='')}/graph.json"
                 await capture(path, lambda value=assistant_id: client.assistants.get_graph(value))
+
+            if isinstance(configuration, LifecycleConfigurationSnapshot):
+                workflow_ids = sorted(
+                    {
+                        relation.resource_id
+                        for relation in observation.relations
+                        if relation.graph_kind == "workflow"
+                    }
+                )
+                for workflow_id in workflow_ids:
+                    path = f"workflows/{quote(workflow_id, safe='')}/graph.json"
+
+                    async def workflow_document(value: str = workflow_id) -> dict[str, Any]:
+                        return self._workflow_document(configuration, value)
+
+                    await capture(path, workflow_document)
 
             for group in observation.thread_groups:
                 thread_id = str(group["thread_id"])

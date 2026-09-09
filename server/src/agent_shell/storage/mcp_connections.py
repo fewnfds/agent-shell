@@ -331,6 +331,46 @@ class McpResourceSnapshot:
     def bindings_for_repository(self, repository_id: str) -> dict[str, str]:
         return dict(self._bindings.get(repository_id, {}))
 
+    def frozen_projection(self, repository_id: str) -> dict[str, Any]:
+        """Return JSON-safe declarations used by one Repository, without secrets."""
+
+        bindings = self.bindings_for_repository(repository_id)
+        connection_ids = set(bindings.values())
+        return {
+            "bindings": bindings,
+            "connections": [
+                deepcopy(record)
+                for record in self._records
+                if str(record.get("id")) in connection_ids
+            ],
+        }
+
+    @classmethod
+    def from_frozen_projection(
+        cls,
+        repository_id: str,
+        projection: dict[str, Any],
+        environment: EnvironmentSnapshot,
+        installations: McpInstallationManager,
+    ) -> "McpResourceSnapshot":
+        records = projection.get("connections")
+        bindings = projection.get("bindings")
+        if not isinstance(records, list) or not all(
+            isinstance(record, dict) for record in records
+        ):
+            raise ValueError("Lifecycle MCP Connection snapshot is invalid")
+        if not isinstance(bindings, dict) or not all(
+            isinstance(requirement_id, str) and isinstance(connection_id, str)
+            for requirement_id, connection_id in bindings.items()
+        ):
+            raise ValueError("Lifecycle MCP binding snapshot is invalid")
+        return cls.capture(
+            records,
+            environment,
+            {repository_id: bindings},
+            installations,
+        )
+
 
 class McpResourceStore:
     """Instance MCP Connection, secret slot and Repository binding aggregate."""
@@ -431,6 +471,21 @@ class McpResourceStore:
     def snapshot(self) -> McpResourceSnapshot:
         with self._mutations.mutation(), self._lock:
             return self._snapshot_unlocked()
+
+    def snapshot_from_frozen_projection(
+        self,
+        repository_id: str,
+        projection: dict[str, Any],
+    ) -> McpResourceSnapshot:
+        """Hydrate frozen declarations with current secrets and installation owner."""
+
+        with self._mutations.mutation(), self._lock:
+            return McpResourceSnapshot.from_frozen_projection(
+                repository_id,
+                projection,
+                self._environment.snapshot(),
+                self._installations,
+            )
 
     def revision(self) -> int:
         with self._lock:

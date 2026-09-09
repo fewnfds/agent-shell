@@ -658,7 +658,11 @@ export interface LangGraphLifecycleSnapshot extends LangGraphLifecycleSummary {
 export interface LangGraphGraphResponse {
   run_id: string
   assistant_id: string
+  graph_kind: 'agent' | 'workflow'
   graph: Record<string, JsonValue> | null
+  workflow_document: WorkflowGraphDocument | null
+  workflow_node_catalog: WorkflowNodeCatalogItem[] | null
+  workflow_commands: ConfigurationSummary[] | null
   error: LangGraphMonitoringError | null
 }
 
