@@ -399,16 +399,12 @@ try {
         "--output-file", $requirementsPath, "--quiet"
     ) $project
     $sitePackages = Join-Path $pythonExe.Directory.FullName "Lib\site-packages"
-    New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
     Invoke-Native $uvExe @(
         "pip", "install", "--target", $installTarget,
         "--python-version", ([string]$lock.python),
         "--python-platform", "x86_64-pc-windows-msvc",
         "--no-deps", "--require-hashes", "--requirements", $requirementsPath
     ) $project
-    # uv may recreate version aliases while discovering an interpreter for pip.
-    # Keep only the fully-versioned physical runtime selected above.
-    Remove-UvPythonInstallArtifacts $pythonInstallRoot $pythonExe.Directory.FullName
     Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse |
         Remove-Item -Force
 
@@ -426,11 +422,26 @@ try {
     if ($editableLinks.Count -gt 0 -or $directUrls.Count -gt 0) {
         throw "The dependency installation contains editable or checkout-linked package metadata."
     }
+    # A reusable Python copy includes the previous dependency layer. Rebuild
+    # site-packages as an exact snapshot so removed modules and old dist-info
+    # directories cannot survive a locked dependency upgrade.
+    Assert-ChildPath $sitePackages $buildRoot | Out-Null
+    if (Test-Path -LiteralPath $sitePackages) {
+        Remove-Item -LiteralPath $sitePackages -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
     Get-ChildItem -LiteralPath $installTarget -Force |
         Where-Object { $_.Name -ne "bin" } |
         Copy-Item -Destination $sitePackages -Recurse -Force
     Get-ChildItem -LiteralPath $sitePackages -Directory -Filter ".agents" -Recurse |
         Remove-Item -Recurse -Force
+
+    Invoke-Native $uvExe @(
+        "pip", "check", "--python", $pythonExe.FullName
+    ) $project
+    # uv may recreate version aliases while discovering an interpreter for pip.
+    # Keep only the fully-versioned physical runtime selected above.
+    Remove-UvPythonInstallArtifacts $pythonInstallRoot $pythonExe.Directory.FullName
 
     & $pythonExe.FullName -I -B -c "import deepagents, fastapi, langchain, uvicorn"
     if ($LASTEXITCODE -ne 0) {

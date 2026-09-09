@@ -36,7 +36,7 @@ git pull --ff-only
 .\start_server.bat
 ```
 
-依赖和前端使用输入指纹刷新。普通 Python、文档或配置修改不会无条件重建整个 runtime。
+依赖和前端使用输入指纹刷新。依赖输入变化且 CPython 版本不变时会复用解释器本体，并按当前锁完整重建第三方 `site-packages`；普通 Python、文档或配置修改不会无条件重建整个 runtime。
 
 停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
 `runtime/cache` 保存可重建的下载缓存；安装位置由启动器根据当前 Clone 解析。

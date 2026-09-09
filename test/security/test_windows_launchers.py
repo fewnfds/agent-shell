@@ -97,6 +97,30 @@ def test_windows_runtime_removes_uv_python_aliases_after_pip_install() -> None:
     assert bootstrap.rindex(cleanup) > bootstrap.index(pip_install)
 
 
+def test_windows_runtime_replaces_previous_site_packages_before_installing_lock() -> None:
+    bootstrap = (
+        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    ).read_text(encoding="utf-8")
+
+    pip_install = '"pip", "install", "--target", $installTarget'
+    clean_site_packages = (
+        "Assert-ChildPath $sitePackages $buildRoot | Out-Null\n"
+        "    if (Test-Path -LiteralPath $sitePackages) {\n"
+        "        Remove-Item -LiteralPath $sitePackages -Recurse -Force\n"
+        "    }"
+    )
+    copy_locked_packages = (
+        "Get-ChildItem -LiteralPath $installTarget -Force |\n"
+        '        Where-Object { $_.Name -ne "bin" } |\n'
+        "        Copy-Item -Destination $sitePackages -Recurse -Force"
+    )
+    check_locked_packages = '"pip", "check", "--python", $pythonExe.FullName'
+
+    assert bootstrap.index(pip_install) < bootstrap.index(clean_site_packages)
+    assert bootstrap.index(clean_site_packages) < bootstrap.index(copy_locked_packages)
+    assert bootstrap.index(copy_locked_packages) < bootstrap.index(check_locked_packages)
+
+
 def test_windows_runtime_allows_source_builds_and_limits_path_files() -> None:
     bootstrap = (
         REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
