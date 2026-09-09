@@ -50,9 +50,12 @@ from agent_shell.runtime.run_calls import (
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_CONFIGURATION_KEY,
     LIFECYCLE_INPUT_KEY,
+    LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
+    LifecycleRecord,
     lifecycle_configuration_namespace,
     lifecycle_input_namespace,
+    lifecycle_record_namespace,
 )
 from agent_shell.runtime.workflow_data import WorkflowDataService
 from agent_shell.runtime.workflow_run_calls import (
@@ -339,6 +342,7 @@ class LifecycleRunCoordinator:
         init=False,
     )
     _lifecycle_id: str = field(default="", init=False)
+    _lifecycle_created_at: datetime | None = field(default=None, init=False)
     _bindings: dict[str, _RunBinding] = field(default_factory=dict, init=False)
     _agent_bindings: dict[str, _AgentRunBinding] = field(
         default_factory=dict,
@@ -360,10 +364,50 @@ class LifecycleRunCoordinator:
         if self._lifecycle_id or self._response_scheduler is not None:
             raise RuntimeError("the request Lifecycle has already started")
         self._lifecycle_id = lifecycle_id
+        self._lifecycle_created_at = datetime.now(timezone.utc)
         self._response_scheduler = LifecycleResponseScheduler(
             self._snapshot.response_stream_policy(),
             lifecycle_id=lifecycle_id,
         )
+
+    def _lifecycle_record(
+        self,
+        *,
+        graph_kind: str,
+        resource_id: str,
+        resource_name: str,
+        request_id: str,
+    ) -> LifecycleRecord:
+        if self._lifecycle_created_at is None:
+            raise RuntimeError("the request Lifecycle has not started")
+        return LifecycleRecord.model_validate(
+            {
+                "lifecycle_id": self._lifecycle_id,
+                "request_id": request_id,
+                "created_at": self._lifecycle_created_at,
+                "entry_subject": {
+                    "graph_kind": graph_kind,
+                    "id": resource_id,
+                    "name": resource_name,
+                },
+            }
+        )
+
+    async def _persist_lifecycle_record(
+        self,
+        record: LifecycleRecord,
+    ) -> None:
+        async with self._owner.new_agent_server_client() as client:
+            namespace = lifecycle_record_namespace(self._lifecycle_id)
+            existing = await client.store.get_item(namespace, LIFECYCLE_RECORD_KEY)
+            if existing is not None:
+                raise RuntimeError("the Lifecycle record already exists")
+            await client.store.put_item(
+                namespace,
+                LIFECYCLE_RECORD_KEY,
+                record.as_store_value(),
+                index=False,
+            )
 
     async def _persist_configuration(
         self,
@@ -399,6 +443,7 @@ class LifecycleRunCoordinator:
         subject_name: str,
         request_id: str,
         thread_id: str,
+        lifecycle_record: LifecycleRecord,
     ) -> None:
         detail = describe_exception(exc)
         context = RuntimeDiagnosticContext(
@@ -429,12 +474,24 @@ class LifecycleRunCoordinator:
         }
         try:
             async with self._owner.new_agent_server_client() as client:
-                await client.store.put_item(
-                    lifecycle_input_namespace(self._lifecycle_id),
-                    LIFECYCLE_START_ERROR_KEY,
-                    marker,
-                    index=False,
+                record_item = await client.store.get_item(
+                    lifecycle_record_namespace(self._lifecycle_id),
+                    LIFECYCLE_RECORD_KEY,
                 )
+                if record_item is not None:
+                    stored_record = LifecycleRecord.model_validate(
+                        record_item.get("value")
+                        if isinstance(record_item, Mapping)
+                        else None
+                    )
+                    if stored_record != lifecycle_record:
+                        raise RuntimeError("the persisted Lifecycle record changed")
+                    await client.store.put_item(
+                        lifecycle_input_namespace(self._lifecycle_id),
+                        LIFECYCLE_START_ERROR_KEY,
+                        marker,
+                        index=False,
+                    )
         except Exception as marker_error:
             with suppress(Exception):
                 await self._owner.runtime_diagnostics.aobservation_error(
@@ -475,7 +532,14 @@ class LifecycleRunCoordinator:
         )
         self._bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
+        lifecycle_record = self._lifecycle_record(
+            graph_kind="workflow",
+            resource_id=str(workflow["id"]),
+            resource_name=str(workflow["name"]),
+            request_id=request_id,
+        )
         try:
+            await self._persist_lifecycle_record(lifecycle_record)
             await self._persist_configuration(
                 graph_kind="workflow",
                 resource_id=str(workflow["id"]),
@@ -517,6 +581,7 @@ class LifecycleRunCoordinator:
                         subject_name=str(workflow["name"]),
                         request_id=request_id,
                         thread_id=binding.thread_id,
+                        lifecycle_record=lifecycle_record,
                     )
             self._release_if_finished()
             raise
@@ -550,8 +615,15 @@ class LifecycleRunCoordinator:
         )
         self._agent_bindings[binding.key] = binding
         self._owner.register_active_lifecycle(self)
+        lifecycle_record = self._lifecycle_record(
+            graph_kind="agent",
+            resource_id=str(main_agent["id"]),
+            resource_name=str(main_agent["name"]),
+            request_id=request_id,
+        )
         client: Any | None = None
         try:
+            await self._persist_lifecycle_record(lifecycle_record)
             await self._persist_configuration(
                 graph_kind="agent",
                 resource_id=str(main_agent["id"]),
@@ -598,6 +670,7 @@ class LifecycleRunCoordinator:
                         subject_name=str(main_agent["name"]),
                         request_id=request_id,
                         thread_id=binding.thread_id,
+                        lifecycle_record=lifecycle_record,
                     )
             self._release_if_finished()
             raise

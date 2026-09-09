@@ -15,7 +15,32 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleService,
     LangGraphRunNotFound,
 )
-from agent_shell.runtime.lifecycle_store import LIFECYCLE_START_ERROR_KEY
+from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_RECORD_KEY,
+    LIFECYCLE_START_ERROR_KEY,
+)
+
+
+def _lifecycle_record(
+    *,
+    lifecycle_id: str = "lifecycle-1",
+    request_id: str = "request-1",
+    created_at: str = "2026-09-05T00:59:00+00:00",
+    graph_kind: str = "workflow",
+    subject_id: str = "workflow-entry",
+    subject_name: str = "Entry Workflow",
+) -> dict:
+    return {
+        "schema_version": 1,
+        "lifecycle_id": lifecycle_id,
+        "request_id": request_id,
+        "created_at": created_at,
+        "entry_subject": {
+            "graph_kind": graph_kind,
+            "id": subject_id,
+            "name": subject_name,
+        },
+    }
 
 
 def _configuration_snapshot() -> dict:
@@ -195,6 +220,7 @@ class _Store:
         return {"items": items[offset : offset + limit]}
 
     async def delete_item(self, namespace, key: str) -> None:
+        self._owner.deleted_store_items.append((tuple(namespace), key))
         self._owner.store_items[tuple(namespace)].pop(key)
 
 
@@ -264,6 +290,9 @@ class _Client:
             "thread-peer": [{"checkpoint_id": "checkpoint-peer"}],
         }
         self.store_items = {
+            ("workflow-lifecycle", "lifecycle-1", "metadata"): {
+                LIFECYCLE_RECORD_KEY: _lifecycle_record()
+            },
             ("workflow-lifecycle", "lifecycle-1", "configuration"): {
                 "snapshot": _configuration_snapshot()
             },
@@ -297,6 +326,7 @@ class _Client:
         }
         self.cancelled_runs: list[tuple[str, str, bool]] = []
         self.deleted_threads: list[str] = []
+        self.deleted_store_items: list[tuple[tuple[str, ...], str]] = []
         self.run_list_errors: dict[str, Exception] = {}
         self.threads = _Threads(self)
         self.runs = _Runs(self)
@@ -311,19 +341,21 @@ class _Client:
 
 
 @pytest.mark.parametrize(
-    ("store_created_at", "expected"),
+    ("record_created_at", "expected"),
     [
-        ("2026-09-05T00:59:00", "2026-09-05T00:59:00+00:00"),
-        ("2026-09-05T01:00:01", "2026-09-05T01:00:00+00:00"),
+        ("2026-09-05T00:59:00+00:00", "2026-09-05T00:59:00+00:00"),
+        ("2026-09-05T01:00:01+00:00", "2026-09-05T01:00:01+00:00"),
     ],
 )
-def test_lifecycle_created_at_compares_naive_store_time_as_utc(
-    store_created_at: str,
+def test_lifecycle_created_at_uses_canonical_record_as_single_fact(
+    record_created_at: str,
     expected: str,
 ) -> None:
     async def scenario():
         client = _Client()
-        client.store_created_at = store_created_at
+        client.store_items[("workflow-lifecycle", "lifecycle-1", "metadata")][
+            LIFECYCLE_RECORD_KEY
+        ]["created_at"] = record_created_at
         service = LangGraphLifecycleService(lambda: client)
         page = await service.list_page(page=1, page_size=10)
         snapshot = await service.snapshot("lifecycle-1")
@@ -332,6 +364,23 @@ def test_lifecycle_created_at_compares_naive_store_time_as_utc(
     list_created_at, detail_created_at = asyncio.run(scenario())
     assert list_created_at == expected
     assert detail_created_at == list_created_at
+
+
+def test_child_objects_without_a_lifecycle_record_do_not_create_a_lifecycle() -> None:
+    async def scenario():
+        client = _Client()
+        client.store_items.pop(("workflow-lifecycle", "lifecycle-1", "metadata"))
+        service = LangGraphLifecycleService(lambda: client)
+        page = await service.list_page(page=1, page_size=10)
+        with pytest.raises(LangGraphLifecycleNotFound):
+            await service.snapshot("lifecycle-1")
+        with pytest.raises(LangGraphLifecycleNotFound):
+            await service.state("lifecycle-1", "run-entry")
+        return page
+
+    page = asyncio.run(scenario())
+    assert page["total"] == 0
+    assert page["items"] == []
 
 
 def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> None:
@@ -344,21 +393,8 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         workflow_graph = await service.graph("lifecycle-1", "run-entry")
         state = await service.state("lifecycle-1", "run-entry")
         history = await service.history("lifecycle-1", "run-peer", limit=5)
-        client.run_values["thread-peer"].append(
-            {
-                "run_id": "run-peer-again",
-                "assistant_id": "assistant-peer",
-                "status": "success",
-                "updated_at": "2026-09-05T02:00:00Z",
-                "metadata": {
-                    "graph_kind": "agent",
-                    "main_agent_id": "agent-peer",
-                    "main_agent_name": "Peer Agent Renamed",
-                },
-            }
-        )
         filtered = await service.list_page(
-            page=1, page_size=10, query="Peer Agent Renamed"
+            page=1, page_size=10, query="Peer Agent"
         )
         with pytest.raises(LangGraphRunNotFound):
             await service.state("lifecycle-1", "missing")
@@ -410,7 +446,7 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         {
             "graph_kind": "agent",
             "id": "agent-peer",
-            "name": "Peer Agent Renamed",
+            "name": "Peer Agent",
         }
     ]
 
@@ -421,6 +457,16 @@ def test_run_start_error_is_a_terminal_lifecycle_without_an_official_run() -> No
         client.thread_values.clear()
         client.run_values.clear()
         client.store_items = {
+            ("workflow-lifecycle", "lifecycle-start-error", "metadata"): {
+                LIFECYCLE_RECORD_KEY: _lifecycle_record(
+                    lifecycle_id="lifecycle-start-error",
+                    request_id="request-start-error",
+                    created_at="2026-09-07T15:07:54.600+00:00",
+                    graph_kind="agent",
+                    subject_id="agent-one",
+                    subject_name="Agent One",
+                )
+            },
             ("workflow-lifecycle", "lifecycle-start-error", "input"): {
                 LIFECYCLE_START_ERROR_KEY: {
                     "status": "error",
@@ -449,6 +495,7 @@ def test_run_start_error_is_a_terminal_lifecycle_without_an_official_run() -> No
         {"graph_kind": "agent", "id": "agent-one", "name": "Agent One"}
     ]
     assert item["start_error"]["message"] == "RuntimeError: run creation exploded"
+    assert item["created_at"] == "2026-09-07T15:07:54.600000+00:00"
 
 
 def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> None:
@@ -457,6 +504,12 @@ def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> No
         client.thread_values.clear()
         client.run_values.clear()
         client.store_items = {
+            ("workflow-lifecycle", "lifecycle-start-error", "metadata"): {
+                LIFECYCLE_RECORD_KEY: _lifecycle_record(
+                    lifecycle_id="lifecycle-start-error",
+                    created_at="2026-09-07T15:07:54.600+00:00",
+                )
+            },
             ("workflow-lifecycle", "lifecycle-start-error", "input"): {
                 "request": {"messages": []},
                 LIFECYCLE_START_ERROR_KEY: {
@@ -483,6 +536,9 @@ def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> No
     assert client.store_items[
         ("workflow-lifecycle", "lifecycle-start-error", "input")
     ] == {}
+    assert client.store_items[
+        ("workflow-lifecycle", "lifecycle-start-error", "metadata")
+    ] == {}
 
 
 def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> None:
@@ -503,6 +559,11 @@ def test_lifecycle_cancels_every_active_run_and_deletes_only_terminal_data() -> 
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "configuration")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "metadata")] == {}
+    assert client.deleted_store_items[-1] == (
+        ("workflow-lifecycle", "lifecycle-1", "metadata"),
+        LIFECYCLE_RECORD_KEY,
+    )
 
 
 def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
@@ -557,7 +618,8 @@ def test_relation_only_thread_joins_monitoring_and_lifecycle_deletion() -> None:
         if thread["thread_id"] == "thread-detached"
     )
     relation_run = relation_thread["runs"][0]
-    assert relation_run["run"]["metadata"]["main_agent_name"] == "Detached Agent"
+    assert relation_run["run"]["metadata"] == {}
+    assert relation_run["relation"]["resource_name"] == "Detached Agent"
     assert cancelled == 2
     assert deleted == 3
     assert "thread-detached" in client.deleted_threads
@@ -611,6 +673,7 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     assert [namespace["namespace"][-1] for namespace in store["namespaces"]] == [
         "configuration",
         "input",
+        "metadata",
         "runs",
     ]
     assert store["namespaces"][0]["items"][0]["created_at"]
@@ -629,7 +692,7 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     assert "threads/thread-peer/state.json" in names
     assert "threads/thread-peer/history.json" in names
     assert archived_snapshot["run_count"] == 3
-    assert len(archived_store["namespaces"]) == 3
+    assert len(archived_store["namespaces"]) == 4
     assert client.assistants.graph_reads.count("assistant-peer") == 1
 
 
@@ -702,3 +765,4 @@ def test_retention_excludes_active_then_deletes_terminal_lifecycle_data() -> Non
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")] == {}
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "configuration")] == {}
+    assert client.store_items[("workflow-lifecycle", "lifecycle-1", "metadata")] == {}

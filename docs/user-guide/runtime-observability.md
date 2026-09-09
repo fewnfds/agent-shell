@@ -11,7 +11,7 @@
 目录列出：
 
 - 涉及的 Main Agent 与 Workflow Graph；
-- 创建时间与 Lifecycle 聚合状态；创建时间取 Lifecycle input Store item 与官方 Thread 的最早时间点，Management API 统一返回带 UTC offset 的 ISO timestamp，管理台按浏览器本地时区显示；
+- 创建时间与 Lifecycle 聚合状态；Lifecycle record 在入口 Run 建立前保存唯一的创建时间、request identity 和入口 Graph identity。Management API 返回带 UTC offset 的 ISO timestamp，管理台按浏览器本地时区显示；
 - active/total Run 数量；
 - error/timeout Run 数量。
 
@@ -38,7 +38,7 @@ Workflow Thread使用只读Vue Flow显示该Lifecycle启动时冻结的原始Wor
 
 右侧数据检查器以可展开字段树显示所选 Thread 的 State 和 Lifecycle namespace 下的 Store item，不把它们转换为第二套字段协议。页面不从 checkpoint history 合成 Agent 信息流，不从事件时间或 namespace 推测 Workflow 执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
 
-这些数据以官方`assistant_id`、`thread_id`、`run_id`、Run status和State，以及Lifecycle configuration snapshot中的Workflow document为准。每个Lifecycle在入口Run创建前持久化一次配置：全部已保存Main Agent、全部Component/Subagent、全部enabled Workflow、当前Repository binding/Connection声明和本次运行设置。Python/Skill package、Filesystem、Managed MCP安装与远端服务只保存引用，credential实际值不写入快照。Agent Shell另保存最小Run relation，用于把没有Lifecycle Thread metadata的已登记Run纳入对应Lifecycle。Lifecycle summary将relation/Run metadata投影为统一Graph subject；搜索覆盖Graph kind、配置ID、名称、Lifecycle ID和request ID。
+这些数据以Lifecycle record的identity、官方`assistant_id`、`thread_id`、`run_id`、Run status和State，以及Lifecycle configuration snapshot中的Workflow document为准。每个Lifecycle先持久化一次只写的record，再在入口Run创建前持久化一次配置：全部已保存Main Agent、全部Component/Subagent、全部enabled Workflow、当前Repository binding/Connection声明和本次运行设置。Python/Skill package、Filesystem、Managed MCP安装与远端服务只保存引用，credential实际值不写入快照。Agent Shell另保存最小Run relation，用于把已登记Run纳入对应Lifecycle并投影涉及的Graph subject；搜索覆盖Graph kind、配置ID、名称、Lifecycle ID和request ID。
 
 Agent与Workflow Run都使用持久Thread。事件会话结束只关闭观察连接；已经正常提交的历史消息、State、checkpoint和Lifecycle Run relation在服务重启后继续由官方Thread/Store API提供，直到Lifecycle retention或显式删除流程处理该Thread。
 
@@ -52,7 +52,7 @@ active Lifecycle 的 Run 和 State 在导出期间可以继续变化，因此 ma
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`、没有产品最大值。只计算已结束 Lifecycle；active Lifecycle 不计入保留数量。降低数值后，超出的 terminal Lifecycle 通过公共 Thread/Store 删除 API 清理。
 
-删除Lifecycle会删除其入口与内部启动Run的官方Thread、Run/checkpoint/State，并删除Agent Shell在Server Store中以该Lifecycle为前缀的configuration、input、run relation和filesystem route数据。普通文件、输出媒体和mapped directory是用户产出，不随运行记录删除。
+删除Lifecycle会删除其入口与内部启动Run的官方Thread、Run/checkpoint/State，并删除Agent Shell在Server Store中以该Lifecycle为前缀的configuration、input、run relation、filesystem route和Lifecycle record；record最后删除，以便中途失败后仍可重试。普通文件、输出媒体和mapped directory是用户产出，不随运行记录删除。
 
 运行错误、诊断附件、监控 ZIP、Lifecycle Store、State、消息和 Tool payload 保留其 owner 提供的业务内容与本机路径；监控数据沿 LangGraph 官方对象读取。错误与 credential 的投影规则见[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。
 

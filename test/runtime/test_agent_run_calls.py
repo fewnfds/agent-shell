@@ -7,8 +7,10 @@ from types import SimpleNamespace
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.request_snapshot import LifecycleRunCoordinator
 from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
     lifecycle_input_namespace,
+    lifecycle_record_namespace,
 )
 from agent_shell.runtime.run_calls import RunCaller
 
@@ -282,13 +284,24 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
         else:
             raise AssertionError("run start failure was not raised")
 
+        record = client.store.items[
+            lifecycle_record_namespace(coordinator.lifecycle_id)
+        ][LIFECYCLE_RECORD_KEY]
         marker = client.store.items[
             lifecycle_input_namespace(coordinator.lifecycle_id)
         ][LIFECYCLE_START_ERROR_KEY]
         diagnostics = coordinator._owner.runtime_diagnostics
-        return marker, diagnostics, client.store.events
+        return record, marker, diagnostics, client.store.events
 
-    marker, diagnostics, events = asyncio.run(scenario())
+    record, marker, diagnostics, events = asyncio.run(scenario())
+    assert record["lifecycle_id"]
+    assert record["request_id"] == "request-1"
+    assert record["created_at"].endswith("+00:00")
+    assert record["entry_subject"] == {
+        "graph_kind": "agent",
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "Researcher",
+    }
     assert marker["status"] == "error"
     assert marker["code"] == "run_start_failed"
     assert marker["message"] == "RuntimeError: run creation exploded"
@@ -301,7 +314,11 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
     assert kwargs["detail_exception"].args == ("run creation exploded",)
     assert kwargs["context"].lifecycle_id
     assert diagnostics.observation_errors == []
-    assert events[:2] == ["store:configuration:snapshot", "assistant"]
+    assert events[:3] == [
+        "store:metadata:lifecycle",
+        "store:configuration:snapshot",
+        "assistant",
+    ]
 
 
 def test_start_error_marker_survives_diagnostic_write_failure() -> None:

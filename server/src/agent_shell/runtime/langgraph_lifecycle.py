@@ -14,11 +14,13 @@ from agent_shell.runtime.lifecycle_monitoring_archive import (
 from agent_shell.runtime.lifecycle_configuration import LifecycleConfigurationSnapshot
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_CONFIGURATION_KEY,
-    LIFECYCLE_INPUT_KEY,
     LIFECYCLE_NAMESPACE_ROOT,
+    LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
+    LifecycleRecord,
     lifecycle_configuration_namespace,
     lifecycle_input_namespace,
+    lifecycle_record_namespace,
 )
 from agent_shell.runtime.run_calls import (
     ACTIVE_RUN_STATUSES,
@@ -46,12 +48,12 @@ class LangGraphLifecycleActive(RuntimeError):
 
 @dataclass(slots=True)
 class _LifecycleObservation:
+    lifecycle: LifecycleRecord
     threads: list[dict[str, Any]]
     thread_groups: list[dict[str, Any]]
     run_entries: list[dict[str, Any]]
     relations: list[GraphRunCallRelation]
     read_failures: list[Exception]
-    lifecycle_created_at: datetime | None = None
     start_error: dict[str, Any] | None = None
 
     @property
@@ -100,46 +102,6 @@ def _lifecycle_status(
     if unavailable_run_count:
         return "unavailable"
     return "success"
-
-
-def _run_subject(run: object) -> dict[str, str] | None:
-    metadata = _metadata(_metadata(run).get("metadata"))
-    graph_kind = str(metadata.get("graph_kind") or "")
-    if graph_kind == "agent":
-        subject_id = str(metadata.get("main_agent_id") or "")
-        subject_name = str(metadata.get("main_agent_name") or "")
-    elif graph_kind == "workflow":
-        subject_id = str(metadata.get("workflow_id") or "")
-        subject_name = str(metadata.get("workflow_name") or "")
-    else:
-        return None
-    if not subject_id:
-        return None
-    return {
-        "graph_kind": graph_kind,
-        "id": subject_id,
-        "name": subject_name,
-    }
-
-
-def _relation_metadata(relation: GraphRunCallRelation) -> dict[str, str]:
-    metadata = {
-        "lifecycle_id": relation.lifecycle_id,
-        "graph_kind": relation.graph_kind,
-        "caller_run_id": relation.caller_run_id,
-        "operation_id": relation.operation_id,
-    }
-    if relation.graph_kind == "agent":
-        metadata.update(
-            main_agent_id=relation.resource_id,
-            main_agent_name=relation.resource_name,
-        )
-    else:
-        metadata.update(
-            workflow_id=relation.resource_id,
-            workflow_name=relation.resource_name,
-        )
-    return metadata
 
 
 def _unavailable(code: str, exc: Exception) -> dict[str, str]:
@@ -260,38 +222,23 @@ class LangGraphLifecycleService:
     async def _observe_lifecycle(
         self,
         client: Any,
-        lifecycle_id: str,
+        lifecycle: LifecycleRecord,
         threads: list[dict[str, Any]],
     ) -> _LifecycleObservation:
         """Group public Thread/Run objects while keeping local failures explicit."""
 
+        lifecycle_id = lifecycle.lifecycle_id
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
-        lifecycle_created_at: datetime | None = None
         start_error: dict[str, Any] | None = None
-        try:
-            input_item = await client.store.get_item(
-                lifecycle_input_namespace(lifecycle_id),
-                LIFECYCLE_INPUT_KEY,
-            )
-            if isinstance(input_item, Mapping):
-                lifecycle_created_at = _utc_datetime(input_item.get("created_at"))
-        except Exception:
-            pass
-        try:
-            error_item = await client.store.get_item(
-                lifecycle_input_namespace(lifecycle_id),
-                LIFECYCLE_START_ERROR_KEY,
-            )
-            error_value = (
-                error_item.get("value") if isinstance(error_item, Mapping) else None
-            )
-            if isinstance(error_value, Mapping):
-                start_error = dict(error_value)
-                lifecycle_created_at = lifecycle_created_at or _utc_datetime(
-                    error_item.get("created_at")
-                )
-        except Exception:
-            pass
+        error_item = await client.store.get_item(
+            lifecycle_input_namespace(lifecycle_id),
+            LIFECYCLE_START_ERROR_KEY,
+        )
+        if isinstance(error_item, Mapping):
+            error_value = error_item.get("value")
+            if not isinstance(error_value, Mapping):
+                raise RuntimeError("Lifecycle start-error record is invalid")
+            start_error = dict(error_value)
         relations_by_run = {relation.run_id: relation for relation in relations}
         known_thread_ids = {str(thread.get("thread_id") or "") for thread in threads}
         thread_errors: dict[str, dict[str, str]] = {}
@@ -323,11 +270,6 @@ class LangGraphLifecycleService:
             for run in runs:
                 run_id = str(run.get("run_id") or "")
                 relation = relations_by_run.get(run_id)
-                if relation is not None:
-                    run["metadata"] = {
-                        **_relation_metadata(relation),
-                        **_metadata(run.get("metadata")),
-                    }
                 run_entries.append(
                     {
                         "run_id": run_id,
@@ -349,10 +291,6 @@ class LangGraphLifecycleService:
             error: dict[str, str] | None = None
             try:
                 run = dict(await client.runs.get(relation.thread_id, relation.run_id))
-                run["metadata"] = {
-                    **_relation_metadata(relation),
-                    **_metadata(run.get("metadata")),
-                }
             except Exception as exc:
                 error = _unavailable("run_unavailable", exc)
                 if not _is_not_found(exc):
@@ -404,69 +342,50 @@ class LangGraphLifecycleService:
                 }
             )
         return _LifecycleObservation(
+            lifecycle=lifecycle,
             threads=threads,
             thread_groups=thread_groups,
             run_entries=run_entries,
             relations=relations,
             read_failures=read_failures,
-            lifecycle_created_at=lifecycle_created_at,
             start_error=start_error,
         )
 
     @staticmethod
     def _summary(
-        lifecycle_id: str,
         observation: _LifecycleObservation,
     ) -> dict[str, Any]:
+        lifecycle = observation.lifecycle
+        lifecycle_id = lifecycle.lifecycle_id
         threads = observation.threads
         runs = observation.runs
-        metadata = [_metadata(thread.get("metadata")) for thread in threads]
-        created_values = [
-            timestamp
-            for thread in threads
-            if (timestamp := _utc_datetime(thread.get("created_at"))) is not None
-        ]
-        if observation.lifecycle_created_at:
-            created_values.append(observation.lifecycle_created_at)
-        updated_values = [
+        updated_values = [lifecycle.created_at]
+        updated_values.extend(
             timestamp
             for thread in threads
             if (timestamp := _utc_datetime(thread.get("updated_at"))) is not None
-        ]
+        )
         if observation.start_error:
             start_error_timestamp = _utc_datetime(
                 observation.start_error.get("occurred_at")
             )
             if start_error_timestamp is not None:
                 updated_values.append(start_error_timestamp)
-        subjects_by_identity: dict[tuple[str, str], dict[str, str]] = {}
-        for entry in sorted(
-            observation.run_entries,
-            key=lambda item: (
-                str((item.get("run") or {}).get("updated_at") or ""),
-                str((item.get("run") or {}).get("created_at") or ""),
-                str(item.get("run_id") or ""),
-            ),
-        ):
-            run = entry.get("run")
-            subject = _run_subject(run)
-            if subject is None and isinstance(entry.get("relation"), Mapping):
-                subject = _run_subject(
-                    {"metadata": _relation_metadata(
-                        GraphRunCallRelation.model_validate(entry["relation"])
-                    )}
-                )
-            if subject is not None:
-                subjects_by_identity[(subject["graph_kind"], subject["id"])] = subject
-        if observation.start_error:
-            graph_kind = str(observation.start_error.get("graph_kind") or "")
-            subject_id = str(observation.start_error.get("subject_id") or "")
-            if graph_kind in {"agent", "workflow"} and subject_id:
-                subjects_by_identity[(graph_kind, subject_id)] = {
-                    "graph_kind": graph_kind,
-                    "id": subject_id,
-                    "name": str(observation.start_error.get("subject_name") or ""),
-                }
+        entry_subject = lifecycle.entry_subject.model_dump()
+        subjects_by_identity = {
+            (entry_subject["graph_kind"], entry_subject["id"]): entry_subject
+        }
+        for relation in observation.relations:
+            subject = {
+                "graph_kind": relation.graph_kind,
+                "id": relation.resource_id,
+                "name": relation.resource_name,
+            }
+            identity = (relation.graph_kind, relation.resource_id)
+            existing = subjects_by_identity.get(identity)
+            if existing is not None and existing != subject:
+                raise RuntimeError("Lifecycle Graph subject identity is inconsistent")
+            subjects_by_identity[identity] = subject
         subjects = sorted(
             subjects_by_identity.values(),
             key=lambda subject: (
@@ -482,11 +401,8 @@ class LangGraphLifecycleService:
         )
         return {
             "lifecycle_id": lifecycle_id,
-            "request_id": next(
-                (str(item.get("request_id")) for item in metadata if item.get("request_id")),
-                str((observation.start_error or {}).get("request_id") or ""),
-            ),
-            "created_at": min(created_values).isoformat() if created_values else "",
+            "request_id": lifecycle.request_id,
+            "created_at": lifecycle.created_at.isoformat(),
             "updated_at": max(updated_values).isoformat() if updated_values else "",
             "status": _lifecycle_status(
                 runs,
@@ -534,6 +450,50 @@ class LangGraphLifecycleService:
                 populated.append(namespace)
         return populated
 
+    @staticmethod
+    async def _lifecycle_record(
+        client: Any,
+        lifecycle_id: str,
+    ) -> LifecycleRecord | None:
+        item = await client.store.get_item(
+            lifecycle_record_namespace(lifecycle_id),
+            LIFECYCLE_RECORD_KEY,
+        )
+        if not isinstance(item, Mapping):
+            return None
+        record = LifecycleRecord.model_validate(item.get("value"))
+        if record.lifecycle_id != lifecycle_id:
+            raise RuntimeError("Lifecycle record identity does not match its namespace")
+        return record
+
+    async def _lifecycle_records(self, client: Any) -> dict[str, LifecycleRecord]:
+        namespaces: list[list[str]] = []
+        offset = 0
+        while True:
+            response = await client.store.list_namespaces(
+                prefix=[LIFECYCLE_NAMESPACE_ROOT],
+                limit=100,
+                offset=offset,
+            )
+            page = response.get("namespaces", [])
+            namespaces.extend(list(namespace) for namespace in page)
+            if len(page) < 100:
+                break
+            offset += len(page)
+        lifecycle_ids = dict.fromkeys(
+            str(namespace[1])
+            for namespace in namespaces
+            if len(namespace) == 3
+            and tuple(namespace)
+            == lifecycle_record_namespace(str(namespace[1]))
+        )
+        records: dict[str, LifecycleRecord] = {}
+        for lifecycle_id in lifecycle_ids:
+            record = await self._lifecycle_record(client, lifecycle_id)
+            if record is not None:
+                records[lifecycle_id] = record
+        return records
+
     async def _store_data(self, client: Any, lifecycle_id: str) -> dict[str, Any]:
         namespaces = await self._lifecycle_namespaces(client, lifecycle_id)
         groups: list[dict[str, Any]] = []
@@ -555,34 +515,31 @@ class LangGraphLifecycleService:
         return {"lifecycle_id": lifecycle_id, "namespaces": groups}
 
     async def _is_known(self, client: Any, lifecycle_id: str) -> bool:
-        if await self._threads(client, lifecycle_id):
-            return True
-        return bool(await self._lifecycle_namespaces(client, lifecycle_id))
+        return await self._lifecycle_record(client, lifecycle_id) is not None
 
     async def _list_all(self, query: str = "") -> list[dict[str, Any]]:
         """Return every Lifecycle summary without inventing a product limit."""
 
         async with self._client_factory() as client:
+            records = await self._lifecycle_records(client)
             threads = await self._threads(client)
-            grouped: dict[str, list[dict[str, Any]]] = {}
+            grouped: dict[str, list[dict[str, Any]]] = {
+                lifecycle_id: [] for lifecycle_id in records
+            }
             for thread in threads:
                 lifecycle_id = str(
                     _metadata(thread.get("metadata")).get("lifecycle_id") or ""
                 )
-                if lifecycle_id:
+                if lifecycle_id in records:
                     grouped.setdefault(lifecycle_id, []).append(thread)
-            namespaces = await self._lifecycle_namespaces(client)
-            for namespace in namespaces:
-                if len(namespace) >= 2:
-                    grouped.setdefault(str(namespace[1]), [])
             summaries: list[dict[str, Any]] = []
             for lifecycle_id, lifecycle_threads in grouped.items():
                 observation = await self._observe_lifecycle(
                     client,
-                    lifecycle_id,
+                    records[lifecycle_id],
                     lifecycle_threads,
                 )
-                summaries.append(self._summary(lifecycle_id, observation))
+                summaries.append(self._summary(observation))
 
         normalized_query = query.strip().casefold()
         if normalized_query:
@@ -632,22 +589,21 @@ class LangGraphLifecycleService:
 
     async def snapshot(self, lifecycle_id: str) -> dict[str, Any]:
         async with self._client_factory() as client:
-            threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle_id, threads)
-            if not observation.thread_groups and not await self._lifecycle_namespaces(
-                client, lifecycle_id
-            ):
+            lifecycle = await self._lifecycle_record(client, lifecycle_id)
+            if lifecycle is None:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
+            threads = await self._threads(client, lifecycle_id)
+            observation = await self._observe_lifecycle(client, lifecycle, threads)
         return {
-            **self._summary(lifecycle_id, observation),
+            **self._summary(observation),
             "threads": observation.thread_groups,
         }
 
     async def store(self, lifecycle_id: str) -> dict[str, Any]:
         async with self._client_factory() as client:
-            store = await self._store_data(client, lifecycle_id)
-            if not store["namespaces"] and not await self._threads(client, lifecycle_id):
+            if not await self._is_known(client, lifecycle_id):
                 raise LangGraphLifecycleNotFound(lifecycle_id)
+            store = await self._store_data(client, lifecycle_id)
             return store
 
     async def _require_relation(
@@ -656,11 +612,11 @@ class LangGraphLifecycleService:
         lifecycle_id: str,
         run_id: str,
     ) -> GraphRunCallRelation:
+        if not await self._is_known(client, lifecycle_id):
+            raise LangGraphLifecycleNotFound(lifecycle_id)
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
         relation = next((item for item in relations if item.run_id == run_id), None)
         if relation is None:
-            if not await self._is_known(client, lifecycle_id):
-                raise LangGraphLifecycleNotFound(lifecycle_id)
             raise LangGraphRunNotFound(run_id)
         return relation
 
@@ -776,12 +732,12 @@ class LangGraphLifecycleService:
             return value
 
         async with self._client_factory() as client:
-            threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle_id, threads)
-            namespaces = await self._lifecycle_namespaces(client, lifecycle_id)
-            if not observation.thread_groups and not namespaces:
+            lifecycle = await self._lifecycle_record(client, lifecycle_id)
+            if lifecycle is None:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
-            summary = self._summary(lifecycle_id, observation)
+            threads = await self._threads(client, lifecycle_id)
+            observation = await self._observe_lifecycle(client, lifecycle, threads)
+            summary = self._summary(observation)
             snapshot = {**summary, "threads": observation.thread_groups}
             files["snapshot.json"] = snapshot
             results.append({"path": "snapshot.json", "status": "available"})
@@ -864,8 +820,11 @@ class LangGraphLifecycleService:
     async def cancel_active(self, lifecycle_id: str) -> int:
         cancelled = 0
         async with self._client_factory() as client:
+            lifecycle = await self._lifecycle_record(client, lifecycle_id)
+            if lifecycle is None:
+                raise LangGraphLifecycleNotFound(lifecycle_id)
             threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle_id, threads)
+            observation = await self._observe_lifecycle(client, lifecycle, threads)
             relations = {
                 relation.run_id: relation for relation in observation.relations
             }
@@ -897,7 +856,11 @@ class LangGraphLifecycleService:
             if len(page) < 100:
                 break
             offset += len(page)
-        for namespace in namespaces:
+        record_namespace = list(lifecycle_record_namespace(lifecycle_id))
+        for namespace in sorted(
+            namespaces,
+            key=lambda value: value == record_namespace,
+        ):
             items: list[Mapping[str, Any]] = []
             item_offset = 0
             while True:
@@ -916,12 +879,11 @@ class LangGraphLifecycleService:
 
     async def delete(self, lifecycle_id: str) -> int:
         async with self._client_factory() as client:
-            threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle_id, threads)
-            if not observation.thread_groups and not await self._lifecycle_namespaces(
-                client, lifecycle_id
-            ):
+            lifecycle = await self._lifecycle_record(client, lifecycle_id)
+            if lifecycle is None:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
+            threads = await self._threads(client, lifecycle_id)
+            observation = await self._observe_lifecycle(client, lifecycle, threads)
             if observation.read_failures:
                 raise RuntimeError(
                     "Cannot delete a Lifecycle while its official Thread/Run status "
