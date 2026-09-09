@@ -43,9 +43,26 @@ function Invoke-Native {
                 & $FilePath @Arguments
             }
             else {
-                & $FilePath @Arguments 2>&1 | ForEach-Object {
-                    [void]$nativeOutput.Add([string]$_)
-                    $_ | Out-Host
+                $previousNativeErrorPreference = $ErrorActionPreference
+                try {
+                    # Windows PowerShell 5.1 converts redirected native stderr
+                    # into ErrorRecord objects. uv writes normal status to
+                    # stderr, so keep those records non-terminating while the
+                    # native exit code remains the command result.
+                    $ErrorActionPreference = "Continue"
+                    & $FilePath @Arguments 2>&1 | ForEach-Object {
+                        $nativeLine = if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                            $_.Exception.Message
+                        }
+                        else {
+                            [string]$_
+                        }
+                        [void]$nativeOutput.Add($nativeLine)
+                        Write-Host $nativeLine
+                    }
+                }
+                finally {
+                    $ErrorActionPreference = $previousNativeErrorPreference
                 }
             }
             $exitCode = $LASTEXITCODE

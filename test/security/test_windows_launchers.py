@@ -154,11 +154,58 @@ def test_windows_runtime_retries_only_uv_python_sharing_conflicts() -> None:
 
     sharing_retry = '-MaxAttempts 61 -RetryOutputPattern "0xc0000043"'
     assert bootstrap.count(sharing_retry) == 2
-    assert "$_ | Out-Host" in bootstrap
+    assert '$ErrorActionPreference = "Continue"' in bootstrap
+    assert "$_ -is [System.Management.Automation.ErrorRecord]" in bootstrap
+    assert "Write-Host $nativeLine" in bootstrap
     assert '($nativeOutput -join "`n") -match $RetryOutputPattern' in bootstrap
     assert "-and -not $matchesRetryPattern" in bootstrap
     assert "transient Windows sharing conflict" in bootstrap
     assert "remained blocked by a Windows sharing conflict for 30 seconds" in bootstrap
+
+
+@pytest.mark.skipif(os.name != "nt", reason="source launcher is Windows-only")
+def test_windows_runtime_accepts_successful_native_stderr() -> None:
+    bootstrap_path = (
+        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    )
+    escaped_bootstrap_path = str(bootstrap_path).replace("'", "''")
+    command = (
+        "$tokens = $null\n"
+        "$parseErrors = $null\n"
+        "$ast = [System.Management.Automation.Language.Parser]::ParseFile(\n"
+        f"    '{escaped_bootstrap_path}', [ref]$tokens, [ref]$parseErrors\n"
+        ")\n"
+        "$invokeNative = $ast.Find({\n"
+        "    param($node)\n"
+        "    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
+        "-and $node.Name -eq 'Invoke-Native'\n"
+        "}, $true)\n"
+        "Invoke-Expression $invokeNative.Extent.Text\n"
+        '$ErrorActionPreference = "Stop"\n'
+        "Invoke-Native $env:ComSpec @(\n"
+        "    '/d', '/c', 'echo normal native stderr 1>&2 & exit /b 0'\n"
+        ") (Get-Location).Path -MaxAttempts 2 -RetryOutputPattern '0xc0000043'\n"
+    )
+
+    result = subprocess.run(
+        [
+            str(WINDOWS_POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "normal native stderr" in result.stdout
+    assert "NativeCommandError" not in result.stderr
 
 
 def test_windows_runtime_manifest_is_written_as_utf8_without_bom() -> None:
