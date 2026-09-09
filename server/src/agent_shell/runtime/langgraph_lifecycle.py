@@ -51,7 +51,7 @@ class _LifecycleObservation:
     run_entries: list[dict[str, Any]]
     relations: list[GraphRunCallRelation]
     read_failures: list[Exception]
-    lifecycle_created_at: str = ""
+    lifecycle_created_at: datetime | None = None
     start_error: dict[str, Any] | None = None
 
     @property
@@ -65,6 +65,19 @@ class _LifecycleObservation:
 
 def _metadata(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _utc_datetime(value: object) -> datetime | None:
+    if value in (None, ""):
+        return None
+    timestamp = (
+        value
+        if isinstance(value, datetime)
+        else datetime.fromisoformat(str(value))
+    )
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
 
 
 def _lifecycle_status(
@@ -253,7 +266,7 @@ class LangGraphLifecycleService:
         """Group public Thread/Run objects while keeping local failures explicit."""
 
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
-        lifecycle_created_at = ""
+        lifecycle_created_at: datetime | None = None
         start_error: dict[str, Any] | None = None
         try:
             input_item = await client.store.get_item(
@@ -261,7 +274,7 @@ class LangGraphLifecycleService:
                 LIFECYCLE_INPUT_KEY,
             )
             if isinstance(input_item, Mapping):
-                lifecycle_created_at = str(input_item.get("created_at") or "")
+                lifecycle_created_at = _utc_datetime(input_item.get("created_at"))
         except Exception:
             pass
         try:
@@ -274,8 +287,8 @@ class LangGraphLifecycleService:
             )
             if isinstance(error_value, Mapping):
                 start_error = dict(error_value)
-                lifecycle_created_at = lifecycle_created_at or str(
-                    error_item.get("created_at") or ""
+                lifecycle_created_at = lifecycle_created_at or _utc_datetime(
+                    error_item.get("created_at")
                 )
         except Exception:
             pass
@@ -408,12 +421,24 @@ class LangGraphLifecycleService:
         threads = observation.threads
         runs = observation.runs
         metadata = [_metadata(thread.get("metadata")) for thread in threads]
-        created_values = [str(thread.get("created_at") or "") for thread in threads]
+        created_values = [
+            timestamp
+            for thread in threads
+            if (timestamp := _utc_datetime(thread.get("created_at"))) is not None
+        ]
         if observation.lifecycle_created_at:
             created_values.append(observation.lifecycle_created_at)
-        updated_values = [str(thread.get("updated_at") or "") for thread in threads]
+        updated_values = [
+            timestamp
+            for thread in threads
+            if (timestamp := _utc_datetime(thread.get("updated_at"))) is not None
+        ]
         if observation.start_error:
-            updated_values.append(str(observation.start_error.get("occurred_at") or ""))
+            start_error_timestamp = _utc_datetime(
+                observation.start_error.get("occurred_at")
+            )
+            if start_error_timestamp is not None:
+                updated_values.append(start_error_timestamp)
         subjects_by_identity: dict[tuple[str, str], dict[str, str]] = {}
         for entry in sorted(
             observation.run_entries,
@@ -461,8 +486,8 @@ class LangGraphLifecycleService:
                 (str(item.get("request_id")) for item in metadata if item.get("request_id")),
                 str((observation.start_error or {}).get("request_id") or ""),
             ),
-            "created_at": min(created_values) if created_values else "",
-            "updated_at": max(updated_values) if updated_values else "",
+            "created_at": min(created_values).isoformat() if created_values else "",
+            "updated_at": max(updated_values).isoformat() if updated_values else "",
             "status": _lifecycle_status(
                 runs,
                 unavailable_run_count=unavailable_run_count,

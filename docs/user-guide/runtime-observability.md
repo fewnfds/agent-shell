@@ -11,7 +11,7 @@
 目录列出：
 
 - 涉及的 Main Agent 与 Workflow Graph；
-- 创建时间与 Lifecycle 聚合状态；
+- 创建时间与 Lifecycle 聚合状态；创建时间取 Lifecycle input Store item 与官方 Thread 的最早时间点，Management API 统一返回带 UTC offset 的 ISO timestamp，管理台按浏览器本地时区显示；
 - active/total Run 数量；
 - error/timeout Run 数量。
 

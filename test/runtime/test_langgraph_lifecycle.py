@@ -177,7 +177,7 @@ class _Store:
             "namespace": list(namespace),
             "key": key,
             "value": deepcopy(value),
-            "created_at": "2026-09-05T00:59:00Z",
+            "created_at": self._owner.store_created_at,
             "updated_at": "2026-09-05T00:59:00Z",
         }
 
@@ -200,6 +200,7 @@ class _Store:
 
 class _Client:
     def __init__(self) -> None:
+        self.store_created_at = "2026-09-05T00:59:00Z"
         self.thread_values = {
             "thread-entry": {
                 "thread_id": "thread-entry",
@@ -307,6 +308,30 @@ class _Client:
 
     async def __aexit__(self, *_args) -> None:
         return None
+
+
+@pytest.mark.parametrize(
+    ("store_created_at", "expected"),
+    [
+        ("2026-09-05T00:59:00", "2026-09-05T00:59:00+00:00"),
+        ("2026-09-05T01:00:01", "2026-09-05T01:00:00+00:00"),
+    ],
+)
+def test_lifecycle_created_at_compares_naive_store_time_as_utc(
+    store_created_at: str,
+    expected: str,
+) -> None:
+    async def scenario():
+        client = _Client()
+        client.store_created_at = store_created_at
+        service = LangGraphLifecycleService(lambda: client)
+        page = await service.list_page(page=1, page_size=10)
+        snapshot = await service.snapshot("lifecycle-1")
+        return page["items"][0]["created_at"], snapshot["created_at"]
+
+    list_created_at, detail_created_at = asyncio.run(scenario())
+    assert list_created_at == expected
+    assert detail_created_at == list_created_at
 
 
 def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> None:
