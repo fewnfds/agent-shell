@@ -147,6 +147,20 @@ def test_windows_runtime_unwraps_powershell_file_system_exceptions_for_retry() -
     assert "remained in use for 30 seconds" in bootstrap
 
 
+def test_windows_runtime_retries_only_uv_python_sharing_conflicts() -> None:
+    bootstrap = (
+        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    ).read_text(encoding="utf-8")
+
+    sharing_retry = '-MaxAttempts 61 -RetryOutputPattern "0xc0000043"'
+    assert bootstrap.count(sharing_retry) == 2
+    assert "$_ | Out-Host" in bootstrap
+    assert '($nativeOutput -join "`n") -match $RetryOutputPattern' in bootstrap
+    assert "-and -not $matchesRetryPattern" in bootstrap
+    assert "transient Windows sharing conflict" in bootstrap
+    assert "remained blocked by a Windows sharing conflict for 30 seconds" in bootstrap
+
+
 def test_windows_runtime_manifest_is_written_as_utf8_without_bom() -> None:
     bootstrap = (
         REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"

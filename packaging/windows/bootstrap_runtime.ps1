@@ -32,20 +32,45 @@ function Invoke-Native {
         [Parameter(Mandatory = $true)][string]$FilePath,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
         [Parameter(Mandatory = $true)][string]$WorkingDirectory,
-        [int]$MaxAttempts = 1
+        [int]$MaxAttempts = 1,
+        [string]$RetryOutputPattern = ""
     )
     Push-Location $WorkingDirectory
     try {
         for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-            & $FilePath @Arguments
+            $nativeOutput = [System.Collections.Generic.List[string]]::new()
+            if ([string]::IsNullOrEmpty($RetryOutputPattern)) {
+                & $FilePath @Arguments
+            }
+            else {
+                & $FilePath @Arguments 2>&1 | ForEach-Object {
+                    [void]$nativeOutput.Add([string]$_)
+                    $_ | Out-Host
+                }
+            }
             $exitCode = $LASTEXITCODE
             if ($exitCode -eq 0) {
                 return
             }
+            $matchesRetryPattern = (
+                -not [string]::IsNullOrEmpty($RetryOutputPattern) -and
+                (($nativeOutput -join "`n") -match $RetryOutputPattern)
+            )
             if ($attempt -eq $MaxAttempts) {
+                if ($matchesRetryPattern) {
+                    throw "The temporary portable Python remained blocked by a Windows sharing conflict for 30 seconds. Close any running Agent Shell or Python process and retry."
+                }
                 throw "Command failed with exit code ${exitCode}: $FilePath"
             }
-            Write-Warning "Command failed with exit code ${exitCode}; retrying attempt $($attempt + 1) of $MaxAttempts."
+            if (-not [string]::IsNullOrEmpty($RetryOutputPattern) -and -not $matchesRetryPattern) {
+                throw "Command failed with exit code ${exitCode}: $FilePath"
+            }
+            if ($matchesRetryPattern) {
+                Write-Warning "The portable Python hit a transient Windows sharing conflict; retrying attempt $($attempt + 1) of $MaxAttempts."
+            }
+            else {
+                Write-Warning "Command failed with exit code ${exitCode}; retrying attempt $($attempt + 1) of $MaxAttempts."
+            }
             Start-Sleep -Milliseconds 500
         }
     }
@@ -404,7 +429,7 @@ try {
         "--python-version", ([string]$lock.python),
         "--python-platform", "x86_64-pc-windows-msvc",
         "--no-deps", "--require-hashes", "--requirements", $requirementsPath
-    ) $project
+    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043"
     Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse |
         Remove-Item -Force
 
@@ -438,7 +463,7 @@ try {
 
     Invoke-Native $uvExe @(
         "pip", "check", "--python", $pythonExe.FullName
-    ) $project
+    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043"
     # uv may recreate version aliases while discovering an interpreter for pip.
     # Keep only the fully-versioned physical runtime selected above.
     Remove-UvPythonInstallArtifacts $pythonInstallRoot $pythonExe.Directory.FullName
