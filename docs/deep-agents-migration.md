@@ -1,6 +1,6 @@
 # Deep Agents runtime 基线
 
-Agent Shell 使用锁定的`deepagents==0.7.11`和`deepagents.create_deep_agent()`构造 Main Agent。返回的`CompiledStateGraph`直接注册为`agent-shell-agent`root graph。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给`SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 不实现第二套 Agent loop。
+Agent Shell 使用锁定的`deepagents==0.7.13`和`deepagents.create_deep_agent()`构造 Main Agent。返回的`CompiledStateGraph`直接注册为`agent-shell-agent`root graph。直接 Subagent 通过 Deep Agents 官方 dictionary 配置交给`SubAgentMiddleware`，由 Deep Agents 构造和调度；Shell 不实现第二套 Agent loop。当前不传 `mode`，因此沿用官方默认的 isolated Subagent。
 
 ## 责任边界
 
@@ -33,7 +33,7 @@ state reducer、Middleware Hook、`Command`、错误传播和 graph 终止。
 - `AgentShellState`只扩展Agent自身需要的private channel；Workflow业务变量只存在于独立`WorkflowState.shared_vars`。Middleware实例属性只保存当前实例的运行期数据。
 - Agent Event Output 使用 `agent-event-output` 的 configuration-owned Python package，脚本通过同步 `output(event, origin)` 读取原始 LangGraph v3 ProtocolEvent 与明确的 Shell origin 返回公开文本。
 
-### Middleware 禁用装配查证表（deepagents 0.7.11）
+### Middleware 禁用装配查证表（deepagents 0.7.13）
 
 以下是 current Agent Shell 装配中会使用“同名、无行为 replacement”的能力。replacement 是通过 `create_deep_agent(middleware=...)` 的官方同名覆盖规则生效的；它会替换默认实例，但不会让该名称从最终 middleware 列表中消失。
 

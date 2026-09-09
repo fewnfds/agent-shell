@@ -1,7 +1,7 @@
 # Third-party notices
 
 Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.
-Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
+Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
 
 `Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.
 
@@ -17,6 +17,11 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | @babel/parser | `7.29.8` | MIT | https://www.npmjs.com/package/@babel/parser/v/7.29.8 |
 | npm | @babel/types | `8.0.4` | MIT | https://www.npmjs.com/package/@babel/types/v/8.0.4 |
 | npm | @babel/types | `7.29.8` | MIT | https://www.npmjs.com/package/@babel/types/v/7.29.8 |
+| npm | @cfworker/json-schema | `4.1.1` | MIT | https://www.npmjs.com/package/@cfworker/json-schema/v/4.1.1 |
+| npm | @chenglou/pretext | `0.0.8` | MIT | https://www.npmjs.com/package/@chenglou/pretext/v/0.0.8 |
+| npm | @floating-ui/core | `1.8.0` | MIT | https://www.npmjs.com/package/@floating-ui/core/v/1.8.0 |
+| npm | @floating-ui/dom | `1.8.0` | MIT | https://www.npmjs.com/package/@floating-ui/dom/v/1.8.0 |
+| npm | @floating-ui/utils | `0.2.12` | MIT | https://www.npmjs.com/package/@floating-ui/utils/v/0.2.12 |
 | npm | @intlify/core-base | `11.4.8` | MIT | https://www.npmjs.com/package/@intlify/core-base/v/11.4.8 |
 | npm | @intlify/devtools-types | `11.4.8` | MIT | https://www.npmjs.com/package/@intlify/devtools-types/v/11.4.8 |
 | npm | @intlify/message-compiler | `11.4.8` | MIT | https://www.npmjs.com/package/@intlify/message-compiler/v/11.4.8 |
@@ -26,7 +31,13 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | @jridgewell/resolve-uri | `3.1.2` | MIT | https://www.npmjs.com/package/@jridgewell/resolve-uri/v/3.1.2 |
 | npm | @jridgewell/sourcemap-codec | `1.5.5` | MIT | https://www.npmjs.com/package/@jridgewell/sourcemap-codec/v/1.5.5 |
 | npm | @jridgewell/trace-mapping | `0.3.31` | MIT | https://www.npmjs.com/package/@jridgewell/trace-mapping/v/0.3.31 |
+| npm | @langchain/core | `1.2.9` | MIT | https://www.npmjs.com/package/@langchain/core/v/1.2.9 |
+| npm | @langchain/langgraph-sdk | `1.10.2` | MIT | https://www.npmjs.com/package/@langchain/langgraph-sdk/v/1.10.2 |
+| npm | @langchain/protocol | `0.0.19` | MIT | https://www.npmjs.com/package/@langchain/protocol/v/0.0.19 |
+| npm | @langchain/vue | `1.0.35` | MIT | https://www.npmjs.com/package/@langchain/vue/v/1.0.35 |
+| npm | @standard-schema/spec | `1.1.0` | MIT | https://www.npmjs.com/package/@standard-schema/spec/v/1.1.0 |
 | npm | @types/jsesc | `2.5.1` | MIT | https://www.npmjs.com/package/@types/jsesc/v/2.5.1 |
+| npm | @types/json-schema | `7.0.15` | MIT | https://www.npmjs.com/package/@types/json-schema/v/7.0.15 |
 | npm | @types/web-bluetooth | `0.0.20` | MIT | https://www.npmjs.com/package/@types/web-bluetooth/v/0.0.20 |
 | npm | @vue-flow/core | `1.48.2` | MIT | https://www.npmjs.com/package/@vue-flow/core/v/1.48.2 |
 | npm | @vue-macros/common | `3.1.4` | MIT | https://www.npmjs.com/package/@vue-macros/common/v/3.1.4 |
@@ -49,6 +60,7 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | acorn | `8.17.0` | MIT | https://www.npmjs.com/package/acorn/v/8.17.0 |
 | npm | ast-kit | `2.2.0` | MIT | https://www.npmjs.com/package/ast-kit/v/2.2.0 |
 | npm | ast-walker-scope | `0.9.0` | MIT | https://www.npmjs.com/package/ast-walker-scope/v/0.9.0 |
+| npm | base64-js | `1.5.1` | MIT | https://www.npmjs.com/package/base64-js/v/1.5.1 |
 | npm | birpc | `2.9.0` | MIT | https://www.npmjs.com/package/birpc/v/2.9.0 |
 | npm | bootstrap | `5.3.8` | MIT | https://www.npmjs.com/package/bootstrap/v/5.3.8 |
 | npm | bootstrap-icons | `1.13.1` | MIT | https://www.npmjs.com/package/bootstrap-icons/v/1.13.1 |
@@ -66,19 +78,43 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | d3-transition | `3.0.1` | ISC | https://www.npmjs.com/package/d3-transition/v/3.0.1 |
 | npm | d3-zoom | `3.0.0` | ISC | https://www.npmjs.com/package/d3-zoom/v/3.0.0 |
 | npm | entities | `7.0.1` | BSD-2-Clause | https://www.npmjs.com/package/entities/v/7.0.1 |
+| npm | entities | `8.0.0` | BSD-2-Clause | https://www.npmjs.com/package/entities/v/8.0.0 |
 | npm | estree-walker | `2.0.2` | MIT | https://www.npmjs.com/package/estree-walker/v/2.0.2 |
+| npm | eventemitter3 | `5.0.4` | MIT | https://www.npmjs.com/package/eventemitter3/v/5.0.4 |
+| npm | eventemitter3 | `4.0.7` | MIT | https://www.npmjs.com/package/eventemitter3/v/4.0.7 |
 | npm | exsolve | `1.1.1` | MIT | https://www.npmjs.com/package/exsolve/v/1.1.1 |
 | npm | fdir | `6.5.0` | MIT | https://www.npmjs.com/package/fdir/v/6.5.0 |
 | npm | hookable | `5.5.3` | MIT | https://www.npmjs.com/package/hookable/v/5.5.3 |
+| npm | is-network-error | `1.3.2` | MIT | https://www.npmjs.com/package/is-network-error/v/1.3.2 |
+| npm | js-tiktoken | `1.0.21` | MIT | https://www.npmjs.com/package/js-tiktoken/v/1.0.21 |
 | npm | jsesc | `3.1.0` | MIT | https://www.npmjs.com/package/jsesc/v/3.1.0 |
 | npm | json5 | `2.2.3` | MIT | https://www.npmjs.com/package/json5/v/2.2.3 |
+| npm | langsmith | `0.10.2` | MIT | https://www.npmjs.com/package/langsmith/v/0.10.2 |
+| npm | linkify-it | `6.1.0` | MIT | https://www.npmjs.com/package/linkify-it/v/6.1.0 |
 | npm | local-pkg | `1.2.1` | MIT | https://www.npmjs.com/package/local-pkg/v/1.2.1 |
 | npm | magic-string | `0.30.21` | MIT | https://www.npmjs.com/package/magic-string/v/0.30.21 |
 | npm | magic-string-ast | `1.0.3` | MIT | https://www.npmjs.com/package/magic-string-ast/v/1.0.3 |
+| npm | markdown-it-container | `4.0.0` | MIT | https://www.npmjs.com/package/markdown-it-container/v/4.0.0 |
+| npm | markdown-it-footnote | `4.0.0` | MIT | https://www.npmjs.com/package/markdown-it-footnote/v/4.0.0 |
+| npm | markdown-it-ins | `4.0.0` | MIT | https://www.npmjs.com/package/markdown-it-ins/v/4.0.0 |
+| npm | markdown-it-mark | `4.0.0` | MIT | https://www.npmjs.com/package/markdown-it-mark/v/4.0.0 |
+| npm | markdown-it-sup | `2.0.0` | MIT | https://www.npmjs.com/package/markdown-it-sup/v/2.0.0 |
+| npm | markdown-it-task-checkbox | `1.0.6` | ISC | https://www.npmjs.com/package/markdown-it-task-checkbox/v/1.0.6 |
+| npm | markdown-it-ts | `1.1.2` | MIT | https://www.npmjs.com/package/markdown-it-ts/v/1.1.2 |
+| npm | markstream-core | `2.0.8` | MIT | https://www.npmjs.com/package/markstream-core/v/2.0.8 |
+| npm | markstream-vue | `2.0.8` | MIT | https://www.npmjs.com/package/markstream-vue/v/2.0.8 |
+| npm | mdurl | `2.1.0` | MIT | https://www.npmjs.com/package/mdurl/v/2.1.0 |
 | npm | mlly | `1.8.2` | MIT | https://www.npmjs.com/package/mlly/v/1.8.2 |
 | npm | muggle-string | `0.4.1` | MIT | https://www.npmjs.com/package/muggle-string/v/0.4.1 |
+| npm | mustache | `4.2.0` | MIT | https://www.npmjs.com/package/mustache/v/4.2.0 |
 | npm | nanoid | `3.3.17` | MIT | https://www.npmjs.com/package/nanoid/v/3.3.17 |
 | npm | nostics | `1.2.0` | MIT | https://www.npmjs.com/package/nostics/v/1.2.0 |
+| npm | p-finally | `1.0.0` | MIT | https://www.npmjs.com/package/p-finally/v/1.0.0 |
+| npm | p-queue | `9.3.3` | MIT | https://www.npmjs.com/package/p-queue/v/9.3.3 |
+| npm | p-queue | `6.6.2` | MIT | https://www.npmjs.com/package/p-queue/v/6.6.2 |
+| npm | p-retry | `7.1.1` | MIT | https://www.npmjs.com/package/p-retry/v/7.1.1 |
+| npm | p-timeout | `7.0.1` | MIT | https://www.npmjs.com/package/p-timeout/v/7.0.1 |
+| npm | p-timeout | `3.2.0` | MIT | https://www.npmjs.com/package/p-timeout/v/3.2.0 |
 | npm | pathe | `2.0.3` | MIT | https://www.npmjs.com/package/pathe/v/2.0.3 |
 | npm | perfect-debounce | `2.1.0` | MIT | https://www.npmjs.com/package/perfect-debounce/v/2.1.0 |
 | npm | picocolors | `1.1.1` | ISC | https://www.npmjs.com/package/picocolors/v/1.1.1 |
@@ -86,11 +122,14 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | pkg-types | `1.3.1` | MIT | https://www.npmjs.com/package/pkg-types/v/1.3.1 |
 | npm | pkg-types | `2.3.1` | MIT | https://www.npmjs.com/package/pkg-types/v/2.3.1 |
 | npm | postcss | `8.5.26` | MIT | https://www.npmjs.com/package/postcss/v/8.5.26 |
+| npm | punycode.js | `2.3.1` | MIT | https://www.npmjs.com/package/punycode.js/v/2.3.1 |
 | npm | quansync | `0.2.11` | MIT | https://www.npmjs.com/package/quansync/v/0.2.11 |
 | npm | readdirp | `5.1.1` | MIT | https://www.npmjs.com/package/readdirp/v/5.1.1 |
 | npm | scule | `1.3.0` | MIT | https://www.npmjs.com/package/scule/v/1.3.0 |
 | npm | source-map-js | `1.2.1` | BSD-3-Clause | https://www.npmjs.com/package/source-map-js/v/1.2.1 |
+| npm | stream-markdown-parser | `1.2.14` | MIT | https://www.npmjs.com/package/stream-markdown-parser/v/1.2.14 |
 | npm | tinyglobby | `0.2.17` | MIT | https://www.npmjs.com/package/tinyglobby/v/0.2.17 |
+| npm | uc.micro | `3.0.0` | MIT | https://www.npmjs.com/package/uc.micro/v/3.0.0 |
 | npm | ufo | `1.6.4` | MIT | https://www.npmjs.com/package/ufo/v/1.6.4 |
 | npm | unplugin | `3.3.0` | MIT | https://www.npmjs.com/package/unplugin/v/3.3.0 |
 | npm | unplugin-utils | `0.3.2` | MIT | https://www.npmjs.com/package/unplugin-utils/v/0.3.2 |
@@ -101,6 +140,7 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | npm | vue-router | `5.2.0` | MIT | https://www.npmjs.com/package/vue-router/v/5.2.0 |
 | npm | webpack-virtual-modules | `0.6.2` | MIT | https://www.npmjs.com/package/webpack-virtual-modules/v/0.6.2 |
 | npm | yaml | `2.9.0` | ISC | https://www.npmjs.com/package/yaml/v/2.9.0 |
+| npm | zod | `4.5.4` | MIT | https://www.npmjs.com/package/zod/v/4.5.4 |
 | pypi | aiohappyeyeballs | `2.7.1` | PSF-2.0 | https://pypi.org/project/aiohappyeyeballs/2.7.1/ |
 | pypi | aiohttp | `3.14.3` | Apache-2.0 AND MIT | https://pypi.org/project/aiohttp/3.14.3/ |
 | pypi | aiosignal | `1.4.0` | Apache 2.0 | https://pypi.org/project/aiosignal/1.4.0/ |
@@ -122,7 +162,7 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | pypi | croniter | `6.2.4` | MIT | https://pypi.org/project/croniter/6.2.4/ |
 | pypi | cryptography | `50.0.0` | Apache-2.0 OR BSD-3-Clause | https://pypi.org/project/cryptography/50.0.0/ |
 | pypi | curl-cffi | `0.16.0` | MIT | https://pypi.org/project/curl-cffi/0.16.0/ |
-| pypi | deepagents | `0.7.11` | MIT | https://pypi.org/project/deepagents/0.7.11/ |
+| pypi | deepagents | `0.7.13` | MIT | https://pypi.org/project/deepagents/0.7.13/ |
 | pypi | distro | `1.9.0` | Apache License, Version 2.0 | https://pypi.org/project/distro/1.9.0/ |
 | pypi | docstring-parser | `0.18.0` | MIT | https://pypi.org/project/docstring-parser/0.18.0/ |
 | pypi | fastapi | `0.141.1` | MIT | https://pypi.org/project/fastapi/0.141.1/ |
@@ -138,7 +178,7 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | pypi | google-cloud-storage | `3.13.1` | Apache-2.0 | https://pypi.org/project/google-cloud-storage/3.13.1/ |
 | pypi | google-cloud-vectorsearch | `0.11.1` | Apache-2.0 | https://pypi.org/project/google-cloud-vectorsearch/0.11.1/ |
 | pypi | google-crc32c | `1.8.0` | NOASSERTION | https://pypi.org/project/google-crc32c/1.8.0/ |
-| pypi | google-genai | `2.17.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.17.0/ |
+| pypi | google-genai | `2.22.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.22.0/ |
 | pypi | google-resumable-media | `2.10.1` | Apache 2.0 | https://pypi.org/project/google-resumable-media/2.10.1/ |
 | pypi | googleapis-common-protos | `1.75.1` | Apache 2.0 | https://pypi.org/project/googleapis-common-protos/1.75.1/ |
 | pypi | grpc-google-iam-v1 | `0.14.5` | Apache 2.0 | https://pypi.org/project/grpc-google-iam-v1/0.14.5/ |
@@ -147,9 +187,11 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | pypi | grpcio-tools | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio-tools/1.81.1/ |
 | pypi | h11 | `0.16.0` | MIT | https://pypi.org/project/h11/0.16.0/ |
 | pypi | httpcore | `1.0.9` | BSD-3-Clause | https://pypi.org/project/httpcore/1.0.9/ |
+| pypi | httpcore2 | `2.9.1` | BSD-3-Clause | https://pypi.org/project/httpcore2/2.9.1/ |
 | pypi | httpx | `0.28.1` | BSD-3-Clause | https://pypi.org/project/httpx/0.28.1/ |
 | pypi | httpx-curl-cffi | `0.1.5` | BSD-3-Clause | https://pypi.org/project/httpx-curl-cffi/0.1.5/ |
 | pypi | httpx-sse | `0.4.3` | MIT | https://pypi.org/project/httpx-sse/0.4.3/ |
+| pypi | httpx2 | `2.9.1` | BSD-3-Clause | https://pypi.org/project/httpx2/2.9.1/ |
 | pypi | idna | `3.18` | BSD-3-Clause | https://pypi.org/project/idna/3.18/ |
 | pypi | jiter | `0.16.0` | MIT | https://pypi.org/project/jiter/0.16.0/ |
 | pypi | jsonpatch | `1.33` | Modified BSD License | https://pypi.org/project/jsonpatch/1.33/ |
@@ -157,25 +199,25 @@ Counts: npm 94, pypi 136, runtime 3. Run `server/.venv/Scripts/python.exe packag
 | pypi | jsonschema | `4.26.0` | MIT | https://pypi.org/project/jsonschema/4.26.0/ |
 | pypi | jsonschema-rs | `0.44.1` | MIT | https://pypi.org/project/jsonschema-rs/0.44.1/ |
 | pypi | jsonschema-specifications | `2025.9.1` | MIT | https://pypi.org/project/jsonschema-specifications/2025.9.1/ |
-| pypi | langchain | `1.3.18` | MIT | https://pypi.org/project/langchain/1.3.18/ |
-| pypi | langchain-anthropic | `1.7.0` | MIT | https://pypi.org/project/langchain-anthropic/1.7.0/ |
-| pypi | langchain-core | `1.6.1` | MIT | https://pypi.org/project/langchain-core/1.6.1/ |
+| pypi | langchain | `1.4.0` | MIT | https://pypi.org/project/langchain/1.4.0/ |
+| pypi | langchain-anthropic | `1.7.1` | MIT | https://pypi.org/project/langchain-anthropic/1.7.1/ |
+| pypi | langchain-core | `1.6.2` | MIT | https://pypi.org/project/langchain-core/1.6.2/ |
 | pypi | langchain-deepseek | `1.1.0` | MIT | https://pypi.org/project/langchain-deepseek/1.1.0/ |
-| pypi | langchain-google-genai | `4.3.7` | MIT | https://pypi.org/project/langchain-google-genai/4.3.7/ |
+| pypi | langchain-google-genai | `4.4.0` | MIT | https://pypi.org/project/langchain-google-genai/4.4.0/ |
 | pypi | langchain-google-vertexai | `3.2.4` | MIT | https://pypi.org/project/langchain-google-vertexai/3.2.4/ |
 | pypi | langchain-mcp-adapters | `0.3.2` | MIT | https://pypi.org/project/langchain-mcp-adapters/0.3.2/ |
-| pypi | langchain-openai | `1.6.0` | MIT | https://pypi.org/project/langchain-openai/1.6.0/ |
+| pypi | langchain-openai | `1.6.1` | MIT | https://pypi.org/project/langchain-openai/1.6.1/ |
 | pypi | langchain-protocol | `0.0.19` | MIT | https://pypi.org/project/langchain-protocol/0.0.19/ |
 | pypi | langchain-xai | `1.3.0` | MIT | https://pypi.org/project/langchain-xai/1.3.0/ |
 | pypi | langgraph | `1.2.11` | MIT | https://pypi.org/project/langgraph/1.2.11/ |
-| pypi | langgraph-api | `0.13.3` | Elastic-2.0 | https://pypi.org/project/langgraph-api/0.13.3/ |
+| pypi | langgraph-api | `0.14.0` | Elastic-2.0 | https://pypi.org/project/langgraph-api/0.14.0/ |
 | pypi | langgraph-checkpoint | `4.2.0` | MIT | https://pypi.org/project/langgraph-checkpoint/4.2.0/ |
 | pypi | langgraph-checkpoint-sqlite | `3.1.1` | MIT | https://pypi.org/project/langgraph-checkpoint-sqlite/3.1.1/ |
 | pypi | langgraph-cli | `0.4.31` | MIT | https://pypi.org/project/langgraph-cli/0.4.31/ |
 | pypi | langgraph-prebuilt | `1.1.0` | MIT | https://pypi.org/project/langgraph-prebuilt/1.1.0/ |
-| pypi | langgraph-runtime-inmem | `0.33.3` | Elastic-2.0 | https://pypi.org/project/langgraph-runtime-inmem/0.33.3/ |
+| pypi | langgraph-runtime-inmem | `0.34.0` | Elastic-2.0 | https://pypi.org/project/langgraph-runtime-inmem/0.34.0/ |
 | pypi | langgraph-sdk | `0.4.4` | MIT | https://pypi.org/project/langgraph-sdk/0.4.4/ |
-| pypi | langsmith | `0.11.2` | MIT | https://pypi.org/project/langsmith/0.11.2/ |
+| pypi | langsmith | `0.12.2` | MIT | https://pypi.org/project/langsmith/0.12.2/ |
 | pypi | mcp | `1.29.1` | MIT | https://pypi.org/project/mcp/1.29.1/ |
 | pypi | multidict | `6.7.1` | Apache License 2.0 | https://pypi.org/project/multidict/6.7.1/ |
 | pypi | numexpr | `2.14.2` | MIT | https://pypi.org/project/numexpr/2.14.2/ |

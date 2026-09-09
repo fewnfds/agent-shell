@@ -54,11 +54,12 @@ git pull --ff-only
 | --- | --- |
 | 内置 CPython | `3.12.13` |
 | runtime/CI uv | `0.12.2` |
-| Deep Agents | `0.7.11` |
+| Deep Agents | `0.7.13` |
 | FastAPI / Uvicorn | `0.141.1` / `0.52.1` |
-| LangChain adapters | Anthropic `1.7.0`；DeepSeek `1.1.0`；Google GenAI `4.3.7`；Google Vertex AI `3.2.4`；OpenAI `1.6.0`；xAI `1.3.0` |
-| LangChain core/graph | `langchain 1.3.18`；`langchain-core 1.6.1`；`langgraph 1.2.11`；LangSmith `0.11.2` |
-| LangGraph Dev | CLI `0.4.31`；API `0.13.3`；in-memory runtime `0.33.3`；SDK `0.4.4` |
+| LangChain adapters | Anthropic `1.7.1`；DeepSeek `1.1.0`；Google GenAI `4.4.0`（底层 SDK `2.22.0`）；Google Vertex AI `3.2.4`；OpenAI `1.6.1`；xAI `1.3.0` |
+| LangChain core/graph | `langchain 1.4.0`；`langchain-core 1.6.2`；`langgraph 1.2.11`；LangSmith `0.12.2` |
+| LangGraph Dev | CLI `0.4.31`；API `0.14.0`；in-memory runtime `0.34.0`；SDK `0.4.4` |
+| 前端 LangChain | `@langchain/core 1.2.9`；`@langchain/vue 1.0.35`；LangGraph SDK `1.10.2` |
 | 其他边界 | `packaging 26.3`；`websockets 15.0.1`；dev-only `httpx2/httpcore2 2.9.1` |
 
 第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一依赖锁、`packaging/windows/runtime-lock.json` 或 `packaging/windows/mcp-runtime-lock.json` 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。`mcp-runtime-lock.json` 只锁定 Managed Local npm MCP 按需使用的内部 Node.js，不进入核心 Python runtime fingerprint；前端源码构建使用的 Node.js 22 仍由开发机提供。

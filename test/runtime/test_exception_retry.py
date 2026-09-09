@@ -132,6 +132,10 @@ def test_model_connection_and_retry_override_share_the_streaming_boundary(
         sync_client=object(),
         async_client=object(),
         timeout=lambda: 30,
+        request_headers=lambda defaults=None, overrides=None: {
+            **(defaults or {}),
+            **(overrides or {}),
+        },
     )
 
     def build(provider_settings: dict[str, object]) -> None:

@@ -4,7 +4,7 @@
   "dependencies": {
     "requiredExact": {
       "@adminlte/vue": "0.3.0",
-      "@langchain/core": "1.1.48",
+      "@langchain/core": "1.2.9",
       "@langchain/vue": "1.0.35",
       "@vue-flow/core": "1.48.2",
       "bootstrap": "5.3.8",

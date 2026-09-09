@@ -1,40 +1,28 @@
 # LangChain 系依赖升级
 
-本文记录 LangChain 系依赖的当前维护边界。版本事实仍以 `server/pyproject.toml` 和 `server/uv.lock` 为准；本文说明约束为什么存在，以及下一次升级必须复核什么。
+本文记录 LangChain 系依赖的当前维护边界。精确版本以 `server/pyproject.toml`、`server/uv.lock`、`frontend/package.json` 和 `frontend/package-lock.json` 为准。
 
-## 当前已审查基线
+## 当前基线
 
 | 依赖 | 当前版本 | 约束策略 |
 | --- | ---: | --- |
-| Deep Agents | `0.7.11` | 精确锁定；项目依赖其 middleware 顺序、Filesystem、Subagent 和 trace policy 行为 |
-| LangChain / Core | `1.3.18` / `1.6.1` | 保持当前 major，升级时先复核消息、工具、middleware 和 stream contract |
-| `langchain-anthropic` / `langchain-openai` | `1.7.0` / `1.6.0` | LangChain adapter 版本；保持当前 major，按 Provider 分组升级 |
-| Google GenAI / Vertex AI | `4.3.7` / `3.2.4` | 各自保持当前 major；model profile 采用上游当前数据 |
+| Deep Agents | `0.7.13` | 精确锁定；项目依赖其 middleware 顺序、Filesystem、Subagent 和 trace policy 行为；fork mode 未启用 |
+| LangChain / Python Core | `1.4.0` / `1.6.2` | 保持当前 major；`langchain.mcp` 是尚未启用的 beta 能力，现有 MCP 继续由 adapters 提供 |
+| Anthropic / OpenAI | `1.7.1` / `1.6.1` | 按 Provider 分组升级并复核 model profile、content block 和错误边界 |
+| Google GenAI / Vertex AI | `4.4.0` / `3.2.4` | 各自保持当前 major；Google GenAI 当前配套底层 `google-genai 2.22.0` |
 | DeepSeek / xAI | `1.1.0` / `1.3.0` | 各自保持当前 major，并与 OpenAI-compatible 路径一起回归 |
-| LangGraph / SQLite Checkpoint | `1.2.11` / `3.1.1` | LangGraph 保持 `<1.3.0`，Checkpoint-SQLite 保持 `<4.0`；复核 Graph、stream 和 checkpoint 行为 |
-| LangSmith | `0.11.2` | `>=0.11.2,<0.12`，见下方专门说明 |
+| MCP adapters | `0.3.2` | 当前使用 `MultiServerMCPClient`；新的 beta `langchain.mcp` 属于独立功能迁移 |
+| LangGraph / SQLite checkpoint | `1.2.11` / `3.1.1` | LangGraph 保持 `<1.3.0`，Checkpoint-SQLite 保持 `<4.0` |
+| LangGraph Agent Server | API `0.14.0`；runtime `0.34.0`；CLI `0.4.31`；SDK `0.4.4` | API/runtime 按官方协同发布线升级；当前未启用 LangSmith API-key auth、encryption、BYOC logging 或 `cancel_on_disconnect` |
+| LangSmith Python SDK | `0.12.2` | `>=0.12.2,<0.13`，见下方专门说明 |
+| frontend LangChain | Core `1.2.9`；Vue `1.0.35`；LangGraph SDK `1.10.2` | 当前直接消费 `useStream`、Message、content block 和 Tool call projection |
 
 ## LangSmith 约束说明
 
-`langsmith>=0.11.2,<0.12` 是预 1.0 minor 复审边界；升级到新的 minor 时按以下步骤复核：
+`langsmith>=0.12.2,<0.13` 是预 1.0 minor 复审边界。项目使用 `Client`、`configure`、`list_projects`、`close` 和标准自动 tracing；当前接受确定性 trace sampling、anonymization fail-closed、`httpx2` 优先 transport，以及上传 `429/500` 重试语义。下一次 minor 继续单独复核 tracing transport、上传与 Client 生命周期。
 
-- `0.11.2` 是已经阅读 release/source diff 并通过本项目直接验证的最低基线；
-- LangSmith 仍为 `0.x` 包，下一次 minor 可能改变 tracing、上传或 Client contract，
-  因此在未审查前不由普通 resolver 自动跨到 `0.12`；
-- 审查 `0.12` 后，应同时把下限更新为已验证版本，并把上限推进到下一个需要复审的 minor；不得继续保留一个已经失去理由的旧上限。
+## 升级方式
 
-项目使用 LangSmith 的范围很窄：`server/src/agent_shell/langsmith_tracing.py` 在进程启动时构造官方 `Client` 并调用 `langsmith.configure`，由 LangChain/LangGraph 产生标准自动 trace；保存连接设置时使用 `list_projects(limit=1)` 验证 Endpoint、Key 和 Workspace，服务关闭时调用 `Client.close(timeout=5.0)` 刷新并释放资源，连接校验路径的探活 `close()` 为无参调用。该模块同时设置 tracing 环境变量并注册错误回调；升级时一并复核完整 trace、错误 traceback、credential 使用、后台资源和关闭刷新行为。项目没有自建 trace ingestion、直接 `RunTree`、OpenTelemetry、evaluation、pytest plugin 或 Sandbox 集成。
+LangChain 系升级按调用链分批进行：LangChain/Core 与直接 Provider adapter 可以组成 Python 主干批次；Deep Agents、底层 Provider SDK、frontend message contract、LangSmith tracing 和 Agent Server 分别独立升级。每批使用 scoped `uv lock --upgrade-package <package>` 或 `npm install --save-exact <package>@<version>`，检查 resolver 带入的传递变化后运行最接近的直接测试，并重新生成 `THIRD_PARTY_NOTICES.md`。
 
-下一次 LangSmith 升级只需围绕上述真实调用面检查：
-
-1. 阅读目标 minor 内全部官方 release notes 和 Python source diff；
-2. 检查 `Client`、`configure`、`list_projects`、`close` 以及 LangChain/LangGraph 自动 tracing；
-3. 判断上传默认值是否改变 trace 完整性、credential 使用、后台资源或关闭刷新行为；
-4. 用 scoped resolver 更新 LangSmith，检查 `uv.lock` diff 中目标包及其传递依赖，确认没有未审查的传递依赖变化；
-5. 验证 tracing 开关、连接设置原子保存、Client 生命周期和 lock 一致性，然后推进版本边界。
-
-## 通用升级顺序
-
-LangChain 系升级按依赖与影响面分批进行：先 Core/LangGraph contract，再 Provider adapter 和 LangSmith，最后 Deep Agents。每批使用明确的 `uv lock --upgrade-package <package>`，检查 lock diff 后再同步环境；不要用无范围升级把多个行为面混在一起。
-
-Provider adapter 的 release 如果改变错误内容、协议选择、model profile、token usage、tool call 或 stream block，必须先确定 Shell 的公开失败边界和配置 contract。上游默认行为适合项目时直接采用，不建立重复的 Provider catalog 或兼容分支。
+上游发布包含新功能、参数或默认行为变化时，先在阶段报告中说明与项目调用面的关系，再决定是否采用；采用后只维护上游现行 contract，不保留旧版本兼容分支。
