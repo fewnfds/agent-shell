@@ -90,18 +90,23 @@ def test_missing_custom_tool_reference_is_reported(
         REQUIRED_TYPES,
     )
 
-    response = client.post(
-        "/agent-shell/api/main-agents",
-        json={
-            "name": "Missing tool",
-            "capability_refs": references(
-                blocks,
-                REQUIRED_TYPES,
-            ),
-            "tool_refs": [
-                {"tool_id": "00000000-0000-4000-8000-000000000099"}
-            ],
-        },
+    payload = {
+        "name": "Missing tool",
+        "capability_refs": references(
+            blocks,
+            REQUIRED_TYPES,
+        ),
+        "tool_refs": [
+            {"tool_id": "00000000-0000-4000-8000-000000000099"}
+        ],
+    }
+    draft = client.post("/agent-shell/api/main-agents", json=payload)
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["enabled"] is False
+
+    response = client.put(
+        f"/agent-shell/api/main-agents/{draft.json()['id']}/publish",
+        json=payload,
     )
 
     assert response.status_code == 422
