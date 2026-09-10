@@ -131,7 +131,7 @@ Management API 没有单独的“测试 MCP”入口。以一次覆盖目标 Age
 
 ## 7. Python dependency status
 
-对全部已配置Main Agent assembly，以及enabled Workflow使用的Python-backed Component调用：
+对全部已配置 Main Agent assembly，以及正式 Workflow使用的Python-backed Component调用：
 
 ```text
 GET /agent-shell/api/blocks/<type>/<component UUID>/python-package
@@ -202,16 +202,16 @@ GET /compat/openai/v1/models
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-确认`is_model_entry=true`的Main Agent name，或刚刚publish且选择作为模型入口的Workflow name出现在model list。
+确认刚刚正式保存且`is_model_entry=true`的Main Agent/Workflow name出现在model list。
 
 找不到时依次检查：
 
-1. Main Agent是否`is_model_entry=true`，或Workflow是否同时`enabled=true`与`is_model_entry=true`；
+1. Main Agent或Workflow是否同时`enabled=true`与`is_model_entry=true`；
 2. API Server 是否 running；
 3. 请求是否使用 `/compat/openai/v1` API Key；
 4. 入口name是否与预期`model`完全一致。
 
-`is_model_entry=true`的Main Agent和`enabled=true`且`is_model_entry=true`的Workflow出现在`/compat/openai/v1/models`；全部enabled Workflow都可以被其他Workflow Run调用。
+`enabled=true`且`is_model_entry=true`的Main Agent/Workflow出现在`/compat/openai/v1/models`；全部正式 Workflow都可以被其他Workflow Run调用，正式 Main Agent可以由Command启动。
 
 ## 10. 发起一次真实 invocation
 

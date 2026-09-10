@@ -6,10 +6,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from agent_shell.contracts import FilesystemBlock, SkillBlock
+from agent_shell.contracts import FilesystemBlock, FilesystemToolsBlock, SkillBlock
 from agent_shell.runtime.capabilities import build_deepagents_capabilities
 from agent_shell.runtime.capabilities import deepagents as deepagents_capability
 from agent_shell.runtime.capabilities.deepagents import DeepAgentsCapabilityError
+
+
+def filesystem_tools() -> FilesystemToolsBlock:
+    return FilesystemToolsBlock.model_validate({"name": "Skill filesystem tools"})
 
 def test_skill_requires_an_owned_private_package_reference() -> None:
     skill = SkillBlock.model_validate(
@@ -40,6 +44,7 @@ def test_selected_skill_with_invalid_current_metadata_is_not_materialized(
     capabilities = build_deepagents_capabilities(
         filesystem,
         skill,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
@@ -69,6 +74,7 @@ def test_skill_runtime_rejects_links_inside_private_package(tmp_path: Path) -> N
         build_deepagents_capabilities(
             FilesystemBlock.model_validate({"name": "Linked Skill workspace"}),
             skill,
+            filesystem_tools=filesystem_tools(),
             filesystem_mode="composite",
             skills_dir=skills_dir,
         )
@@ -118,18 +124,21 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
     default_capabilities = build_deepagents_capabilities(
         filesystem,
         default_skill,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     custom_capabilities = build_deepagents_capabilities(
         filesystem,
         custom_skill,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     capabilities_without_skill_prompt = build_deepagents_capabilities(
         filesystem,
         disabled_skill,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
@@ -161,12 +170,14 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
     alpha_capabilities = build_deepagents_capabilities(
         FilesystemBlock.model_validate({"name": "Alpha workspace"}),
         alpha,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
     beta_capabilities = build_deepagents_capabilities(
         FilesystemBlock.model_validate({"name": "Beta workspace"}),
         beta,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
         workspace=alpha_capabilities.workspace,
@@ -225,6 +236,7 @@ def test_configured_workspace_routes_entire_skill_namespace_away_from_state(
     capabilities = build_deepagents_capabilities(
         filesystem,
         skill,
+        filesystem_tools=filesystem_tools(),
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )

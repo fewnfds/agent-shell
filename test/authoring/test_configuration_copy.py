@@ -242,9 +242,10 @@ def test_agent_config_copy_revalidates_invalid_stored_sources_before_writing(
         json={"component_name": "Rejected Subagent copy"},
     )
 
-    assert main_agent_copy.status_code == 422
+    assert main_agent_copy.status_code == 200
+    assert main_agent_copy.json()["enabled"] is False
     assert subagent_copy.status_code == 422
     assert client.get(f"/agent-shell/api/main-agents/{main_agent['id']}").json() == before_main_agent
     assert client.get(f"/agent-shell/api/subagents/{subagent['id']}").json() == before_subagent
-    assert len(client.get("/agent-shell/api/main-agents").json()) == 1
+    assert len(client.get("/agent-shell/api/main-agents").json()) == 2
     assert len(client.get("/agent-shell/api/subagents").json()) == 1

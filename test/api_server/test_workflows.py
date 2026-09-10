@@ -50,12 +50,10 @@ def test_agent_and_workflow_model_entries_reject_the_same_public_name(
         )
         save_linear_workflow_graph(client, workflow, referenced_agent)
 
-        agent_payload = {
-            key: value for key, value in referenced_agent.items() if key != "id"
-        }
+        agent_payload = main_agent_payload(referenced_agent)
         agent_payload["is_model_entry"] = True
         conflicting_agent = client.put(
-            f"/agent-shell/api/main-agents/{referenced_agent['id']}",
+            f"/agent-shell/api/main-agents/{referenced_agent['id']}/publish",
             json=agent_payload,
         )
         assert conflicting_agent.status_code == 409
@@ -402,6 +400,103 @@ def test_repository_validation_includes_disabled_workflow_references(
             "definition.nodes[1].config.command_id",
         ),
     }
+
+
+def test_deleting_referenced_command_demotes_published_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_dir = (
+        tmp_path
+        / "data"
+        / "templates"
+        / "workflow"
+        / "command"
+        / "referenced-command"
+    )
+    package_dir.mkdir(parents=True)
+    (package_dir / "main.py").write_text(
+        "def create_command():\n"
+        "    async def route(state, runtime):\n"
+        "        return {'activate': [], 'update': {}}\n"
+        "    return route\n",
+        encoding="utf-8",
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        selected = client.get(
+            "/agent-shell/api/python-package-templates/command"
+        ).json()["catalog"][0]
+        command = client.post(
+            "/agent-shell/api/blocks/command",
+            json={
+                "name": "Referenced command",
+                "python_package": {"folder": ""},
+                "python_package_template": {
+                    "key": selected["key"],
+                    "revision": selected["revision"],
+                },
+            },
+        ).json()
+        workflow = create_workflow(client, name="Command owner")
+        document = {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.control.v1",
+                "nodes": [
+                    {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                    {
+                        "id": "command",
+                        "type": "command",
+                        "type_version": 1,
+                        "config": {"command_id": command["id"]},
+                    },
+                    {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                ],
+                "edges": [
+                    {
+                        "id": "start-command",
+                        "source": "start",
+                        "source_handle": "next",
+                        "target": "command",
+                        "target_handle": "in",
+                    },
+                    {
+                        "id": "command-end",
+                        "source": "command",
+                        "source_handle": "next",
+                        "target": "end",
+                        "target_handle": "in",
+                    },
+                ],
+            },
+            "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+        }
+        published = client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
+            json=document,
+        )
+        assert published.status_code == 200, published.text
+
+        deleted = client.delete(
+            f"/agent-shell/api/blocks/command/{command['id']}"
+        )
+        stored = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}"
+        ).json()
+        stored_graph = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph"
+        ).json()
+        issues = repository_reference_issues(client, owner_id=workflow["id"])
+
+    assert deleted.status_code == 200, deleted.text
+    assert stored["enabled"] is False
+    assert stored_graph["definition"]["nodes"][1]["config"]["command_id"] == command["id"]
+    assert [(issue["code"], issue["path"]) for issue in issues] == [
+        (
+            "configuration.reference_not_found",
+            "definition.nodes[1].config.command_id",
+        )
+    ]
 
 
 def test_repository_validation_includes_workflow_graph_admission(

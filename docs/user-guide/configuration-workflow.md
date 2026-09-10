@@ -30,7 +30,7 @@ Main Agent页面装配：
 
 - 一个Model Requirement；
 - Agent Event Output；
-- Filesystem Backend与Filesystem Tools；
+- 可选的Filesystem Backend与Filesystem Tools；
 - 可选capability refs；
 - ordered Custom Tool、Custom Middleware和MCP refs；
 - ordered同步Subagent refs；
@@ -42,7 +42,7 @@ Main Agent UUID 确定稳定 Assistant ID。每次独立调用创建持久Thread
 
 ## 同步 Subagent
 
-Subagent由Main Agent按顺序引用并交给显式 Deep Agents `SubAgentMiddleware`。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和effective Filesystem。
+Subagent由Main Agent按顺序引用并交给显式 Deep Agents `SubAgentMiddleware`。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和可选effective Filesystem。
 
 同步Subagent属于Main Agent内部agent loop，不是Workflow Node，也不建立独立Shell archive wrapper。多阶段确定性控制由Workflow和Command表达。
 
@@ -62,6 +62,8 @@ Event Output不修改State、checkpoint或Graph routing。公开文本的调度�
 
 ## 校验与生效
 
-Main Agent/Subagent编辑页提交完整草稿并由后端校验装配。Workflow draft保存只保证wire可解析并设置`enabled=false`；正式保存执行引用、topology、Command package与compile校验后设置`enabled=true`。
+Main Agent普通保存允许保留装配 error 并设置`enabled=false`；正式保存要求完整装配零 error 后设置`enabled=true`，warning 可以通过。Workflow draft保存只保证wire可解析并设置`enabled=false`；正式保存执行引用、topology、Command package与compile校验后设置`enabled=true`。两类正式保存失败都不覆盖当前记录；新建、复制和Bundle导入均为草稿。
+
+删除被引用的 Component、Subagent 或 Command 时，声明式 UUID 原样保留，受影响的正式 Main Agent/Workflow在同一次配置 mutation 中降级为草稿。Lifecycle 启动前只按`enabled=true`冻结当前正式 Main Agent/Workflow；Component和Subagent继续作为这些正式入口的依赖保留在快照中。capture不重复扫描外部资产或重新判定正式入口有效性，引用资产失效会在真实Graph装配或执行边界返回具体错误。
 
 Chat请求冻结一次Repository与实例资源快照。运行中的配置修改只影响后续Lifecycle。

@@ -45,6 +45,12 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
     assert [item["type"] for item in main_agent["capability_refs"]] == list(
         MAIN_AGENT_TYPES
     )
+    published = client.put(
+        f"/agent-shell/api/main-agents/{main_agent['id']}/publish",
+        json={key: value for key, value in main_agent.items() if key not in {"id", "enabled"}},
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["enabled"] is True
 
     expected_original_ids = {
         item["block_id"] for item in main_agent["capability_refs"]
@@ -54,6 +60,7 @@ def test_main_agent_reference_delete_preserves_ids_and_reports_missing_targets(
         assert deleted.status_code == 200, (capability_type, deleted.text)
 
     stored = client.get(f"/agent-shell/api/main-agents/{main_agent['id']}").json()
+    assert stored["enabled"] is False
     assert stored["capability_refs"] == main_agent["capability_refs"]
     assert stored["middleware_refs"] == main_agent["middleware_refs"]
     issues = repository_reference_issues(client, owner_id=main_agent["id"])
@@ -194,6 +201,11 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
         create_blocks(client, "binding-required", REQUIRED_TYPES),
         REQUIRED_TYPES,
     )
+    delegation = create_blocks(
+        client,
+        "binding-delegation",
+        ("subagent",),
+    )["subagent"]
     subagent_response = client.post(
         "/agent-shell/api/subagents",
         json=subagent_payload("Shared Subagent", name="draft_worker"),
@@ -205,12 +217,20 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
         "/agent-shell/api/main-agents",
         json={
             "name": "Override owner",
-            "capability_refs": required_refs,
+            "capability_refs": [
+                *required_refs,
+                {"type": "subagent", "block_id": delegation["id"]},
+            ],
             "subagents": [{"subagent_id": subagent["id"]}],
         },
     )
     assert owner_response.status_code == 200, owner_response.text
     owner = owner_response.json()
+    published_owner = client.put(
+        f"/agent-shell/api/main-agents/{owner['id']}/publish",
+        json={key: value for key, value in owner.items() if key not in {"id", "enabled"}},
+    )
+    assert published_owner.status_code == 200, published_owner.text
 
     independent_response = client.post(
         "/agent-shell/api/main-agents",
@@ -223,6 +243,7 @@ def test_subagent_delete_preserves_entity_references_and_reports_owner(
     deleted = client.delete(f"/agent-shell/api/subagents/{subagent['id']}")
     assert deleted.status_code == 200, deleted.text
     stored_owner = client.get(f"/agent-shell/api/main-agents/{owner['id']}").json()
+    assert stored_owner["enabled"] is False
     assert stored_owner["subagents"] == owner["subagents"]
     issue = repository_reference_issues(client, owner_id=owner["id"])
     assert len(issue) == 1

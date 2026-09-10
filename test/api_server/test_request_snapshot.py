@@ -51,6 +51,35 @@ def test_snapshot_freezes_workflow_metadata(
         main_agent = create_main_agent(client)
         save_linear_workflow_graph(client, workflow, main_agent)
         draft = create_workflow(client, name="Excluded Draft")
+        draft_agent = client.post(
+            f"/agent-shell/api/main-agents/{main_agent['id']}/copy",
+            json={"name": "Excluded Agent Draft"},
+        ).json()
+        manually_corrupted_published_agent = client.post(
+            f"/agent-shell/api/main-agents/{main_agent['id']}/copy",
+            json={"name": "Manually Corrupted Published Agent"},
+        ).json()
+
+        repository = client.app.state.agent_runtime._configuration
+
+        def corrupt_published_agent(config: dict) -> None:
+            record = next(
+                item
+                for item in config["main_agents"]
+                if item["id"] == manually_corrupted_published_agent["id"]
+            )
+            record["enabled"] = True
+            record["capability_refs"][0]["block_id"] = (
+                "00000000-0000-4000-8000-000000000099"
+            )
+
+        repository.update_config(corrupt_published_agent)
+        corrupted = next(
+            item
+            for item in repository.config()["main_agents"]
+            if item["id"] == manually_corrupted_published_agent["id"]
+        )
+        assert corrupted["enabled"] is True
 
         snapshot = asyncio.run(client.app.state.agent_runtime.capture())
         frozen_configuration = snapshot.lifecycle_configuration(
@@ -63,6 +92,15 @@ def test_snapshot_freezes_workflow_metadata(
         ] == [workflow["id"]]
         assert snapshot.workflow_by_id(draft["id"]) is None
         assert snapshot.main_agent_by_id(main_agent["id"]) is not None
+        assert snapshot.main_agent_by_id(draft_agent["id"]) is None
+        assert (
+            snapshot.main_agent_by_id(manually_corrupted_published_agent["id"])
+            is not None
+        )
+        assert [
+            item["id"]
+            for item in frozen_configuration["repository"]["config"]["main_agents"]
+        ] == [main_agent["id"], manually_corrupted_published_agent["id"]]
         assert frozen_configuration["repository"]["config"]["components"]
         assert "provider-test-secret" not in json.dumps(frozen_configuration)
         snapshot_fields = snapshot.__dataclass_fields__

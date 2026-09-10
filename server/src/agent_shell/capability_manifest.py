@@ -66,12 +66,12 @@ CAPABILITY_MANIFESTS = (
     CapabilityManifest(
         "filesystem", "file-system", "文件系统后端", 3,
         "folder", "filesystem",
-        subagent_overrideable=True, required=True, subagent_policy="inherit",
+        subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
     CapabilityManifest(
         "filesystem-tools", "filesystem-tools", "文件系统工具", 4,
         "wrench", "filesystem_tools",
-        subagent_overrideable=True, required=True, subagent_policy="inherit",
+        subagent_overrideable=True, required=False, subagent_policy="inherit",
         tool_names=FILESYSTEM_TOOL_NAMES,
     ),
     CapabilityManifest(

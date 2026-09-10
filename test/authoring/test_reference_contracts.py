@@ -26,7 +26,7 @@ def test_main_agent_subagent_reference_only_stores_entity_id(
     main_agent = valid.json()
     assert main_agent["subagents"] == [{"subagent_id": subagent["id"]}]
 
-def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_removed(
+def test_reference_contracts_reject_structural_errors_and_draft_semantic_errors(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
@@ -50,14 +50,30 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
             *required_refs[1:],
         ],
     ]
-    for index, capability_refs in enumerate(invalid_main_agent_refs):
+    for index, capability_refs in enumerate(invalid_main_agent_refs[:2]):
         response = client.post(
             "/agent-shell/api/main-agents",
             json={"name": f"Invalid Main Agent {index}", "capability_refs": capability_refs},
         )
         assert response.status_code == 422, response.text
 
-    required_filesystem_disabled = client.post(
+    wrong_type_payload = {
+        "name": "Wrong-type Main Agent",
+        "capability_refs": invalid_main_agent_refs[2],
+    }
+    wrong_type_draft = client.post(
+        "/agent-shell/api/main-agents",
+        json=wrong_type_payload,
+    )
+    assert wrong_type_draft.status_code == 200, wrong_type_draft.text
+    assert wrong_type_draft.json()["enabled"] is False
+    wrong_type_publish = client.put(
+        f"/agent-shell/api/main-agents/{wrong_type_draft.json()['id']}/publish",
+        json=wrong_type_payload,
+    )
+    assert wrong_type_publish.status_code == 422, wrong_type_publish.text
+
+    optional_filesystem_disabled = client.post(
         "/agent-shell/api/subagents",
         json=subagent_payload(
             "Disabled Filesystem Subagent",
@@ -67,7 +83,7 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
             ],
         ),
     )
-    assert required_filesystem_disabled.status_code == 422
+    assert optional_filesystem_disabled.status_code == 200
 
     invalid_overrides = [
         [{"type": "unknown-capability", "mode": "inherit", "block_id": ""}],
@@ -92,28 +108,35 @@ def test_reference_contracts_reject_unknown_duplicate_wrong_type_and_force_remov
         )
         assert response.status_code == 422, response.text
 
-def test_main_agent_save_enforces_required_delegation_and_skill_package_contracts(
+def test_main_agent_draft_and_publish_enforce_delegation_and_skill_contracts(
     tmp_path: Path, monkeypatch
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     blocks = create_blocks(
         client,
         "save-contract",
-        (*REQUIRED_TYPES, "skill", "subagent"),
+        (*REQUIRED_TYPES, "filesystem", "skill", "subagent"),
     )
     required_refs = references(blocks, REQUIRED_TYPES)
 
     missing_required = [required_refs[:index] + required_refs[index + 1 :]
                         for index in range(len(required_refs))]
     for index, capability_refs in enumerate(missing_required):
+        payload = {
+            "name": f"Missing required {index}",
+            "capability_refs": capability_refs,
+        }
         response = client.post(
             "/agent-shell/api/main-agents",
-            json={
-                "name": f"Missing required {index}",
-                "capability_refs": capability_refs,
-            },
+            json=payload,
         )
-        assert response.status_code == 422, response.text
+        assert response.status_code == 200, response.text
+        assert response.json()["enabled"] is False
+        published = client.put(
+            f"/agent-shell/api/main-agents/{response.json()['id']}/publish",
+            json=payload,
+        )
+        assert published.status_code == 422, published.text
 
     without_filesystem = client.post(
         "/agent-shell/api/main-agents",
@@ -124,7 +147,8 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
             ],
         },
     )
-    assert without_filesystem.status_code == 422, without_filesystem.text
+    assert without_filesystem.status_code == 200, without_filesystem.text
+    assert without_filesystem.json()["enabled"] is False
 
     direct_skill_selection = client.post(
         "/agent-shell/api/main-agents",
@@ -154,18 +178,28 @@ def test_main_agent_save_enforces_required_delegation_and_skill_package_contract
         "/agent-shell/api/blocks/subagent",
         json={"name": "Delegation"},
     ).json()
+    delegation_without_binding_payload = {
+        "name": "Delegation without binding",
+        "capability_refs": [
+            *required_refs,
+            {"type": "subagent", "block_id": delegation["id"]},
+        ],
+    }
     delegation_without_binding = client.post(
         "/agent-shell/api/main-agents",
-        json={
-            "name": "Delegation without binding",
-            "capability_refs": [
-                *required_refs,
-                {"type": "subagent", "block_id": delegation["id"]},
-            ],
-        },
+        json=delegation_without_binding_payload,
     )
-    assert delegation_without_binding.status_code == 422
-    issues = delegation_without_binding.json()["detail"]["validation"]["issues"]
+    assert delegation_without_binding.status_code == 200
+    assert delegation_without_binding.json()["enabled"] is False
+    rejected_delegation = client.put(
+        (
+            "/agent-shell/api/main-agents/"
+            f"{delegation_without_binding.json()['id']}/publish"
+        ),
+        json=delegation_without_binding_payload,
+    )
+    assert rejected_delegation.status_code == 422
+    issues = rejected_delegation.json()["detail"]["validation"]["issues"]
     assert any(
         issue["code"] == "assembly.subagent_reference_required" for issue in issues
     )

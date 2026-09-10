@@ -48,12 +48,12 @@ OpenAI-compatible 当前提供 `GET /compat/openai/v1/models` 与 `POST /compat/
 
 首次启动若无可用仓库，会创建并激活 `Default` Configuration Repository；已有仓库时复用并激活现有仓库。需要使用另一套配置时，在【配置库 / 全局 / 组件配置】切换或复制 Repository；之后创建的 Component、Agent 和 Workflow 都写入 current Configuration Repository。
 
-1. 在【代理组件 / 文件系统后端】创建 CompositeBackend 或 LocalShellBackend，并在【代理组件 / 文件系统工具】创建工具配置。需要命令执行时选择真实单工作区的 LocalShellBackend，并在工具配置中开启 `execute`；需要映射、来源权限或 Skill 独立包时选择 CompositeBackend。
-2. 在【模型 / 模型连接】创建本机连接，在【代理组件 / 模型要求】创建名称和说明，再在【代理 / Main Agent】中选择模型要求、Filesystem Backend、Filesystem Tools、Agent Event Output 和其他能力；在【代理组件 / Custom Middleware】新建并选择
+1. 任务需要文件、Skill、Filesystem prompt或大结果卸载时，在【代理组件 / 文件系统后端】创建 CompositeBackend 或 LocalShellBackend，并在【代理组件 / 文件系统工具】创建工具配置。需要命令执行时选择真实单工作区的 LocalShellBackend，并在工具配置中开启 `execute`；需要映射、来源权限或 Skill 独立包时选择 CompositeBackend。
+2. 在【模型 / 模型连接】创建本机连接，在【代理组件 / 模型要求】创建名称和说明，再在【代理 / Main Agent】中选择模型要求、Agent Event Output、按需选择Filesystem Backend/Tools和其他能力；在【代理组件 / Custom Middleware】新建并选择
    `内置示例-agent-additional-prompt`，需要注入 Agent 初始提示词时在 Main Agent 的 `middleware_refs` 中装配。
 3. 在【模型 / 模型映射】为 Model Requirement 选择 Model Connection；未绑定时页面显示 warning，必须完成 binding 后才能运行。然后在【工作流】新建记录，需要被 OpenAI-compatible API 发现和启动时开启【作为模型入口】。响应流轮转与批次参数位于【系统 / 系统配置 / 响应流调度】，事件可见性与文本修饰在 Agent/Workflow Event Output 中编写。点击【编辑】进入 Workflow canvas。
    需要 MCP 时，在【代理组件 / MCP 要求】创建 portable Requirement，在【MCP / MCP 连接】创建或导入实例 Connection，在【MCP / MCP 映射】完成 binding，最后由 Main Agent、Subagent 或 Command 的 MCP Card 选择 Requirement 与 Tool 范围。
-4. 只需Agent loop时，在Main Agent开启【作为模型入口】。需要确定性控制时，在Workflow canvas添加Command，连接`Start -> Command -> End`；Command通过`runtime.context.agent_runs`启动目标Main Agent。先点击【保存草稿】（草稿保持disabled）。
-5. 点击【正式保存 Workflow】通过校验后启用Workflow；`is_model_entry=true`的Main Agent和已启用且开启【作为模型入口】的Workflow都出现在`/compat/openai/v1/models`。所有enabled Workflow都可以被其他Run调用。
+4. 只需Agent loop时，在Main Agent开启【作为模型入口】，先【保存草稿】，再【正式保存 Main Agent】。需要确定性控制时，在Workflow canvas添加Command，连接`Start -> Command -> End`；Command通过`runtime.context.agent_runs`启动目标Main Agent。草稿保持disabled并可保留校验错误。
+5. Main Agent或Workflow只有在【正式保存】通过校验后才启用；`enabled=true`且`is_model_entry=true`的Main Agent/Workflow出现在`/compat/openai/v1/models`。正式 Workflow可以被其他Run调用，正式 Main Agent可以由Command启动。
 6. 在【系统 / 系统配置】设置 API Key，通过全局 navbar 的 API Server 控件启动服务；调用 `/compat/openai/v1/models` 时携带 `Authorization: Bearer <API Key>`，确认Main Agent或Workflow入口名称后以
    `{"model":"<entry-name>","messages":[...]}` 调用 `/compat/openai/v1/chat/completions`。

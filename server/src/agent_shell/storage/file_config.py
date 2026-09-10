@@ -558,7 +558,7 @@ class FileConfigRepository:
                 )
                 target_id = target_ids[entity.id]
                 payload["id"] = target_id
-                if entity.kind == "workflow":
+                if entity.kind in {"main_agent", "workflow"}:
                     payload["enabled"] = False
                 if entity.kind == "component":
                     if entity.component_type in PACKAGE_COMPONENT_SPECS:

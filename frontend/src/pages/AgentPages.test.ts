@@ -30,7 +30,7 @@ describe('agent authoring pages', () => {
       `/agents/main?id=${id}`,
     )
     expect(wrapper.text()).not.toContain(id)
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
 
     expect(api.getMainAgent).toHaveBeenCalledWith(id)
@@ -62,7 +62,7 @@ describe('agent authoring pages', () => {
     await flushPromises()
 
     expect(api.getMainAgent).toHaveBeenCalledWith(id)
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
     expect(api.updateMainAgent).toHaveBeenCalledWith(
       id,
@@ -105,7 +105,7 @@ describe('agent authoring pages', () => {
       subagents: [],
     })
     await flushPromises()
-    await buttonByText(mainAgentPage.wrapper, 'common.save').trigger('click')
+    await buttonByText(mainAgentPage.wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
 
     expect(mainAgentApi.updateMainAgent).toHaveBeenCalledWith(
@@ -174,7 +174,7 @@ describe('agent authoring pages', () => {
     })
     const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
 
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
     await router.push({ path: '/agents/main', query: { id: secondId } })
     await flushPromises()
@@ -202,7 +202,7 @@ describe('agent authoring pages', () => {
     })
     const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
 
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
     expect(api.updateMainAgent).toHaveBeenCalledWith(firstId, expect.any(Object))
     await router.push({ path: '/agents/main', query: { id: secondId } })
@@ -343,7 +343,7 @@ describe('agent authoring pages', () => {
 
     await wrapper.get('[data-testid="record-picker-select"]').setValue(failedId)
     await flushPromises()
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
 
     expect(api.updateMainAgent).toHaveBeenCalledWith(
@@ -373,18 +373,83 @@ describe('agent authoring pages', () => {
     const api = service({ createMainAgent })
     const { wrapper } = await mountMainAgentPage(api)
 
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('old_save_failure')
 
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
     expect(getToastNotify()).toHaveBeenCalledWith({
       tone: 'success',
-      title: 'agents.feedback.saved',
+      title: 'agents.feedback.draftSaved',
     })
     expect(wrapper.find('[data-testid="page-feedback"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('old_save_failure')
+    wrapper.unmount()
+  })
+
+  it('saves invalid Main Agent content as a draft and preserves it after rejected publication', async () => {
+    const invalidReport: ValidationReport = {
+      valid: false,
+      stage: 'draft_validation',
+      issues: [{
+        code: 'assembly.filesystem_backend_required',
+        scope: 'main_agent',
+        owner_id: '00000000-0000-0000-0000-000000000010',
+        owner_name: 'Shared name',
+        path: 'capability_refs.filesystem',
+        message: 'Filesystem Tools require a Filesystem Backend.',
+        message_key: 'validation.issue.assembly.filesystemBackendRequired',
+        message_args: {},
+        severity: 'error',
+      }],
+    }
+    const api = service({
+      validateDraft: vi.fn(async () => invalidReport),
+      publishMainAgent: vi.fn().mockRejectedValue(new ManagementApiError({
+        status: 422,
+        code: 'configuration_validation_failed',
+        message: 'The Main Agent cannot be published.',
+        validation: invalidReport,
+      })),
+    })
+    const { wrapper } = await mountMainAgentPage(
+      api,
+      '/agents/main?id=00000000-0000-0000-0000-000000000010',
+    )
+
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
+    await flushPromises()
+    expect(api.updateMainAgent).toHaveBeenCalledOnce()
+
+    await buttonByText(wrapper, 'agents.actions.publish').trigger('click')
+    await flushPromises()
+    expect(api.publishMainAgent).toHaveBeenCalledWith(
+      '00000000-0000-0000-0000-000000000010',
+      expect.objectContaining({ name: 'Shared name' }),
+    )
+    expect(wrapper.get('[data-testid="main-agent-publication-status"]').text())
+      .toContain('agents.mainAgent.status.draft')
+    expect(wrapper.get('[data-testid="validation-checklist"]').attributes('data-status'))
+      .toBe('invalid')
+    expect(wrapper.get('[data-testid="validation-checklist"]').text())
+      .toContain('validation.issue.assembly.filesystemBackendRequired')
+    wrapper.unmount()
+  })
+
+  it('publishes a saved Main Agent through the explicit action', async () => {
+    const api = service()
+    const { wrapper } = await mountMainAgentPage(
+      api,
+      '/agents/main?id=00000000-0000-0000-0000-000000000010',
+    )
+
+    await buttonByText(wrapper, 'agents.actions.publish').trigger('click')
+    await flushPromises()
+
+    expect(api.publishMainAgent).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-testid="main-agent-publication-status"]').text())
+      .toContain('agents.mainAgent.status.published')
     wrapper.unmount()
   })
 

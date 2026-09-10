@@ -892,6 +892,10 @@ class MainAgentProfile(StrictBlock):
         return self
 
 
+class StoredMainAgentProfile(MainAgentProfile):
+    enabled: Annotated[bool, Field(strict=True)]
+
+
 class CapabilityOverride(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

@@ -245,6 +245,18 @@ def _load_deepagents() -> tuple[Any, ...]:
     )
 
 
+def build_internal_state_backend() -> Any:
+    """Create a non-user-facing Backend required by selected middleware APIs."""
+
+    try:
+        from deepagents.backends import StateBackend
+    except ImportError as exc:
+        raise DeepAgentsCapabilityError(
+            "The required DeepAgents runtime dependency is not installed"
+        ) from exc
+    return StateBackend()
+
+
 def _virtual_join(prefix: str, suffix: str) -> str:
     base = prefix.rstrip("/")
     tail = suffix.replace("\\", "/").lstrip("/")
@@ -505,10 +517,15 @@ def build_deepagents_capabilities(
             "filesystem mode does not match the selected backend block"
         )
 
-    filesystem_tools = filesystem_tools or FilesystemToolsBlock(
-        name="Default filesystem tools"
+    if skill is not None and filesystem_tools is None:
+        raise DeepAgentsCapabilityError(
+            "A Skill package requires Filesystem Tools with read_file"
+        )
+    tool_configs = (
+        filesystem_tools.tool_configs.model_dump()
+        if filesystem_tools is not None
+        else {}
     )
-    tool_configs = filesystem_tools.tool_configs.model_dump()
     custom_tool_descriptions = {
         name: config["description_override"]
         for name, config in tool_configs.items()
@@ -652,27 +669,8 @@ def build_deepagents_capabilities(
             )
         backend = CompositeBackend(default=workspace.default_backend, routes=routes)
 
-    filesystem_kwargs: dict[str, Any] = {
-        "backend": backend,
-        "custom_tool_descriptions": custom_tool_descriptions or None,
-        "tool_token_limit_before_evict": (
-            filesystem_tools.tool_token_limit_before_evict
-        ),
-        "human_message_token_limit_before_evict": (
-            filesystem_tools.human_message_token_limit_before_evict
-        ),
-        "grep_max_count": filesystem_tools.grep_max_count,
-        "max_execute_timeout": filesystem_tools.max_execute_timeout,
-    }
-    filesystem_kwargs["tools"] = [
-        name
-        for name, config in tool_configs.items()
-        if config["visible"] and (name != "execute" or filesystem_mode == "local-shell")
-    ]
-    if filesystem.system_prompt_override is not None:
-        filesystem_kwargs["system_prompt"] = filesystem.system_prompt_override
     materialized_permissions: list[Any] = []
-    if filesystem_mode == "composite":
+    if filesystem_tools is not None and filesystem_mode == "composite":
         from deepagents.middleware.filesystem import FilesystemPermission
 
         permission_bindings: list[tuple[str, bool, FilesystemPermissionValue]] = []
@@ -702,9 +700,6 @@ def build_deepagents_capabilities(
                 is_directory=is_directory,
                 permission=permission,
             )
-        if materialized_permissions:
-            filesystem_kwargs["_permissions"] = materialized_permissions
-    filesystem_middleware = FilesystemMiddleware(**filesystem_kwargs)
     middleware: list[Any] = []
     if skill_sources:
         assert skill is not None
@@ -717,7 +712,30 @@ def build_deepagents_capabilities(
         elif skill.instruction_override is not None:
             skill_kwargs["system_prompt"] = skill.instruction_override
         middleware.append(SkillsMiddleware(**skill_kwargs))
-    middleware.append(filesystem_middleware)
+    if filesystem_tools is not None:
+        filesystem_kwargs: dict[str, Any] = {
+            "backend": backend,
+            "custom_tool_descriptions": custom_tool_descriptions or None,
+            "tool_token_limit_before_evict": (
+                filesystem_tools.tool_token_limit_before_evict
+            ),
+            "human_message_token_limit_before_evict": (
+                filesystem_tools.human_message_token_limit_before_evict
+            ),
+            "grep_max_count": filesystem_tools.grep_max_count,
+            "max_execute_timeout": filesystem_tools.max_execute_timeout,
+            "tools": [
+                name
+                for name, config in tool_configs.items()
+                if config["visible"]
+                and (name != "execute" or filesystem_mode == "local-shell")
+            ],
+        }
+        if filesystem.system_prompt_override is not None:
+            filesystem_kwargs["system_prompt"] = filesystem.system_prompt_override
+        if materialized_permissions:
+            filesystem_kwargs["_permissions"] = materialized_permissions
+        middleware.append(FilesystemMiddleware(**filesystem_kwargs))
 
     return DeepAgentsCapabilities(
         backend=backend,
@@ -729,3 +747,12 @@ def build_deepagents_capabilities(
         filesystem_mode=filesystem_mode,
         workspace=workspace,
     )
+
+
+__all__ = [
+    "DeepAgentsCapabilities",
+    "DeepAgentsCapabilityError",
+    "DeepAgentsWorkspace",
+    "build_deepagents_capabilities",
+    "build_internal_state_backend",
+]

@@ -2,6 +2,7 @@ import { ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 
+import { ManagementApiError } from '@/api'
 import type { ConfirmationRequest } from '@/composables/useConfirmation'
 import { useConfigurationValidation } from '@/composables/useConfigurationValidation'
 import { useConfirmation } from '@/composables/useConfirmation'
@@ -43,6 +44,7 @@ export interface ConfigurationResourceDefinition<Resource extends ConfigurationR
   trackUnsaved?: boolean
   initialSelection?: (records: readonly Resource[], requestedId: string) => string
   sort?: (records: readonly Resource[]) => Resource[]
+  allowInvalidSave?: boolean
   messages: ConfigurationResourceMessages
 }
 
@@ -82,7 +84,7 @@ export function useConfigurationResource<
     }),
   )
 
-  const { validation, validateNow } = useConfigurationValidation({
+  const { validation, validateNow, applyReport } = useConfigurationValidation({
     source: form,
     buildRequest: () => definition.validationRequest?.(form.value) ?? null,
     validate: (request) => {
@@ -220,7 +222,7 @@ export function useConfigurationResource<
       const payload = definition.payload(form.value)
       if (definition.validationRequest && definition.validate) {
         const state = await validateNow()
-        if (state.status !== 'valid') return
+        if (state.status !== 'valid' && !definition.allowInvalidSave) return
       }
       if (sequence !== loadSequence) return
       const result = targetId
@@ -236,7 +238,41 @@ export function useConfigurationResource<
       notify({ tone: 'success', title: t(definition.messages.saved) })
     } catch (error) {
       if (sequence === loadSequence) {
+        if (error instanceof ManagementApiError && error.validation) {
+          applyReport(error.validation)
+        }
         setFailure(definition.messages.saveFailed, error)
+      }
+    } finally {
+      if (sequence === loadSequence) saving.value = false
+    }
+  }
+
+  async function saveExisting(
+    mutate: (id: string, payload: Payload) => Promise<unknown>,
+    messages: Pick<ConfigurationResourceMessages, 'saved' | 'saveFailed'>,
+  ): Promise<void> {
+    if (!definition.available() || !form.value.id || saving.value) return
+    saving.value = true
+    clearFeedback()
+    const sequence = loadSequence
+    const targetId = form.value.id
+    const payload = definition.payload(form.value)
+    try {
+      const result = await mutate(targetId, payload)
+      if (sequence !== loadSequence) return
+      const saved = definition.normalize(result)
+      form.value = saved
+      selectedId.value = saved.id
+      upsert(saved)
+      markClean()
+      notify({ tone: 'success', title: t(messages.saved) })
+    } catch (error) {
+      if (sequence === loadSequence) {
+        if (error instanceof ManagementApiError && error.validation) {
+          applyReport(error.validation)
+        }
+        setFailure(messages.saveFailed, error)
       }
     } finally {
       if (sequence === loadSequence) saving.value = false
@@ -333,6 +369,7 @@ export function useConfigurationResource<
     startNew,
     loadSelected,
     save,
+    saveExisting,
     openCopy,
     closeCopy,
     copyCurrent,

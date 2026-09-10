@@ -68,7 +68,7 @@ export const filesystemManifest: CapabilityManifest = {
   terminology_key: 'file-system',
   order: 3,
   subagent_overrideable: true,
-  required: true,
+  required: false,
   subagent_policy: 'inherit',
 }
 
@@ -78,7 +78,7 @@ export const filesystemToolsManifest: CapabilityManifest = {
   terminology_key: 'filesystem-tools',
   order: 4,
   subagent_overrideable: true,
-  required: true,
+  required: false,
   subagent_policy: 'inherit',
 }
 
@@ -124,6 +124,7 @@ export const subagentManifest: CapabilityManifest = {
 export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAuthoringService {
   const mainAgent: MainAgentProfile = {
     id: '00000000-0000-0000-0000-000000000010',
+    enabled: true,
     name: 'Shared name',
     is_model_entry: true,
     on_disconnect: 'continue',
@@ -166,9 +167,30 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       workflows: [],
     })),
     getMainAgent: vi.fn(async () => mainAgent),
-    createMainAgent: vi.fn(async (payload) => ({ ...mainAgent, ...payload, id: 'created-mainAgent' })),
-    updateMainAgent: vi.fn(async (id, payload) => ({ ...mainAgent, ...payload, id })),
-    copyMainAgent: vi.fn(async (_id, name) => ({ ...mainAgent, id: 'copied-mainAgent', name })),
+    createMainAgent: vi.fn(async (payload) => ({
+      ...mainAgent,
+      ...payload,
+      id: 'created-mainAgent',
+      enabled: false,
+    })),
+    updateMainAgent: vi.fn(async (id, payload) => ({
+      ...mainAgent,
+      ...payload,
+      id,
+      enabled: false,
+    })),
+    publishMainAgent: vi.fn(async (id, payload) => ({
+      ...mainAgent,
+      ...payload,
+      id,
+      enabled: true,
+    })),
+    copyMainAgent: vi.fn(async (_id, name) => ({
+      ...mainAgent,
+      id: 'copied-mainAgent',
+      name,
+      enabled: false,
+    })),
     deleteMainAgent: vi.fn(async () => ({ ok: true })),
     getSubagent: vi.fn(async () => subagent),
     createSubagent: vi.fn(async (payload) => ({ ...subagent, ...payload, id: 'created-subagent' })),

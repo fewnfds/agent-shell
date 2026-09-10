@@ -54,7 +54,10 @@ describe('Subagent authoring page', () => {
       await rows[0]!.get('[data-testid="tool-reference"]').setValue(firstId)
       await rows[1]!.get('[data-testid="tool-reference"]').setValue(secondId)
       await rows[0]!.get('[data-action="move-tool-reference-down"]').trigger('click')
-      await buttonByText(wrapper, 'common.save').trigger('click')
+      await buttonByText(
+        wrapper,
+        mountPage === mountMainAgentPage ? 'agents.actions.saveDraft' : 'common.save',
+      ).trigger('click')
       await flushPromises()
       wrapper.unmount()
     }
@@ -157,7 +160,10 @@ describe('Subagent authoring page', () => {
       await rows[0]!.get('[data-testid="middleware-reference"]').setValue(firstId)
       await rows[1]!.get('[data-testid="middleware-reference"]').setValue(secondId)
       await rows[0]!.get('[data-action="move-middleware-reference-down"]').trigger('click')
-      await buttonByText(wrapper, 'common.save').trigger('click')
+      await buttonByText(
+        wrapper,
+        mountPage === mountMainAgentPage ? 'agents.actions.saveDraft' : 'common.save',
+      ).trigger('click')
       await flushPromises()
       wrapper.unmount()
     }
@@ -189,7 +195,7 @@ describe('Subagent authoring page', () => {
       '00000000-0000-0000-0000-000000000020',
     )
     await flushPromises()
-    await buttonByText(wrapper, 'common.save').trigger('click')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
     await flushPromises()
 
     expect(api.createMainAgent).toHaveBeenCalledWith(expect.objectContaining({
@@ -235,14 +241,14 @@ describe('Subagent authoring page', () => {
     const filesystem = wrapper.get('[data-testid="subagent-capability-filesystem"]')
     expect(filesystem.attributes('disabled')).toBeUndefined()
     expect((filesystem.element as HTMLSelectElement).value).toBe('__inherit__')
-    expect(filesystem.find('option[value="__disabled__"]').exists()).toBe(false)
+    expect(filesystem.find('option[value="__disabled__"]').exists()).toBe(true)
     expect(filesystem.text()).toContain('agents.override.mode.inherit')
     await filesystem.setValue('00000000-0000-0000-0000-000000000002')
 
     const tools = wrapper.get('[data-testid="subagent-capability-filesystem-tools"]')
     expect(tools.attributes('disabled')).toBeUndefined()
     expect((tools.element as HTMLSelectElement).value).toBe('__inherit__')
-    expect(tools.find('option[value="__disabled__"]').exists()).toBe(false)
+    expect(tools.find('option[value="__disabled__"]').exists()).toBe(true)
     await tools.setValue('00000000-0000-0000-0000-000000000002')
 
     const eventOutput = wrapper.get('[data-testid="subagent-capability-agent-event-output"]')

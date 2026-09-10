@@ -34,6 +34,7 @@ def _append_imported_records(config: dict, prepared: PreparedImport) -> None:
                 entity.component_type, []
             ).append(record)
         elif entity.kind == "main_agent":
+            record["enabled"] = False
             config.setdefault("main_agents", []).append(record)
         elif entity.kind == "subagent":
             config.setdefault("subagents", []).append(record)

@@ -35,7 +35,7 @@ def build_subagent_specs(
     *,
     roots: tuple[ResolvedSubagentEdge, ...],
     nodes: dict[SubagentNodeKey, ResolvedSubagent],
-    workspace: DeepAgentsWorkspace,
+    workspace: DeepAgentsWorkspace | None,
     materialize_resources: AgentResourceMaterializer,
     workflow_node_id: str | None = None,
     mapped_directory_paths_by_filesystem: Mapping[
@@ -63,7 +63,7 @@ def build_subagent_specs(
 def _build_subagent_spec(
     node: ResolvedSubagent,
     *,
-    workspace: DeepAgentsWorkspace,
+    workspace: DeepAgentsWorkspace | None,
     materialize_resources: AgentResourceMaterializer,
     workflow_node_id: str | None,
     mapped_directory_paths_by_filesystem: Mapping[
@@ -85,7 +85,7 @@ def _build_subagent_spec(
         ),
         mcp_references=node.mcp_references,
     )
-    if initial_files is not None:
+    if initial_files is not None and child.workspace is not None:
         for path, value in child.workspace.initial_files.items():
             previous = initial_files.get(path)
             if previous is not None and previous != value:

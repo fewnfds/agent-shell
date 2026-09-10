@@ -3,6 +3,7 @@ from agent_shell.runtime.capabilities.deepagents import (
     DeepAgentsCapabilityError,
     DeepAgentsWorkspace,
     build_deepagents_capabilities,
+    build_internal_state_backend,
 )
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "DeepAgentsCapabilityError",
     "DeepAgentsWorkspace",
     "build_deepagents_capabilities",
+    "build_internal_state_backend",
 ]

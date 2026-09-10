@@ -10,7 +10,7 @@ GET /compat/openai/v1/models
 Authorization: Bearer <API Key>
 ```
 
-返回OpenAI-compatible list；`data[].id`来自`is_model_entry=true`的Main Agent name，以及`enabled=true`且`is_model_entry=true`的Workflow name。
+返回OpenAI-compatible list；`data[].id`来自`enabled=true`且`is_model_entry=true`的Main Agent/Workflow name。
 
 ```http
 POST /compat/openai/v1/chat/completions
@@ -40,6 +40,8 @@ Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`
 
 失败响应保留稳定 `error.code`，并在 `error.message` 直接返回异常类型与具体异常链；同时返回 `request_id`，Lifecycle 已建立时还返回 `lifecycle_id`。Provider、Tool 和 Graph 分类只增加 code/status，不会把原因改写为固定文案。API Key 持有者可以据此直接排错，日志中心保存同一次失败的源异常类型、具体异常链和完整 traceback 附件；跨 Agent Server 时附件同时包含 Server source traceback。入口 Run 创建前失败的 Lifecycle 状态为 `error`，其 `run_count` 可以为零。
 
+Lifecycle snapshot只选择正式 Main Agent/Workflow并冻结配置记录、package folder和Filesystem path等引用，不在每次请求前读取、hash、AST parse或导入private Python package。package缺失、语法、import、factory或执行错误在真实Graph装配/执行边界自然失败：响应流尚未建立时返回JSON error，已经建立时发送`finish_reason=error`的SSE chunk；两种时序都会保留具体异常链并写入运行诊断。
+
 路由没有分类处理的意外异常使用 `internal_error` code，并直接返回异常类型与具体异常链，同时写入运行诊断。该 catch-all 不把原因替换为固定的 internal operation 文案。
 
 响应流策略作用于整个 Lifecycle。入口 Run 与其直接或间接启动并登记的普通 Run 共用 scheduler。Run 注册只登记 producer；首个含公开文本或可公开 segment end 的 frame 使该 Run 进入 FIFO ready queue，持续返回空字符串的 Agent/Workflow 不取得 writer。取得 writer 后，非空 frame 刷新 idle deadline；超时只让位、不取消 Run，后续再有可公开 frame 时从队尾恢复。Run terminal 会在排完自身 pending frame 后立即让位，公开 response 则等待全部 scheduler producer terminal 且 pending 排空。所有事件先经过所属 Agent Event Output 或 Workflow Event Output；reasoning 与 assistant text 使用`start / delta / finish`，其他非空投影作为 atomic frame。`max_batch_kb`与`send_interval_seconds`只控制客户端发送批次，producer 提交不等待 scheduler 消费。
@@ -55,7 +57,7 @@ Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`
 ## 运行边界
 
 - Workflow 保存一份 current Graph；草稿保存设置 `enabled=false`，正式保存通过完整校验后设置 `enabled=true`；
-- `is_model_entry=true`的Main Agent可由`/compat/openai/v1`启动；
+- Main Agent 新建与普通更新保存 `enabled=false` 草稿；`PUT /agent-shell/api/main-agents/{id}/publish` 通过完整校验后保存 `enabled=true`，其中 `is_model_entry=true` 的正式 Main Agent 可由 `/compat/openai/v1` 启动；
 - `enabled=true` 且 `is_model_entry=true` 的 Workflow 可由 `/compat/openai/v1` 启动；任何 enabled Workflow 都可被其他 Run 调用；
 - 每次请求执行一次完整官方Run；Main Agent Assistant ID由其UUID稳定派生，Workflow Assistant ID使用Workflow UUID，Thread和Run ID使用官方身份；
 - 独立Graph调用通过`Runtime.context.agent_runs`或`workflow_runs`的`start/check/list/join/cancel`使用公共Agent Server SDK；每次调用创建或明确续接Thread并创建新Run。Command只返回`update + goto`，多个goto目标和循环按LangGraph Super-step语义执行；

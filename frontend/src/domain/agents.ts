@@ -60,6 +60,7 @@ export interface AgentAuthoringService {
   getMainAgent(id: string): Promise<MainAgent>
   createMainAgent(payload: MainAgentPayload): Promise<MainAgent>
   updateMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent>
+  publishMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent>
   copyMainAgent(id: string, name: string): Promise<MainAgent>
   deleteMainAgent(id: string): Promise<{ ok: boolean }>
   getSubagent(id: string): Promise<SubagentProfile>
@@ -78,6 +79,7 @@ export const managementAgentAuthoringService: AgentAuthoringService = {
   getMainAgent: (id) => managementApi.getMainAgent(id),
   createMainAgent: (payload) => managementApi.saveMainAgent(payload),
   updateMainAgent: (id, payload) => managementApi.saveMainAgent({ id, ...payload }),
+  publishMainAgent: (id, payload) => managementApi.publishMainAgent(id, payload),
   copyMainAgent: (id, name) => managementApi.copyMainAgent(id, name),
   deleteMainAgent: (id) => managementApi.deleteMainAgent(id),
   getSubagent: (id) => managementApi.getSubagent(id),
@@ -116,6 +118,7 @@ export function normalizeSubagentReference(value: unknown): SubagentReference {
 export function blankMainAgent(): MainAgentProfile {
   return {
     id: '',
+    enabled: false,
     name: '',
     is_model_entry: false,
     on_disconnect: 'cancel',
@@ -136,6 +139,7 @@ export function normalizeMainAgent(value: unknown): MainAgentProfile {
   const mcpRefs = Array.isArray(source.mcp_refs) ? source.mcp_refs : []
   return {
     id: text(source.id),
+    enabled: source.enabled === true,
     name: text(source.name),
     is_model_entry: source.is_model_entry === true,
     on_disconnect: source.on_disconnect === 'continue' ? 'continue' : 'cancel',

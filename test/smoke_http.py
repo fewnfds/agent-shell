@@ -254,6 +254,8 @@ def _payload(
         "summarization": {"name": name},
         "prompt-caching": {"name": name},
         "todo-list": {"name": name},
+        "model-call-limit": {"name": name, "run_limit": 20},
+        "tool-call-limit": {"name": name, "run_limit": 20},
         "exception-retry": {
             "name": name,
             "strategy": "provider_native",
@@ -336,8 +338,13 @@ def _assert_lifecycle_persistence(
             headers=headers,
         ).json()
         assert graph["run_id"] == run_id
-        assert graph["graph"] is not None
         assert graph["error"] is None
+        if graph_kind == "workflow":
+            assert graph["graph"] is None
+            assert graph["workflow_document"] is not None
+        else:
+            assert graph["graph"] is not None
+            assert graph["workflow_document"] is None
         state = _request(
             client,
             "GET",
@@ -807,6 +814,20 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "subagents": [],
             },
         ).json()
+        persistence_main_agent = _request(
+            client,
+            "PUT",
+            (
+                "/agent-shell/api/main-agents/"
+                f"{persistence_main_agent['id']}/publish"
+            ),
+            headers=management,
+            json_body={
+                key: value
+                for key, value in persistence_main_agent.items()
+                if key not in {"id", "enabled"}
+            },
+        ).json()
         workflow_output_template_reference = {
             "key": workflow_output_templates["catalog"][0]["key"],
             "revision": workflow_output_templates["catalog"][0]["revision"],
@@ -1207,6 +1228,17 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "subagents": [],
             },
         ).json()
+        main_agent = _request(
+            client,
+            "PUT",
+            f"/agent-shell/api/main-agents/{main_agent['id']}/publish",
+            headers=management,
+            json_body={
+                key: value
+                for key, value in main_agent.items()
+                if key not in {"id", "enabled"}
+            },
+        ).json()
         stream_fragments = _stream_completion_text(
             client,
             headers=inference,
@@ -1272,6 +1304,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             assert fetched["id"] == item["id"]
         updated_main_agent = dict(main_agent)
         updated_main_agent.pop("id")
+        updated_main_agent.pop("enabled")
         updated_main_agent["name"] += "-updated"
         _request(
             client,

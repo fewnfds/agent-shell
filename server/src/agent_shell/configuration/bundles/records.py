@@ -277,7 +277,7 @@ def transform_bundle_records(
                 rewritten["python_package"]["folder"] = identities.names[source.id]
             if source.component_type == "skill":
                 rewritten["skill_package"]["folder"] = identities.names[source.id]
-        if source.kind == "workflow":
+        if source.kind in {"main_agent", "workflow"}:
             rewritten["enabled"] = False
         transformed.append(
             ConfigurationEntity(

@@ -60,7 +60,7 @@ ZIP 接受当前 format version、canonical `manifest.json`、规范相对 POSIX
 `..`、反斜杠、重复/大小写冲突 entry、file/directory 前缀冲突、symlink/reparse、未声明文件、未知 kind/type/field 或缺失依赖闭包会被拒绝。Windows 控制字符、不可创建的文件名字符和设备名也在写入 staging 前拒绝。
 Bundle 保存 Filesystem 配置引用，宿主文件内容保留在源实例；绝对 mapped path 和全部 virtual source path 在目标实例显式重绑。
 
-导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Workflow 固定 disabled。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用本身不设置 Bundle 大小、文件数或展开字节的硬编码上限。
+导入永不覆盖配置或资产。preview 生成的新 UUID map、bundle digest 与无状态 plan token 必须原样提交；token 同时绑定 active Repository、manifest digest 和 UUID map，名称与 Filesystem binding 仍可填写。Main Agent与Workflow固定导入为草稿。提交使用 staging 与 prepared/committed journal，失败或下次启动恢复只清理该 journal 声明的新 UUID 路径，不把导入前对象作为回滚目标。部署侧的反向代理仍负责按实例资源条件设置上传 request body 边界；应用本身不设置 Bundle 大小、文件数或展开字节的硬编码上限。
 
 ## 用户代码与文件系统
 

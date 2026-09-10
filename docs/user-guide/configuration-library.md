@@ -15,7 +15,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 - 配置 UUID 是全部 Repository 间全局唯一的小写 UUID4；Component、Main Agent、Subagent、Workflow 之间也不能复用同一 UUID；
 - Component 按 type、Main Agent 按 `name`、Subagent 按 `component_name` 在各自作用域内保持大小写不敏感唯一；Workflow name 保留大小写与空格敏感的精确唯一语义。Main Agent选择模型入口、或 Workflow同时启用并选择模型入口时，其 name作为公开 model ID；两类公开 model name不能冲突；
 - 详情显示保存的完整 payload，包括当前版本无法识别或无法运行的记录；
-- Component、Main Agent、Subagent 和 Workflow 都可以独立删除；删除目标只清理该记录及其自有 Python/Skill package，不会自动修改其他配置；
+- Component、Main Agent、Subagent 和 Workflow 都可以独立删除；删除目标只清理该记录及其自有 Python/Skill package，不重写其他配置的引用字段，依赖该目标的正式 Main Agent/Workflow 会降级为草稿；
 - 引用方保留已删除目标的 UUID，Repository 校验会产生 `configuration.reference_not_found`；UUID 存在但 target type 错误时产生 `configuration.reference_type_mismatch`；
 - 首页和配置库显示 active Repository 的全部问题；Component、Main Agent、Subagent 和 Workflow 编辑页只显示当前 owner 的问题；
 - 引用选择器会显示“配置已缺失”和原 UUID。用户可以改选现存配置，或在该字段允许时移除引用；页面加载与 catalog 刷新不会改写 payload；
@@ -23,7 +23,7 @@ Configuration Repository 的列表和切换入口位于【配置库 / 全局 / �
 
 ## 校验与存储位置
 
-Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Workflow 草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看、编辑、整库复制、下载和切换；整库复制会重写仍存在的 target UUID，已悬空 UUID 保持不变并在副本中继续报警。Agent 装配、Workflow publish 和运行会重新校验并拒绝不完整引用；
+Repository 校验同时检查组件、Main Agent、Subagent 和 Workflow；Main Agent/Workflow草稿中的缺失引用、UUID 指向错误类型以及 Graph admission 问题也会显示。满足磁盘身份格式但业务配置无效的记录仍可查看、编辑、整库复制、下载和切换；整库复制会重写仍存在的 target UUID，把Main Agent/Workflow设为草稿，已悬空 UUID 保持不变并在副本中继续报警。Main Agent/Workflow正式保存执行完整校验；Lifecycle snapshot只按正式状态冻结配置与外部资产引用，Python package等磁盘资产在真实Graph装配或执行时读取，失效会终止对应Run并返回具体错误；
 文件名、文档 ID、`kind`、`type` 或 `schema_version` 错位属于无法可靠识别 owner 的存储损坏，服务会在加载时拒绝。
 Component、Main Agent、Subagent 和 Workflow YAML 分别位于 `data/config_repos/<repository-name>/components/<type>/<uuid>.yaml`、`agents/main/<uuid>.yaml`、`agents/subagent/<uuid>.yaml` 和 `workflows/<uuid>.yaml`；Python private package 与 Skill package 位于同一 Repository 的 `python_packages/` 与 `skill_packages/`。`data/config/` 保存实例私有 Model/MCP Connection、repository-scoped Model/MCP binding、系统配置、secret env 和 active Repository pointer，这些不属于可迁移配置。`data/state/agent-shell.sqlite3` 保存 runtime diagnostic 索引；LangGraph Dev 在 `data/state/langgraph-dev/.langgraph_api/` 拥有 Assistant、Thread、Run、checkpoint、State/history 和 Server Store 运行数据。
 
@@ -38,7 +38,7 @@ current backend 可以把一个 Component、Subagent、Main Agent 或 Workflow �
 配置库根据当前名称输入、服务端 blocker 和 Filesystem binding 实时决定是否允许导入；mapped directory 还需明确 path origin。名称冲突时服务端建议的新名称只作为提示，不会被当成用户已确认值；输入有效新名称后可提交，commit 仍由服务端按当前 active Repository 再次校验。commit 复用本次 preview 的 `bundle_sha256`、`plan_token` 和 target UUID map。导入成功后刷新当前列表并留在原页面。
 
 导入不会按源 UUID 或名称复用、更新或覆盖配置。每条配置使用 preview 给出的新 UUID，声明式引用由后端机械重写；
-名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Workflow 导入后固定为 `enabled=false`，需检查路径、credential、Skill、Python code 和依赖后再验证并启用。
+名称冲突会建议 `Name (imported)`、`Name (imported 2)` 等后缀，冲突名称必须显式确认。Main Agent与Workflow导入后固定为`enabled=false`，需检查路径、credential、Skill、Python code和依赖后再验证并正式保存。
 
 单根 Bundle 的 manifest 固定保存 `format`、`format_version`、`source_application_version`、`root`、`records` 和 `assets`；`root` 保存 `kind`、`source_id`，Component 根另存 `type`。Workflow `role` 由 root record payload 投影到 preview。preview 会核对 root 与记录身份、依赖闭包、hash 和资源 owner。导入目标类型由已校验 manifest 决定，Filesystem Bundle 按其 manifest 恢复为 Filesystem。【配置库 / 全局 / 组件配置】的下载使用独立的 `agent-shell.configuration-repository` 整仓库格式。
 

@@ -132,7 +132,7 @@ Python 名称仍需显式 `import`。本地模块使用正常相对导入，例�
 
 `requirements.txt` 可以不存在，也可以是空文件；两者都表示没有额外依赖。只有 source 实际 import 平台核心之外的 third-party package 时才需要新增或填写它。模板和配置 extension 不会因为缺少这个占位文件而失效。
 
-启动器收集全部已配置Main Agent及其synchronous Subagent所引用的Custom Tool、Custom Middleware和Agent Event Output requirements，并收集enabled Workflow使用的Command和Workflow Event Output。静态模板和未被运行配置触达的扩展不进入依赖指纹，也不影响全局依赖。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
+启动器收集全部已配置 Main Agent及其synchronous Subagent所引用的Custom Tool、Custom Middleware和Agent Event Output requirements，并收集正式 Workflow使用的Command和Workflow Event Output。Main Agent草稿也参与依赖准备，使新package可以先保存草稿、重启准备依赖，再通过正式保存；静态模板和未被这些配置触达的扩展不进入依赖指纹。依赖层生成在 `runtime/python_packages/site-packages/`；requirements 修改后重启生效，Python 源码在下一次请求重新加载。
 
 依赖只接受普通 PyPI requirement，并且必须与核心约束兼容；不接受 URL、本地路径或安装后产生不受支持 `.pth` 的依赖。uv 优先安装兼容 wheel，没有 wheel 时按发行包声明尝试源码构建。需要编译器或系统库的包由实例维护者自行准备相应环境；构建失败时启动器显示 uv 的原始错误，并继续使用上一次成功准备的依赖层。
 

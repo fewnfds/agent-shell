@@ -361,6 +361,9 @@ def test_nested_source_permissions_override_broader_virtual_directory(
     capabilities = build_deepagents_capabilities(
         filesystem,
         None,
+        filesystem_tools=FilesystemToolsBlock.model_validate(
+            {"name": "Nested permission tools"}
+        ),
         filesystem_mode="composite",
         skills_dir=tmp_path / "skills",
     )

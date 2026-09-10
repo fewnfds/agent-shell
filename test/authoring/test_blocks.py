@@ -78,7 +78,8 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "tool_names",
     }
     assert by_type["model-requirement"]["required"] is True
-    assert by_type["filesystem"]["required"] is True
+    assert by_type["filesystem"]["required"] is False
+    assert by_type["filesystem-tools"]["required"] is False
     assert by_type["agent-event-output"]["required"] is True
     assert by_type["filesystem"]["tool_names"] == []
     assert by_type["filesystem-tools"]["tool_names"] == [

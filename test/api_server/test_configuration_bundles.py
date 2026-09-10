@@ -165,6 +165,7 @@ def test_main_agent_bundle_import_remaps_identity_and_requires_path_binding(
     imported_main = next(
         item for item in target_config["main_agents"] if item["id"] == imported_main_id
     )
+    assert imported_main["enabled"] is False
     assert imported_main["is_model_entry"] is False
     assert imported_main["on_disconnect"] == "cancel"
     assert all(

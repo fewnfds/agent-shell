@@ -3,6 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 
 from agent_shell.configuration.identity import name_collision_key
+from agent_shell.configuration.publication import (
+    PublicationDemotion,
+    demote_dependent_publications,
+)
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
 from agent_shell.storage.file_config import FileConfigRepository
 
@@ -37,7 +41,7 @@ class AgentConfigStore:
         table = self._table(table)
         identity = self._identity_column(table)
         fields = {
-            "main_agents": ("id", "name"),
+            "main_agents": ("id", "name", "enabled"),
             "subagents": ("id", "component_name", "name", "description"),
         }[table]
         return sorted(
@@ -63,6 +67,7 @@ class AgentConfigStore:
         item_id: str,
         data: dict,
         *,
+        enabled: bool | None = None,
         expected_repository_id: str | None = None,
     ) -> None:
         table = self._table(table)
@@ -81,6 +86,12 @@ class AgentConfigStore:
                 raise ValueError(f"名称「{name}」已存在")
             stored = deepcopy(data)
             stored["id"] = item_id
+            if table == "main_agents":
+                stored["enabled"] = (
+                    bool(enabled)
+                    if enabled is not None
+                    else bool(existing.get("enabled", False) if existing else False)
+                )
             for index, item in enumerate(records):
                 if item.get("id") == item_id:
                     records[index] = stored
@@ -113,9 +124,16 @@ class AgentConfigStore:
         if not unique_ids:
             return 0
         removed: list[str] = []
+        demoted: list[PublicationDemotion] = []
 
         def mutate(config: dict) -> None:
             records = config.setdefault(table, [])
+            present_ids = {
+                str(item.get("id", ""))
+                for item in records
+                if item.get("id") in unique_ids
+            }
+            demoted.extend(demote_dependent_publications(config, present_ids))
             retained = []
             for item in records:
                 if item.get("id") in unique_ids:
@@ -136,6 +154,15 @@ class AgentConfigStore:
                     "subagents": "subagent",
                 }[table],
                 entity_id=item_id,
+            )
+        for item in demoted:
+            emit_configuration_events(
+                self._events,
+                action="updated",
+                entity={"main_agent": "main-agent", "workflow": "workflow"}[
+                    item.kind
+                ],
+                entity_id=item.entity_id,
             )
         return len(removed)
 

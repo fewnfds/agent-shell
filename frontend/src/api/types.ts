@@ -87,7 +87,9 @@ export interface ConfigurationSummary {
   namespace?: string
 }
 
-export type MainAgentSummary = ConfigurationSummary
+export interface MainAgentSummary extends ConfigurationSummary {
+  enabled: boolean
+}
 
 export interface SubagentSummary {
   id: string
@@ -772,7 +774,7 @@ export interface MainAgentPayload {
   subagents: SubagentReference[]
 }
 
-export type MainAgent = MainAgentPayload & { id: string }
+export type MainAgent = MainAgentPayload & { id: string; enabled: boolean }
 
 export interface CapabilityOverride {
   type: string

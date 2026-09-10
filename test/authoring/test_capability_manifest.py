@@ -48,10 +48,10 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
     assert manifests["custom-middleware"].subagent_policy == "force-remove"
     assert manifests["filesystem"].subagent_overrideable is True
     assert manifests["filesystem"].subagent_policy == "inherit"
-    assert manifests["filesystem"].required is True
+    assert manifests["filesystem"].required is False
     assert manifests["filesystem-tools"].subagent_overrideable is True
     assert manifests["filesystem-tools"].subagent_policy == "inherit"
-    assert manifests["filesystem-tools"].required is True
+    assert manifests["filesystem-tools"].required is False
     assert manifests["skill"].agent_selectable is False
     assert manifests["agent-event-output"].subagent_overrideable is False
     assert manifests["agent-event-output"].required is True

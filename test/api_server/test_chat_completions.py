@@ -16,6 +16,46 @@ from agent_shell.storage.file_config import FileConfigRepository
 from .support import *
 
 
+def test_published_main_agent_runs_without_filesystem_capabilities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(
+            client,
+            include_filesystem=False,
+            is_model_entry=True,
+        )
+        response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": main_agent["name"],
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+        )
+        summary = client.post(
+            "/agent-shell/api/blocks/summarization",
+            json={"name": "Summary without filesystem"},
+        ).json()
+        summary_payload = main_agent_payload(main_agent)
+        summary_payload["capability_refs"] = [
+            *summary_payload["capability_refs"],
+            {"type": "summarization", "block_id": summary["id"]},
+        ]
+        summary_agent = publish_main_agent(client, main_agent, summary_payload)
+        summarized_response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": summary_agent["name"],
+                "messages": [{"role": "user", "content": "hello again"}],
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["choices"][0]["message"]["content"] == "runtime reply"
+    assert summarized_response.status_code == 200, summarized_response.text
+
+
 class InspectingFakeChatModel(ToolCompatibleFakeListChatModel):
     seen_messages: ClassVar[list[list[object]]] = []
 
@@ -527,6 +567,173 @@ def test_chat_materializes_command_package_before_compiling_workflow(
     assert response.json()["choices"][0]["message"]["content"] == ""
 
 
+def test_post_publish_command_package_failure_reaches_user_and_runtime_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package_dir = (
+        tmp_path
+        / "data"
+        / "templates"
+        / "workflow"
+        / "command"
+        / "broken-after-publish"
+    )
+    package_dir.mkdir(parents=True)
+    (package_dir / "main.py").write_text(
+        "from langgraph.types import Command\n"
+        "def create_command():\n"
+        "    async def route(state, runtime):\n"
+        "        return Command(goto='end')\n"
+        "    return route\n",
+        encoding="utf-8",
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        selected = client.get(
+            "/agent-shell/api/python-package-templates/command"
+        ).json()["catalog"][0]
+        command = client.post(
+            "/agent-shell/api/blocks/command",
+            json={
+                "name": "Broken after publish",
+                "python_package": {"folder": ""},
+                "python_package_template": {
+                    "key": selected["key"],
+                    "revision": selected["revision"],
+                },
+            },
+        )
+        assert command.status_code == 200, command.text
+        workflow = create_workflow(
+            client,
+            name="Runtime package failure",
+            is_model_entry=True,
+        )
+        graph = client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
+            json={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.control.v1",
+                    "nodes": [
+                        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                        {
+                            "id": "command",
+                            "type": "command",
+                            "type_version": 1,
+                            "config": {"command_id": command.json()["id"]},
+                        },
+                        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                    ],
+                    "edges": [
+                        {"id": "start-command", "source": "start", "source_handle": "next", "target": "command", "target_handle": "in"},
+                        {"id": "command-end", "source": "command", "source_handle": "next", "target": "end", "target_handle": "in"},
+                    ],
+                },
+                "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+            },
+        )
+        assert graph.status_code == 200, graph.text
+
+        folder = command.json()["python_package"]["folder"]
+        main_path = (
+            client.app.state.agent_runtime._configuration.python_packages_root
+            / "command"
+            / folder
+            / "main.py"
+        )
+        main_path.write_text("def create_command(:\n", encoding="utf-8")
+
+        snapshot = asyncio.run(client.app.state.agent_runtime.capture())
+        assert snapshot.workflow_by_id(workflow["id"]) is not None
+        response = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={
+                "model": workflow["name"],
+                "messages": [{"role": "user", "content": "run"}],
+                "stream": True,
+            },
+        )
+        request_id = response.headers["x-request-id"]
+        diagnostics = client.get(
+            "/agent-shell/api/event-feed",
+            params=event_feed_params(source="runtime", query=request_id),
+        ).json()["items"]
+        detail = client.get(
+            f"/agent-shell/api/event-feed/runtime/{diagnostics[0]['id']}/download"
+        )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["error"]["code"] == "python_package.invalid"
+    assert f"Python package '{folder}' is invalid." in response.json()["error"]["message"]
+    assert "main.py contains a syntax error on line 1" in response.json()["error"]["message"]
+    assert response.json()["lifecycle_id"]
+    assert len(diagnostics) == 1
+    assert '"code": "python_package.invalid"' in diagnostics[0]["inline_content"]
+    assert "main.py contains a syntax error on line 1" in diagnostics[0]["summary"]
+    assert detail.status_code == 200
+    assert "SyntaxError" in detail.content.decode("utf-8")
+
+
+def test_completion_stream_returns_python_package_failure_details(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Execution:
+        finish_reason = "error"
+        usage: dict[str, int] = {}
+
+        def __init__(self, request_id: str) -> None:
+            self.identity = SimpleNamespace(
+                run_id="run-package-failure",
+                request_id=request_id,
+                lifecycle_id="lifecycle-package-failure",
+            )
+
+        async def stream_text(self):
+            try:
+                raise ImportError("No module named 'workflow_dependency'")
+            except ImportError as cause:
+                raise AgentRuntimeError(
+                    "python_package.load_failed",
+                    "Python package 'broken-command' could not be loaded.",
+                    status_code=422,
+                ) from cause
+            yield ""
+
+    with make_client(tmp_path, monkeypatch) as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def fail_execution(coordinator, *_args, **kwargs):
+            coordinator._begin_lifecycle("lifecycle-package-failure")
+            return Execution(str(kwargs.get("request_id", "")))
+
+        monkeypatch.setattr(LifecycleRunCoordinator, "start_agent", fail_execution)
+        with client.stream(
+            "POST",
+            "/compat/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json={
+                "model": main_agent["name"],
+                "messages": [{"role": "user", "content": "run"}],
+                "stream": True,
+            },
+        ) as response:
+            lines = [line for line in response.iter_lines() if line]
+
+    assert response.status_code == 200
+    assert lines[-1] == "data: [DONE]"
+    chunks = [json.loads(line.removeprefix("data: ")) for line in lines[:-1]]
+    error_chunk = chunks[-1]
+    assert error_chunk["choices"][0]["finish_reason"] == "error"
+    assert error_chunk["error"]["code"] == "python_package.load_failed"
+    assert error_chunk["error"]["message"] == (
+        "Python package 'broken-command' could not be loaded. <- "
+        "ImportError: No module named 'workflow_dependency'"
+    )
+    assert error_chunk["error"]["request_id"]
+    assert error_chunk["error"]["lifecycle_id"] == "lifecycle-package-failure"
+
+
 def test_chat_completion_stream_runs_current_graph(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -697,10 +904,11 @@ def test_root_agent_middleware_injects_frozen_client_messages(
             },
         )
         assert updated.status_code == 200, updated.text
+        updated_agent = publish_main_agent(client, updated.json())
         response = client.post(
             "/compat/openai/v1/chat/completions",
             json={
-                "model": updated.json()["name"],
+                "model": updated_agent["name"],
                 "messages": [{"role": "user", "content": "frozen client input"}],
             },
         )

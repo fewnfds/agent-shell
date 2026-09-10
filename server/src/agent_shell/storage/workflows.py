@@ -3,6 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
+from agent_shell.configuration.publication import (
+    PublicationDemotion,
+    demote_dependent_publications,
+)
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.workflow.contracts import (
     WorkflowGraphDefinitionV1,
@@ -208,9 +212,16 @@ class WorkflowStore:
         if not unique_ids:
             return 0
         removed: list[str] = []
+        demoted: list[PublicationDemotion] = []
 
         def mutate(config: dict) -> None:
             records = config.setdefault("workflows", [])
+            present_ids = {
+                str(item.get("id", ""))
+                for item in records
+                if item.get("id") in unique_ids
+            }
+            demoted.extend(demote_dependent_publications(config, present_ids))
             retained = []
             for item in records:
                 if item.get("id") in unique_ids:
@@ -224,6 +235,15 @@ class WorkflowStore:
         )
         for item_id in removed:
             emit_configuration_events(self._events, action="deleted", entity="workflow", entity_id=item_id)
+        for item in demoted:
+            emit_configuration_events(
+                self._events,
+                action="updated",
+                entity={"main_agent": "main-agent", "workflow": "workflow"}[
+                    item.kind
+                ],
+                entity_id=item.entity_id,
+            )
         return len(removed)
 
     def delete_item(

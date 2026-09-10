@@ -4,6 +4,10 @@ from copy import deepcopy
 
 from agent_shell.configuration.identity import name_collision_key
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
+from agent_shell.configuration.publication import (
+    PublicationDemotion,
+    demote_dependent_publications,
+)
 from agent_shell.storage.file_config import FileConfigRepository
 
 
@@ -158,9 +162,16 @@ class BlockStore:
         if not unique_ids:
             return 0
         removed: list[dict] = []
+        demoted: list[PublicationDemotion] = []
 
         def mutate(config: dict) -> None:
             records = self._records(config, block_type)
+            present_ids = {
+                str(record.get("id", ""))
+                for record in records
+                if record.get("id") in unique_ids
+            }
+            demoted.extend(demote_dependent_publications(config, present_ids))
             retained: list[dict] = []
             for record in records:
                 if record.get("id") in unique_ids:
@@ -179,6 +190,15 @@ class BlockStore:
                 entity="block",
                 entity_id=str(record.get("id", "")),
                 capability_type=block_type,
+            )
+        for item in demoted:
+            emit_configuration_events(
+                self._events,
+                action="updated",
+                entity={"main_agent": "main-agent", "workflow": "workflow"}[
+                    item.kind
+                ],
+                entity_id=item.entity_id,
             )
         return len(removed)
 

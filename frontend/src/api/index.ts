@@ -709,6 +709,13 @@ export const managementApi = {
     })
   },
 
+  publishMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent> {
+    return managementRequest(`${recordPath('/main-agents', id)}/publish`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  },
+
   copyMainAgent(id: string, name: string): Promise<MainAgent> {
     return managementRequest(`${recordPath('/main-agents', id)}/copy`, jsonBody({ name }))
   },

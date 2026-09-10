@@ -16,6 +16,7 @@ from agent_shell.contracts import (
     CapabilityReference,
     FilesystemToolConfigs,
     MainAgentProfile,
+    StoredMainAgentProfile,
     SubagentProfile,
 )
 from agent_shell.storage.agent_configs import AgentConfigStore
@@ -79,7 +80,8 @@ class ConfigurationValidationService:
     ) -> tuple[ValidationReport, dict[str, Any] | None, StaticAssembly | None]:
         owner_name = str(payload.get("name", ""))
         try:
-            model = MainAgentProfile.model_validate(
+            model_type = StoredMainAgentProfile if stored else MainAgentProfile
+            model = model_type.model_validate(
                 (
                     {key: value for key, value in payload.items() if key != "id"}
                     if stored
@@ -375,6 +377,18 @@ class ConfigurationValidationService:
                 path="id",
                 reference_id=main_agent_id,
                 expected_type="main_agent",
+            )
+            return ValidationReport(stage=stage, issues=(issue,)), None
+        if main_agent.get("enabled") is not True:
+            issue = ValidationIssue(
+                code="publication.main_agent_draft",
+                scope="main_agent",
+                owner_id=main_agent_id,
+                owner_name=str(main_agent.get("name", "")),
+                path="enabled",
+                message="The selected Main Agent is a draft.",
+                message_key="validation.issue.publication.mainAgentDraft",
+                message_args={},
             )
             return ValidationReport(stage=stage, issues=(issue,)), None
         report, _, assembly = self.validate_main_agent(
@@ -810,6 +824,76 @@ class ConfigurationValidationService:
                     )
                     if issue is not None:
                         issues.append(issue)
+        filesystem_tools = selected.get("filesystem-tools")
+        if filesystem is not None and filesystem_tools is None:
+            if filesystem.get("skill_package_id") is not None:
+                issues.append(
+                    ValidationIssue(
+                        code="assembly.skill_filesystem_tools_required",
+                        scope=scope,
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        path="capability_refs.filesystem-tools",
+                        message=(
+                            "A Filesystem Skill Package requires Filesystem Tools "
+                            "so the model can read SKILL.md."
+                        ),
+                        message_key=(
+                            "validation.issue.assembly.skillFilesystemToolsRequired"
+                        ),
+                        message_args={},
+                    )
+                )
+            if filesystem.get("system_prompt_override") is not None:
+                issues.append(
+                    ValidationIssue(
+                        code="assembly.filesystem_prompt_tools_required",
+                        scope=scope,
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        path="capability_refs.filesystem.system_prompt_override",
+                        message=(
+                            "A Filesystem system prompt override requires "
+                            "Filesystem Tools."
+                        ),
+                        message_key=(
+                            "validation.issue.assembly.filesystemPromptToolsRequired"
+                        ),
+                        message_args={},
+                    )
+                )
+        if filesystem is not None and filesystem_tools is not None:
+            tool_configs = filesystem_tools.get("tool_configs")
+            execute = (
+                tool_configs.get("execute")
+                if isinstance(tool_configs, dict)
+                else None
+            )
+            if (
+                isinstance(execute, dict)
+                and execute.get("visible") is True
+                and filesystem_mode != "local-shell"
+            ):
+                issues.append(
+                    ValidationIssue(
+                        code="assembly.execute_local_shell_required",
+                        scope=scope,
+                        owner_id=owner_id,
+                        owner_name=owner_name,
+                        path=(
+                            "capability_refs.filesystem-tools."
+                            "tool_configs.execute.visible"
+                        ),
+                        message=(
+                            "The execute filesystem tool requires a LocalShell "
+                            "Filesystem Backend."
+                        ),
+                        message_key=(
+                            "validation.issue.assembly.executeLocalShellRequired"
+                        ),
+                        message_args={},
+                    )
+                )
         return selected, issues, filesystem_mode
 
     def _static_tool_issue(
@@ -865,11 +949,11 @@ class ConfigurationValidationService:
         blocks: dict[str, dict[str, Any]],
         filesystem_mode: FilesystemMode,
     ) -> tuple[str, ...]:
-        configs = FilesystemToolConfigs().model_dump(mode="json")
         filesystem_tools = blocks.get("filesystem-tools")
-        if filesystem_tools is not None and isinstance(
-            filesystem_tools.get("tool_configs"), dict
-        ):
+        if filesystem_tools is None:
+            return ()
+        configs = FilesystemToolConfigs().model_dump(mode="json")
+        if isinstance(filesystem_tools.get("tool_configs"), dict):
             configs.update(filesystem_tools["tool_configs"])
         return tuple(
             name
@@ -1014,6 +1098,23 @@ class ConfigurationValidationService:
                     ),
                     message_key=(
                         "validation.issue.assembly.subagentReferenceRequired"
+                    ),
+                    message_args={},
+                )
+            )
+        elif root_references and not delegation_selected:
+            issues.append(
+                ValidationIssue(
+                    code="assembly.subagent_capability_required",
+                    scope="main_agent",
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="subagents",
+                    message=(
+                        "Subagent references require the Delegation capability."
+                    ),
+                    message_key=(
+                        "validation.issue.assembly.subagentCapabilityRequired"
                     ),
                     message_args={},
                 )

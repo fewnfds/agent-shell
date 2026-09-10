@@ -186,7 +186,7 @@ class RepositoryValidationService:
         agent_model_names = {
             name_collision_key(str(agent.get("name", "")))
             for agent in config.get("main_agents", [])
-            if agent.get("is_model_entry")
+            if agent.get("enabled") and agent.get("is_model_entry")
         }
         for workflow in config.get("workflows", []):
             if (

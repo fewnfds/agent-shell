@@ -59,6 +59,7 @@ def _resources(
         prompt_caching_middleware=prompt_caching,
         package_middleware=packages,
         backend=object(),
+        middleware_backend=object(),
         workspace=workspace,
     )
 

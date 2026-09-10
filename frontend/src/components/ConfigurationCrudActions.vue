@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
   copying?: boolean
   deleting?: boolean
   showEdit?: boolean
+  saveLabel?: string
 }>(), {
   hasSelection: false,
   canSave: true,
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
   copying: false,
   deleting: false,
   showEdit: false,
+  saveLabel: 'common.save',
 })
 
 const emit = defineEmits<{
@@ -69,7 +71,7 @@ const busy = computed(() => props.loading || props.saving || props.copying || pr
   >
     <span v-if="props.saving" class="spinner-border spinner-border-sm" aria-hidden="true" />
     <i v-else class="bi bi-floppy" aria-hidden="true" />
-    {{ t('common.save') }}
+    {{ t(props.saveLabel) }}
   </LteButton>
   <LteButton
     v-if="props.showEdit"

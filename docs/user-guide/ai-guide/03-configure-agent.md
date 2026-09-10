@@ -9,9 +9,9 @@
 当前 Main Agent 必须引用：
 
 - 一个 Model Requirement；
-- 一个 Filesystem Backend；
-- 一个 Filesystem Tools；
 - 一个 Agent Event Output。
+
+Filesystem Backend与Filesystem Tools是可选能力；需要文件、Skill、Filesystem prompt或大结果卸载时再选择，并满足本章第8节的联动规则。
 
 仍应通过 `GET /agent-shell/api/catalog` 确认当前 required capability。
 
@@ -19,9 +19,10 @@
 
 ```text
 Model Requirement ----+
-Filesystem Backend ---+
-Filesystem Tools -----+-> Main Agent root graph
-Agent Event Output ---+
+Agent Event Output ---+-> Main Agent root graph
+
+Filesystem Backend ---+-> optional FilesystemMiddleware
+Filesystem Tools -----+
 
 Model Connection
   -> Model Mapping
@@ -123,7 +124,7 @@ POST /agent-shell/api/blocks/agent-event-output
 
 ## 5. 创建 Main Agent
 
-保存 Model Requirement、Filesystem Backend、Filesystem Tools 和 Agent Event Output 的 UUID，然后创建 Main Agent：
+保存必选的Model Requirement与Agent Event Output UUID；如果任务需要Filesystem，再保存Backend与Tools UUID，然后创建Main Agent：
 
 ```http
 POST /agent-shell/api/main-agents
@@ -161,9 +162,9 @@ POST /agent-shell/api/main-agents
 
 `tool_refs`、`middleware_refs`、`mcp_refs`和`subagents`分别保存 Custom Tool、Custom Middleware、MCP Requirement 和 direct synchronous Subagent 的有序引用。每条 MCP 引用选择服务器全部 Tool 或一组原始 Tool name；创建 Connection、binding 与 secret 的步骤见 [MCP 连接、映射与调用](../mcp.md)。
 
-`is_model_entry=true` 时，Main Agent name 直接成为 OpenAI-compatible model。每个直接会话建立持久Thread，后续显式交互可在同一Thread创建新Run并延续AgentState。Run使用Agent Server默认`async` durability。`on_disconnect`在界面显示为【用户断开】；每个Main Agent Run创建时都冻结该值，不限于请求入口。
+正式 Main Agent 的`is_model_entry=true`时，name直接成为OpenAI-compatible model。每个直接会话建立持久Thread，后续显式交互可在同一Thread创建新Run并延续AgentState。Run使用Agent Server默认`async` durability。`on_disconnect`在界面显示为【用户断开】；每个Main Agent Run创建时都冻结该值，不限于请求入口。
 
-创建后保存Main Agent UUID。直接运行与Command-launched Run都复用这份装配；Workflow Graph不重复保存模型、Tool或prompt配置。
+创建后保存Main Agent UUID。`POST /agent-shell/api/main-agents`和普通`PUT /agent-shell/api/main-agents/{id}`保存`enabled=false`草稿，草稿可保留装配 error。准备运行时向`PUT /agent-shell/api/main-agents/{id}/publish`提交同一 authoring payload；完整校验零 error 后返回`enabled=true`，warning 可以通过，失败不覆盖当前记录。直接运行与Command-launched Run都只消费正式装配；Workflow Graph不重复保存模型、Tool或prompt配置。
 
 ## 6. System Prompt 和 AAP
 
@@ -244,7 +245,7 @@ CompositeBackend：提供 mapped route、initial file、来源权限和 Skill �
 
 LocalShellBackend：提供一个真实固定 workspace，并可与 Filesystem Tools 一起暴露 `execute`。
 
-Filesystem Tools：控制文件 Tool visibility、description 和执行参数；该配置与 Backend 都是 required capability。
+Filesystem Tools：控制文件 Tool visibility、description 和执行参数；它与 Backend 都是可选 capability，但 Tools 需要 Backend。
 
 Todo List：向 Agent 提供 `write_todos` 与对应规划提示。
 
@@ -265,7 +266,7 @@ Call Limit 未引用时不自动生效，也不改变 System Settings 的 `recur
 
 ## 8. Filesystem
 
-Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools。先创建 Backend：
+只在任务需要文件、Skill、Filesystem prompt 或大结果卸载时选择 Filesystem Backend 与 Filesystem Tools。需要时先创建 Backend：
 
 ```http
 POST /agent-shell/api/blocks/filesystem
@@ -304,7 +305,9 @@ POST /agent-shell/api/blocks/filesystem-tools
 }
 ```
 
-保存两个 response UUID，并分别作为 Main Agent 的 `filesystem` 与 `filesystem-tools` capability reference。需要执行命令时把 Backend 改为 `backend_type=local-shell`，只提交一个现有 `workspace`，并把 Tools 的 `execute.visible` 设为 `true`。CompositeBackend 会自动隐藏 execute。
+保存两个 response UUID，并分别作为 Main Agent 的 `filesystem` 与 `filesystem-tools` capability reference。Tools 不能脱离 Backend；Backend 引用 Skill Package 或设置 filesystem system prompt override 时不能省略 Tools。需要执行命令时把 Backend 改为 `backend_type=local-shell`，只提交一个现有 `workspace`，并把 Tools 的 `execute.visible` 设为 `true`；CompositeBackend 与可见 execute 会产生装配 error。
+
+两项都不选时不会装配 FilesystemMiddleware，大 Tool result 与 Human message完整进入上下文，不会在卸载阶段报错；需要评估额外 token、延迟和 Provider context window 超限风险。只选 Summarization 时会使用内部 StateBackend归档并给出 warning，因为模型没有`read_file`重新读取归档。
 
 Filesystem Backend 中的 mapped directory、request-scoped virtual directory/file 和 LocalShell workspace 都通过 `path_origin` 明确选择宿主绝对路径或相对实例 `data/` 的路径。
 
@@ -374,7 +377,7 @@ POST /agent-shell/api/subagents
 
 `name` 是模型可见的 task route。`description` 明确说明何时委派、负责什么和返回什么。
 
-Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem Backend 或 Filesystem Tools 时使用 capability override。required Model Requirement、Filesystem Backend 与 Filesystem Tools 不能 disabled；Skill package 随 CompositeBackend 一起继承或替换。
+Subagent 默认继承 Main Agent 的 inheritable capability。需要不同 Model Requirement、System Prompt、Filesystem Backend 或 Filesystem Tools 时使用 capability override。required Model Requirement 不能 disabled；Filesystem Backend 与 Filesystem Tools 可分别 disabled，但最终组合必须满足 Tools→Backend、Skill→Tools 等联动规则。Skill package 随 CompositeBackend 一起继承或替换。
 
 Custom Tool、Custom Middleware 和 MCP Requirement 由 Subagent 自己的 ordered `settings.tool_refs`、`settings.middleware_refs` 和 `settings.mcp_refs` 装配。
 

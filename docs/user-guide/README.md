@@ -1,6 +1,6 @@
 # Agent Shell 用户指南
 
-Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration，并以 LangChain Agent、Deep Agents 公共组件和 LangGraph runtime 执行；`is_model_entry=true` 的 Main Agent，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow 会暴露为 OpenAI-compatible model。
+Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration，并以 LangChain Agent、Deep Agents 公共组件和 LangGraph runtime 执行；`enabled=true` 且 `is_model_entry=true` 的 Main Agent/Workflow 会暴露为 OpenAI-compatible model。
 
 [AI Workflow 编写指南](ai-guide/README.md)是 AI 或自动化程序的索引，下面的详细页面按任务领域展开。
 
@@ -20,7 +20,7 @@ Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component c
 
 三个基础边界是：
 
-- Main Agent 必选 Model Requirement、Filesystem Backend、Filesystem Tools 与 Agent Event Output；Subagent 必须保留前三者的 effective 配置；
+- Main Agent 必选 Model Requirement 与 Agent Event Output；Filesystem Backend/Tools 可选，Subagent 可分别继承、替换或关闭，但最终组合必须满足组件联动规则；
 - stateful Main Agent 的续聊复用 Thread并创建新 Run；Workflow State只保存确定性控制数据；
 - `data/` 是需要备份和迁移的完整实例数据根，`runtime/` 可重建，不进入备份，外部 mapped path 需另行迁移。
 

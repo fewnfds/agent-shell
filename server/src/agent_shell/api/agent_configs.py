@@ -44,6 +44,16 @@ def _raise_if_invalid(report: ValidationReport) -> None:
         )
 
 
+def _raise_if_unpersistable(
+    report: ValidationReport,
+    validated: dict | None,
+) -> dict:
+    if validated is None:
+        _raise_if_invalid(report)
+        raise RuntimeError("invalid Main Agent payload lacks validation issues")
+    return validated
+
+
 def _copy_name(payload: dict) -> str:
     if set(payload) != {"name"} or not isinstance(payload.get("name"), str):
         raise management_error(
@@ -179,15 +189,14 @@ def build_agent_config_router(
             payload,
             stage="main_agent_save",
         )
-        _raise_if_invalid(report)
-        assert validated is not None
-        reject_model_conflict(validated)
+        validated = _raise_if_unpersistable(report, validated)
         item_id = config_store.new_id()
         try:
             config_store.save_item(
                 MAIN_AGENT_TABLE,
                 item_id,
                 validated,
+                enabled=False,
                 expected_repository_id=mutation_repository_id,
             )
         except ValueError as exc:
@@ -211,23 +220,24 @@ def build_agent_config_router(
                 message_key="errors.mainAgentNotFound",
                 message="The Main Agent configuration does not exist.",
             )
-        candidate = dict(source)
+        candidate = {
+            key: value
+            for key, value in source.items()
+            if key not in {"id", "enabled"}
+        }
         candidate["name"] = name
         report, validated, _ = validation.validate_main_agent(
             candidate,
             stage="main_agent_copy",
-            owner_id=item_id,
-            stored=True,
         )
-        _raise_if_invalid(report)
-        assert validated is not None
-        reject_model_conflict(validated)
+        validated = _raise_if_unpersistable(report, validated)
         copy_id = config_store.new_id()
         try:
             config_store.save_item(
                 MAIN_AGENT_TABLE,
                 copy_id,
                 validated,
+                enabled=False,
                 expected_repository_id=mutation_repository_id,
             )
         except ValueError as exc:
@@ -254,14 +264,13 @@ def build_agent_config_router(
             stage="main_agent_save",
             owner_id=item_id,
         )
-        _raise_if_invalid(report)
-        assert validated is not None
-        reject_model_conflict(validated)
+        validated = _raise_if_unpersistable(report, validated)
         try:
             config_store.save_item(
                 MAIN_AGENT_TABLE,
                 item_id,
                 validated,
+                enabled=False,
                 expected_repository_id=mutation_repository_id,
             )
         except ValueError as exc:
@@ -272,6 +281,43 @@ def build_agent_config_router(
                 message="A configuration with this name already exists.",
             ) from exc
         return config_store.get_item(MAIN_AGENT_TABLE, item_id)
+
+    @router.put("/main-agents/{item_id}/publish")
+    def publish_main_agent(item_id: str, payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        if config_store.get_item(MAIN_AGENT_TABLE, item_id) is None:
+            raise management_error(
+                404,
+                code="main_agent_not_found",
+                message_key="errors.mainAgentNotFound",
+                message="The Main Agent configuration does not exist.",
+            )
+        report, validated, _ = validation.validate_main_agent(
+            payload,
+            stage="main_agent_publish",
+            owner_id=item_id,
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        reject_model_conflict(validated)
+        try:
+            config_store.save_item(
+                MAIN_AGENT_TABLE,
+                item_id,
+                validated,
+                enabled=True,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        published = config_store.get_item(MAIN_AGENT_TABLE, item_id)
+        assert published is not None
+        return published
 
     @router.delete("/main-agents/{item_id}")
     def delete_main_agent(item_id: str) -> dict[str, bool]:

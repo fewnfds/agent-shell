@@ -726,8 +726,8 @@ onMounted(() => { void load() })
                 </label>
                 <select id="provider-http-version" v-model="providerHttpVersion" class="form-select">
                   <option value="auto">{{ t('systemSettings.providerNetwork.httpVersions.auto') }}</option>
-                  <option value="http1">HTTP/1.1</option>
-                  <option value="http2">HTTP/2</option>
+                  <option value="http1">{{ t('systemSettings.providerNetwork.httpVersions.http1') }}</option>
+                  <option value="http2">{{ t('systemSettings.providerNetwork.httpVersions.http2') }}</option>
                 </select>
               </div>
               <div class="col-lg-3 col-md-6">

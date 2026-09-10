@@ -116,7 +116,8 @@ def _reject_agent_model_conflict(
         return
     workflow_name = name_collision_key(str(workflow["name"]))
     conflict = any(
-        agent.get("is_model_entry")
+        agent.get("enabled")
+        and agent.get("is_model_entry")
         and name_collision_key(str(agent["name"])) == workflow_name
         for agent in agents.list_items("main_agents")
     )

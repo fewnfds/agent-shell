@@ -55,6 +55,7 @@ const {
   startNew,
   loadSelected,
   save,
+  saveExisting,
   openCopy,
   closeCopy,
   copyCurrent,
@@ -77,6 +78,7 @@ const {
     payload: mainAgentPayload(resource),
   }),
   validate: (request) => service.value!.validateDraft(request),
+  allowInvalidSave: true,
   deleteConfirmation: (resource) => ({
     title: t('agents.delete.title'),
     description: t('agents.delete.description', { name: resource.name }),
@@ -88,7 +90,7 @@ const {
     serviceUnavailable: 'agents.serviceUnavailable',
     newDraft: 'agents.feedback.newDraft',
     loadFailed: 'agents.feedback.loadFailed',
-    saved: 'agents.feedback.saved',
+    saved: 'agents.feedback.draftSaved',
     saveFailed: 'agents.feedback.saveFailed',
     copied: 'agents.feedback.copied',
     deleted: 'agents.feedback.deleted',
@@ -96,6 +98,16 @@ const {
     copyNameRequired: 'agents.copy.nameRequired',
   },
 })
+
+function publishCurrent(): void {
+  void saveExisting(
+    (id, payload) => service.value!.publishMainAgent(id, payload),
+    {
+      saved: 'agents.feedback.published',
+      saveFailed: 'agents.feedback.publishFailed',
+    },
+  )
+}
 
 const manifests = ref<CapabilityManifest[]>([])
 const blocks = ref<Record<string, StoredBlock[]>>({})
@@ -171,11 +183,22 @@ onMounted(() => {
         :has-selection="Boolean(form.id)"
         :loading="loading"
         :saving="saving"
+        save-label="agents.actions.saveDraft"
         @copy="openCopy"
         @delete="removeCurrent"
         @new="startNew"
         @save="save"
-      />
+      >
+        <LteButton
+          class="action-button"
+          :disabled="!form.id || loading || saving || copying || deleting"
+          type="button"
+          @click="publishCurrent"
+        >
+          <i class="bi bi-upload" aria-hidden="true" />
+          {{ t('agents.actions.publish') }}
+        </LteButton>
+      </ConfigurationCrudActions>
     </template>
 
     <template #status>
@@ -199,7 +222,25 @@ onMounted(() => {
 
         <section class="mb-3" :aria-label="t('agents.mainAgent.runtimeTitle')">
           <div class="row g-3">
-            <div class="col-md-6">
+            <div class="col-lg-4 col-md-6">
+              <section class="card h-100">
+                <header class="card-header">
+                  <h2 class="card-title mb-0">{{ t('agents.mainAgent.statusTitle') }}</h2>
+                </header>
+                <div class="card-body" data-testid="main-agent-publication-status">
+                  <i
+                    :class="form.enabled ? 'bi bi-check-circle' : 'bi bi-file-earmark'"
+                    aria-hidden="true"
+                  />
+                  {{ !form.id
+                    ? t('agents.mainAgent.status.unsaved')
+                    : form.enabled
+                      ? t('agents.mainAgent.status.published')
+                      : t('agents.mainAgent.status.draft') }}
+                </div>
+              </section>
+            </div>
+            <div class="col-lg-4 col-md-6">
               <section class="card h-100">
                 <header class="card-header">
                   <label class="card-title mb-0" for="main-agent-model-entry">{{ t('agents.mainAgent.fields.isModelEntry') }}</label>
@@ -212,7 +253,7 @@ onMounted(() => {
                 </div>
               </section>
             </div>
-            <div class="col-md-6">
+            <div class="col-lg-4 col-md-6">
               <section class="card h-100">
                 <header class="card-header">
                   <label class="card-title mb-0" for="main-agent-disconnect">{{ t('agents.mainAgent.fields.onDisconnect') }}</label>
@@ -272,20 +313,17 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem">
                     {{ t('capabilities.filesystem.label') }}
-                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
-                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
                     id="main-agent-capability-filesystem"
-                    aria-required="true"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem"
                     :value="referenceId(form, 'filesystem')"
                     @change="updateReference('filesystem', ($event.target as HTMLSelectElement).value)"
                   >
-                    <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option value="">{{ t('agents.capability.notAttached') }}</option>
                     <option
                       v-if="missingCapabilityReference('filesystem')"
                       disabled
@@ -303,20 +341,17 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="main-agent-capability-filesystem-tools">
                     {{ t('capabilities.filesystem-tools.label') }}
-                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
-                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
                     id="main-agent-capability-filesystem-tools"
-                    aria-required="true"
                     class="form-select"
                     data-testid="main-agent-capability-filesystem-tools"
                     :value="referenceId(form, 'filesystem-tools')"
                     @change="updateReference('filesystem-tools', ($event.target as HTMLSelectElement).value)"
                   >
-                    <option disabled value="">{{ t('common.chooseConfiguration') }}</option>
+                    <option value="">{{ t('agents.capability.notAttached') }}</option>
                     <option
                       v-if="missingCapabilityReference('filesystem-tools')"
                       disabled

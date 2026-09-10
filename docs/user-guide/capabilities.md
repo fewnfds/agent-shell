@@ -6,8 +6,8 @@
 | --- | --- | --- | --- |
 | 模型要求 | 名称和能力说明 | 必选 | 继承或替换 |
 | 系统提示词 | 基础 system prompt | 可选 | 继承、替换或关闭 |
-| 文件系统后端 | CompositeBackend 的映射、来源权限与 Skill 独立包，或 LocalShellBackend 的真实单工作区 | 必选 | 继承或替换 |
-| 文件系统工具 | 文件 Tool 可见性、说明与执行参数 | 必选 | 继承或替换 |
+| 文件系统后端 | CompositeBackend 的映射、来源权限与 Skill 独立包，或 LocalShellBackend 的真实单工作区 | 可选 | 继承、替换或关闭 |
+| 文件系统工具 | 文件 Tool 可见性、说明与执行参数 | 可选；选择时需要文件系统后端 | 继承、替换或关闭 |
 | 待办计划 | `write_todos` 与规划提示 | 可选 | 继承、替换或关闭 |
 | Custom Tool | 一个 Python extension 导出一个 LangChain Tool | 通过有序引用装配 | Subagent 独立有序引用 |
 | Skill | 从 `data/skills-template/` 选择合法 Template，并制作 Skill 独立包 | 由 CompositeBackend 引用 | 随 Filesystem Backend 生效 |
@@ -37,6 +37,8 @@ Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由
 
 Model Call Limit 与 Tool Call Limit 是两个独立的官方 middleware capability。两者都可按单次 Run 计数；Main Agent 还可依赖 checkpoint 按持久 Thread 累计。同步 isolated Subagent 每次 `task` 调用重新建立 child state，因此其 `thread_limit` 不跨 `task` 累计。未选择时不会自动启用，也不替代 LangGraph `recursion_limit`。Tool Call Limit 可以统计全部工具或一个最终 model-visible Tool name。字段与达限行为见 [Model Call Limit](../wizard-pages/model-call-limit-config.md) 和 [Tool Call Limit](../wizard-pages/tool-call-limit-config.md)。
 
+Filesystem Backend 与 Filesystem Tools 都可以不选。选择 Tools 时必须同时选择 Backend；Backend 引用 Skill Package或设置 filesystem system prompt override 时必须同时选择 Tools；`execute` 只允许与 LocalShellBackend 组合。选择 Summarization 但没有 Tools 会产生 warning：摘要仍使用内部 `StateBackend`，但模型不能重新读取归档。没有 FilesystemMiddleware 时，大 Tool result 与 Human message 会完整保留在上下文中，不会在卸载阶段报错；代价是更多 token、延迟，以及最终触发 Provider context window 超限的可能。
+
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
 Main Agent 是通过 LangChain `create_agent()` 构造的独立 root graph，messages 和 private state 由其 Thread checkpoint 拥有。Workflow 通过 Command 的`runtime.context.agent_runs`创建独立 Main Agent Thread/Run 并显式读取结果。synchronous Subagent 由显式 Deep Agents `SubAgentMiddleware`在 current Agent loop 内调度。
@@ -49,4 +51,4 @@ Command组件保存一个`workflow-node/command`Python扩展引用和普通confi
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。
 
 这些自定义 Python 都运行在服务进程的受信任边界内，没有 sandbox。Custom Tool、Custom Middleware、Command Node、Agent Event Output 和 Workflow Event Output 是五类配置独占的 Python 扩展，并在扩展目录可选的 `requirements.txt` 声明外部包；模板和示例本身不运行也不参与依赖。五类目录与通用依赖边界见[文件化 Python 扩展](middleware-packages.md)，各组件的 factory contract 见对应组件页。
-启动器收集全部已配置Main Agent assembly，以及enabled Workflow触达扩展的requirements；修改后需重启 Agent Shell 以重建依赖层。文件化扩展源码在下一次请求重新加载。
+启动器收集全部已配置 Main Agent assembly，以及正式 Workflow触达扩展的requirements；Main Agent草稿也参与依赖准备，使新增requirements可以在重启后通过正式保存。文件化扩展源码在下一次请求重新加载。

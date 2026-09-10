@@ -1823,12 +1823,7 @@ class RequestSnapshotRuntime:
             response_stream_policy = self._response_stream_policy_provider()
             with self._configuration.request_snapshot_context() as context:
                 current_repository, python_packages_dir, skills_dir, repository_id = context
-            repository_config = current_repository.config()
-            repository_config["workflows"] = [
-                workflow
-                for workflow in repository_config.get("workflows", [])
-                if isinstance(workflow, dict) and workflow.get("enabled") is True
-            ]
+            repository_config = self._published_repository_config(current_repository)
             repository = FileConfigRepository.from_snapshot(
                 current_repository.data_root,
                 repository_config,
@@ -1873,6 +1868,25 @@ class RequestSnapshotRuntime:
             run_config=self._run_config,
             configuration=configuration,
         )
+
+    def _published_repository_config(
+        self,
+        current_repository: FileConfigRepository,
+    ) -> dict[str, Any]:
+        repository_config = current_repository.config()
+        repository_config["main_agents"] = [
+            main_agent
+            for main_agent in repository_config.get("main_agents", [])
+            if isinstance(main_agent, dict)
+            and main_agent.get("enabled") is True
+        ]
+        repository_config["workflows"] = [
+            workflow
+            for workflow in repository_config.get("workflows", [])
+            if isinstance(workflow, dict)
+            and workflow.get("enabled") is True
+        ]
+        return repository_config
 
     def _materialize_snapshot(
         self,

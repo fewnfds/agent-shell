@@ -318,20 +318,18 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="subagent-capability-filesystem">
                     {{ t('capabilities.filesystem.label') }}
-                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
-                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
                     id="subagent-capability-filesystem"
-                    aria-required="true"
                     class="form-select"
                     data-testid="subagent-capability-filesystem"
                     :value="selectionValue('filesystem')"
                     @change="filesystemManifest && updateSelection(filesystemManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
+                    <option :value="DISABLED_VALUE">{{ t('agents.override.mode.disabled') }}</option>
                     <option
                       v-if="missingOverrideReference('filesystem')"
                       disabled
@@ -349,20 +347,18 @@ onMounted(() => {
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="subagent-capability-filesystem-tools">
                     {{ t('capabilities.filesystem-tools.label') }}
-                    <span class="text-danger" aria-hidden="true">{{ t('common.requiredMarker') }}</span>
-                    <span class="visually-hidden">{{ t('agents.capability.required') }}</span>
                   </label>
                 </header>
                 <div class="card-body">
                   <select
                     id="subagent-capability-filesystem-tools"
-                    aria-required="true"
                     class="form-select"
                     data-testid="subagent-capability-filesystem-tools"
                     :value="selectionValue('filesystem-tools')"
                     @change="filesystemToolsManifest && updateSelection(filesystemToolsManifest, ($event.target as HTMLSelectElement).value)"
                   >
                     <option :value="INHERIT_VALUE">{{ t('agents.override.mode.inherit') }}</option>
+                    <option :value="DISABLED_VALUE">{{ t('agents.override.mode.disabled') }}</option>
                     <option
                       v-if="missingOverrideReference('filesystem-tools')"
                       disabled

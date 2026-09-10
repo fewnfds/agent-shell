@@ -1,6 +1,6 @@
 # Filesystem Backend
 
-【文件系统后端】是 Main Agent 和 Subagent 的必选 capability。每份配置在 `CompositeBackend` 与 `LocalShellBackend` 中二选一；后端只定义文件来源、路径权限、可选 Skill 独立包和文件系统提示词，模型可见工具由独立的[文件系统工具](filesystem-tools-config.md)配置。
+【文件系统后端】是 Main Agent 和 Subagent 的可选 capability。每份配置在 `CompositeBackend` 与 `LocalShellBackend` 中二选一；后端只定义文件来源、路径权限、可选 Skill 独立包和文件系统提示词，模型可见工具由独立的[文件系统工具](filesystem-tools-config.md)配置。Backend 可以单独选择；只有同时选择 Filesystem Tools 时才装配 FilesystemMiddleware。
 
 ## CompositeBackend
 
@@ -55,9 +55,9 @@ CompositeBackend 组合请求级 `StateBackend`、真实目录映射、请求开
 - `virtual_directories` 在每次请求开始时把 `source_path` 指向的现有目录复制到请求级 StateBackend，来源目录保持原样；
 - `virtual_files` 在每次请求开始时把 `source_path` 指向的现有普通文件复制到请求级 StateBackend，来源文件保持原样。
 
-`skill_package_id` 可选择一份由 Skill Component 制作的 Skill 独立包。运行时把该包只读挂载到 `/skills/`，并装配官方 SkillsMiddleware。Skill 包引用属于 Filesystem Backend，因此 Subagent 继承该 Backend 时同时继承包、路径和权限；替换 Backend 时使用新 Backend 的完整配置。Agent 不直接选择 Skill Component。
+`skill_package_id` 可选择一份由 Skill Component 制作的 Skill 独立包。该 Backend 必须与 Filesystem Tools 一起装配，运行时才会把该包只读挂载到 `/skills/`、提供固定可见的 `read_file` 并装配官方 SkillsMiddleware。Skill 包引用属于 Filesystem Backend，因此 Subagent 继承该 Backend 时同时继承包、路径和权限；替换 Backend 时使用新 Backend 的完整配置。Agent 不直接选择 Skill Component。
 
-CompositeBackend 不提供 `execute`。即使关联的文件系统工具配置把 `execute.visible` 设为 `true`，Deep Agents 也会根据 Backend 能力从模型可见工具中移除它。
+CompositeBackend 不提供 `execute`。关联的 Filesystem Tools 把 `execute.visible` 设为 `true` 时，Agent 装配校验返回 error，必须关闭它或改用 LocalShellBackend 后才能正式保存。
 
 ## LocalShellBackend
 
@@ -83,7 +83,9 @@ LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有�
 
 虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。`data-root-relative` 本地路径拒绝盘符、绝对/UNC 路径、冒号和 `.`/`..` 段，也不能逃出实例 `data/`。所有来源均不允许重叠 route、重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：`/large_tool_results/`、`/conversation_history/`、`/skills/`、`/memory/`、`/memories/`。
 
-Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为 Deep Agents 0.7.7 会为 Composite + execute 无条件追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
+Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为锁定的 Deep Agents 0.7.13 会为 Composite + execute 追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
+
+Filesystem system prompt override 只在 FilesystemMiddleware 存在时有消费者，因此设置 override 的 Backend 必须同时选择 Filesystem Tools。没有选择 Backend 和 Tools 时，Agent 不装配 FilesystemMiddleware；大 Tool result 与 Human message 会完整留在上下文，不会发生卸载阶段错误，但会增加 token、延迟和 Provider context window 超限风险。
 
 同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。跨 Workflow 调用创建的独立 Run 不复制或合并调用方的请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
 

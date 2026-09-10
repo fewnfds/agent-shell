@@ -358,8 +358,8 @@ def prepare_windows_dependencies(
         for item in config.get("main_agents", [])
         if isinstance(item, dict)
     }
-    # Main Agents are independent root graphs and may be selected directly or
-    # dynamically by a Command, so startup prepares every configured profile.
+    # Draft Main Agents must participate as well: dependency preparation happens
+    # at process startup and is required before a draft can pass publication.
     active_main_agent_ids = set(main_agents)
     subagents = {
         str(item.get("id", "")): item

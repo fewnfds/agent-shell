@@ -37,8 +37,9 @@ class MaterializedAgentResources:
     tool_call_limit_middleware: Any | None
     prompt_caching_middleware: Any | None
     package_middleware: tuple[Any, ...]
-    backend: Any
-    workspace: DeepAgentsWorkspace
+    backend: Any | None
+    middleware_backend: Any | None
+    workspace: DeepAgentsWorkspace | None
 
 
 class AgentResourceMaterializer(Protocol):

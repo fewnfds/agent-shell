@@ -649,7 +649,7 @@ def build_api_server_router(
         agent_models = [
             _model_object(item["name"])
             for item in agents.list_items("main_agents")
-            if item["is_model_entry"]
+            if item.get("enabled") is True and item["is_model_entry"]
         ]
         return JSONResponse(
             content={"object": "list", "data": [*workflow_models, *agent_models]}
@@ -738,7 +738,9 @@ def build_api_server_router(
             and workflow["is_model_entry"]
         )
         agent_entry = (
-            main_agent is not None and main_agent["is_model_entry"]
+            main_agent is not None
+            and main_agent.get("enabled") is True
+            and main_agent["is_model_entry"]
         )
         if not workflow_entry and not agent_entry:
             return _openai_error(

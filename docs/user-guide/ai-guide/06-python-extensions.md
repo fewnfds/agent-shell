@@ -115,6 +115,8 @@ Agent Event Output只用于Main Agent Run；Workflow Event Output只用于Workfl
 
 `requirements.txt`只声明该extension真实使用且与核心lock兼容的公开发行包。修改后重启Agent Shell，让启动器按可达配置指纹准备共享extension layer。
 
+Lifecycle snapshot只冻结package folder引用，不复制或预编译package内容。正式保存后的package仍可由作者或外部文件工具修改；下一次真实Graph装配会读取current磁盘内容。缺失、manifest、语法、import、factory和执行错误会终止对应Run，并通过OpenAI-compatible JSON/SSE错误与【系统 / 日志中心】Runtime Diagnostic反馈具体异常链和traceback。
+
 交付前：
 
 - 读取Component validation；

@@ -36,7 +36,7 @@ system prompt、direct tools 和 response format。
 Main Agent middleware 顺序如下：
 
 1. 可选 `SkillsMiddleware`；
-2. 必选 `FilesystemMiddleware`；
+2. 可选 `FilesystemMiddleware`；
 3. 有直接子级时的 `SubAgentMiddleware`；
 4. 可选 Deep Agents `SummarizationMiddleware`；
 5. 必选 `PatchToolCallsMiddleware`；
@@ -69,7 +69,7 @@ dynamic response schema 时按该 schema 生成 child runnable。Subagent 不装
 Subagent middleware 顺序如下：
 
 1. 可选 `SkillsMiddleware`；
-2. 必选 `FilesystemMiddleware`；
+2. 可选 `FilesystemMiddleware`；
 3. 可选 Deep Agents `SummarizationMiddleware`；
 4. 必选 `PatchToolCallsMiddleware`；
 5. 可选 `ModelCallLimitMiddleware`；
@@ -108,15 +108,27 @@ checkpointer，每次 `task` 调用都从新的 child state 开始，因此 chil
 
 ## Filesystem、Skill 与摘要
 
-Main Agent 必须分别选择 Filesystem Backend 与 Filesystem Tools；Subagent 对两者分别
-继承或替换。每个 Agent 按自己的 effective 配置构造 `FilesystemMiddleware`。
+Filesystem Backend 与 Filesystem Tools 是两个可选 slot；Subagent 对两者分别继承、替换
+或关闭。只有 Backend 与 Tools 同时存在时才构造 `FilesystemMiddleware`。Tools 缺少 Backend
+是装配错误；Backend 可以单独作为 Summarization、映射来源或 Custom Middleware 的能力。
+Backend 选择 Skill Package 或设置 filesystem system prompt override 时必须同时选择 Tools；
+Skill 需要模型可见的 `read_file`。`execute` 只允许与 LocalShellBackend 组合，CompositeBackend
+组合在正式保存前直接报告装配错误。
+
 CompositeBackend 的来源权限、只读 `/skills/` route 与请求级 StateBackend 由
 `runtime/capabilities/deepagents.py` 物化。LocalShellBackend 使用配置的固定真实
 workspace，并可在 Filesystem Tools 显式启用 `execute`。
 
 Deep Agents Summarization 将摘要前的原始消息写入 selected Backend 的
 `/conversation_history/{session_uuid}.md`。CompositeBackend 的 default 是请求级
-StateBackend；LocalShellBackend 的归档和 large tool result 位于真实 workspace。
+StateBackend；LocalShellBackend 的归档和 large tool result 位于真实 workspace。选择
+Summarization 但没有用户 Filesystem Backend 时，Agent Shell 只为该 middleware 提供内部
+`StateBackend`，不把它暴露为用户 Filesystem 能力；没有 Filesystem Tools 时模型不能通过
+`read_file` 重新读取归档，因此配置校验给出 warning。
+
+没有 `FilesystemMiddleware` 时，大 Tool result 与 Human message 不执行文件卸载，完整内容继续
+进入消息上下文；这不会产生卸载阶段错误，但会增加 token 与延迟，并可能最终触发模型供应商的
+context window 超限。
 `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 只匹配虚拟根目录。
 
 ## State、Thread 与输出

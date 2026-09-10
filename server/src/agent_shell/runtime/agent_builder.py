@@ -24,6 +24,7 @@ from agent_shell.runtime.capabilities import (
     DeepAgentsCapabilityError,
     DeepAgentsWorkspace,
     build_deepagents_capabilities,
+    build_internal_state_backend,
 )
 from agent_shell.runtime.capabilities.exception_retry import (
     materialize_exception_retry,
@@ -401,52 +402,58 @@ class AgentBuilder:
                 ) from exc
 
         backend = None
+        deepagents = None
+        foundation_middleware: tuple[Any, ...] = ()
         filesystem = selected_blocks.get("filesystem")
         filesystem_tools = selected_blocks.get("filesystem-tools")
         skill = selected_blocks.get("_filesystem-skill-package")
         try:
-            if filesystem is None or filesystem_tools is None:
+            if filesystem is None and filesystem_tools is not None:
                 raise DeepAgentsCapabilityError(
-                    "Filesystem Backend and Filesystem Tools are required"
+                    "Filesystem Tools require a Filesystem Backend"
                 )
-            filesystem_block = FilesystemBlock.model_validate(
-                {
-                    key: value
-                    for key, value in filesystem.items()
-                    if key != "id"
-                }
-            )
-            filesystem_tools_block = FilesystemToolsBlock.model_validate(
-                {
-                    key: value
-                    for key, value in filesystem_tools.items()
-                    if key != "id"
-                }
-            )
-            skill_block = (
-                SkillBlock.model_validate(
-                    {key: value for key, value in skill.items() if key != "id"}
+            if filesystem is not None:
+                filesystem_block = FilesystemBlock.model_validate(
+                    {
+                        key: value
+                        for key, value in filesystem.items()
+                        if key != "id"
+                    }
                 )
-                if skill is not None
-                else None
-            )
-            deepagents = build_deepagents_capabilities(
-                filesystem_block,
-                skill_block,
-                filesystem_tools=filesystem_tools_block,
-                filesystem_mode=filesystem_mode,
-                skills_dir=self._skills_dir,
-                data_root=self._data_root,
-                workspace=workspace,
-                mapped_directory_paths=(
-                    mapped_directory_paths_by_filesystem.get(
-                        str(filesystem.get("id", ""))
+                filesystem_tools_block = (
+                    FilesystemToolsBlock.model_validate(
+                        {
+                            key: value
+                            for key, value in filesystem_tools.items()
+                            if key != "id"
+                        }
                     )
-                    if filesystem is not None
-                    and mapped_directory_paths_by_filesystem is not None
+                    if filesystem_tools is not None
                     else None
-                ),
-            )
+                )
+                skill_block = (
+                    SkillBlock.model_validate(
+                        {key: value for key, value in skill.items() if key != "id"}
+                    )
+                    if skill is not None
+                    else None
+                )
+                deepagents = build_deepagents_capabilities(
+                    filesystem_block,
+                    skill_block,
+                    filesystem_tools=filesystem_tools_block,
+                    filesystem_mode=filesystem_mode,
+                    skills_dir=self._skills_dir,
+                    data_root=self._data_root,
+                    workspace=workspace,
+                    mapped_directory_paths=(
+                        mapped_directory_paths_by_filesystem.get(
+                            str(filesystem.get("id", ""))
+                        )
+                        if mapped_directory_paths_by_filesystem is not None
+                        else None
+                    ),
+                )
         except DeepAgentsCapabilityError as exc:
             raise configuration_error(
                 "middleware_materialization_failed",
@@ -475,8 +482,16 @@ class AgentBuilder:
                     else "capability_refs.filesystem"
                 ),
             ) from exc
-        backend = deepagents.backend
-        foundation_middleware = deepagents.middleware
+        if deepagents is not None:
+            backend = deepagents.backend
+            foundation_middleware = deepagents.middleware
+
+        middleware_backend = backend
+        if middleware_backend is None and (
+            selected_blocks.get("summarization") is not None
+            or selected_blocks.get("subagent") is not None
+        ):
+            middleware_backend = build_internal_state_backend()
 
         summarization_middleware = None
         summarization = selected_blocks.get("summarization")
@@ -485,7 +500,7 @@ class AgentBuilder:
                 summarization_middleware = materialize_summarization_middleware(
                     summarization,
                     model=model,
-                    backend=backend,
+                    backend=middleware_backend,
                 )
             except Exception as exc:
                 raise configuration_error(
@@ -601,7 +616,8 @@ class AgentBuilder:
             prompt_caching_middleware=prompt_caching_middleware,
             package_middleware=package_middleware,
             backend=backend,
-            workspace=deepagents.workspace,
+            middleware_backend=middleware_backend,
+            workspace=deepagents.workspace if deepagents is not None else None,
         )
 
     async def build(
@@ -768,7 +784,11 @@ class AgentBuilder:
                 constructor["system_prompt"] = "\n\n".join(
                     part for part in (existing_prompt, delegation_instruction) if part
                 )
-        initial_files = dict(materialized.workspace.initial_files)
+        initial_files = (
+            dict(materialized.workspace.initial_files)
+            if materialized.workspace is not None
+            else {}
+        )
         for path, value in subagent_initial_files.items():
             previous = initial_files.get(path)
             if previous is not None and previous != value:
@@ -821,7 +841,7 @@ class AgentBuilder:
                 )
 
                 subagent_middleware = materialize_subagent_middleware(
-                    backend=materialized.backend,
+                    backend=materialized.middleware_backend,
                     subagents=subagent_specs,
                     task_description=task_description_override,
                     middleware=middleware_without_subagent,

@@ -178,7 +178,9 @@ def create_main_agent(
     provider_settings: dict[str, object] | None = None,
     model_request_settings: dict[str, object] | None = None,
     filesystem_id: str | None = None,
+    include_filesystem: bool = True,
     is_model_entry: bool = False,
+    publish: bool = True,
 ) -> dict:
     model_payload = {
         "name": "Published model",
@@ -221,31 +223,33 @@ def create_main_agent(
     )
     assert output_response.status_code == 200, output_response.text
     event_output = output_response.json()
-    if filesystem_id is None:
+    if include_filesystem and filesystem_id is None:
         filesystem = client.post(
             "/agent-shell/api/blocks/filesystem",
             json={"name": "Published Agent filesystem"},
         )
         assert filesystem.status_code == 200, filesystem.text
         filesystem_id = filesystem.json()["id"]
-    filesystem_tools = client.post(
-        "/agent-shell/api/blocks/filesystem-tools",
-        json={"name": "Published Agent filesystem tools"},
-    )
-    assert filesystem_tools.status_code == 200, filesystem_tools.text
     capability_refs = [{"type": "model-requirement", "block_id": requirement["id"]}]
     capability_refs.append(
         {"type": "agent-event-output", "block_id": event_output["id"]}
     )
-    capability_refs.append(
-        {"type": "filesystem", "block_id": filesystem_id}
-    )
-    capability_refs.append(
-        {
-            "type": "filesystem-tools",
-            "block_id": filesystem_tools.json()["id"],
-        }
-    )
+    if include_filesystem:
+        filesystem_tools = client.post(
+            "/agent-shell/api/blocks/filesystem-tools",
+            json={"name": "Published Agent filesystem tools"},
+        )
+        assert filesystem_tools.status_code == 200, filesystem_tools.text
+        assert filesystem_id is not None
+        capability_refs.append(
+            {"type": "filesystem", "block_id": filesystem_id}
+        )
+        capability_refs.append(
+            {
+                "type": "filesystem-tools",
+                "block_id": filesystem_tools.json()["id"],
+            }
+        )
     response = client.post(
         "/agent-shell/api/main-agents",
         json={
@@ -254,6 +258,30 @@ def create_main_agent(
             "capability_refs": capability_refs,
             "subagents": [],
         },
+    )
+    assert response.status_code == 200, response.text
+    main_agent = response.json()
+    if not publish:
+        return main_agent
+    return publish_main_agent(client, main_agent)
+
+
+def main_agent_payload(main_agent: dict) -> dict:
+    return {
+        key: value
+        for key, value in main_agent.items()
+        if key not in {"id", "enabled"}
+    }
+
+
+def publish_main_agent(
+    client: TestClient,
+    main_agent: dict,
+    payload: dict | None = None,
+) -> dict:
+    response = client.put(
+        f"/agent-shell/api/main-agents/{main_agent['id']}/publish",
+        json=payload or main_agent_payload(main_agent),
     )
     assert response.status_code == 200, response.text
     return response.json()
