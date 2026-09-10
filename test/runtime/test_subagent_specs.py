@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from agent_shell.runtime import subagents
 from agent_shell.runtime.subagents import build_subagent_specs
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
@@ -10,9 +11,47 @@ from agent_shell.validation.assembly import (
 )
 
 
-def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace() -> None:
-    workspace = object()
+def _middleware(name: str) -> SimpleNamespace:
+    return SimpleNamespace(name=name, tools=(), state_schema=None)
+
+
+def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace(
+    monkeypatch,
+) -> None:
+    workspace = SimpleNamespace(initial_files={})
     materialized_workspaces: list[object] = []
+    skill = _middleware("Skills")
+    filesystem = _middleware("Filesystem")
+    summarization = _middleware("Summarization")
+    model_call_limit = _middleware("ModelCallLimit")
+    tool_call_limit = _middleware("ToolCallLimit")
+    todo = _middleware("Todo")
+    retry = _middleware("Retry")
+    package = _middleware("Package")
+    prompt_caching = _middleware("PromptCaching")
+    patch = _middleware("Patch")
+    tool_boundary = _middleware("ToolBoundary")
+    model_settings = _middleware("ModelSettings")
+    provider_boundary = _middleware("ProviderBoundary")
+    empty_prompt = _middleware("EmptyPrompt")
+
+    monkeypatch.setattr(
+        subagents, "materialize_patch_tool_calls_middleware", lambda: patch
+    )
+    monkeypatch.setattr(
+        subagents, "ToolErrorBoundaryMiddleware", lambda: tool_boundary
+    )
+    monkeypatch.setattr(
+        subagents,
+        "make_model_request_settings_middleware",
+        lambda **_kwargs: model_settings,
+    )
+    monkeypatch.setattr(
+        subagents, "ProviderErrorBoundaryMiddleware", lambda: provider_boundary
+    )
+    monkeypatch.setattr(
+        subagents, "EmptySystemMessageMiddleware", lambda: empty_prompt
+    )
 
     def materialize(
         _references,
@@ -25,13 +64,12 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
         workflow_node_id,
         workspace,
         mapped_directory_paths_by_filesystem,
-        disabled_capabilities,
         mcp_references,
     ):
         assert filesystem_mode == "composite"
         assert scope == "subagent"
         assert owner_id in {"reader-id", "writer-id"}
-        assert disabled_capabilities == frozenset()
+        assert owner_name in {"reader", "writer"}
         assert mcp_references == ()
         assert workflow_node_id is None
         assert mapped_directory_paths_by_filesystem == {
@@ -42,19 +80,18 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
             model=object(),
             system_prompt=None,
             tools=(),
-            middleware=(),
-            package_middleware=(),
-            extra_middleware=(),
-            tool_choice=None,
-            model_settings={},
+            foundation_middleware=(skill, filesystem),
+            todo_middleware=todo,
+            summarization_middleware=summarization,
+            model_call_limit_middleware=model_call_limit,
+            tool_call_limit_middleware=tool_call_limit,
+            prompt_caching_middleware=prompt_caching,
+            package_middleware=(package,),
+            tool_choice="auto",
+            model_settings={"temperature": 0},
             response_format=None,
-            permissions=(f"{owner_name}-permission",),
-            exception_retry=None,
-            model_provider="openai",
-            model_name="test-model",
+            exception_retry=SimpleNamespace(after_provider_boundary=(retry,)),
             backend=object(),
-            initial_files={},
-            skill_sources=(),
             workspace=workspace,
         )
 
@@ -86,7 +123,7 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
         ),
         nodes=nodes,
         workspace=workspace,
-        materialize_profile=materialize,
+        materialize_resources=materialize,
         mapped_directory_paths_by_filesystem={
             "reader-filesystem": {"/reader/": Path("reader-root")}
         },
@@ -94,10 +131,21 @@ def test_direct_subagents_become_official_dictionary_specs_with_shared_workspace
 
     assert [item["name"] for item in specs] == ["reader", "writer"]
     assert materialized_workspaces == [workspace, workspace]
-    assert specs[0]["permissions"] == ["reader-permission"]
-    assert specs[1]["permissions"] == ["writer-permission"]
-    assert any(
-        item.name == "PatchToolCallsMiddleware"
-        for item in specs[0]["middleware"]
-    )
+    assert all("permissions" not in item for item in specs)
     assert all("graph" not in item and "runnable" not in item for item in specs)
+    assert specs[0]["middleware"] == [
+        skill,
+        filesystem,
+        summarization,
+        patch,
+        model_call_limit,
+        tool_call_limit,
+        tool_boundary,
+        todo,
+        model_settings,
+        provider_boundary,
+        retry,
+        package,
+        empty_prompt,
+        prompt_caching,
+    ]

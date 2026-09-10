@@ -2,7 +2,7 @@
 
 上下文摘要组件单独配置官方 `SummarizationMiddleware`：在上下文达到阈值时压缩较旧消息，并可在压缩前截断较大的历史工具参数。它是可选 capability：Main Agent 不选即不启用；Subagent 默认继承 Main Agent，可显式 `replace` 或 `disabled`。
 
-选择该组件即启用摘要。`truncate_args_enabled` 独立控制历史工具参数截断，默认开启。禁用摘要的 Agent 使用同名 `SummarizationMiddleware` no-op replacement，使每个 Agent 的最终 Middleware stack 保持显式可控。
+选择该组件即启用摘要。`truncate_args_enabled` 独立控制历史工具参数截断，默认开启。禁用摘要的 Agent 不装配 `SummarizationMiddleware`。
 
 ## 阈值与默认值
 

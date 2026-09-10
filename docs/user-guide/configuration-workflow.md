@@ -4,7 +4,7 @@
 
 Agent Shell 在同一个 Agent Server deployment 中注册两类独立 Graph：
 
-- Main Agent：完整 Deep Agents graph，拥有 AgentState、messages、Thread、Run、checkpoint 和 Agent Event Output。
+- Main Agent：由 LangChain `create_agent()` 与显式 middleware assembly 构造的完整 Agent graph，拥有 AgentState、messages、Thread、Run、checkpoint 和 Agent Event Output。
 - Workflow：Start/Command/End control graph，拥有只含 `shared_vars` 的 Workflow State、自己的 Thread/Run/checkpoint 和 Workflow Event Output。
 
 两者都可以设置为 OpenAI-compatible model 入口。Workflow 需要 AI 时，由 Command 通过 `runtime.context.agent_runs` 启动 Main Agent，不把 Agent 嵌入 Canvas。
@@ -42,7 +42,7 @@ Main Agent UUID 确定稳定 Assistant ID。每次独立调用创建持久Thread
 
 ## 同步 Subagent
 
-Subagent由Main Agent按顺序引用并交给Deep Agents官方SubAgent Middleware。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和effective Filesystem。
+Subagent由Main Agent按顺序引用并交给显式 Deep Agents `SubAgentMiddleware`。它定义tool-facing name、description、capability overrides、ordered Tool/Middleware/MCP refs和effective Filesystem。
 
 同步Subagent属于Main Agent内部agent loop，不是Workflow Node，也不建立独立Shell archive wrapper。多阶段确定性控制由Workflow和Command表达。
 

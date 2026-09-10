@@ -150,6 +150,25 @@ def block_cases(client: TestClient, tmp_path: Path) -> list[tuple[str, dict]]:
             },
         ),
         (
+            "model-call-limit",
+            {
+                "name": "Bounded model calls",
+                "run_limit": 20,
+                "thread_limit": 100,
+                "exit_behavior": "end",
+            },
+        ),
+        (
+            "tool-call-limit",
+            {
+                "name": "Bounded searches",
+                "tool_name": "search",
+                "run_limit": 5,
+                "thread_limit": 20,
+                "exit_behavior": "continue",
+            },
+        ),
+        (
             "filesystem",
             {
                 "name": "Workspace",

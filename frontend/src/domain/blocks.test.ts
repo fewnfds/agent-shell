@@ -8,12 +8,14 @@ import {
   customToolAdapter,
   filesystemAdapter,
   filesystemToolsAdapter,
+  modelCallLimitAdapter,
   modelAdapter,
   providerDefaultSettings,
   skillAdapter,
   subagentAdapter,
   systemPromptAdapter,
   todoListAdapter,
+  toolCallLimitAdapter,
   type FilesystemDefaults,
   type FilesystemToolsDefaults,
   type ModelApiRecord,
@@ -301,5 +303,32 @@ describe('block adapters', () => {
       name: 'Todos', system_prompt_override: null, tool_description_override: null,
     })
 
+  })
+
+  it('maps call limit blanks to nullable official middleware fields', () => {
+    const modelLimit = modelCallLimitAdapter.blank()
+    modelLimit.name = ' Model budget '
+    modelLimit.run_limit = 8
+    expect(modelCallLimitAdapter.toPayload(modelLimit)).toEqual({
+      name: 'Model budget',
+      run_limit: 8,
+      thread_limit: null,
+      exit_behavior: 'end',
+    })
+
+    const toolLimit = toolCallLimitAdapter.blank()
+    toolLimit.name = ' Search budget '
+    toolLimit.tool_name = ' search '
+    toolLimit.thread_limit = 40
+    toolLimit.exit_behavior = 'error'
+    expect(toolCallLimitAdapter.toPayload(toolLimit)).toEqual({
+      name: 'Search budget',
+      tool_name: 'search',
+      run_limit: null,
+      thread_limit: 40,
+      exit_behavior: 'error',
+    })
+    toolLimit.tool_name = '  '
+    expect(toolCallLimitAdapter.toPayload(toolLimit).tool_name).toBeNull()
   })
 })

@@ -599,6 +599,12 @@ export const zhCN = {
     'exception-retry': {
       label: '异常重试',
     },
+    'model-call-limit': {
+      label: '模型调用限制',
+    },
+    'tool-call-limit': {
+      label: '工具调用限制',
+    },
     subagent: {
       label: '同步子代理',
     },
@@ -663,6 +669,10 @@ export const zhCN = {
     seed: '随机种子',
     timeout: '超时时间',
     max_retries: '最大重试次数',
+    run_limit: '单次运行上限',
+    thread_limit: 'Thread 累计上限',
+    exit_behavior: '达限行为',
+    tool_name: '工具名称（留空为全部）',
     stream_usage: '流式用量',
     streaming: '流式调用',
     reasoning_effort: '推理强度',
@@ -843,6 +853,13 @@ export const zhCN = {
           label: '认证错误（危险，默认关闭）',
           hint: '仅用于已知会把临时上游故障错误返回为 401 的第三方网关；真实凭据错误不会因重试恢复。',
         },
+      },
+    },
+    callLimits: {
+      exitBehaviors: {
+        continue: '阻止超限调用并继续',
+        end: '结束 Agent',
+        error: '抛出错误',
       },
     },
     filesystem: {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import ClassVar
 
-from deepagents import create_deep_agent
+from deepagents.middleware.subagents import create_sub_agent
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
@@ -32,11 +32,16 @@ class _CaptureModel(BaseChatModel):
         )
 
 
-def test_deep_agent_without_authored_prompt_omits_empty_system_message() -> None:
+def test_declarative_child_without_authored_prompt_omits_empty_system_message() -> None:
     _CaptureModel.captured_messages.clear()
-    agent = create_deep_agent(
-        model=_CaptureModel(),
-        middleware=[EmptySystemMessageMiddleware()],
+    agent = create_sub_agent(
+        {
+            "name": "child",
+            "description": "Test child.",
+            "model": _CaptureModel(),
+            "tools": [],
+            "middleware": [EmptySystemMessageMiddleware()],
+        }
     )
 
     agent.invoke({"messages": [{"role": "user", "content": "hello"}]})
@@ -46,10 +51,15 @@ def test_deep_agent_without_authored_prompt_omits_empty_system_message() -> None
 
 def test_nonempty_system_message_is_preserved() -> None:
     _CaptureModel.captured_messages.clear()
-    agent = create_deep_agent(
-        model=_CaptureModel(),
-        system_prompt="Use the configured instructions.",
-        middleware=[EmptySystemMessageMiddleware()],
+    agent = create_sub_agent(
+        {
+            "name": "child",
+            "description": "Test child.",
+            "model": _CaptureModel(),
+            "tools": [],
+            "system_prompt": "Use the configured instructions.",
+            "middleware": [EmptySystemMessageMiddleware()],
+        }
     )
 
     agent.invoke({"messages": [{"role": "user", "content": "hello"}]})

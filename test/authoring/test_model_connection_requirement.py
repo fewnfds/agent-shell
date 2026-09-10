@@ -432,7 +432,7 @@ def test_model_requirement_binding_resolves_into_runtime_model(
         ),
     )
     builder = runtime_builder(tmp_path, repository, resources)
-    profile = builder._materialize_profile(
+    profile = builder._materialize_agent_resources(
         {
             "model-requirement": requirement_id,
             "filesystem": "filesystem-id",
@@ -471,7 +471,7 @@ def test_runtime_reports_structured_unbound_requirement_error(
     builder = runtime_builder(tmp_path, repository, resources)
 
     with pytest.raises(AgentRuntimeError) as raised:
-        builder._materialize_profile(
+        builder._materialize_agent_resources(
             {"model-requirement": requirement_id},
             {"model-requirement": {"id": requirement_id, "name": "Reasoning", "description": "Use reasoning."}},
             filesystem_mode="composite",
@@ -497,7 +497,7 @@ def test_runtime_reports_structured_error_when_requirement_reference_is_missing(
     builder = runtime_builder(tmp_path, repository, resources)
 
     with pytest.raises(AgentRuntimeError) as raised:
-        builder._materialize_profile(
+        builder._materialize_agent_resources(
             {},
             {
                 "model-requirement": {
@@ -544,7 +544,7 @@ def test_runtime_reports_structured_error_for_missing_bound_connection(
     )
 
     with pytest.raises(AgentRuntimeError) as raised:
-        builder._materialize_profile(
+        builder._materialize_agent_resources(
             {"model-requirement": requirement_id},
             {
                 "model-requirement": {

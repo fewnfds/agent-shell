@@ -379,6 +379,42 @@ class ExceptionRetryBlock(StrictBlock):
         return values
 
 
+ModelCallLimitExitBehavior = Literal["end", "error"]
+ToolCallLimitExitBehavior = Literal["continue", "error", "end"]
+PositiveCallLimit = Annotated[int, Field(strict=True, ge=1)]
+
+
+class ModelCallLimitBlock(StrictBlock):
+    run_limit: PositiveCallLimit | None = None
+    thread_limit: PositiveCallLimit | None = None
+    exit_behavior: ModelCallLimitExitBehavior = "end"
+
+    @model_validator(mode="after")
+    def require_limit(self) -> "ModelCallLimitBlock":
+        if self.run_limit is None and self.thread_limit is None:
+            raise ValueError("run_limit or thread_limit must be configured")
+        return self
+
+
+class ToolCallLimitBlock(StrictBlock):
+    tool_name: ModelText | None = None
+    run_limit: PositiveCallLimit | None = None
+    thread_limit: PositiveCallLimit | None = None
+    exit_behavior: ToolCallLimitExitBehavior = "continue"
+
+    @model_validator(mode="after")
+    def validate_limits(self) -> "ToolCallLimitBlock":
+        if self.run_limit is None and self.thread_limit is None:
+            raise ValueError("run_limit or thread_limit must be configured")
+        if (
+            self.run_limit is not None
+            and self.thread_limit is not None
+            and self.run_limit > self.thread_limit
+        ):
+            raise ValueError("run_limit must be less than or equal to thread_limit")
+        return self
+
+
 class SystemPromptBlock(StrictBlock):
     system_prompt: Annotated[str, Field(min_length=1)]
 
@@ -941,6 +977,8 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "custom-middleware": CustomMiddlewareBlock,
     "agent-event-output": AgentEventOutputBlock,
     "exception-retry": ExceptionRetryBlock,
+    "model-call-limit": ModelCallLimitBlock,
+    "tool-call-limit": ToolCallLimitBlock,
     "subagent": SubagentBlock,
     "summarization": SummarizationBlock,
     "prompt-caching": PromptCachingBlock,

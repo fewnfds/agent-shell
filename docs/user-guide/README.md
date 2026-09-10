@@ -1,6 +1,6 @@
 # Agent Shell 用户指南
 
-Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration（基于 Deep Agents runtime），并把 `is_model_entry=true` 的 Main Agent，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow 暴露为 OpenAI-compatible model。
+Agent Shell 通过管理台组合 Workflow、Main Agent/Subagent 与 Component configuration，并以 LangChain Agent、Deep Agents 公共组件和 LangGraph runtime 执行；`is_model_entry=true` 的 Main Agent，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow 会暴露为 OpenAI-compatible model。
 
 [AI Workflow 编写指南](ai-guide/README.md)是 AI 或自动化程序的索引，下面的详细页面按任务领域展开。
 

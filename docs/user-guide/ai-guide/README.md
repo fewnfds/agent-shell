@@ -17,7 +17,7 @@
 
 Catalog key、template revision、UUID、Node handle、Model/MCP Connection、Model/MCP Mapping 和当前设置必须从实例读取。不要从示例或模型记忆猜测动态值。
 
-Agent Shell 使用 LangGraph 和 Deep Agents，但只提供已经完成产品闭环的能力。官方框架支持某项功能，不代表 Agent Shell 当前 Catalog 已经提供该功能。
+Agent Shell 使用 LangChain、LangGraph 和 Deep Agents 公共组件，但只提供已经完成产品闭环的能力。官方框架支持某项功能，不代表 Agent Shell 当前 Catalog 已经提供该功能。
 
 【建议】用户为执行配置任务的 AI 客户端安装或连接 [LangChain Docs MCP](https://docs.langchain.com/mcp)，用它查询 LangChain、LangGraph 和 Deep Agents 的概念指南、操作说明与示例。查询结果按上述事实优先级与当前实例 Catalog、项目源码 contract 和稳定测试核对。
 
@@ -65,7 +65,7 @@ Model Connection 是当前实例私有资源。Model Requirement 是可迁移的
 
 MCP Connection 也是当前实例私有资源。Repository-owned MCP Requirement 保存稳定 namespace，MCP Mapping 把它绑定到本机 MCP Connection；Main Agent、Subagent 和 Command 再通过各自的 ordered `mcp_refs` 选择可用 Tool。
 
-Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次完整 Deep Agents Agent loop，Component 为 Agent、Command 或 output projection 提供配置。
+Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次由 LangChain 执行、按配置装配 Deep Agents 公共组件的完整 Agent loop，Component 为 Agent、Command 或 output projection 提供配置。
 
 ## 4. 开始前形成任务记录
 

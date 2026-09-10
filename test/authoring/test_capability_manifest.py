@@ -17,6 +17,8 @@ from agent_shell.contracts import (
     AgentEventOutputBlock,
     BLOCK_MODELS,
     FilesystemToolsBlock,
+    ModelCallLimitBlock,
+    ToolCallLimitBlock,
 )
 from agent_shell.workflow_event_output import WorkflowEventOutputBlock
 
@@ -33,6 +35,8 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
         "custom-middleware",
         "agent-event-output",
         "exception-retry",
+        "model-call-limit",
+        "tool-call-limit",
         "subagent",
         "summarization",
         "prompt-caching",
@@ -56,6 +60,10 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
     assert manifests["exception-retry"].subagent_overrideable is True
     assert manifests["exception-retry"].subagent_policy == "inherit"
     assert manifests["exception-retry"].tool_names == ()
+    assert manifests["model-call-limit"].subagent_overrideable is True
+    assert manifests["model-call-limit"].subagent_policy == "inherit"
+    assert manifests["tool-call-limit"].subagent_overrideable is True
+    assert manifests["tool-call-limit"].subagent_policy == "inherit"
     assert manifests["subagent"].subagent_overrideable is False
     assert manifests["subagent"].subagent_policy == "top-level-only"
     assert manifests["summarization"].subagent_overrideable is True
@@ -64,6 +72,32 @@ def test_manifest_matches_current_blocks_and_form_order() -> None:
     assert manifests["prompt-caching"].subagent_policy == "inherit"
     assert manifests["todo-list"].subagent_overrideable is True
     assert manifests["todo-list"].tool_names == ("write_todos",)
+
+
+def test_call_limit_blocks_enforce_the_official_constructor_constraints() -> None:
+    assert ModelCallLimitBlock(
+        name="Model calls",
+        run_limit=5,
+    ).exit_behavior == "end"
+    assert ToolCallLimitBlock(
+        name="Tool calls",
+        thread_limit=20,
+    ).exit_behavior == "continue"
+
+    for payload in (
+        {"name": "Missing model limit"},
+        {"name": "Invalid model limit", "run_limit": 0},
+    ):
+        with pytest.raises(ValueError):
+            ModelCallLimitBlock.model_validate(payload)
+    for payload in (
+        {"name": "Missing tool limit"},
+        {"name": "Invalid tool limit", "thread_limit": 0},
+        {"name": "Reversed limits", "run_limit": 5, "thread_limit": 4},
+        {"name": "Blank tool name", "run_limit": 1, "tool_name": "  "},
+    ):
+        with pytest.raises(ValueError):
+            ToolCallLimitBlock.model_validate(payload)
 
 
 def test_manifest_rejects_invalid_catalog_structure() -> None:

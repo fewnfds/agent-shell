@@ -14,6 +14,8 @@
 | Custom Middleware | 定义一个 LangChain Middleware | 通过有序引用装配 | Subagent 独立有序引用 |
 | Agent Event Output | 用文件化 Python 扩展把 v3 Agent 事件投影为响应文本 | 必选 | 只用于顶层 Main Agent |
 | 异常重试 | Provider 或 ModelRetryMiddleware 重试 | 可选 | 继承、替换或关闭 |
+| 模型调用限制 | `ModelCallLimitMiddleware` 的 Run/Thread 模型调用上限 | 可选 | 继承、替换或关闭 |
+| 工具调用限制 | `ToolCallLimitMiddleware` 的全局或指定 Tool 调用上限 | 可选 | 继承、替换或关闭 |
 | Subagent Delegation | synchronous Subagent 的提示与 `task` 说明 | 可选 | 只用于 top-level Main Agent |
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
 | Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
@@ -33,9 +35,11 @@ Custom Middleware 组件保存一个配置独占的 Python 扩展引用，并只
 
 Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由同步 `create_tool()` 返回一个 LangChain `BaseTool`。Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配多个配置；每个配置对应一个 Tool。完整 contract 见[Custom Tool](../wizard-pages/custom-tool-config.md)。
 
+Model Call Limit 与 Tool Call Limit 是两个独立的官方 middleware capability。两者都可按单次 Run 计数；Main Agent 还可依赖 checkpoint 按持久 Thread 累计。同步 isolated Subagent 每次 `task` 调用重新建立 child state，因此其 `thread_limit` 不跨 `task` 累计。未选择时不会自动启用，也不替代 LangGraph `recursion_limit`。Tool Call Limit 可以统计全部工具或一个最终 model-visible Tool name。字段与达限行为见 [Model Call Limit](../wizard-pages/model-call-limit-config.md) 和 [Tool Call Limit](../wizard-pages/tool-call-limit-config.md)。
+
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
-Main Agent 是独立 Deep Agents root graph，messages 和 private state 由其 Thread checkpoint 拥有。Workflow 通过 Command 的`runtime.context.agent_runs`创建独立 Main Agent Thread/Run 并显式读取结果。synchronous Subagent 由 Deep Agents`SubAgentMiddleware`在 current Agent loop 内调度。
+Main Agent 是通过 LangChain `create_agent()` 构造的独立 root graph，messages 和 private state 由其 Thread checkpoint 拥有。Workflow 通过 Command 的`runtime.context.agent_runs`创建独立 Main Agent Thread/Run 并显式读取结果。synchronous Subagent 由显式 Deep Agents `SubAgentMiddleware`在 current Agent loop 内调度。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 

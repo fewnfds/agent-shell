@@ -44,15 +44,15 @@ def _private_state_field_names(*state_schemas: type[object]) -> frozenset[str]:
     return frozenset(names)
 
 
-def make_subagent_middleware_override(
+def materialize_subagent_middleware(
     *,
     backend: Any,
     subagents: Sequence[dict[str, Any]],
     task_description: str | None,
     middleware: Sequence[Any],
     state_schema: type | None = None,
-) -> Any | None:
-    """Build the official same-name replacement."""
+) -> Any:
+    """Build the explicit synchronous delegation middleware."""
 
     try:
         from deepagents.middleware import SubAgentMiddleware

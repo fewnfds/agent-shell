@@ -24,7 +24,7 @@
 | 界面名称 | 含义 |
 | --- | --- |
 | Workflow | 保存 UUID、唯一名称、`enabled`、`is_model_entry`、可选 Workflow Event Output、current Graph document/layout 与运行约束的产品实体；运行时编译为 Graph；已启用的模型入口 Workflow 发布到 `/compat/openai/v1/models`，全部 enabled Workflow 都可被其他 Run 调用 |
-| Main Agent | 完整Deep Agents assembly和Agent Server root graph，可直接运行或由Command启动 |
+| Main Agent | 由 LangChain `create_agent()` 和显式 middleware assembly 构造的 Agent Server root graph，可直接运行或由 Command 启动 |
 | Configuration Repository / 配置仓库 | 一套可整体切换的 Component、Agent、Workflow 配置及其 Python/Skill package；写入目标由 active Configuration Repository 决定 |
 | 配置库 | 使用通用列表查看和管理配置；系统组也列出实例私有、不可下载的模型连接 |
 | 模型连接 | 实例私有的 LangChain Provider、上游地址、具体 model、请求设置和 write-only API Key 配置；不属于 Configuration Repository，也不进入 Bundle |

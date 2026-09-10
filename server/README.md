@@ -18,7 +18,7 @@
 - `/api/event-feed`、`/api/runtime-diagnostics`、`/api/workflow-lifecycles`：系统日志、请求级诊断、Lifecycle catalog、监控设置与运行监控读取；
 - `/v1/models`、`/v1/chat/completions`：OpenAI-compatible 推理接口。
 
-公开推理入口接受 `is_model_entry=true` 的 Main Agent name，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow name；任何已启用 Workflow 仍能通过 Workflow Runtime Context 被其他 Run 调用。每个推理请求冻结一次配置快照，并选择 Main Agent Deep Agents root graph 或 Workflow control root graph。Main Agent 可装配同步 Subagent；Workflow 只执行 Start/Command/End，并由 Command 通过 Run facade 启动独立 Agent 或 Workflow Run。配置期完成静态校验，请求期从快照物化用户资源。
+公开推理入口接受 `is_model_entry=true` 的 Main Agent name，以及 `enabled=true` 且 `is_model_entry=true` 的 Workflow name；任何已启用 Workflow 仍能通过 Workflow Runtime Context 被其他 Run 调用。每个推理请求冻结一次配置快照，并选择 LangChain `create_agent()` 构造的 Main Agent root graph 或 Workflow control root graph。Main Agent 可装配同步 Subagent；Workflow 只执行 Start/Command/End，并由 Command 通过 Run facade 启动独立 Agent 或 Workflow Run。配置期完成静态校验，请求期从快照物化用户资源。
 Main Agent 的 `messages` 与 private state 由自己的 Thread checkpoint 持有；Workflow State 只保存 `shared_vars`。客户端续接 stateful Main Agent 会话时复用 Thread 并创建新 Run，不复用已经结束的 Run ID。
 LangGraph Dev 是 Assistant、Thread、Run、checkpoint、State/history 和 Store 的执行事实 owner。Lifecycle 只按一次客户端请求聚合全部 Run；management monitoring API 通过公共接口提供 `Lifecycle -> Thread -> Run` snapshot、Lifecycle Store、Assistant Graph、latest Thread State、history 与按需 ZIP。管理台 Main Agent 视图加入官方 Thread stream，Workflow 视图轮询 latest State；State 修改、Resume 和 time travel 不属于该入口。
 

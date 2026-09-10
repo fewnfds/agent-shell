@@ -7,18 +7,6 @@ from langchain.agents.middleware import AgentMiddleware
 from agent_shell.contracts import SummarizationBlock, SummarizationThreshold
 
 
-class _DisabledSummarizationMiddleware(AgentMiddleware):
-    @property
-    def name(self) -> str:
-        return "SummarizationMiddleware"
-
-
-def disabled_summarization_middleware() -> AgentMiddleware:
-    """Return the same-name no-op replacement for the upstream default."""
-
-    return _DisabledSummarizationMiddleware()
-
-
 def _threshold(
     value: SummarizationThreshold,
     fallback: tuple[str, int | float],
@@ -75,6 +63,5 @@ def materialize_summarization_middleware(
 
 
 __all__ = [
-    "disabled_summarization_middleware",
     "materialize_summarization_middleware",
 ]

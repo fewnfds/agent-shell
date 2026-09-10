@@ -7,18 +7,6 @@ from langchain.agents.middleware import AgentMiddleware
 from agent_shell.contracts import PromptCachingBlock
 
 
-class _DisabledAnthropicPromptCachingMiddleware(AgentMiddleware):
-    @property
-    def name(self) -> str:
-        return "AnthropicPromptCachingMiddleware"
-
-
-def disabled_prompt_caching_middleware() -> AgentMiddleware:
-    """Return the same-name no-op replacement for the upstream default."""
-
-    return _DisabledAnthropicPromptCachingMiddleware()
-
-
 def materialize_prompt_caching_middleware(
     capability: dict[str, Any],
 ) -> AgentMiddleware:
@@ -39,6 +27,5 @@ def materialize_prompt_caching_middleware(
 
 
 __all__ = [
-    "disabled_prompt_caching_middleware",
     "materialize_prompt_caching_middleware",
 ]

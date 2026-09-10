@@ -9,6 +9,7 @@ import {
   exceptionRetryAdapter,
   filesystemAdapter,
   filesystemToolsAdapter,
+  modelCallLimitAdapter,
   modelAdapter,
   promptCachingAdapter,
   skillAdapter,
@@ -16,6 +17,7 @@ import {
   summarizationAdapter,
   systemPromptAdapter,
   todoListAdapter,
+  toolCallLimitAdapter,
   type ExceptionRetryDefaults,
   type FilesystemDefaults,
   type FilesystemToolsDefaults,
@@ -35,12 +37,14 @@ import {
   FilesystemEditor,
   FilesystemToolsEditor,
   ModelEditor,
+  ModelCallLimitEditor,
   PromptCachingEditor,
   SkillEditor,
   SubagentCapabilityEditor,
   SummarizationEditor,
   SystemPromptEditor,
   TodoListEditor,
+  ToolCallLimitEditor,
   WorkflowEventOutputEditor,
 } from './index'
 
@@ -613,6 +617,26 @@ describe('dedicated block editors', () => {
     expect(editor.find('[data-editor="summarization"]').exists()).toBe(false)
     await editor.findAll('select')[1]!.setValue('1h')
     expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ ttl: '1h' })
+  })
+
+  it('uses compact field-only editors for model and tool call limits', async () => {
+    const modelEditor = mountEditor(ModelCallLimitEditor, {
+      modelValue: modelCallLimitAdapter.blank(),
+    })
+    expect(modelEditor.findAll('.card')).toHaveLength(0)
+    expect(modelEditor.findAll('input[type="number"]')).toHaveLength(2)
+    expect(modelEditor.findAll('select')).toHaveLength(1)
+    await modelEditor.get('#model-call-run-limit').setValue('6')
+    expect(modelEditor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ run_limit: 6 })
+
+    const toolEditor = mountEditor(ToolCallLimitEditor, {
+      modelValue: toolCallLimitAdapter.blank(),
+    })
+    expect(toolEditor.findAll('.card')).toHaveLength(0)
+    expect(toolEditor.findAll('input')).toHaveLength(3)
+    expect(toolEditor.findAll('select')).toHaveLength(1)
+    await toolEditor.get('#tool-call-tool-name').setValue('search')
+    expect(toolEditor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ tool_name: 'search' })
   })
 
   it('applies a Custom Tool Python package template', async () => {

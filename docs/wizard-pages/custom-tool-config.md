@@ -22,7 +22,7 @@ def create_tool() -> BaseTool:
 
 新建配置时选择一份合法用户模板或内置示例。首次保存会复制模板的完整目录；保存后，组件页列出私有包中的全部文件，点击编辑会打开共享文件管理工作区。只有源码直接 import 第三方包时才在 `requirements.txt` 逐行声明 direct dependency，重启后通过 package inspection 的 `dependency_status` 和 `requirements_fingerprint` 确认。
 
-Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配零个或多个 Custom Tool 配置。两者列表独立，不使用 capability 的 inherit/replace/disabled。运行时按列表顺序调用每个 `create_tool()`，再把得到的 Tool 列表交给 `create_deep_agent(tools=...)`；
-重复的模型可见 Tool name（包括 Filesystem 和 `task` 等默认工具）会在 Agent 构建边界被拒绝；Main Agent 使用 `tool_refs: [{"tool_id": "..."}]`，Subagent 使用 `settings.tool_refs`，各列表内的引用必须去重。
+Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配零个或多个 Custom Tool 配置。两者列表独立，不使用 capability 的 inherit/replace/disabled。运行时按列表顺序调用每个 `create_tool()`；Main Agent 将结果传给 `create_agent(tools=...)`，Subagent 将结果放入 declarative child spec。
+重复的模型可见 Tool name（包括 Filesystem 和 `task`）会在 Agent 构建边界被拒绝；Main Agent 使用 `tool_refs: [{"tool_id": "..."}]`，Subagent 使用 `settings.tool_refs`，各列表内的引用必须去重。
 
 完整 package、依赖和 ToolRuntime capability 见[编写 Agent Tool、Middleware 与 hook](../user-guide/ai-guide/04-agent-tools-middleware-hooks.md)。

@@ -1,6 +1,8 @@
 import { customMiddlewareAdapter } from './blocks/customMiddleware'
 import { customToolAdapter } from './blocks/customTool'
 import { exceptionRetryAdapter } from './blocks/exceptionRetry'
+import { modelCallLimitAdapter } from './blocks/modelCallLimit'
+import { toolCallLimitAdapter } from './blocks/toolCallLimit'
 import { filesystemAdapter } from './blocks/filesystem'
 import { filesystemToolsAdapter } from './blocks/filesystemTools'
 import { modelRequirementAdapter } from './blocks/modelRequirement'
@@ -28,6 +30,14 @@ export type {
   ExceptionRetryDefaults,
   ExceptionRetryDraft,
 } from './blocks/exceptionRetry'
+export type {
+  ModelCallLimitDraft,
+  ModelCallLimitExitBehavior,
+} from './blocks/modelCallLimit'
+export type {
+  ToolCallLimitDraft,
+  ToolCallLimitExitBehavior,
+} from './blocks/toolCallLimit'
 export type {
   FilesystemDefaults,
   FilesystemDraft,
@@ -88,6 +98,8 @@ export {
   customMiddlewareAdapter,
   customToolAdapter,
   exceptionRetryAdapter,
+  modelCallLimitAdapter,
+  toolCallLimitAdapter,
   filesystemAdapter,
   filesystemToolsAdapter,
   modelRequirementAdapter,
@@ -109,6 +121,8 @@ export const blockTypes = [
   'custom-middleware',
   'agent-event-output',
   'exception-retry',
+  'model-call-limit',
+  'tool-call-limit',
   'filesystem',
   'filesystem-tools',
   'skill',
@@ -132,6 +146,8 @@ export const blockAdapters = {
   'custom-middleware': customMiddlewareAdapter,
   'agent-event-output': agentEventOutputAdapter,
   'exception-retry': exceptionRetryAdapter,
+  'model-call-limit': modelCallLimitAdapter,
+  'tool-call-limit': toolCallLimitAdapter,
   filesystem: filesystemAdapter,
   'filesystem-tools': filesystemToolsAdapter,
   skill: skillAdapter,

@@ -33,7 +33,7 @@ MCP Connection
   -> Main Agent / Subagent ordered mcp_refs
 ```
 
-Main Agent还可以引用System Prompt、Todo List、Exception Retry、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 synchronous Subagent。直接请求或 Command facade 启动 Run 时物化该 Main Agent 的完整 assembly。
+Main Agent还可以引用System Prompt、Todo List、Exception Retry、Model Call Limit、Tool Call Limit、Summarization、Prompt Caching、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 synchronous Subagent。直接请求或 Command facade 启动 Run 时物化该 Main Agent 的完整 assembly。
 
 ## 2. Model Requirement
 
@@ -253,11 +253,15 @@ synchronous Subagent：Main Agent 通过 `task` Tool 同步委派给 specialist�
 
 Summarization：在 Agent loop 中按配置管理 context summary。
 
-Exception Retry：按配置处理可重试 Provider 或 Tool error。
+Exception Retry：按配置处理可重试的模型 Provider 调用错误；不重试 Tool error。
+
+Model Call Limit：限制单次 Run 或同一持久 Thread 的模型调用次数。
+
+Tool Call Limit：限制全部 Tool 或一个最终 model-visible Tool name 在单次 Run 或 Thread 内的调用次数。
 
 Prompt Caching：为支持该能力的 Provider 和 model 配置显式 caching 参数。
 
-required flag、inheritance 和 override policy 以 `/agent-shell/api/catalog` 为准。详细字段见[代理组件](../capabilities.md)。
+Call Limit 未引用时不自动生效，也不改变 System Settings 的 `recursion_limit`。required flag、inheritance 和 override policy 以 `/agent-shell/api/catalog` 为准。详细字段见[代理组件](../capabilities.md)。
 
 ## 8. Filesystem
 

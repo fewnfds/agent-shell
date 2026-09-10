@@ -7,7 +7,7 @@ from langchain.agents.middleware.types import ModelRequest, ModelResponse
 
 
 class EmptySystemMessageMiddleware(AgentMiddleware):
-    """Omit Deep Agents' empty authored system message from provider requests."""
+    """Omit the declarative child helper's empty prompt from provider requests."""
 
     @staticmethod
     def _prepare(request: ModelRequest) -> ModelRequest:

@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from agent_shell.capability_manifest import (
     CAPABILITY_BY_TYPE,
     CAPABILITY_MANIFESTS,
-    DEFAULT_MIDDLEWARE_CAPABILITY_TYPES,
     FILESYSTEM_TOOL_NAMES,
 )
 from agent_shell.contracts import (
@@ -971,9 +970,6 @@ class ConfigurationValidationService:
                     path_prefix="capability_refs.agent-event-output.python_package",
                 )
             )
-        disabled_capabilities = frozenset(
-            DEFAULT_MIDDLEWARE_CAPABILITY_TYPES.difference(references)
-        )
         tool_blocks, tool_issues = self._load_tool_references(
             list(main_agent.get("tool_refs", [])),
             scope="main_agent",
@@ -1061,18 +1057,12 @@ class ConfigurationValidationService:
                     or CAPABILITY_BY_TYPE[capability_type].subagent_policy == "inherit"
                 )
             }
-            child_disabled_capabilities = set(
-                disabled_capabilities & DEFAULT_MIDDLEWARE_CAPABILITY_TYPES
-            )
             for selection in settings["capability_overrides"]:
                 capability_type = selection["type"]
                 if selection["mode"] == "replace":
                     child_references[capability_type] = selection["block_id"]
-                    child_disabled_capabilities.discard(capability_type)
                 elif selection["mode"] == "disabled":
                     child_references.pop(capability_type, None)
-                    if capability_type in DEFAULT_MIDDLEWARE_CAPABILITY_TYPES:
-                        child_disabled_capabilities.add(capability_type)
 
             child_middleware_blocks, child_middleware_issues = (
                 self._load_middleware_references(
@@ -1140,7 +1130,6 @@ class ConfigurationValidationService:
                 middleware_blocks=child_middleware_blocks,
                 mcp_references=child_mcp_references,
                 filesystem_mode=child_filesystem_mode,
-                disabled_capabilities=frozenset(child_disabled_capabilities),
             )
             resolved_edges.append(ResolvedSubagentEdge(target_key=profile_id))
 
@@ -1180,7 +1169,6 @@ class ConfigurationValidationService:
             middleware_blocks=middleware_blocks,
             mcp_references=mcp_references,
             filesystem_mode=filesystem_mode,
-            disabled_capabilities=disabled_capabilities,
             subagents=resolved_subagents,
             subagent_nodes=subagent_nodes,
         )

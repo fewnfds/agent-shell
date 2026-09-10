@@ -1,6 +1,6 @@
 # 编写 Agent Tool、Middleware 与 hook
 
-本章说明 Main Agent 和 Subagent 怎样装配配置独占的 Custom Tool 与 Custom Middleware，以及这些 Python package 怎样进入 Deep Agents 的 model-tool loop。
+本章说明 Main Agent 和 Subagent 怎样装配配置独占的 Custom Tool 与 Custom Middleware，以及这些 Python package 怎样进入 LangChain 的 model-tool loop。
 
 完成结果是已经创建、编辑并装配到目标 Agent 的 Tool 或 Middleware，并且对应代码路径经过 validation 和真实 invocation。
 

@@ -5,18 +5,6 @@ from typing import Any
 from langchain.agents.middleware import AgentMiddleware
 
 
-class _DisabledTodoListMiddleware(AgentMiddleware):
-    @property
-    def name(self) -> str:
-        return "TodoListMiddleware"
-
-
-def disabled_todo_list_middleware() -> AgentMiddleware:
-    """Return a same-name replacement for profile-provided Todo middleware."""
-
-    return _DisabledTodoListMiddleware()
-
-
 def materialize_todo_list_middleware(capability: dict[str, Any]) -> AgentMiddleware:
     """Build the configured LangChain Todo middleware for one profile."""
 
@@ -31,6 +19,5 @@ def materialize_todo_list_middleware(capability: dict[str, Any]) -> AgentMiddlew
 
 
 __all__ = [
-    "disabled_todo_list_middleware",
     "materialize_todo_list_middleware",
 ]

@@ -12,7 +12,6 @@ from pydantic import SecretStr
 from agent_shell import __version__
 from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
 from agent_shell.python_packages.dependencies import dependency_metadata
-from agent_shell.capability_manifest import FILESYSTEM_TOOL_NAMES
 from agent_shell.contracts import (
     AgentEventOutputBlock,
     FilesystemBlock,
@@ -30,29 +29,28 @@ from agent_shell.runtime.capabilities.exception_retry import (
     materialize_exception_retry,
     model_block_with_retry_overrides,
 )
+from agent_shell.runtime.capabilities.call_limits import (
+    materialize_model_call_limit_middleware,
+    materialize_tool_call_limit_middleware,
+)
 from agent_shell.runtime.capabilities.prompt_caching import (
-    disabled_prompt_caching_middleware,
     materialize_prompt_caching_middleware,
 )
 from agent_shell.runtime.capabilities.summarization import (
-    disabled_summarization_middleware,
     materialize_summarization_middleware,
 )
 from agent_shell.runtime.capabilities.todo_list import (
-    disabled_todo_list_middleware,
     materialize_todo_list_middleware,
 )
 from agent_shell.runtime.agent_compilation import (
-    MaterializedAgentProfile,
+    MaterializedAgentResources,
+    assemble_agent_middleware,
     configuration_error,
-    construct_deep_agent,
+    construct_agent,
     materialize_patch_tool_calls_middleware,
     reported_error,
     validate_middleware_names,
     validate_model_visible_tool_names,
-)
-from agent_shell.runtime.deepagents_compatibility import (
-    EmptySystemMessageMiddleware,
 )
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError
@@ -261,7 +259,7 @@ class AgentBuilder:
 
         return await asyncio.to_thread(self.resolve, main_agent_id)
 
-    def _materialize_profile(
+    def _materialize_agent_resources(
         self,
         references: dict[str, str],
         selected_blocks: dict[str, dict[str, Any]],
@@ -275,9 +273,8 @@ class AgentBuilder:
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
-        disabled_capabilities: frozenset[str] = frozenset(),
         mcp_references: tuple[ResolvedMcpReference, ...] = (),
-    ) -> MaterializedAgentProfile:
+    ) -> MaterializedAgentResources:
         requirement_id = references.get("model-requirement")
         if not requirement_id or "model-requirement" not in selected_blocks:
             raise configuration_error(
@@ -387,11 +384,11 @@ class AgentBuilder:
                     path="mcp_refs",
                 ) from exc
 
-        middleware: list[Any] = []
+        todo_middleware = None
         todo = selected_blocks.get("todo-list")
         if todo is not None:
             try:
-                middleware.append(materialize_todo_list_middleware(todo))
+                todo_middleware = materialize_todo_list_middleware(todo)
             except Exception as exc:
                 raise configuration_error(
                     "middleware_materialization_failed",
@@ -403,11 +400,7 @@ class AgentBuilder:
                     path="capability_refs.todo-list",
                 ) from exc
 
-        elif "todo-list" in disabled_capabilities:
-            middleware.append(disabled_todo_list_middleware())
-
         backend = None
-        skill_sources: tuple[str, ...] = ()
         filesystem = selected_blocks.get("filesystem")
         filesystem_tools = selected_blocks.get("filesystem-tools")
         skill = selected_blocks.get("_filesystem-skill-package")
@@ -483,19 +476,16 @@ class AgentBuilder:
                 ),
             ) from exc
         backend = deepagents.backend
-        middleware.extend(deepagents.middleware)
-        skill_sources = deepagents.skill_sources
+        foundation_middleware = deepagents.middleware
 
-        extra_middleware: list[Any] = []
+        summarization_middleware = None
         summarization = selected_blocks.get("summarization")
         if summarization is not None:
             try:
-                extra_middleware.append(
-                    materialize_summarization_middleware(
-                        summarization,
-                        model=model,
-                        backend=backend,
-                    )
+                summarization_middleware = materialize_summarization_middleware(
+                    summarization,
+                    model=model,
+                    backend=backend,
                 )
             except Exception as exc:
                 raise configuration_error(
@@ -507,14 +497,12 @@ class AgentBuilder:
                     owner_name=owner_name,
                     path="capability_refs.summarization",
                 ) from exc
-        elif "summarization" in disabled_capabilities:
-            extra_middleware.append(disabled_summarization_middleware())
-
+        prompt_caching_middleware = None
         prompt_caching = selected_blocks.get("prompt-caching")
         if prompt_caching is not None:
             try:
-                extra_middleware.append(
-                    materialize_prompt_caching_middleware(prompt_caching)
+                prompt_caching_middleware = materialize_prompt_caching_middleware(
+                    prompt_caching
                 )
             except Exception as exc:
                 raise configuration_error(
@@ -526,9 +514,40 @@ class AgentBuilder:
                     owner_name=owner_name,
                     path="capability_refs.prompt-caching",
                 ) from exc
-        elif "prompt-caching" in disabled_capabilities:
-            extra_middleware.append(disabled_prompt_caching_middleware())
-
+        model_call_limit_middleware = None
+        model_call_limit = selected_blocks.get("model-call-limit")
+        if model_call_limit is not None:
+            try:
+                model_call_limit_middleware = (
+                    materialize_model_call_limit_middleware(model_call_limit)
+                )
+            except Exception as exc:
+                raise configuration_error(
+                    "middleware_materialization_failed",
+                    "The selected model-call-limit configuration could not be constructed.",
+                    status_code=422,
+                    scope=scope,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="capability_refs.model-call-limit",
+                ) from exc
+        tool_call_limit_middleware = None
+        tool_call_limit = selected_blocks.get("tool-call-limit")
+        if tool_call_limit is not None:
+            try:
+                tool_call_limit_middleware = (
+                    materialize_tool_call_limit_middleware(tool_call_limit)
+                )
+            except Exception as exc:
+                raise configuration_error(
+                    "middleware_materialization_failed",
+                    "The selected tool-call-limit configuration could not be constructed.",
+                    status_code=422,
+                    scope=scope,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="capability_refs.tool-call-limit",
+                ) from exc
         package_middleware: tuple[Any, ...] = ()
         if self._middleware_runtime is not None:
             try:
@@ -564,10 +583,8 @@ class AgentBuilder:
             if exception_retry is not None
             else None
         )
-        return MaterializedAgentProfile(
+        return MaterializedAgentResources(
             model=model,
-            model_provider=str(model_block["provider"]),
-            model_name=str(model_block["model"]),
             tool_choice=model_block.get("tool_choice"),
             response_format=model_block.get("response_format"),
             model_settings=dict(model_block.get("model_settings") or {}),
@@ -576,12 +593,14 @@ class AgentBuilder:
                 system_prompt["system_prompt"] if system_prompt is not None else None
             ),
             tools=tuple(tools),
-            middleware=tuple(middleware),
+            foundation_middleware=foundation_middleware,
+            todo_middleware=todo_middleware,
+            summarization_middleware=summarization_middleware,
+            model_call_limit_middleware=model_call_limit_middleware,
+            tool_call_limit_middleware=tool_call_limit_middleware,
+            prompt_caching_middleware=prompt_caching_middleware,
             package_middleware=package_middleware,
-            extra_middleware=tuple(extra_middleware),
             backend=backend,
-            skill_sources=skill_sources,
-            permissions=deepagents.permissions,
             workspace=deepagents.workspace,
         )
 
@@ -684,7 +703,7 @@ class AgentBuilder:
             runtime_root=self._runtime_dir,
         )
         self._middleware_runtime = middleware_runtime
-        materialized = self._materialize_profile(
+        materialized = self._materialize_agent_resources(
             references,
             selected_blocks,
             filesystem_mode=assembly.filesystem_mode,
@@ -696,7 +715,6 @@ class AgentBuilder:
             mapped_directory_paths_by_filesystem=(
                 mapped_directory_paths_by_filesystem
             ),
-            disabled_capabilities=assembly.disabled_capabilities,
             mcp_references=assembly.mcp_references,
         )
         constructor: dict[str, object] = {
@@ -712,40 +730,27 @@ class AgentBuilder:
             constructor["tools"] = list(materialized.tools)
         if materialized.response_format is not None:
             constructor["response_format"] = materialized.response_format
-        if materialized.backend is not None:
-            constructor["backend"] = materialized.backend
-        if materialized.permissions:
-            constructor["permissions"] = list(materialized.permissions)
-        if materialized.skill_sources:
-            constructor["skills"] = list(materialized.skill_sources)
-
-        middleware = [
-            ToolErrorBoundaryMiddleware(),
-            *materialized.middleware,
-            materialize_patch_tool_calls_middleware(),
-        ]
+        model_request_settings_middleware = None
         if materialized.tool_choice is not None or materialized.model_settings:
-            middleware.append(
-                make_model_request_settings_middleware(
-                    tool_choice=materialized.tool_choice,
-                    model_settings=materialized.model_settings,
-                )
+            model_request_settings_middleware = make_model_request_settings_middleware(
+                tool_choice=materialized.tool_choice,
+                model_settings=materialized.model_settings,
             )
         input_state: dict[str, Any] = {
             "messages": [],
         }
 
-        compiled_subagents: list[dict[str, Any]] = []
+        subagent_specs: list[dict[str, Any]] = []
         subagent_initial_files: dict[str, Any] = {}
         task_description_override: str | None = None
         if resolved_subagents:
             from agent_shell.runtime.subagents import build_subagent_specs
 
-            compiled_subagents = build_subagent_specs(
+            subagent_specs = build_subagent_specs(
                 roots=resolved_subagents,
                 nodes=assembly.subagent_nodes,
                 workspace=materialized.workspace,
-                materialize_profile=self._materialize_profile,
+                materialize_resources=self._materialize_agent_resources,
                 workflow_node_id=workflow_node_id,
                 mapped_directory_paths_by_filesystem=(
                     mapped_directory_paths_by_filesystem
@@ -763,13 +768,6 @@ class AgentBuilder:
                 constructor["system_prompt"] = "\n\n".join(
                     part for part in (existing_prompt, delegation_instruction) if part
                 )
-            constructor["subagents"] = compiled_subagents
-
-        middleware.extend(materialized.extra_middleware)
-        exception_retry_runtime = materialized.exception_retry
-        middleware.append(ProviderErrorBoundaryMiddleware())
-        if exception_retry_runtime is not None:
-            middleware.extend(exception_retry_runtime.after_provider_boundary)
         initial_files = dict(materialized.workspace.initial_files)
         for path, value in subagent_initial_files.items():
             previous = initial_files.get(path)
@@ -787,45 +785,69 @@ class AgentBuilder:
         if initial_files or resolved_subagents:
             input_state["files"] = initial_files
 
-        if initial_files:
-            middleware.append(AgentInitialFilesMiddleware(initial_files))
+        initial_files_middleware = (
+            AgentInitialFilesMiddleware(initial_files) if initial_files else None
+        )
+        exception_retry_middleware = (
+            materialized.exception_retry.after_provider_boundary
+            if materialized.exception_retry is not None
+            else ()
+        )
+        patch_tool_calls_middleware = materialize_patch_tool_calls_middleware()
+        tool_error_boundary = ToolErrorBoundaryMiddleware()
+        provider_error_boundary = ProviderErrorBoundaryMiddleware()
+        middleware_without_subagent = assemble_agent_middleware(
+            foundation=materialized.foundation_middleware,
+            subagent=None,
+            summarization=materialized.summarization_middleware,
+            patch_tool_calls=patch_tool_calls_middleware,
+            model_call_limit=materialized.model_call_limit_middleware,
+            tool_call_limit=materialized.tool_call_limit_middleware,
+            tool_error_boundary=tool_error_boundary,
+            todo=materialized.todo_middleware,
+            model_request_settings=model_request_settings_middleware,
+            provider_error_boundary=provider_error_boundary,
+            exception_retry=exception_retry_middleware,
+            initial_files=initial_files_middleware,
+            package=materialized.package_middleware,
+            prompt_caching=materialized.prompt_caching_middleware,
+        )
 
         try:
-            if compiled_subagents:
+            subagent_middleware = None
+            if subagent_specs:
                 from agent_shell.runtime.subagent_middleware import (
-                    make_subagent_middleware_override,
+                    materialize_subagent_middleware,
                 )
 
-                replacement = make_subagent_middleware_override(
+                subagent_middleware = materialize_subagent_middleware(
                     backend=materialized.backend,
-                    subagents=compiled_subagents,
+                    subagents=subagent_specs,
                     task_description=task_description_override,
-                    middleware=(*middleware, *materialized.package_middleware),
+                    middleware=middleware_without_subagent,
                     state_schema=AgentShellState,
                 )
-                if replacement is not None:
-                    middleware.append(replacement)
-            middleware.extend(materialized.package_middleware)
-            middleware.append(EmptySystemMessageMiddleware())
+            middleware = assemble_agent_middleware(
+                foundation=materialized.foundation_middleware,
+                subagent=subagent_middleware,
+                summarization=materialized.summarization_middleware,
+                patch_tool_calls=patch_tool_calls_middleware,
+                model_call_limit=materialized.model_call_limit_middleware,
+                tool_call_limit=materialized.tool_call_limit_middleware,
+                tool_error_boundary=tool_error_boundary,
+                todo=materialized.todo_middleware,
+                model_request_settings=model_request_settings_middleware,
+                provider_error_boundary=provider_error_boundary,
+                exception_retry=exception_retry_middleware,
+                initial_files=initial_files_middleware,
+                package=materialized.package_middleware,
+                prompt_caching=materialized.prompt_caching_middleware,
+            )
             validate_middleware_names(middleware, owner="Main Agent")
-            main_agent_middleware_names = {
-                getattr(item, "name", None) for item in middleware
-            }
             validate_model_visible_tool_names(
                 tools=materialized.tools,
                 middleware=middleware,
                 owner="Main Agent",
-                default_tool_names=(
-                    ()
-                    if "FilesystemMiddleware" in main_agent_middleware_names
-                    else FILESYSTEM_TOOL_NAMES
-                )
-                + (
-                    ("task",)
-                    if resolved_subagents
-                    and "SubAgentMiddleware" not in main_agent_middleware_names
-                    else ()
-                ),
             )
         except AgentRuntimeError as exc:
             raise reported_error(
@@ -839,10 +861,8 @@ class AgentBuilder:
         if middleware:
             constructor["middleware"] = middleware
 
-        graph = construct_deep_agent(
+        graph = construct_agent(
             constructor,
-            model_provider=materialized.model_provider,
-            model_name=materialized.model_name,
             scope="main_agent",
             owner_id=main_agent_id,
             owner_name=main_agent_name,

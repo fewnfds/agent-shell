@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from deepagents import create_deep_agent
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -173,10 +172,10 @@ def test_official_model_retry_handles_transient_provider_failure() -> None:
     assert output["messages"][-1].text == "done"
 
 
-def test_deep_agent_uses_official_model_retry_middleware() -> None:
+def test_langchain_agent_uses_official_model_retry_middleware() -> None:
     model = TransientOnceModel(responses=[AIMessage(content="done")])
     runtime = materialize_exception_retry(capability())
-    graph = create_deep_agent(
+    graph = create_agent(
         model=model,
         middleware=[
             ProviderErrorBoundaryMiddleware(),

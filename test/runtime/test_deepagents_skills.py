@@ -127,7 +127,7 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
         filesystem_mode="composite",
         skills_dir=skills_dir,
     )
-    disabled_capabilities = build_deepagents_capabilities(
+    capabilities_without_skill_prompt = build_deepagents_capabilities(
         filesystem,
         disabled_skill,
         filesystem_mode="composite",
@@ -136,7 +136,7 @@ def test_skill_prompt_supports_default_override_and_disabled_modes(tmp_path: Pat
 
     assert default_capabilities.middleware[0].system_prompt_template != custom_prompt
     assert custom_capabilities.middleware[0].system_prompt_template == custom_prompt
-    assert disabled_capabilities.middleware[0].system_prompt_template is None
+    assert capabilities_without_skill_prompt.middleware[0].system_prompt_template is None
 
 def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
     tmp_path: Path,

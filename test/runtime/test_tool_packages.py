@@ -46,7 +46,6 @@ def _assembly(blocks: tuple[dict, ...]) -> StaticAssembly:
         references={},
         blocks={},
         filesystem_mode="composite",
-        disabled_capabilities=frozenset(),
         subagents=(),
         subagent_nodes={},
         tool_blocks=blocks,

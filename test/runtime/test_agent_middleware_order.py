@@ -4,16 +4,19 @@ import asyncio
 from types import SimpleNamespace
 from typing import Annotated
 
-from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import PrivateStateAttr
 from langgraph.store.memory import InMemoryStore
 from typing_extensions import NotRequired, TypedDict
 
-from agent_shell.runtime import agent_builder, subagent_middleware
+from agent_shell.runtime import agent_builder, subagent_middleware, subagents
 from agent_shell.runtime.agent_builder import AgentBuilder
-from agent_shell.runtime.agent_compilation import MaterializedAgentProfile
-from agent_shell.runtime.deepagents_compatibility import (
-    EmptySystemMessageMiddleware,
+from agent_shell.runtime.agent_compilation import (
+    MaterializedAgentResources,
+    assemble_agent_middleware,
+)
+from agent_shell.runtime.capabilities.call_limits import (
+    materialize_model_call_limit_middleware,
+    materialize_tool_call_limit_middleware,
 )
 from agent_shell.runtime.state import AgentShellState
 from agent_shell.validation.assembly import (
@@ -23,66 +26,93 @@ from agent_shell.validation.assembly import (
 )
 from agent_shell.validation.models import ValidationReport
 
+
 def _middleware(name: str, *, state_schema: object | None = None) -> SimpleNamespace:
     return SimpleNamespace(name=name, tools=(), state_schema=state_schema)
 
 
-def _profile(
+def _resources(
     *,
-    core: object,
-    extra: object,
+    foundation: tuple[object, ...],
+    todo: object,
+    summarization: object,
+    model_call_limit: object,
+    tool_call_limit: object,
+    prompt_caching: object,
     retry: object,
     packages: tuple[object, ...],
-) -> MaterializedAgentProfile:
-    return MaterializedAgentProfile(
+    workspace: object,
+) -> MaterializedAgentResources:
+    return MaterializedAgentResources(
         model=object(),
-        model_provider="openai",
-        model_name="test-model",
-        tool_choice=None,
+        tool_choice="auto",
         response_format=None,
         model_settings={"temperature": 0},
         exception_retry=SimpleNamespace(after_provider_boundary=(retry,)),
         system_prompt=None,
         tools=(),
-        middleware=(core,),
+        foundation_middleware=foundation,
+        todo_middleware=todo,
+        summarization_middleware=summarization,
+        model_call_limit_middleware=model_call_limit,
+        tool_call_limit_middleware=tool_call_limit,
+        prompt_caching_middleware=prompt_caching,
         package_middleware=packages,
-        extra_middleware=(extra,),
         backend=object(),
-        skill_sources=(),
-        permissions=(),
-        workspace=SimpleNamespace(initial_files={}),
+        workspace=workspace,
     )
 
 
-def test_empty_system_guard_follows_package_middleware_for_main_and_subagent(
+def test_main_and_child_use_the_shell_owned_middleware_slots(
     tmp_path,
     monkeypatch,
 ) -> None:
-    main_core = _middleware("MainCore")
-    main_extra = _middleware("MainBeforeAgent")
+    main_skill = _middleware("MainSkills")
+    main_filesystem = _middleware("MainFilesystem")
+    main_todo = _middleware("MainTodo")
+    main_summarization = _middleware("MainSummarization")
+    main_model_call_limit = _middleware("MainModelCallLimit")
+    main_tool_call_limit = _middleware("MainToolCallLimit")
+    main_prompt_caching = _middleware("MainPromptCaching")
     main_retry = _middleware("MainRetry")
     main_packages = (
         _middleware("MainPackageOne", state_schema=object),
         _middleware("MainPackageTwo"),
     )
-    child_core = _middleware("ChildCore")
-    child_extra = _middleware("ChildBeforeAgent")
+    main_resources = _resources(
+        foundation=(main_skill, main_filesystem),
+        todo=main_todo,
+        summarization=main_summarization,
+        model_call_limit=main_model_call_limit,
+        tool_call_limit=main_tool_call_limit,
+        prompt_caching=main_prompt_caching,
+        retry=main_retry,
+        packages=main_packages,
+        workspace=SimpleNamespace(initial_files={"/seed.txt": "seed"}),
+    )
+
+    child_skill = _middleware("ChildSkills")
+    child_filesystem = _middleware("ChildFilesystem")
+    child_todo = _middleware("ChildTodo")
+    child_summarization = _middleware("ChildSummarization")
+    child_model_call_limit = _middleware("ChildModelCallLimit")
+    child_tool_call_limit = _middleware("ChildToolCallLimit")
+    child_prompt_caching = _middleware("ChildPromptCaching")
     child_retry = _middleware("ChildRetry")
     child_packages = (
         _middleware("ChildPackageOne"),
         _middleware("ChildPackageTwo"),
     )
-    main_profile = _profile(
-        core=main_core,
-        extra=main_extra,
-        retry=main_retry,
-        packages=main_packages,
-    )
-    child_profile = _profile(
-        core=child_core,
-        extra=child_extra,
+    child_resources = _resources(
+        foundation=(child_skill, child_filesystem),
+        todo=child_todo,
+        summarization=child_summarization,
+        model_call_limit=child_model_call_limit,
+        tool_call_limit=child_tool_call_limit,
+        prompt_caching=child_prompt_caching,
         retry=child_retry,
         packages=child_packages,
+        workspace=SimpleNamespace(initial_files={}),
     )
 
     child = ResolvedSubagent(
@@ -116,7 +146,6 @@ def test_empty_system_guard_follows_package_middleware_for_main_and_subagent(
             },
         },
         filesystem_mode="composite",
-        disabled_capabilities=frozenset(),
         subagents=(ResolvedSubagentEdge(target_key=child.key),),
         subagent_nodes={child.key: child},
     )
@@ -138,34 +167,82 @@ def test_empty_system_guard_follows_package_middleware_for_main_and_subagent(
     )
 
     def materialize(*_args, scope: str, **_kwargs):
-        return child_profile if scope == "subagent" else main_profile
+        return child_resources if scope == "subagent" else main_resources
 
-    monkeypatch.setattr(builder, "_materialize_profile", materialize)
-    middleware_runtime = SimpleNamespace()
+    monkeypatch.setattr(builder, "_materialize_agent_resources", materialize)
     monkeypatch.setattr(
         agent_builder.MiddlewarePackageRuntime,
         "from_assembly",
-        classmethod(lambda _cls, *_args, **_kwargs: middleware_runtime),
+        classmethod(lambda _cls, *_args, **_kwargs: SimpleNamespace()),
     )
+
+    main_patch = _middleware("MainPatch")
+    main_tool_boundary = _middleware("MainToolBoundary")
+    main_settings = _middleware("MainModelSettings")
+    main_provider_boundary = _middleware("MainProviderBoundary")
+    main_initial_files = _middleware("MainInitialFiles")
+    child_patch = _middleware("ChildPatch")
+    child_tool_boundary = _middleware("ChildToolBoundary")
+    child_settings = _middleware("ChildModelSettings")
+    child_provider_boundary = _middleware("ChildProviderBoundary")
+    child_empty_prompt = _middleware("ChildEmptyPrompt")
+    delegation = _middleware("SubAgentMiddleware")
+
+    monkeypatch.setattr(
+        agent_builder, "materialize_patch_tool_calls_middleware", lambda: main_patch
+    )
+    monkeypatch.setattr(
+        agent_builder, "ToolErrorBoundaryMiddleware", lambda: main_tool_boundary
+    )
+    monkeypatch.setattr(
+        agent_builder,
+        "make_model_request_settings_middleware",
+        lambda **_kwargs: main_settings,
+    )
+    monkeypatch.setattr(
+        agent_builder, "ProviderErrorBoundaryMiddleware", lambda: main_provider_boundary
+    )
+    monkeypatch.setattr(
+        agent_builder,
+        "AgentInitialFilesMiddleware",
+        lambda _files: main_initial_files,
+    )
+    monkeypatch.setattr(
+        subagents, "materialize_patch_tool_calls_middleware", lambda: child_patch
+    )
+    monkeypatch.setattr(
+        subagents, "ToolErrorBoundaryMiddleware", lambda: child_tool_boundary
+    )
+    monkeypatch.setattr(
+        subagents,
+        "make_model_request_settings_middleware",
+        lambda **_kwargs: child_settings,
+    )
+    monkeypatch.setattr(
+        subagents, "ProviderErrorBoundaryMiddleware", lambda: child_provider_boundary
+    )
+    monkeypatch.setattr(
+        subagents, "EmptySystemMessageMiddleware", lambda: child_empty_prompt
+    )
+
     captured: dict[str, object] = {}
+
+    def capture_subagent(*, subagents, middleware, **_kwargs):
+        captured["subagent_specs"] = subagents
+        captured["delegation_input"] = list(middleware)
+        return delegation
+
+    monkeypatch.setattr(
+        subagent_middleware,
+        "materialize_subagent_middleware",
+        capture_subagent,
+    )
 
     def capture_constructor(constructor, **_kwargs):
         captured["constructor"] = constructor
         return object()
 
-    monkeypatch.setattr(agent_builder, "construct_deep_agent", capture_constructor)
-
-    delegation = _middleware("SubAgentMiddleware")
-
-    def capture_delegation(*, middleware, **_kwargs):
-        captured["delegation_input"] = tuple(middleware)
-        return delegation
-
-    monkeypatch.setattr(
-        subagent_middleware,
-        "make_subagent_middleware_override",
-        capture_delegation,
-    )
+    monkeypatch.setattr(agent_builder, "construct_agent", capture_constructor)
 
     asyncio.run(
         builder.build(
@@ -175,23 +252,115 @@ def test_empty_system_guard_follows_package_middleware_for_main_and_subagent(
     )
 
     constructor = captured["constructor"]
-    main_middleware = constructor["middleware"]
-    child_middleware = constructor["subagents"][0]["middleware"]
-    delegation_input = captured["delegation_input"]
+    assert set(constructor) == {
+        "model",
+        "name",
+        "state_schema",
+        "context_schema",
+        "store",
+        "middleware",
+    }
+    assert constructor["state_schema"] is AgentShellState
+    assert constructor["middleware"] == [
+        main_skill,
+        main_filesystem,
+        delegation,
+        main_summarization,
+        main_patch,
+        main_model_call_limit,
+        main_tool_call_limit,
+        main_tool_boundary,
+        main_todo,
+        main_settings,
+        main_provider_boundary,
+        main_retry,
+        main_initial_files,
+        *main_packages,
+        main_prompt_caching,
+    ]
+    assert captured["delegation_input"] == [
+        main_skill,
+        main_filesystem,
+        main_summarization,
+        main_patch,
+        main_model_call_limit,
+        main_tool_call_limit,
+        main_tool_boundary,
+        main_todo,
+        main_settings,
+        main_provider_boundary,
+        main_retry,
+        main_initial_files,
+        *main_packages,
+        main_prompt_caching,
+    ]
 
-    assert main_middleware[-3:-1] == list(main_packages)
-    assert child_middleware[-3:-1] == list(child_packages)
-    assert isinstance(main_middleware[-1], EmptySystemMessageMiddleware)
-    assert isinstance(child_middleware[-1], EmptySystemMessageMiddleware)
-    assert main_middleware.index(main_extra) < main_middleware.index(main_packages[0])
-    assert child_middleware.index(child_extra) < child_middleware.index(child_packages[0])
-    assert main_middleware.index(main_retry) < main_middleware.index(main_packages[0])
-    assert child_middleware.index(child_retry) < child_middleware.index(child_packages[0])
-    assert main_middleware.index(delegation) < main_middleware.index(main_packages[0])
-    assert delegation_input[-2:] == main_packages
+    child_spec = captured["subagent_specs"][0]
+    assert "permissions" not in child_spec
+    assert "runnable" not in child_spec
+    assert child_spec["middleware"] == [
+        child_skill,
+        child_filesystem,
+        child_summarization,
+        child_patch,
+        child_model_call_limit,
+        child_tool_call_limit,
+        child_tool_boundary,
+        child_todo,
+        child_settings,
+        child_provider_boundary,
+        child_retry,
+        *child_packages,
+        child_empty_prompt,
+        child_prompt_caching,
+    ]
 
 
-def test_task_description_override_keeps_shell_middleware_private_state_keys(
+def test_optional_slots_are_physically_absent() -> None:
+    foundation = _middleware("Filesystem")
+    patch = _middleware("Patch")
+    tool_boundary = _middleware("ToolBoundary")
+    provider_boundary = _middleware("ProviderBoundary")
+
+    middleware = assemble_agent_middleware(
+        foundation=(foundation,),
+        subagent=None,
+        summarization=None,
+        patch_tool_calls=patch,
+        model_call_limit=None,
+        tool_call_limit=None,
+        tool_error_boundary=tool_boundary,
+        todo=None,
+        model_request_settings=None,
+        provider_error_boundary=provider_boundary,
+    )
+
+    assert middleware == [foundation, patch, tool_boundary, provider_boundary]
+
+
+def test_call_limit_materializers_preserve_official_configuration() -> None:
+    model_limit = materialize_model_call_limit_middleware(
+        {"run_limit": 4, "thread_limit": 12, "exit_behavior": "error"}
+    )
+    tool_limit = materialize_tool_call_limit_middleware(
+        {
+            "tool_name": "search",
+            "run_limit": 2,
+            "thread_limit": 6,
+            "exit_behavior": "end",
+        }
+    )
+
+    assert model_limit.run_limit == 4
+    assert model_limit.thread_limit == 12
+    assert model_limit.exit_behavior == "error"
+    assert tool_limit.tool_name == "search"
+    assert tool_limit.run_limit == 2
+    assert tool_limit.thread_limit == 6
+    assert tool_limit.exit_behavior == "end"
+
+
+def test_task_description_keeps_shell_middleware_private_state_keys(
     monkeypatch,
 ) -> None:
     class ParentPackageState(TypedDict):
@@ -212,13 +381,14 @@ def test_task_description_override_keeps_shell_middleware_private_state_keys(
         CapturingSubAgentMiddleware,
     )
 
-    result = subagent_middleware.make_subagent_middleware_override(
+    result = subagent_middleware.materialize_subagent_middleware(
         backend=object(),
         subagents=[
             {
                 "name": "worker",
                 "description": "Handles delegated work.",
-                "runnable": object(),
+                "model": object(),
+                "tools": [],
             }
         ],
         task_description="Delegate to {available_agents}.",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -21,26 +22,26 @@ def materialize_patch_tool_calls_middleware() -> Any:
 
 
 @dataclass(frozen=True, slots=True)
-class MaterializedAgentProfile:
+class MaterializedAgentResources:
     model: Any
-    model_provider: str
-    model_name: str
     tool_choice: Any | None
     response_format: Any | None
     model_settings: dict[str, Any]
     exception_retry: ExceptionRetryRuntime | None
     system_prompt: str | None
     tools: tuple[Any, ...]
-    middleware: tuple[Any, ...]
+    foundation_middleware: tuple[Any, ...]
+    todo_middleware: Any | None
+    summarization_middleware: Any | None
+    model_call_limit_middleware: Any | None
+    tool_call_limit_middleware: Any | None
+    prompt_caching_middleware: Any | None
     package_middleware: tuple[Any, ...]
-    extra_middleware: tuple[Any, ...]
-    backend: Any | None
-    skill_sources: tuple[str, ...]
-    permissions: tuple[Any, ...]
+    backend: Any
     workspace: DeepAgentsWorkspace
 
 
-class ProfileMaterializer(Protocol):
+class AgentResourceMaterializer(Protocol):
     def __call__(
         self,
         references: dict[str, str],
@@ -55,9 +56,55 @@ class ProfileMaterializer(Protocol):
         mapped_directory_paths_by_filesystem: Mapping[
             str, Mapping[str, Path]
         ] | None = None,
-        disabled_capabilities: frozenset[str] = frozenset(),
         mcp_references: tuple[ResolvedMcpReference, ...] = (),
-    ) -> MaterializedAgentProfile: ...
+    ) -> MaterializedAgentResources: ...
+
+
+def assemble_agent_middleware(
+    *,
+    foundation: Sequence[Any],
+    subagent: Any | None,
+    summarization: Any | None,
+    patch_tool_calls: Any,
+    model_call_limit: Any | None,
+    tool_call_limit: Any | None,
+    tool_error_boundary: Any,
+    todo: Any | None,
+    model_request_settings: Any | None,
+    provider_error_boundary: Any,
+    exception_retry: Sequence[Any] = (),
+    initial_files: Any | None = None,
+    package: Sequence[Any] = (),
+    empty_system_message: Any | None = None,
+    prompt_caching: Any | None = None,
+) -> list[Any]:
+    """Assemble the complete Agent Shell middleware stack in owned slots."""
+
+    middleware = list(foundation)
+    middleware.extend(
+        item
+        for item in (
+            subagent,
+            summarization,
+            patch_tool_calls,
+            model_call_limit,
+            tool_call_limit,
+            tool_error_boundary,
+            todo,
+            model_request_settings,
+            provider_error_boundary,
+        )
+        if item is not None
+    )
+    middleware.extend(exception_retry)
+    if initial_files is not None:
+        middleware.append(initial_files)
+    middleware.extend(package)
+    if empty_system_message is not None:
+        middleware.append(empty_system_message)
+    if prompt_caching is not None:
+        middleware.append(prompt_caching)
+    return middleware
 
 
 def configuration_error(
@@ -120,7 +167,6 @@ def validate_model_visible_tool_names(
     tools: list[Any] | tuple[Any, ...],
     middleware: list[Any] | tuple[Any, ...],
     owner: str,
-    default_tool_names: tuple[str, ...] = (),
 ) -> None:
     seen: dict[str, str] = {}
 
@@ -137,8 +183,6 @@ def validate_model_visible_tool_names(
             )
         seen[name] = source
 
-    for name in default_tool_names:
-        register_name(name, "Deep Agents default harness")
     for tool in tools:
         register_name(getattr(tool, "name", None), "direct tools")
     for item in middleware:
@@ -166,11 +210,9 @@ def validate_middleware_names(
         seen.add(name)
 
 
-def construct_deep_agent(
+def construct_agent(
     constructor: dict[str, object],
     *,
-    model_provider: str,
-    model_name: str,
     scope: str,
     owner_id: str,
     owner_name: str,
@@ -178,16 +220,9 @@ def construct_deep_agent(
     path: str,
 ) -> Any:
     try:
-        from agent_shell.runtime.deepagents_harness import (
-            ensure_agent_shell_harness_profiles,
-        )
-        from deepagents import create_deep_agent
+        from langchain.agents import create_agent as langchain_create_agent
 
-        ensure_agent_shell_harness_profiles(
-            provider=model_provider,
-            model=model_name,
-        )
-        return create_deep_agent(**constructor)
+        return langchain_create_agent(**constructor)
     except AgentRuntimeError as exc:
         raise reported_error(
             exc,

@@ -32,7 +32,6 @@ class ResolvedSubagent:
     tool_blocks: tuple[dict[str, Any], ...] = ()
     middleware_blocks: tuple[dict[str, Any], ...] = ()
     mcp_references: tuple[ResolvedMcpReference, ...] = ()
-    disabled_capabilities: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +40,6 @@ class StaticAssembly:
     references: dict[str, str]
     blocks: dict[str, dict[str, Any]]
     filesystem_mode: FilesystemMode
-    disabled_capabilities: frozenset[str]
     subagents: tuple[ResolvedSubagentEdge, ...]
     subagent_nodes: dict[SubagentNodeKey, ResolvedSubagent]
     tool_blocks: tuple[dict[str, Any], ...] = ()

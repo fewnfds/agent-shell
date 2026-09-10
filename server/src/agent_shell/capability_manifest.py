@@ -21,14 +21,6 @@ FILESYSTEM_TOOL_NAMES = (
     "execute",
 )
 
-# Deep Agents installs these middleware slots even when Agent Shell has no
-# corresponding capability reference. The runtime uses this catalog to keep
-# an explicit "not attached" selection from falling back to those defaults.
-DEFAULT_MIDDLEWARE_CAPABILITY_TYPES = frozenset(
-    {"todo-list", "summarization", "prompt-caching"}
-)
-
-
 @dataclass(frozen=True, slots=True)
 class CapabilityManifest:
     """Small catalog record shared by the API and Vue authoring forms."""
@@ -114,17 +106,27 @@ CAPABILITY_MANIFESTS = (
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
     CapabilityManifest(
-        "subagent", "delegation", "委派能力", 11,
+        "model-call-limit", "model-call-limit", "模型调用限制", 11,
+        "stopwatch", "model_call_limit",
+        subagent_overrideable=True, required=False, subagent_policy="inherit",
+    ),
+    CapabilityManifest(
+        "tool-call-limit", "tool-call-limit", "工具调用限制", 12,
+        "stopwatch", "tool_call_limit",
+        subagent_overrideable=True, required=False, subagent_policy="inherit",
+    ),
+    CapabilityManifest(
+        "subagent", "delegation", "委派能力", 13,
         "users", "subagent",
         subagent_overrideable=False, required=False, subagent_policy="top-level-only",
     ),
     CapabilityManifest(
-        "summarization", "summarization", "上下文摘要", 12,
+        "summarization", "summarization", "上下文摘要", 14,
         "file-text", "summarization",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
     CapabilityManifest(
-        "prompt-caching", "prompt-caching", "Prompt 缓存", 13,
+        "prompt-caching", "prompt-caching", "Prompt 缓存", 15,
         "database", "prompt_caching",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),

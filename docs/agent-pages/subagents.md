@@ -31,6 +31,6 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
 
 `tool_refs`、`middleware_refs` 和 `mcp_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。每条 MCP 引用独立保存全部或指定原始 Tool name 的选择。Filesystem Backend 与 Filesystem Tools 未覆写时分别继承，显式替换时使用该 Subagent 的最终组合。
 
-`component_name` 是配置显示名；`name` 是模型可见 routing name，必须匹配 `^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一 Main Agent 的 direct children 中按大小写不敏感方式保持唯一。Subagent contract 没有 `settings.subagents` 字段，因此不能再引用 child。运行时将每个 direct child 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置；Shell 不编译第二套 child graph，也不提供循环引用。
+`component_name` 是配置显示名；`name` 是模型可见 routing name，必须匹配 `^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一 Main Agent 的 direct children 中按大小写不敏感方式保持唯一。Subagent contract 没有 `settings.subagents` 字段，因此不能再引用 child。运行时将每个 direct child 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置，交给显式 `SubAgentMiddleware` 编译，并由 `task` 调用执行。
 
-每份 Custom Middleware 配置只产生一个官方 `AgentMiddleware`。Subagent 默认看到 Deep Agents delegated state；需要处理消息时在自己的 `before_agent`/`abefore_agent` 中返回 state update。装配基线见[Deep Agents 迁移边界](../deep-agents-migration.md)。
+每份 Custom Middleware 配置只产生一个官方 `AgentMiddleware`。Subagent 默认看到 Deep Agents delegated state；需要处理消息时在自己的 `before_agent`/`abefore_agent` 中返回 state update。装配基线见[LangChain Agent runtime 基线](../langchain-agent-runtime.md)。

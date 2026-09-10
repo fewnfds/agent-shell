@@ -90,6 +90,8 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'custom-middleware': () => import('@/editors/CustomMiddlewareEditor.vue'),
   'agent-event-output': () => import('@/editors/AgentEventOutputEditor.vue'),
   'exception-retry': () => import('@/editors/ExceptionRetryEditor.vue'),
+  'model-call-limit': () => import('@/editors/ModelCallLimitEditor.vue'),
+  'tool-call-limit': () => import('@/editors/ToolCallLimitEditor.vue'),
   subagent: () => import('@/editors/SubagentCapabilityEditor.vue'),
   summarization: () => import('@/editors/SummarizationEditor.vue'),
   'prompt-caching': () => import('@/editors/PromptCachingEditor.vue'),

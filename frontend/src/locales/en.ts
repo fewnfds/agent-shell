@@ -601,6 +601,12 @@ export const en: MessageSchema = {
     'exception-retry': {
       label: 'Exception retry',
     },
+    'model-call-limit': {
+      label: 'Model call limit',
+    },
+    'tool-call-limit': {
+      label: 'Tool call limit',
+    },
     subagent: {
       label: 'Synchronous Subagents',
     },
@@ -665,6 +671,10 @@ export const en: MessageSchema = {
     seed: 'Seed',
     timeout: 'Timeout',
     max_retries: 'Maximum retries',
+    run_limit: 'Per-run limit',
+    thread_limit: 'Per-thread limit',
+    exit_behavior: 'Limit behavior',
+    tool_name: 'Tool name (blank for all)',
     stream_usage: 'Stream usage',
     streaming: 'Streaming',
     reasoning_effort: 'Reasoning effort',
@@ -845,6 +855,13 @@ export const en: MessageSchema = {
           label: 'Authentication error (dangerous, off by default)',
           hint: 'Use only for third-party gateways known to misreport transient upstream failures as 401. Real credential errors do not recover through retries.',
         },
+      },
+    },
+    callLimits: {
+      exitBehaviors: {
+        continue: 'Block exceeded calls and continue',
+        end: 'End the Agent',
+        error: 'Raise an error',
       },
     },
     filesystem: {

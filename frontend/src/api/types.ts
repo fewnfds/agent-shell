@@ -17,6 +17,8 @@ export type BlockType =
   | 'custom-middleware'
   | 'agent-event-output'
   | 'exception-retry'
+  | 'model-call-limit'
+  | 'tool-call-limit'
   | 'subagent'
   | 'summarization'
   | 'prompt-caching'

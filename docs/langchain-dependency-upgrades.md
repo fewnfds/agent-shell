@@ -6,8 +6,8 @@
 
 | 依赖 | 当前版本 | 约束策略 |
 | --- | ---: | --- |
-| Deep Agents | `0.7.13` | 精确锁定；项目依赖其 middleware 顺序、Filesystem、Subagent 和 trace policy 行为；fork mode 未启用 |
-| LangChain / Python Core | `1.4.0` / `1.6.2` | 保持当前 major；`langchain.mcp` 是尚未启用的 beta 能力，现有 MCP 继续由 adapters 提供 |
+| Deep Agents | `0.7.13` | 精确锁定；项目显式使用其 Filesystem、Skills、Summarization、PatchToolCalls、Subagent、Backend、State 和 trace policy；fork mode 未启用 |
+| LangChain / Python Core | `1.4.0` / `1.6.2` | Main Agent root 使用 `create_agent()`；保持当前 major；`langchain.mcp` 是尚未启用的 beta 能力，现有 MCP 继续由 adapters 提供 |
 | Anthropic / OpenAI | `1.7.1` / `1.6.1` | 按 Provider 分组升级并复核 model profile、content block 和错误边界 |
 | Google GenAI / Vertex AI | `4.4.0` / `3.2.4` | 各自保持当前 major；Google GenAI 当前配套底层 `google-genai 2.22.0` |
 | DeepSeek / xAI | `1.1.0` / `1.3.0` | 各自保持当前 major，并与 OpenAI-compatible 路径一起回归 |

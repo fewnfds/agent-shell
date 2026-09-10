@@ -137,6 +137,19 @@ def block_payload(capability_type: str, name: str) -> dict:
                 "server_error",
             ],
         },
+        "model-call-limit": {
+            "name": name,
+            "run_limit": 20,
+            "thread_limit": 100,
+            "exit_behavior": "end",
+        },
+        "tool-call-limit": {
+            "name": name,
+            "tool_name": None,
+            "run_limit": 50,
+            "thread_limit": 200,
+            "exit_behavior": "continue",
+        },
         "summarization": {"name": name},
         "prompt-caching": {"name": name},
     }
