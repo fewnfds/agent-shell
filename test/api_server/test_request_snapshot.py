@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import threading
+from types import SimpleNamespace
 from typing import Any, cast
 
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.request_snapshot import RequestRuntimeSnapshot
+from agent_shell.runtime.detached_tasks import DetachedTaskManager
+from agent_shell.runtime.request_snapshot import (
+    LifecycleRunCoordinator,
+    RequestRuntimeSnapshot,
+)
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_CONFIGURATION_KEY,
     lifecycle_configuration_namespace,
@@ -38,6 +43,30 @@ def test_snapshot_materializes_runtime_factory_off_event_loop() -> None:
 
     assert asyncio.run(materialize()) is expected_runtime
     assert factory_thread_id != event_loop_thread_id
+
+
+def test_lifecycle_response_termination_only_touches_its_own_coordinator() -> None:
+    policy = ResponseStreamPolicy()
+
+    def coordinator(lifecycle_id: str) -> LifecycleRunCoordinator:
+        value = LifecycleRunCoordinator(
+            _owner=cast(Any, SimpleNamespace()),
+            _snapshot=cast(
+                Any,
+                SimpleNamespace(response_stream_policy=lambda: policy),
+            ),
+            _detached_tasks=DetachedTaskManager(),
+        )
+        value._begin_lifecycle(lifecycle_id)
+        return value
+
+    first = coordinator("lifecycle-1")
+    second = coordinator("lifecycle-2")
+
+    first.terminate_response()
+
+    assert first.response_terminated.is_set() is True
+    assert second.response_terminated.is_set() is False
 
 
 def test_snapshot_freezes_workflow_metadata(

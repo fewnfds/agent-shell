@@ -86,7 +86,7 @@ export type DataTableFilter<Row> =
   | DataTableMultiFilter<Row>
 
 type DataTableActionTone = 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'danger'
-export type DataTableActionIcon = 'activate' | 'copy' | 'delete' | 'download' | 'edit' | 'view'
+export type DataTableActionIcon = 'activate' | 'copy' | 'delete' | 'download' | 'edit' | 'stop' | 'view'
 
 export interface DataTableRowAction<Row> {
   key: string

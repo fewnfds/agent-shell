@@ -12,9 +12,11 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
 )
+from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
+
 
 
 class WorkflowLifecycleBulkDelete(BaseModel):
@@ -32,6 +34,7 @@ class WorkflowLifecycleSettingsUpdate(BaseModel):
 def build_workflow_lifecycle_router(
     service: LangGraphLifecycleService,
     settings: WorkflowLifecycleSettingsStore,
+    runtime: RequestSnapshotRuntime,
 ) -> APIRouter:
     """Expose Lifecycle grouping without owning a second Run registry."""
 
@@ -85,6 +88,26 @@ def build_workflow_lifecycle_router(
         payload: WorkflowLifecycleBulkDelete,
     ) -> dict[str, int]:
         return await service.delete_matching(payload.query)
+
+    @router.post("/workflow-lifecycles/{lifecycle_id}/cancel")
+    async def cancel_workflow_lifecycle(lifecycle_id: str) -> dict[str, object]:
+        """Stop this Lifecycle's own response and every active official Run."""
+
+        terminated_response = runtime.terminate_active_response(lifecycle_id)
+        try:
+            cancelled_runs = await service.cancel_active(lifecycle_id)
+        except LangGraphLifecycleNotFound as exc:
+            raise management_error(
+                404,
+                code="workflow_lifecycle_not_found",
+                message_key="errors.workflowLifecycleNotFound",
+                message="The Workflow Lifecycle does not exist.",
+            ) from exc
+        return {
+            "ok": True,
+            "terminated_response": terminated_response,
+            "cancelled_run_count": cancelled_runs,
+        }
 
     return router
 

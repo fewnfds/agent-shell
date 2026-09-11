@@ -10,6 +10,7 @@ import {
   type LangGraphLifecycleSummary,
   type NamedDownload,
   type WorkflowLifecycleBulkDeleteResult,
+  type WorkflowLifecycleCancelResult,
   type WorkflowLifecycleSettings,
   type WorkflowLifecycleSettingsUpdate,
 } from '@/api'
@@ -26,6 +27,7 @@ interface WorkflowLifecyclesApi {
   ): Promise<LangGraphLifecyclePage>
   deleteWorkflowLifecycle(id: string): Promise<{ ok: boolean }>
   deleteWorkflowLifecyclesMatching(query: string): Promise<WorkflowLifecycleBulkDeleteResult>
+  cancelWorkflowLifecycle(id: string): Promise<WorkflowLifecycleCancelResult>
   downloadLangGraphLifecycle(id: string): Promise<NamedDownload>
   getWorkflowLifecycleSettings(): Promise<WorkflowLifecycleSettings>
   updateWorkflowLifecycleSettings(
@@ -175,6 +177,25 @@ const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
       run: downloadLifecycle,
       failureTitle: () => t('workflowLifecycles.downloadFailed'),
       reloadAfter: false,
+    },
+    {
+      key: 'cancel',
+      label: () => t('workflowLifecycles.cancel'),
+      icon: 'stop',
+      tone: 'warning',
+      disabled: (row) => row.active_run_count === 0,
+      confirm: (row) => ({
+        title: t('workflowLifecycles.cancelTitle'),
+        description: t('workflowLifecycles.cancelDescription', {
+          name: subjectNames(row).join(', ') || row.lifecycle_id,
+        }),
+        confirmLabel: t('workflowLifecycles.cancel'),
+        cancelLabel: t('common.cancel'),
+      }),
+      run: (row) => api.cancelWorkflowLifecycle(row.lifecycle_id),
+      successTitle: () => t('workflowLifecycles.cancelled'),
+      failureTitle: () => t('workflowLifecycles.cancelFailed'),
+      reloadAfter: 'current',
     },
     {
       key: 'delete',

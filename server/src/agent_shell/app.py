@@ -658,6 +658,7 @@ def create_app(
         build_workflow_lifecycle_router(
             agent_runtime.langgraph_lifecycles,
             workflow_lifecycle_settings,
+            agent_runtime,
         )
     )
     app.include_router(

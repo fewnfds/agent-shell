@@ -253,6 +253,7 @@ def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
                 disconnect_lifecycle=disconnect_lifecycle,
+                response_terminated=asyncio.Event(),
                 redact_secret_text=lambda value: value,
             )
             first = await anext(stream)
@@ -312,6 +313,7 @@ def test_completion_stream_does_not_wait_for_disconnect_cleanup(
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
                 disconnect_lifecycle=execution.disconnect_lifecycle,
+                response_terminated=asyncio.Event(),
                 redact_secret_text=lambda value: value,
             )
             await anext(stream)
@@ -332,6 +334,112 @@ def test_completion_stream_does_not_wait_for_disconnect_cleanup(
 
     assert response_closed is True
     assert cancellation_recorded is True
+
+
+def test_completion_stream_reports_cancelled_lifecycle_without_disconnect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Execution:
+        identity = None
+        context = None
+        finish_reason = "stop"
+        usage: dict[str, int] = {}
+
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def stream_text(self):
+            self.started.set()
+            await self.release.wait()
+            yield "late output"
+
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def scenario() -> tuple[str, str, bool]:
+            execution = Execution()
+            terminated = asyncio.Event()
+            disconnected = asyncio.Event()
+
+            async def disconnect_lifecycle() -> None:
+                disconnected.set()
+
+            stream = api_server._completion_stream(
+                execution,
+                "Workflow",
+                detached_tasks=client.app.state.detached_tasks,
+                disconnect_lifecycle=disconnect_lifecycle,
+                response_terminated=terminated,
+                redact_secret_text=lambda value: value,
+            )
+            await anext(stream)
+            pending = asyncio.create_task(anext(stream))
+            await execution.started.wait()
+            terminated.set()
+            error_chunk = await asyncio.wait_for(pending, timeout=1)
+            done = await anext(stream)
+            execution.release.set()
+            await asyncio.sleep(0)
+            return error_chunk, done, disconnected.is_set()
+
+        error_chunk, done, was_disconnected = portal.call(scenario)
+
+    assert '"finish_reason":"error"' in error_chunk
+    assert '"code":"completion_cancelled"' in error_chunk
+    assert done == "data: [DONE]\n\n"
+    assert was_disconnected is False
+
+
+def test_completion_result_reports_cancelled_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Execution:
+        identity = None
+        context = None
+
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self) -> tuple[str, dict[str, int]]:
+            self.started.set()
+            await self.release.wait()
+            return "late", {}
+
+    with make_client(tmp_path, monkeypatch) as client:
+        portal = client.portal
+        assert portal is not None
+
+        async def scenario() -> str:
+            execution = Execution()
+            terminated = asyncio.Event()
+
+            async def disconnect_lifecycle() -> None:
+                raise AssertionError("a Lifecycle cancel is not a user disconnect")
+
+            pending = asyncio.ensure_future(
+                api_server._completion_result(
+                    execution,
+                    detached_tasks=client.app.state.detached_tasks,
+                    disconnect_lifecycle=disconnect_lifecycle,
+                    response_terminated=terminated,
+                )
+            )
+            await execution.started.wait()
+            terminated.set()
+            with pytest.raises(AgentRuntimeError) as failure:
+                await asyncio.wait_for(pending, timeout=1)
+            execution.release.set()
+            return failure.value.code
+
+        code = portal.call(scenario)
+
+    assert code == "completion_cancelled"
+
 
 def test_models_and_chat_require_published_model_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

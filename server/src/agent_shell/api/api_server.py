@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
@@ -298,12 +298,38 @@ async def _intercepted_completion_stream(model: str) -> AsyncIterator[str]:
     yield "data: [DONE]\n\n"
 
 
+async def _next_or_terminated(
+    queue: asyncio.Queue[Any],
+    termination: asyncio.Future[bool],
+) -> tuple[str, object] | None:
+    """Return the next queued item, or None once the Lifecycle cancelled the response."""
+
+    if termination.done():
+        return None
+    pending = asyncio.ensure_future(queue.get())
+    try:
+        done, _ = await asyncio.wait(
+            {pending, termination},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    except BaseException:
+        pending.cancel()
+        raise
+    if pending in done:
+        return pending.result()
+    pending.cancel()
+    with suppress(BaseException):
+        await pending
+    return None
+
+
 async def _completion_stream(
     execution: RunExecution,
     model: str,
     *,
     detached_tasks: DetachedTaskManager,
     disconnect_lifecycle: Callable[[], Awaitable[None]],
+    response_terminated: asyncio.Event,
     redact_secret_text: Callable[[str], str],
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
@@ -320,6 +346,7 @@ async def _completion_stream(
         asyncio.Queue(maxsize=1)
     )
     detached = asyncio.Event()
+    termination = asyncio.ensure_future(response_terminated.wait())
 
     async def deliver(
         kind: Literal["text", "error", "done"],
@@ -369,7 +396,14 @@ async def _completion_stream(
             }
         )
         while True:
-            kind, value = await queue.get()
+            item = await _next_or_terminated(queue, termination)
+            if item is None:
+                raise AgentRuntimeError(
+                    "completion_cancelled",
+                    "The Lifecycle was cancelled.",
+                    status_code=409,
+                )
+            kind, value = item
             if kind == "done":
                 break
             if kind == "error":
@@ -465,13 +499,15 @@ async def _completion_stream(
         )
         yield "data: [DONE]\n\n"
     finally:
+        termination.cancel()
         detached.set()
         try:
             while True:
                 queue.get_nowait()
         except asyncio.QueueEmpty:
             pass
-        disconnected = not producer.done()
+        # A Lifecycle cancel stops its own Runs; it is not a user disconnect.
+        disconnected = not response_terminated.is_set() and not producer.done()
         if disconnected:
             detached_tasks.create(
                 disconnect_lifecycle(),
@@ -484,11 +520,13 @@ async def _completion_result(
     *,
     detached_tasks: DetachedTaskManager,
     disconnect_lifecycle: Callable[[], Awaitable[None]],
+    response_terminated: asyncio.Event,
 ) -> tuple[str, dict[str, int]]:
     queue: asyncio.Queue[tuple[Literal["result", "error"], object]] = asyncio.Queue(
         maxsize=1
     )
     detached = asyncio.Event()
+    termination = asyncio.ensure_future(response_terminated.wait())
 
     async def consume_execution() -> None:
         try:
@@ -508,7 +546,14 @@ async def _completion_result(
         name=f"request-workflow:{run_id}",
     )
     try:
-        kind, value = await queue.get()
+        item = await _next_or_terminated(queue, termination)
+        if item is None:
+            raise AgentRuntimeError(
+                "completion_cancelled",
+                "The Lifecycle was cancelled.",
+                status_code=409,
+            )
+        kind, value = item
         if kind == "error":
             if isinstance(value, BaseException):
                 raise value
@@ -523,6 +568,8 @@ async def _completion_result(
             name=f"disconnect-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
         )
         raise
+    finally:
+        termination.cancel()
 
 
 def build_api_server_router(
@@ -808,6 +855,7 @@ def build_api_server_router(
                     model,
                     detached_tasks=detached_tasks,
                     disconnect_lifecycle=lifecycle_coordinator.disconnect,
+                    response_terminated=lifecycle_coordinator.response_terminated,
                     redact_secret_text=redact_secret_text,
                 ),
                 media_type="text/event-stream",
@@ -821,6 +869,7 @@ def build_api_server_router(
                 execution,
                 detached_tasks=detached_tasks,
                 disconnect_lifecycle=lifecycle_coordinator.disconnect,
+                response_terminated=lifecycle_coordinator.response_terminated,
             )
         except AgentRuntimeError as exc:
             return _openai_error(

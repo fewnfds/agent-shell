@@ -355,10 +355,20 @@ class LifecycleRunCoordinator:
     )
     _detached_run_ids: set[str] = field(default_factory=set, init=False)
     _disconnected: bool = field(default=False, init=False)
+    _response_terminated: asyncio.Event = field(
+        default_factory=asyncio.Event,
+        init=False,
+    )
 
     @property
     def lifecycle_id(self) -> str:
         return self._lifecycle_id
+
+    @property
+    def response_terminated(self) -> asyncio.Event:
+        """Signal the in-flight request-entry response to stop streaming."""
+
+        return self._response_terminated
 
     def _begin_lifecycle(self, lifecycle_id: str) -> None:
         if self._lifecycle_id or self._response_scheduler is not None:
@@ -1186,6 +1196,13 @@ class LifecycleRunCoordinator:
                             wait=False,
                         )
 
+    def terminate_response(self) -> None:
+        """Stop the in-flight request-entry response of this one Lifecycle."""
+
+        if not self._lifecycle_id:
+            return
+        self._response_terminated.set()
+
     async def _record_relation(
         self,
         client: Any,
@@ -1800,6 +1817,15 @@ class RequestSnapshotRuntime:
 
     def active_lifecycle(self, lifecycle_id: str) -> LifecycleRunCoordinator | None:
         return self._active_lifecycles.get(lifecycle_id)
+
+    def terminate_active_response(self, lifecycle_id: str) -> bool:
+        """Stop the in-flight request response of one active Lifecycle."""
+
+        coordinator = self._active_lifecycles.get(lifecycle_id)
+        if coordinator is None:
+            return False
+        coordinator.terminate_response()
+        return True
 
     def release_active_lifecycle(self, coordinator: LifecycleRunCoordinator) -> None:
         lifecycle_id = coordinator.lifecycle_id

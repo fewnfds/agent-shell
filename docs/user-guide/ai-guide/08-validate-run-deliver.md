@@ -266,6 +266,8 @@ Content-Type: application/json
 
 运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
 
+只要一个 Lifecycle 仍显示 active Run，`DELETE /agent-shell/api/workflow-lifecycles/{lifecycle_id}` 就返回 `409 workflow_lifecycle_active`。需要停止它时使用 `POST /agent-shell/api/workflow-lifecycles/{lifecycle_id}/cancel`：它取消该 Lifecycle 的全部 active Run，并结束该 Lifecycle 仍在等待的 OpenAI-compatible 响应，响应以 `completion_cancelled` 收尾。取消只作用于这个 Lifecycle；Run 进入终态后即可删除。
+
 常见 HTTP 范围：
 
 - `401` 或 `403`：credential domain、Authorization header 或访问范围；

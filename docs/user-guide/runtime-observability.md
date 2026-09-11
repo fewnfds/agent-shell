@@ -19,7 +19,7 @@
 
 官方 Run 执行失败时，根 Lifecycle event 显示可读的 `error`、稳定 `error_code` 和可用的 `exception_type`。Agent Server 内部错误 transport 不直接显示为编码文本；无法识别的官方错误字符串保持原文。消息流中的 error event 不会抢先用通用文案覆盖随后到达的根 Lifecycle 失败原因。
 
-任意 Lifecycle 都可以进入监控页。active Lifecycle 不能删除；terminal Lifecycle 可以单项删除或按当前搜索条件批量删除。
+任意 Lifecycle 都可以进入监控页。active Lifecycle 不能删除，但可以在目录里取消：取消会同时取消该 Lifecycle 的全部 active Run，并结束该 Lifecycle 仍在等待的请求入口响应，发出 OpenAI-compatible 请求的客户端因此收到 `completion_cancelled` 并结束等待。取消只作用于这一个 Lifecycle，不会影响其他并发请求。terminal Lifecycle 可以单项删除或按当前搜索条件批量删除。
 
 ## 监控页
 

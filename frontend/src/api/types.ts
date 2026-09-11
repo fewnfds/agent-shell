@@ -560,6 +560,12 @@ export interface WorkflowLifecycleBulkDeleteResult {
   skipped_active: number
 }
 
+export interface WorkflowLifecycleCancelResult {
+  ok: boolean
+  terminated_response: boolean
+  cancelled_run_count: number
+}
+
 export interface WorkflowLifecycleSettingsValues {
   retained_lifecycles: number
 }

@@ -320,6 +320,7 @@ defineExpose<{
               <i v-else-if="config.bulkAction.icon === 'download'" class="bi bi-download" aria-hidden="true" />
               <i v-else-if="config.bulkAction.icon === 'edit'" class="bi bi-pencil" aria-hidden="true" />
               <i v-else-if="config.bulkAction.icon === 'view'" class="bi bi-eye" aria-hidden="true" />
+              <i v-else-if="config.bulkAction.icon === 'stop'" class="bi bi-stop-circle" aria-hidden="true" />
               <i v-else class="bi bi-check-lg" aria-hidden="true" />
               {{ runningBulkAction && config.bulkAction.busyLabel
                 ? label(config.bulkAction.busyLabel)
@@ -402,6 +403,7 @@ defineExpose<{
                     <i v-else-if="action.icon === 'delete'" class="bi bi-trash" aria-hidden="true" />
                     <i v-else-if="action.icon === 'download'" class="bi bi-download" aria-hidden="true" />
                     <i v-else-if="action.icon === 'edit'" class="bi bi-pencil" aria-hidden="true" />
+                    <i v-else-if="action.icon === 'stop'" class="bi bi-stop-circle" aria-hidden="true" />
                     <i v-else class="bi bi-eye" aria-hidden="true" />
                     <span class="visually-hidden">{{ actionLabel(action, row) }}</span>
                   </LteButton>

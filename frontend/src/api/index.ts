@@ -42,6 +42,7 @@ import type {
   Workflow,
   WorkflowSummary,
   WorkflowLifecycleBulkDeleteResult,
+  WorkflowLifecycleCancelResult,
   WorkflowLifecycleSettings,
   WorkflowLifecycleSettingsUpdate,
   WorkflowGraphDocument,
@@ -418,6 +419,13 @@ export const managementApi = {
     return managementRequest('/workflow-lifecycles/delete', jsonBody({
       query,
     }))
+  },
+
+  cancelWorkflowLifecycle(id: string): Promise<WorkflowLifecycleCancelResult> {
+    return managementRequest(
+      `/workflow-lifecycles/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' },
+    )
   },
 
   getLangGraphLifecycleSnapshot(
