@@ -55,8 +55,10 @@ import type {
   MessageInterception,
   ModelProviderCatalog,
   ModelConnection,
+  ModelConnectionPayload,
   ModelRequirementBinding,
   McpConnection,
+  McpConnectionPayload,
   McpInstallationResult,
   McpImportPreview,
   McpImportValueSources,
@@ -84,12 +86,6 @@ export type * from './types'
 
 function jsonBody(payload: unknown): Pick<RequestInit, 'body' | 'method'> {
   return { method: 'POST', body: JSON.stringify(payload) }
-}
-
-function withoutId<T extends object>(value: T): Omit<T, 'id'> {
-  const copy = { ...value } as T & { id?: unknown }
-  delete copy.id
-  return copy
 }
 
 function recordPath(base: string, id: string): string {
@@ -143,11 +139,14 @@ export const managementApi = {
     return managementRequest(recordPath('/model-connections', id))
   },
 
-  saveModelConnection<T extends object>(data: T & { id?: string }): Promise<ModelConnection> {
-    const id = typeof data.id === 'string' ? data.id : ''
-    return managementRequest(id ? recordPath('/model-connections', id) : '/model-connections', {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(withoutId(data)),
+  createModelConnection(payload: ModelConnectionPayload): Promise<ModelConnection> {
+    return managementRequest('/model-connections', jsonBody(payload))
+  },
+
+  updateModelConnection(id: string, payload: ModelConnectionPayload): Promise<ModelConnection> {
+    return managementRequest(recordPath('/model-connections', id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     })
   },
 
@@ -178,11 +177,14 @@ export const managementApi = {
     return managementRequest(recordPath('/mcp-connections', id))
   },
 
-  saveMcpConnection<T extends object>(data: T & { id?: string }): Promise<McpConnection> {
-    const id = typeof data.id === 'string' ? data.id : ''
-    return managementRequest(id ? recordPath('/mcp-connections', id) : '/mcp-connections', {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(withoutId(data)),
+  createMcpConnection(payload: McpConnectionPayload): Promise<McpConnection> {
+    return managementRequest('/mcp-connections', jsonBody(payload))
+  },
+
+  updateMcpConnection(id: string, payload: McpConnectionPayload): Promise<McpConnection> {
+    return managementRequest(recordPath('/mcp-connections', id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     })
   },
 
@@ -434,7 +436,7 @@ export const managementApi = {
   ): Promise<LangGraphLifecycleSnapshot> {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
-      { signal },
+      signal ? { signal } : {},
     )
   },
 
@@ -444,7 +446,7 @@ export const managementApi = {
   ): Promise<LangGraphLifecycleStore> {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/store`,
-      { signal },
+      signal ? { signal } : {},
     )
   },
 
@@ -462,7 +464,7 @@ export const managementApi = {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/graph`,
-      { signal },
+      signal ? { signal } : {},
     )
   },
 
@@ -474,7 +476,7 @@ export const managementApi = {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/state`,
-      { signal },
+      signal ? { signal } : {},
     )
   },
 
@@ -487,7 +489,7 @@ export const managementApi = {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}`
         + `/monitoring/runs/${encodeURIComponent(runId)}/history${buildQuery({ limit })}`,
-      { signal },
+      signal ? { signal } : {},
     )
   },
 
@@ -557,7 +559,7 @@ export const managementApi = {
     return managementUpload(
       `/file-manager/upload${buildQuery({ path, overwrite })}`,
       file,
-      { onProgress },
+      { ...(onProgress ? { onProgress } : {}) },
     )
   },
 
@@ -639,15 +641,21 @@ export const managementApi = {
     )
   },
 
-  saveBlock<TPayload extends BlockPayload>(
+  createBlock<TPayload extends BlockPayload>(
     type: ManagedComponentType,
-    data: TPayload | SavedBlock<TPayload>,
+    payload: TPayload,
   ): Promise<SavedBlock<TPayload>> {
-    const id = 'id' in data && typeof data.id === 'string' ? data.id : ''
-    const path = id ? recordPath(`/blocks/${type}`, id) : `/blocks/${type}`
-    return managementRequest(path, {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(withoutId(data)),
+    return managementRequest(`/blocks/${type}`, jsonBody(payload))
+  },
+
+  updateBlock<TPayload extends BlockPayload>(
+    type: ManagedComponentType,
+    id: string,
+    payload: TPayload,
+  ): Promise<SavedBlock<TPayload>> {
+    return managementRequest(recordPath(`/blocks/${type}`, id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     })
   },
 
@@ -709,11 +717,14 @@ export const managementApi = {
     return managementRequest(recordPath('/main-agents', id))
   },
 
-  saveMainAgent(data: MainAgentPayload | MainAgent): Promise<MainAgent> {
-    const id = 'id' in data ? data.id : ''
-    return managementRequest(id ? recordPath('/main-agents', id) : '/main-agents', {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(withoutId(data)),
+  createMainAgent(payload: MainAgentPayload): Promise<MainAgent> {
+    return managementRequest('/main-agents', jsonBody(payload))
+  },
+
+  updateMainAgent(id: string, payload: MainAgentPayload): Promise<MainAgent> {
+    return managementRequest(recordPath('/main-agents', id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     })
   },
 
@@ -755,17 +766,15 @@ export const managementApi = {
     return managementRequest(recordPath('/subagents', id))
   },
 
-  saveSubagent(
-    data: SubagentPayload | Subagent,
-  ): Promise<Subagent> {
-    const id = 'id' in data ? data.id : ''
-    return managementRequest(
-      id ? recordPath('/subagents', id) : '/subagents',
-      {
-        method: id ? 'PUT' : 'POST',
-        body: JSON.stringify(withoutId(data)),
-      },
-    )
+  createSubagent(payload: SubagentPayload): Promise<Subagent> {
+    return managementRequest('/subagents', jsonBody(payload))
+  },
+
+  updateSubagent(id: string, payload: SubagentPayload): Promise<Subagent> {
+    return managementRequest(recordPath('/subagents', id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
   },
 
   copySubagent(id: string, componentName: string): Promise<Subagent> {

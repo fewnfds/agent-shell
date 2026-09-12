@@ -5,10 +5,12 @@ import { useI18n } from 'vue-i18n'
 import ConfigurationBundleImport from '@/components/ConfigurationBundleImport.vue'
 import type { ConfigLibraryApi } from '@/pages/configLibrary'
 
-defineProps<{
+withDefaults(defineProps<{
   refreshing: boolean
-  api?: Pick<ConfigLibraryApi, 'previewConfigurationBundle' | 'importConfigurationBundle'>
-}>()
+  api?: Pick<ConfigLibraryApi, 'previewConfigurationBundle' | 'importConfigurationBundle'> | undefined
+}>(), {
+  api: undefined,
+})
 const emit = defineEmits<{ refresh: []; imported: [] }>()
 const { t } = useI18n()
 </script>

@@ -7,10 +7,15 @@ const props = withDefaults(defineProps<{
   name?: string
   value: unknown
   depth?: number
-  defaultOpen?: boolean
+  // `| undefined` is required so the explicit `defaultOpen: undefined` below
+  // type-checks under `exactOptionalPropertyTypes`.
+  defaultOpen?: boolean | undefined
 }>(), {
   name: '',
   depth: 0,
+  // Vue casts an absent Boolean prop to `false`. Defaulting to `undefined`
+  // instead is what keeps "not provided" distinguishable from "false" so the
+  // top level of the tree opens by default; removing this changes behaviour.
   defaultOpen: undefined,
 })
 

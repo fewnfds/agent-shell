@@ -888,8 +888,8 @@ onMounted(() => { void load() })
                 <FormField control-id="response-idle-timeout" field-path="response_stream_scheduling.idle_timeout_seconds" label-key="systemSettings.responseScheduling.idleTimeout">
                   <template #default="{ describedBy }">
                     <div class="input-group">
-                      <input id="response-idle-timeout" v-model.number="responseIdleTimeoutSeconds" :aria-describedby="describedBy" class="form-control" min="0.001" required step="any" type="number">
-                      <span class="input-group-text">{{ t('systemSettings.responseScheduling.secondsUnit') }}</span>
+                      <input id="response-idle-timeout" v-model.number="responseIdleTimeoutSeconds" :aria-describedby="[describedBy, 'response-idle-timeout-unit'].filter(Boolean).join(' ')" class="form-control" min="0.001" required step="any" type="number">
+                      <span id="response-idle-timeout-unit" class="input-group-text">{{ t('systemSettings.responseScheduling.secondsUnit') }}</span>
                     </div>
                   </template>
                 </FormField>
@@ -898,8 +898,8 @@ onMounted(() => { void load() })
                 <FormField control-id="response-max-batch" field-path="response_stream_scheduling.max_batch_kb" label-key="systemSettings.responseScheduling.maxBatch">
                   <template #default="{ describedBy }">
                     <div class="input-group">
-                      <input id="response-max-batch" v-model.number="responseMaxBatchKb" :aria-describedby="describedBy" class="form-control" min="0.001" required step="any" type="number">
-                      <span class="input-group-text">{{ t('systemSettings.responseScheduling.kibUnit') }}</span>
+                      <input id="response-max-batch" v-model.number="responseMaxBatchKb" :aria-describedby="[describedBy, 'response-max-batch-unit'].filter(Boolean).join(' ')" class="form-control" min="0.001" required step="any" type="number">
+                      <span id="response-max-batch-unit" class="input-group-text">{{ t('systemSettings.responseScheduling.kibUnit') }}</span>
                     </div>
                   </template>
                 </FormField>
@@ -908,8 +908,8 @@ onMounted(() => { void load() })
                 <FormField control-id="response-send-interval" field-path="response_stream_scheduling.send_interval_seconds" label-key="systemSettings.responseScheduling.sendInterval">
                   <template #default="{ describedBy }">
                     <div class="input-group">
-                      <input id="response-send-interval" v-model.number="responseSendIntervalSeconds" :aria-describedby="describedBy" class="form-control" min="0" required step="any" type="number">
-                      <span class="input-group-text">{{ t('systemSettings.responseScheduling.secondsUnit') }}</span>
+                      <input id="response-send-interval" v-model.number="responseSendIntervalSeconds" :aria-describedby="[describedBy, 'response-send-interval-unit'].filter(Boolean).join(' ')" class="form-control" min="0" required step="any" type="number">
+                      <span id="response-send-interval-unit" class="input-group-text">{{ t('systemSettings.responseScheduling.secondsUnit') }}</span>
                     </div>
                   </template>
                 </FormField>

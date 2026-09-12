@@ -66,7 +66,7 @@ function selectCategory(id: string): void {
     <span class="fw-semibold">{{ t('library.groups.global') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.global')"
+      :ariaLabel="t('library.groups.global')"
       :items="globalItems"
       layout="inline"
       @select="selectCategory"
@@ -79,7 +79,7 @@ function selectCategory(id: string): void {
     <span class="fw-semibold">{{ t('library.groups.workflows') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.workflows')"
+      :ariaLabel="t('library.groups.workflows')"
       :items="workflowItems"
       layout="inline"
       @select="selectCategory"
@@ -89,7 +89,7 @@ function selectCategory(id: string): void {
     <span class="fw-semibold">{{ t('library.groups.workflowComponents') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.workflowComponents')"
+      :ariaLabel="t('library.groups.workflowComponents')"
       :items="workflowComponentItems"
       layout="inline"
       @select="selectCategory"
@@ -102,7 +102,7 @@ function selectCategory(id: string): void {
     <span class="fw-semibold">{{ t('library.groups.agents') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.agents')"
+      :ariaLabel="t('library.groups.agents')"
       :items="agentItems"
       layout="inline"
       @select="selectCategory"
@@ -112,7 +112,7 @@ function selectCategory(id: string): void {
     <span class="fw-semibold">{{ t('library.groups.agentComponents') }}</span>
     <SectionNav
       :active-id="activeCategoryId"
-      :aria-label="t('library.groups.agentComponents')"
+      :ariaLabel="t('library.groups.agentComponents')"
       :items="agentComponentItems"
       layout="inline"
       @select="selectCategory"

@@ -180,9 +180,17 @@ def test_repository_copy_rewrites_ids_references_assets_and_model_bindings(
             (copied_package / "package.json").read_text(encoding="utf-8")
         )["id"] == copied_output["id"]
 
-        active_delete = client.delete(
-            f"/agent-shell/api/configuration-repositories/{copied_repository['id']}"
-        )
+        with monkeypatch.context() as deletion_guard:
+            deletion_guard.setattr(
+                client.app.state.model_resources,
+                "remove_repository_bindings",
+                lambda _repository_id: pytest.fail(
+                    "active Repository rejection must precede binding mutations"
+                ),
+            )
+            active_delete = client.delete(
+                f"/agent-shell/api/configuration-repositories/{copied_repository['id']}"
+            )
         assert active_delete.status_code == 409
         assert active_delete.json()["detail"]["code"] == (
             "active_configuration_repository_delete_forbidden"

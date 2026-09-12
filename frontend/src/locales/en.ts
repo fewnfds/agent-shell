@@ -218,7 +218,6 @@ export const en: MessageSchema = {
       normalInput: 'Normal input port',
       normalOutput: 'Normal output port',
       start: 'Start',
-      command: 'Command Node',
       end: 'End',
       saveDraft: 'Save draft',
       publish: 'Publish Workflow',
@@ -295,7 +294,7 @@ export const en: MessageSchema = {
       title: 'Bulk delete runtime data',
       description: 'Delete official runtime data for terminal Lifecycles among the {count} matches. Active Lifecycles and files or directories created during runs are retained.',
       completed: 'Deleted runtime data for {deleted} Lifecycles.',
-      completedWithActive: 'Deleted runtime data for {deleted} Lifecycles and retained {skipped_active} active Lifecycles.',
+      completedWithSkipped: 'Deleted runtime data for {deleted} Lifecycles; retained {skipped_active} active and {skipped_unavailable} unavailable Lifecycles.',
       failed: 'Could not bulk delete runtime data',
     },
   },
@@ -1076,6 +1075,7 @@ export const en: MessageSchema = {
     },
     new: {
       title: 'Create a new configuration?',
+      description: 'The current configuration will be closed and a blank new draft will open.',
     },
     copy: {
       title: 'Copy configuration',
@@ -1311,6 +1311,7 @@ export const en: MessageSchema = {
     workflowLifecycleNotFound: 'The Workflow Lifecycle does not exist.',
     workflowRunNotFound: 'The Workflow Run does not exist.',
     workflowLifecycleActive: 'The Lifecycle still has an active Workflow Run and cannot be deleted.',
+    workflowLifecycleStatusUnavailable: 'Official Thread/Run status is unavailable, so this Lifecycle cannot be deleted safely.',
     configurationRepositoryConflict: 'The configuration repository name or identity conflicts.',
     configurationRepositoryInvalid: 'The configuration repository cannot be activated.',
     configurationRepositoryNotFound: 'The configuration repository does not exist.',

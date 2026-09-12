@@ -20,7 +20,7 @@ export interface FilesystemToolsDraft extends BlockDraftBase {
   max_execute_timeout: number | string
   tool_configs: Record<string, FilesystemToolDraft>
 }
-interface FilesystemToolsApiRecord extends BlockDraftBase {
+export interface FilesystemToolsApiRecord extends BlockDraftBase {
   tool_token_limit_before_evict?: number | null
   human_message_token_limit_before_evict?: number | null
   grep_max_count?: number
@@ -39,7 +39,8 @@ function normalizeRequiredLimit(value: unknown, fallback: number): number | stri
 function configs(value: unknown, defaults: FilesystemToolsDefaults): Record<string, FilesystemToolDraft> {
   const source = isRecord(value) ? value : {}
   return Object.fromEntries(defaults.tools.map((tool) => {
-    const current = isRecord(source[tool.name]) ? source[tool.name] : {}
+    const raw = source[tool.name]
+    const current: Record<string, unknown> = isRecord(raw) ? raw : {}
     return [tool.name, {
       visible: tool.configurable && typeof current.visible === 'boolean' ? current.visible : tool.visible,
       description_override: editableText(current.description_override, tool.default_description),

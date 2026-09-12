@@ -11,7 +11,7 @@ import { cleanName, identity, isRecord, type BlockDraftBase, type BlockPayloadBa
 export interface WorkflowEventOutputDraft extends BlockDraftBase, PythonPackageDraftState {}
 export type WorkflowEventOutputCatalogItem = PythonPackageTemplate
 
-interface WorkflowEventOutputPayload extends BlockPayloadBase {
+export interface WorkflowEventOutputPayload extends BlockPayloadBase {
   python_package: PythonPackageDraftState['python_package']
   python_package_template?: PythonPackageDraftState['python_package_template']
 }

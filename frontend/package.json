@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc -b --noEmit && vite build",
     "lint": "eslint .",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc -b --noEmit",
     "test": "vitest run",
     "ui:check": "node scripts/check-ui-policy.mjs"
   },

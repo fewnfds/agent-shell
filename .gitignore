@@ -22,6 +22,7 @@ dist/
 build/
 release/
 packaging/**/dist/
+*.tsbuildinfo
 
 # ── Logs ────────────────────────────────────────────────
 *.log
@@ -45,4 +46,9 @@ opencode.json
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-.codebuddy/rules/agents.md.mdc
+
+# ── Tool-local state (IDE assistants) ──────────────────
+.codebuddy/
+.workbuddy-ai/
+.codex
+.opencode

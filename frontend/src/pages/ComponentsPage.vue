@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
-import { computed, onMounted, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch, type Component, type DeepReadonly } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -43,9 +43,11 @@ import {
   type AgentEventOutputCatalogItem,
   type CommandCatalogItem,
   type BlockDraftBase,
+  type BlockPayloadBase,
   type CustomMiddlewareCatalogItem,
   type CustomToolCatalogItem,
   type SkillPackageSummary,
+  type McpConnectionDraft,
   type ModelDraft,
   type SkillCatalogItem,
   type WorkflowEventOutputCatalogItem,
@@ -61,7 +63,7 @@ type EditorRecord = SavedBlock | ModelConnection | McpConnection
 interface PageBlockAdapter {
   blank(defaults?: unknown): BlockDraftBase
   fromApi(value: EditorRecord, defaults?: unknown): BlockDraftBase
-  toPayload(value: BlockDraftBase, defaults?: unknown): BlockPayload
+  toPayload(value: BlockDraftBase, defaults?: unknown): BlockPayloadBase
 }
 
 interface EditorManifest {
@@ -120,7 +122,9 @@ const { notify } = useToasts()
 const manifests = ref<EditorManifest[]>([])
 const editorDefaults = ref<Record<string, unknown>>({})
 const activeType = ref<EditorType | null>(null)
-const records = ref<EditorRecord[]>([])
+// The picker only needs `id`/`name`; connection editors read the full record
+// back through `selectedModelRecord`, which narrows to `ModelConnection` at runtime.
+const records = ref<ConfigurationSummary[]>([])
 const selectedId = ref('')
 const draft = ref<BlockDraftBase | null>(null)
 const currentEditor = shallowRef<Component | null>(null)
@@ -218,11 +222,14 @@ const navigationItems = computed<SectionNavItem[]>(() => manifests.value.map((ma
   id: manifest.type,
   label: t(`capabilities.${manifest.type}.label`),
 })))
-const selectedModelRecord = computed(() => (
-  activeType.value === 'model-connection'
-    ? records.value.find((record) => record.id === draft.value?.id) as ModelConnection | undefined
-    : undefined
-))
+function isModelConnectionRecord(record: ConfigurationSummary): record is ModelConnection {
+  return 'provider' in record
+}
+const selectedModelRecord = computed<ModelConnection | undefined>(() => {
+  if (activeType.value !== 'model-connection') return undefined
+  const record = records.value.find((item) => item.id === draft.value?.id)
+  return record && isModelConnectionRecord(record) ? record : undefined
+})
 const credentialReplacementRequired = computed(() => {
   if (activeType.value !== 'model-connection' || !draft.value) return false
   const modelDraft = draft.value as ModelDraft
@@ -327,7 +334,7 @@ function draftFromApi(type: EditorType, value: EditorRecord): BlockDraftBase {
   return adapter(type).fromApi(value, defaultsForType(type))
 }
 
-function payloadFromDraft(type: EditorType, value: BlockDraftBase): BlockPayload {
+function payloadFromDraft(type: EditorType, value: BlockDraftBase): BlockPayloadBase {
   return adapter(type).toPayload(value, defaultsForType(type))
 }
 
@@ -344,7 +351,7 @@ function usesPythonExtension(type: EditorType): boolean {
 function validationPayloadFromDraft(
   type: EditorType,
   value: BlockDraftBase,
-): BlockPayload | null {
+): object | null {
   const payload = payloadFromDraft(type, value)
   if (type === 'mcp-connection') return null
   if (type === 'skill' && !value.id) return null
@@ -379,16 +386,18 @@ async function isStoredRecordInvalid(id: string): Promise<boolean> {
 const { validation } = useConfigurationValidation({
   source: draft,
   buildRequest: () => {
-    if (!activeType.value || !draft.value) return null
-    const payload = validationPayloadFromDraft(activeType.value, draft.value)
+    const active = activeType.value
+    const current = draft.value
+    if (!active || !current) return null
+    // `validationPayloadFromDraft` already refuses MCP connections; returning
+    // early here also narrows `active` to `ManagedComponentType`.
+    if (active === 'mcp-connection') return null
+    const payload = validationPayloadFromDraft(active, current)
     if (payload === null) return null
     return {
-      target: {
-        ...(activeType.value === 'model-connection'
-          ? { kind: 'model_connection' as const }
-          : { kind: 'block' as const, type: activeType.value }),
-        id: draft.value.id,
-      },
+      target: active === 'model-connection'
+        ? { kind: 'model_connection' as const, id: current.id }
+        : { kind: 'block' as const, type: active, id: current.id },
       payload,
     }
   },
@@ -402,7 +411,7 @@ const { validation } = useConfigurationValidation({
   ).display,
 })
 
-const displayedValidation = computed<ConfigurationValidationState>(() => {
+const displayedValidation = computed<DeepReadonly<ConfigurationValidationState>>(() => {
   if (saveValidation.value) return { status: 'invalid', report: saveValidation.value, error: '' }
   return validation.value
 })
@@ -604,6 +613,7 @@ async function startNew(): Promise<void> {
   if (draft.value?.id) {
     const accepted = await confirm({
       title: t('components.new.title'),
+      description: t('components.new.description'),
       confirmLabel: t('common.new'),
       cancelLabel: t('common.cancel'),
     })
@@ -626,7 +636,7 @@ async function save(): Promise<void> {
   if (!activeType.value || !draft.value) return
   const type = activeType.value
   const ownerId = draft.value.id
-  const sequence = resourceSequence
+  const routeGeneration = routeSequence
   pageError.value = ''
   const packageType = usesPythonExtension(type)
   const privateAssetType = packageType || type === 'skill'
@@ -642,8 +652,10 @@ async function save(): Promise<void> {
     return
   }
   const payload = payloadFromDraft(type, draft.value)
+  const normalizedName = payload.name.trim().toLowerCase()
   const existing = records.value.find((record) => (
-    record.name === payload.name && record.id !== draft.value?.id
+    record.name.trim().toLowerCase() === normalizedName
+    && record.id !== draft.value?.id
   ))
   let targetId = draft.value.id
   if (existing) {
@@ -667,25 +679,43 @@ async function save(): Promise<void> {
     if (!accepted) return
     targetId = existing.id
   }
-  if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
+  if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
 
   saving.value = true
   saveValidation.value = null
   try {
-    const request = targetId ? { id: targetId, ...payload } : payload
     const saved = type === 'model-connection'
-      ? await managementApi.saveModelConnection(request)
+      ? targetId
+        ? await managementApi.updateModelConnection(
+            targetId,
+            modelAdapter.toPayload(draft.value as ModelDraft),
+          )
+        : await managementApi.createModelConnection(
+            modelAdapter.toPayload(draft.value as ModelDraft),
+          )
       : type === 'mcp-connection'
-        ? await managementApi.saveMcpConnection(request)
-        : await managementApi.saveBlock(type, request)
-    if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
+        ? targetId
+          ? await managementApi.updateMcpConnection(
+              targetId,
+              mcpConnectionAdapter.toPayload(draft.value as McpConnectionDraft),
+            )
+          : await managementApi.createMcpConnection(
+              mcpConnectionAdapter.toPayload(draft.value as McpConnectionDraft),
+            )
+        // `createBlock`/`updateBlock` constrain the payload with the
+        // index-signature `BlockPayload`, while block payloads are interfaces
+        // extending `BlockPayloadBase`; this branch only handles block types.
+        : targetId
+          ? await managementApi.updateBlock(type, targetId, payload as BlockPayload)
+          : await managementApi.createBlock(type, payload as BlockPayload)
+    if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
     const savedDraft = draftFromApi(type, saved)
     if (packageType) {
       applyPythonPackageInspection(
         savedDraft as BlockDraftBase & PythonPackageDraftState,
         await managementApi.inspectPythonPackage(type as ManagedComponentType, saved.id),
       )
-      if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
+      if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
     }
     draft.value = savedDraft
     privateSkillPackage.value = type === 'skill'
@@ -706,7 +736,7 @@ async function save(): Promise<void> {
         : 'components.feedback.saved'),
     })
   } catch (error) {
-    if (!resourceRequestIsCurrent(sequence, type) || draft.value?.id !== ownerId) return
+    if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
     if (error instanceof ManagementApiError && error.validation) {
       saveValidation.value = error.validation
     } else {
@@ -720,7 +750,7 @@ async function save(): Promise<void> {
       )
     }
   } finally {
-    if (resourceRequestIsCurrent(sequence, type)) saving.value = false
+    saving.value = false
   }
 }
 
@@ -1107,7 +1137,7 @@ onMounted(() => {
     <SectionNav
       v-if="props.scope === 'agent' && navigationItems.length"
       :active-id="activeType ?? ''"
-      :aria-label="t('components.navigationLabel')"
+      :ariaLabel="t('components.navigationLabel')"
       class="mb-3"
       :items="navigationItems"
       layout="inline"

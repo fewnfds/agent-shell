@@ -32,7 +32,7 @@ describe('Subagent authoring page', () => {
         repository_id: '00000000-0000-4000-8000-000000000099',
         repository_revision: 1,
         components: {
-          model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+          'model-requirement': [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
           'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
           'custom-tool': [{ id: firstId, name: 'First Tool' }, { id: secondId, name: 'Second Tool' }],
         },
@@ -78,7 +78,7 @@ describe('Subagent authoring page', () => {
     const mainAgent = {
       id: '00000000-0000-4000-8000-000000000077',
       name: 'Broken Main Agent',
-      capability_refs: [{ type: 'model' as const, block_id: missingModelId }],
+      capability_refs: [{ type: 'model-requirement' as const, block_id: missingModelId }],
       tool_refs: [{ tool_id: missingToolId }],
       middleware_refs: [],
       subagents: [],
@@ -89,7 +89,7 @@ describe('Subagent authoring page', () => {
       name: 'broken_worker',
       description: 'Exercises repair controls.',
       settings: {
-        capability_overrides: [{ type: 'model' as const, mode: 'replace' as const, block_id: missingModelId }],
+        capability_overrides: [{ type: 'model-requirement' as const, mode: 'replace' as const, block_id: missingModelId }],
         tool_refs: [{ tool_id: missingToolId }],
         middleware_refs: [],
       },
@@ -103,7 +103,7 @@ describe('Subagent authoring page', () => {
       getConfigurationOptions: vi.fn(async () => ({
         repository_id: '00000000-0000-4000-8000-000000000099',
         repository_revision: 1,
-        components: { model: [], 'custom-tool': [] },
+        components: { 'model-requirement': [], 'custom-tool': [] },
         main_agents: [mainAgent],
         subagents: [subagent],
         workflows: [],
@@ -113,15 +113,15 @@ describe('Subagent authoring page', () => {
     })
 
     const main = await mountMainAgentPage(api, `/agents/main?id=${mainAgent.id}`)
-    expect((main.wrapper.get('#main-agent-capability-model').element as HTMLSelectElement).value).toBe(missingModelId)
-    expect(main.wrapper.get(`#main-agent-capability-model option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
+    expect((main.wrapper.get('#main-agent-capability-model-requirement').element as HTMLSelectElement).value).toBe(missingModelId)
+    expect(main.wrapper.get(`#main-agent-capability-model-requirement option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
     expect((main.wrapper.get('[data-testid="tool-reference"]').element as HTMLSelectElement).value).toBe(missingToolId)
     expect(main.wrapper.get(`[data-testid="tool-reference"] option[value="${missingToolId}"]`).attributes('disabled')).toBeDefined()
     main.wrapper.unmount()
 
     const sub = await mountSubagentPage(api, `/agents/subagents?id=${subagent.id}`)
-    expect((sub.wrapper.get('[data-testid="subagent-capability-model"]').element as HTMLSelectElement).value).toBe(missingModelId)
-    expect(sub.wrapper.get(`[data-testid="subagent-capability-model"] option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
+    expect((sub.wrapper.get('[data-testid="subagent-capability-model-requirement"]').element as HTMLSelectElement).value).toBe(missingModelId)
+    expect(sub.wrapper.get(`[data-testid="subagent-capability-model-requirement"] option[value="${missingModelId}"]`).attributes('disabled')).toBeDefined()
     expect((sub.wrapper.get('[data-testid="tool-reference"]').element as HTMLSelectElement).value).toBe(missingToolId)
     sub.wrapper.unmount()
   })
@@ -138,7 +138,7 @@ describe('Subagent authoring page', () => {
         repository_id: '00000000-0000-4000-8000-000000000099',
         repository_revision: 1,
         components: {
-          model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+          'model-requirement': [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
           'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
           'custom-middleware': [{ id: firstId, name: 'First' }, { id: secondId, name: 'Second' }],
         },
@@ -289,7 +289,7 @@ describe('Subagent authoring page', () => {
     const api = service()
     const { wrapper } = await mountSubagentPage(api)
 
-    const modelSelect = wrapper.get('[data-testid="subagent-capability-model"]')
+    const modelSelect = wrapper.get('[data-testid="subagent-capability-model-requirement"]')
     const optionalSelect = wrapper.get('[data-testid="subagent-capability-system-prompt"]')
     expect(modelSelect.find('option[value="__inherit__"]').exists()).toBe(true)
     expect(modelSelect.find('option[value="__disabled__"]').exists()).toBe(false)
@@ -308,7 +308,7 @@ describe('Subagent authoring page', () => {
       description: '',
       settings: {
         capability_overrides: [
-          { type: 'model', mode: 'replace', block_id: '00000000-0000-0000-0000-000000000001' },
+          { type: 'model-requirement', mode: 'replace', block_id: '00000000-0000-0000-0000-000000000001' },
           { type: 'system-prompt', mode: 'disabled', block_id: '' },
         ],
         tool_refs: [],

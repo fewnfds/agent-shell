@@ -9,6 +9,7 @@ import pytest
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
+    _OfficialRunEventGraph,
     _OfficialRunEventStream,
 )
 from agent_shell.runtime.run_calls import RunCaller, relation_key
@@ -293,3 +294,104 @@ def test_official_run_stream_preserves_unencoded_failure_text() -> None:
         "error": "worker exited while opening C:\\runtime\\provider.log",
         "error_code": "official_run_failed",
     }
+
+
+def test_official_run_stream_ends_subscription_on_interrupted_root_terminal() -> None:
+    async def events():
+        yield {
+            "method": "lifecycle",
+            "params": {"namespace": [], "data": {"event": "interrupted"}},
+        }
+
+    async def close_session(_thread_id: str) -> None:
+        return None
+
+    async def scenario() -> list[Mapping[str, object]]:
+        stream = _OfficialRunEventStream(
+            events(),
+            SimpleNamespace(close_official_session=close_session),
+            "thread-interrupted",
+        )
+        return [event async for event in stream]
+
+    projected = asyncio.run(scenario())
+    assert [
+        event["params"]["data"]["event"]  # type: ignore[index]
+        for event in projected
+    ] == ["interrupted"]
+
+
+def test_official_run_stream_ignores_nested_lifecycle_terminal() -> None:
+    async def events():
+        yield {
+            "method": "lifecycle",
+            "params": {
+                "namespace": [],
+                "data": {
+                    "event": "interrupted",
+                    "namespace": ["child:node-invocation-1"],
+                    "graph_name": "child",
+                },
+            },
+        }
+        yield {
+            "method": "lifecycle",
+            "params": {"namespace": [], "data": {"event": "completed"}},
+        }
+
+    async def close_session(_thread_id: str) -> None:
+        return None
+
+    async def scenario() -> list[Mapping[str, object]]:
+        stream = _OfficialRunEventStream(
+            events(),
+            SimpleNamespace(close_official_session=close_session),
+            "thread-nested",
+        )
+        return [event async for event in stream]
+
+    projected = asyncio.run(scenario())
+    assert [
+        event["params"]["data"]["event"]  # type: ignore[index]
+        for event in projected
+    ] == ["interrupted", "completed"]
+
+
+def test_official_event_graph_exposes_the_run_terminal_status() -> None:
+    """The production wiring must carry the Run's own end into the projector."""
+
+    async def events(event: str):
+        yield {
+            "method": "lifecycle",
+            "params": {"namespace": [], "data": {"event": event}},
+        }
+
+    async def close_session(_thread_id: str) -> None:
+        return None
+
+    def terminal_status_for(event: str) -> str:
+        stream = _OfficialRunEventStream(
+            events(event),
+            SimpleNamespace(close_official_session=close_session),
+            "thread-status",
+        )
+        graph = _OfficialRunEventGraph(stream)
+        assert graph.terminal_status == ""
+
+        async def drain() -> None:
+            try:
+                async for _item in await graph.astream_events({}, version="v3"):
+                    pass
+            except BaseException:
+                # `failed`/`error`/`timeout` keep raising so the response layer
+                # can classify them; the status must be readable either way.
+                pass
+
+        asyncio.run(drain())
+        return graph.terminal_status
+
+    # `completed` stays readable; if it were reported as "" the response layer
+    # could not tell this apart from a stream that never reached a terminal.
+    assert terminal_status_for("completed") == "completed"
+    for event in ("failed", "error", "interrupted", "cancelled", "timeout"):
+        assert terminal_status_for(event) == event

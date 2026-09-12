@@ -133,15 +133,21 @@ export interface ModelProviderCatalog {
   providers: ModelProviderCatalogItem[]
 }
 
-export interface ModelConnection {
-  id: string
+export interface ModelConnectionPayload {
   name: string
   provider: string
   base_url: string
-  credential: { status: 'masked' | 'missing' }
+  credential: string | null
   model: string
   provider_settings: Record<string, unknown>
   tool_choice: unknown
+  response_format: unknown
+  model_settings: unknown
+}
+
+export interface ModelConnection extends Omit<ModelConnectionPayload, 'credential'> {
+  id: string
+  credential: { status: 'masked' | 'missing' }
   response_format: Record<string, unknown> | null
   model_settings: Record<string, unknown>
 }
@@ -158,9 +164,12 @@ export type McpConfiguredValue =
   | { source: 'literal', value: string }
   | { source: 'secret', value?: string, status?: 'masked' | 'missing' }
 
-interface McpConnectionBase {
-  id: string
+interface McpConnectionPayloadBase {
   name: string
+}
+
+interface McpConnectionBase extends McpConnectionPayloadBase {
+  id: string
 }
 
 export interface McpInstallation {
@@ -173,7 +182,7 @@ export interface McpInstallation {
   entrypoints?: string[]
 }
 
-export interface McpStdioConnection extends McpConnectionBase {
+export interface McpStdioConnectionPayload extends McpConnectionPayloadBase {
   transport: 'stdio'
   package_source: 'npm' | 'pypi'
   package: string
@@ -182,13 +191,23 @@ export interface McpStdioConnection extends McpConnectionBase {
   args: string[]
   cwd?: string | null
   env: Record<string, McpConfiguredValue>
-  installation: McpInstallation
 }
 
-export interface McpHttpConnection extends McpConnectionBase {
+export interface McpHttpConnectionPayload extends McpConnectionPayloadBase {
   transport: 'http'
   url: string
   headers: Record<string, McpConfiguredValue>
+}
+
+export type McpConnectionPayload = McpStdioConnectionPayload | McpHttpConnectionPayload
+
+export interface McpStdioConnection extends McpConnectionBase, McpStdioConnectionPayload {
+  transport: 'stdio'
+  installation: McpInstallation
+}
+
+export interface McpHttpConnection extends McpConnectionBase, McpHttpConnectionPayload {
+  transport: 'http'
 }
 
 export type McpConnection = McpStdioConnection | McpHttpConnection
@@ -558,6 +577,7 @@ export interface WorkflowLifecycleBulkDeleteResult {
   matched: number
   deleted: number
   skipped_active: number
+  skipped_unavailable: number
 }
 
 export interface WorkflowLifecycleCancelResult {
@@ -804,15 +824,18 @@ export interface SubagentPayload {
 
 export type Subagent = SubagentPayload & { id: string }
 
+// Mirrors the backend `DraftValidationTarget` / `DraftValidationRequest`
+// (server/src/agent_shell/api/validation.py). `type` is an optional string that
+// defaults to "", and `payload` is an untyped JSON object (`dict[str, Any]`).
 type ValidationTarget =
   | { kind: 'block'; type: ManagedComponentType; id?: string }
-  | { kind: 'main_agent'; type?: ''; id?: string }
-  | { kind: 'model_connection'; type?: ''; id?: string }
-  | { kind: 'subagent'; type?: ''; id?: string }
+  | { kind: 'main_agent'; type?: string; id?: string }
+  | { kind: 'model_connection'; type?: string; id?: string }
+  | { kind: 'subagent'; type?: string; id?: string }
 
 export interface DraftValidationRequest {
   target: ValidationTarget
-  payload: Record<string, unknown>
+  payload: object
 }
 
 export interface ValidationIssue {

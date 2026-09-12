@@ -11,7 +11,7 @@ import { cleanName, identity, isRecord, type BlockDraftBase, type BlockPayloadBa
 export interface CustomMiddlewareDraft extends BlockDraftBase, PythonPackageDraftState {}
 export type CustomMiddlewareCatalogItem = PythonPackageTemplate
 
-interface CustomMiddlewarePayload extends BlockPayloadBase {
+export interface CustomMiddlewarePayload extends BlockPayloadBase {
   python_package: PythonPackageDraftState['python_package']
   python_package_template?: PythonPackageDraftState['python_package_template']
 }

@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   hint?: string
   description?: string
   error?: string
-  errorTestId?: string
+  errorTestId?: string | undefined
   busy?: boolean
   submitLabel: string
   busyLabel: string

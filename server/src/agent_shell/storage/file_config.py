@@ -643,13 +643,25 @@ class FileConfigRepository:
             )
             return descriptor.as_dict(active=False), target_ids
 
+    def _require_repository_deletable(
+        self,
+        repository_id: str,
+    ) -> ConfigurationRepositoryDescriptor:
+        if repository_id == self.repository_id:
+            raise ActiveRepositoryDeleteError(
+                "the active configuration repository cannot be deleted"
+            )
+        return self._repository_descriptor(repository_id)
+
+    def require_repository_deletable(self, repository_id: str) -> None:
+        """Validate Repository deletion before cross-domain bindings are mutated."""
+
+        with self._mutations.mutation(), self._lock:
+            self._require_repository_deletable(repository_id)
+
     def delete_repository(self, repository_id: str) -> dict[str, object]:
         with self._mutations.mutation(), self._lock:
-            if repository_id == self.repository_id:
-                raise ActiveRepositoryDeleteError(
-                    "the active configuration repository cannot be deleted"
-                )
-            descriptor = self._repository_descriptor(repository_id)
+            descriptor = self._require_repository_deletable(repository_id)
             tombstone = descriptor.root.parent / f".repository_delete_{descriptor.id}"
             if tombstone.exists():
                 raise ValueError(

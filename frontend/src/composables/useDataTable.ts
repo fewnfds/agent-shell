@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 
 import type {
   DataTableAppliedQuery,
@@ -64,8 +64,11 @@ export function useDataTable<Row>(config: DataTableConfig<Row>) {
   const appliedFilters = ref<Record<string, DataTableFilterValue>>(cloneFilters(defaults))
   const page = ref(1)
   const pageSize = ref(config.pageSize ?? 20)
-  const remoteRows = ref<Row[]>([])
-  const loadedLocalRows = ref<Row[]>([])
+  // `Row` is generic, so Vue cannot decide whether it is deeply unwrapped and
+  // widens `.value` to `Row | UnwrapRefSimple<Row>`. Asserting the declared type
+  // keeps the deep reactivity `ref` already provides at runtime.
+  const remoteRows = ref<Row[]>([]) as Ref<Row[]>
+  const loadedLocalRows = ref<Row[]>([]) as Ref<Row[]>
   const remoteTotal = ref(0)
   const queryValidationError = ref('')
   const loading = ref(false)

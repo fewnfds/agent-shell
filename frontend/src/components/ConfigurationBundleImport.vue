@@ -9,7 +9,7 @@ import { useManagementError } from '@/composables/useManagementError'
 import { useToasts } from '@/composables/useToasts'
 import type { ConfigLibraryApi } from '@/pages/configLibrary'
 
-const props = withDefaults(defineProps<{ api?: Pick<ConfigLibraryApi, 'previewConfigurationBundle' | 'importConfigurationBundle'> }>(), {
+const props = withDefaults(defineProps<{ api?: Pick<ConfigLibraryApi, 'previewConfigurationBundle' | 'importConfigurationBundle'> | undefined }>(), {
   api: undefined,
 })
 const emit = defineEmits<{ imported: [] }>()

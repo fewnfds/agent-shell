@@ -32,26 +32,36 @@ class RuntimeDiagnosticDetailStore:
 
     def write(self, diagnostic_id: str, lines: Iterable[str]) -> bool:
         path = self._path(diagnostic_id)
+        descriptor: int | None = None
         temporary: Path | None = None
         with self._lock:
             try:
-                with tempfile.NamedTemporaryFile(
-                    "w",
-                    encoding="utf-8",
-                    newline="",
+                descriptor, temporary_name = tempfile.mkstemp(
                     dir=self._directory,
                     prefix=f".{path.name}.",
                     suffix=".tmp",
-                    delete=False,
+                )
+                temporary = Path(temporary_name)
+                permission = secure_file(temporary)
+                if not permission.enforced:
+                    raise PermissionError(
+                        "The runtime diagnostic temporary file is not private."
+                    )
+                with os.fdopen(
+                    descriptor,
+                    "w",
+                    encoding="utf-8",
+                    newline="",
                 ) as stream:
-                    temporary = Path(stream.name)
+                    descriptor = None
                     for line in lines:
                         stream.write(line)
                     stream.flush()
                     os.fsync(stream.fileno())
-                secure_file(temporary)
                 os.replace(temporary, path)
             finally:
+                if descriptor is not None:
+                    os.close(descriptor)
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
         return True

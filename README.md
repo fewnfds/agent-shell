@@ -10,7 +10,7 @@ Windows 用户请先阅读[启动指南](docs/user-guide/getting-started.md)，�
 .\start_server.bat
 ```
 
-首次运行需确认初始化并设置管理密码。管理密码用于 `/admin` 与 `/api/*`，另行设置 API Key 后才能调用 `/v1/*`。
+首次运行需确认初始化并设置管理密码。管理密码用于 `/admin` 与 `/agent-shell/api/*`，另行设置 API Key 后才能调用 `/compat/openai/v1/*`。
 
 完整说明请查看[文档索引](docs/README.md)。
 

@@ -32,29 +32,35 @@ const pageError = ref('')
 const failureTitle = ref<'loadFailed' | 'updateFailed'>('loadFailed')
 const enabled = ref(false)
 const latest = ref<InterceptedMessageRequest | null>(null)
-let latestRequest = 0
+let loadSequence = 0
 let loadingRequest = 0
+let updateSequence = 0
 
 const requestRawJson = computed(() => latest.value?.request_raw_json ?? '')
 
-function applySnapshot(snapshot: MessageInterception): void {
-  enabled.value = snapshot.enabled
-  latest.value = snapshot.latest
+function applySnapshot(
+  snapshot: MessageInterception,
+  options: { includeEnabled?: boolean, includeLatest?: boolean } = {},
+): void {
+  if (options.includeEnabled !== false) enabled.value = snapshot.enabled
+  if (options.includeLatest !== false) latest.value = snapshot.latest
 }
 
 async function load(showLoading = false): Promise<void> {
-  const request = ++latestRequest
+  const request = ++loadSequence
+  const includeEnabled = !saving.value
   if (showLoading) {
     loading.value = true
     loadingRequest = request
+    pageError.value = ''
+    failureTitle.value = 'loadFailed'
   }
-  pageError.value = ''
-  failureTitle.value = 'loadFailed'
   try {
     const snapshot = await api.getMessageInterception()
-    if (request === latestRequest) applySnapshot(snapshot)
+    if (request === loadSequence) applySnapshot(snapshot, { includeEnabled })
   } catch (error) {
-    if (request === latestRequest) {
+    if (request === loadSequence && !saving.value) {
+      failureTitle.value = 'loadFailed'
       pageError.value = managementError.describe(error).display
     }
   } finally {
@@ -63,21 +69,24 @@ async function load(showLoading = false): Promise<void> {
 }
 
 async function updateEnabled(): Promise<void> {
-  const request = ++latestRequest
+  const request = ++updateSequence
   const requested = enabled.value
   saving.value = true
   pageError.value = ''
   failureTitle.value = 'updateFailed'
   try {
     const snapshot = await api.updateMessageInterception(requested)
-    if (request === latestRequest) applySnapshot(snapshot)
+    if (request !== updateSequence) return
+    loadSequence += 1
+    applySnapshot(snapshot, { includeLatest: false })
   } catch (error) {
-    if (request === latestRequest) {
+    if (request === updateSequence) {
+      loadSequence += 1
       enabled.value = !requested
       pageError.value = managementError.describe(error).display
     }
   } finally {
-    saving.value = false
+    if (request === updateSequence) saving.value = false
   }
 }
 

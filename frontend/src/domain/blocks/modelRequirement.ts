@@ -4,11 +4,11 @@ export interface ModelRequirementDraft extends BlockDraftBase {
   description: string
 }
 
-interface ModelRequirementApiRecord extends BlockDraftBase {
+export interface ModelRequirementApiRecord extends BlockDraftBase {
   description?: unknown
 }
 
-interface ModelRequirementPayload extends BlockPayloadBase {
+export interface ModelRequirementPayload extends BlockPayloadBase {
   description: string
 }
 

@@ -1,7 +1,7 @@
 import type {
-  BlockPayload,
   McpConfiguredValue,
   McpConnection,
+  McpConnectionPayload,
   McpInstallation,
 } from '@/api'
 
@@ -114,7 +114,7 @@ export const mcpConnectionAdapter = {
       installation: value.installation,
     }
   },
-  toPayload(value: McpConnectionDraft): BlockPayload {
+  toPayload(value: McpConnectionDraft): McpConnectionPayload {
     const common = { name: cleanName(value.name), transport: value.transport }
     if (value.transport === 'http') {
       return {

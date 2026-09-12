@@ -19,19 +19,22 @@ const api = vi.hoisted(() => ({
   getCatalog: vi.fn(),
   listBlockSummaries: vi.fn(),
   getBlock: vi.fn(),
-  saveBlock: vi.fn(),
+  createBlock: vi.fn(),
+  updateBlock: vi.fn(),
   copyBlock: vi.fn(),
   deleteBlock: vi.fn(),
   listModelProviders: vi.fn(),
   listModelConnections: vi.fn(),
   getModelConnection: vi.fn(),
-  saveModelConnection: vi.fn(),
+  createModelConnection: vi.fn(),
+  updateModelConnection: vi.fn(),
   copyModelConnection: vi.fn(),
   deleteModelConnection: vi.fn(),
   fetchModels: vi.fn(),
   listMcpConnections: vi.fn(),
   getMcpConnection: vi.fn(),
-  saveMcpConnection: vi.fn(),
+  createMcpConnection: vi.fn(),
+  updateMcpConnection: vi.fn(),
   copyMcpConnection: vi.fn(),
   deleteMcpConnection: vi.fn(),
   installMcpConnection: vi.fn(),
@@ -296,12 +299,18 @@ beforeEach(() => {
   api.getBlock.mockImplementation(async (type: BlockType, id: string) => (
     type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)
   ))
-  api.saveBlock.mockImplementation(async (type: BlockType, data: BlockPayload & { id?: string }) => ({
-    ...(type === 'model-requirement'
-      ? modelRequirementRecord(data.id ?? '00000000-0000-0000-0000-000000000099')
-      : skillRecord(data.id ?? '00000000-0000-0000-0000-000000000099')),
+  api.createBlock.mockImplementation(async (type: BlockType, data: BlockPayload) => {
+    const id = '00000000-0000-0000-0000-000000000099'
+    return {
+      ...(type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)),
+      ...data,
+      id,
+    }
+  })
+  api.updateBlock.mockImplementation(async (type: BlockType, id: string, data: BlockPayload) => ({
+    ...(type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)),
     ...data,
-    id: data.id ?? '00000000-0000-0000-0000-000000000099',
+    id,
   }))
   api.copyBlock.mockImplementation(async (_type: BlockType, _id: string, name: string) => ({
     ...modelRequirementRecord('00000000-0000-4000-8000-000000000088'),
@@ -311,13 +320,15 @@ beforeEach(() => {
   api.listModelProviders.mockResolvedValue({ providers: [] })
   api.listModelConnections.mockResolvedValue([])
   api.getModelConnection.mockRejectedValue(new Error('unexpected model connection load'))
-  api.saveModelConnection.mockRejectedValue(new Error('unexpected model connection save'))
+  api.createModelConnection.mockRejectedValue(new Error('unexpected model connection create'))
+  api.updateModelConnection.mockRejectedValue(new Error('unexpected model connection update'))
   api.copyModelConnection.mockRejectedValue(new Error('unexpected model connection copy'))
   api.deleteModelConnection.mockResolvedValue({ ok: true })
   api.fetchModels.mockResolvedValue([])
   api.listMcpConnections.mockResolvedValue([])
   api.getMcpConnection.mockRejectedValue(new Error('unexpected MCP connection load'))
-  api.saveMcpConnection.mockRejectedValue(new Error('unexpected MCP connection save'))
+  api.createMcpConnection.mockRejectedValue(new Error('unexpected MCP connection create'))
+  api.updateMcpConnection.mockRejectedValue(new Error('unexpected MCP connection update'))
   api.copyMcpConnection.mockRejectedValue(new Error('unexpected MCP connection copy'))
   api.deleteMcpConnection.mockResolvedValue({ ok: true })
   api.installMcpConnection.mockRejectedValue(new Error('unexpected MCP connection install'))
@@ -588,6 +599,28 @@ describe('ComponentsPage', () => {
     wrapper.unmount()
   })
 
+  it('updates a model connection with only the declared write payload', async () => {
+    const id = '00000000-0000-4000-8000-000000000077'
+    const connection = modelConnection(id)
+    api.listModelConnections.mockResolvedValueOnce([connection])
+    api.getModelConnection.mockResolvedValueOnce(connection)
+    api.updateModelConnection.mockResolvedValueOnce(connection)
+    api.listModelProviders.mockResolvedValueOnce({ langchain_version: '1.0.0', providers: [] })
+    const { wrapper } = await mountModelAt(`/models/connections?id=${id}`)
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+
+    expect(api.updateModelConnection).toHaveBeenCalledWith(id, expect.objectContaining({
+      name: 'Local model',
+      credential: null,
+    }))
+    expect(api.updateModelConnection.mock.calls[0]?.[1]).not.toHaveProperty('id')
+    expect(api.updateModelConnection.mock.calls[0]?.[1].credential).not.toEqual({ status: 'masked' })
+    expect(api.createModelConnection).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('installs and refreshes only a saved clean Managed Local MCP connection', async () => {
     const id = '00000000-0000-4000-8000-000000000079'
     const declared = mcpConnection(id)
@@ -610,6 +643,27 @@ describe('ComponentsPage', () => {
       tone: 'success',
       title: 'mcp.installation.succeeded',
     }))
+    wrapper.unmount()
+  })
+
+  it('updates an MCP connection without sending its installation projection', async () => {
+    const id = '00000000-0000-4000-8000-000000000079'
+    const connection = mcpConnection(id, 'ready')
+    api.listMcpConnections.mockResolvedValueOnce([connection])
+    api.getMcpConnection.mockResolvedValueOnce(connection)
+    api.updateMcpConnection.mockResolvedValueOnce(connection)
+    const { wrapper } = await mountMcpAt(`/mcp/connections?id=${id}`)
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+
+    expect(api.updateMcpConnection).toHaveBeenCalledWith(id, expect.objectContaining({
+      name: 'Browser MCP',
+      transport: 'stdio',
+    }))
+    expect(api.updateMcpConnection.mock.calls[0]?.[1]).not.toHaveProperty('id')
+    expect(api.updateMcpConnection.mock.calls[0]?.[1]).not.toHaveProperty('installation')
+    expect(api.createMcpConnection).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -669,14 +723,15 @@ describe('ComponentsPage', () => {
     api.getBlock.mockImplementation(async (type: BlockType, id: string) => (
       type === 'model-requirement' ? modelRequirementRecord(id) : skillRecord(id)
     ))
-    api.saveBlock.mockReturnValueOnce(mutation.promise)
+    api.updateBlock.mockReturnValueOnce(mutation.promise)
     const { router, wrapper } = await mountAt(`/agent-components/model-requirement?id=${firstId}`)
 
     await buttonByText(wrapper, 'common.save').trigger('click')
     await flushPromises()
-    expect(api.saveBlock).toHaveBeenCalledWith(
+    expect(api.updateBlock).toHaveBeenCalledWith(
       'model-requirement',
-      expect.objectContaining({ id: firstId }),
+      firstId,
+      expect.not.objectContaining({ id: expect.anything() }),
     )
     await router.push(`/agent-components/skill?id=${secondId}`)
     await flushPromises()
@@ -850,7 +905,8 @@ describe('ComponentsPage', () => {
     await buttonByText(wrapper, 'common.save').trigger('click')
     expect(wrapper.get('[data-testid="page-error"]').text())
       .toContain('errors.pythonPackageTemplateRequired')
-    expect(api.saveBlock).not.toHaveBeenCalled()
+    expect(api.createBlock).not.toHaveBeenCalled()
+    expect(api.updateBlock).not.toHaveBeenCalled()
 
     await wrapper.get('[data-field="record-name"]').setValue('Existing router')
     await wrapper.get('[data-editor="command"] select').setValue('basic-router')
@@ -858,7 +914,17 @@ describe('ComponentsPage', () => {
     expect(wrapper.get('[data-testid="page-error"]').text())
       .toContain('errors.configurationNameConflict')
     expect(useConfirmation().current.value).toBeNull()
-    expect(api.saveBlock).not.toHaveBeenCalled()
+    expect(api.createBlock).not.toHaveBeenCalled()
+    expect(api.updateBlock).not.toHaveBeenCalled()
+
+    // The backend compares names with casefold, so a differing only in case
+    // must be rejected before the request instead of surfacing as a 409.
+    await wrapper.get('[data-field="record-name"]').setValue('existing ROUTER')
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    expect(wrapper.get('[data-testid="page-error"]').text())
+      .toContain('errors.configurationNameConflict')
+    expect(api.createBlock).not.toHaveBeenCalled()
+    expect(api.updateBlock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -869,11 +935,12 @@ describe('ComponentsPage', () => {
     await buttonByText(wrapper, 'common.save').trigger('click')
     await flushPromises()
 
-    expect(api.saveBlock).toHaveBeenNthCalledWith(
-      1,
+    expect(api.updateBlock).toHaveBeenCalledWith(
       'model-requirement',
-      expect.objectContaining({ id, name: 'Renamed configuration' }),
+      id,
+      expect.objectContaining({ name: 'Renamed configuration' }),
     )
+    expect(api.updateBlock.mock.calls[0]?.[2]).not.toHaveProperty('id')
 
     const newButton = wrapper.findAll('button').find((button) => button.text() === 'common.new')
     if (!newButton) throw new Error('new button not found')
@@ -890,7 +957,7 @@ describe('ComponentsPage', () => {
     await buttonByText(wrapper, 'common.save').trigger('click')
     await flushPromises()
 
-    const createPayload = api.saveBlock.mock.calls[1]?.[1]
+    const createPayload = api.createBlock.mock.calls[0]?.[1]
     expect(createPayload).toEqual(expect.objectContaining({ name: 'Another name' }))
     expect(createPayload).not.toHaveProperty('id')
     wrapper.unmount()
@@ -930,15 +997,18 @@ describe('ComponentsPage', () => {
       confirmLabel: 'components.overwrite.confirm',
       dangerous: true,
     })
-    expect(api.saveBlock).not.toHaveBeenCalled()
+    expect(api.createBlock).not.toHaveBeenCalled()
+    expect(api.updateBlock).not.toHaveBeenCalled()
 
     useConfirmation().accept()
     await flushPromises()
 
-    expect(api.saveBlock).toHaveBeenCalledWith(
+    expect(api.updateBlock).toHaveBeenCalledWith(
       'model-requirement',
-      expect.objectContaining({ id: existingId, name: 'Shared name' }),
+      existingId,
+      expect.objectContaining({ name: 'Shared name' }),
     )
+    expect(api.updateBlock.mock.calls[0]?.[2]).not.toHaveProperty('id')
     wrapper.unmount()
   })
 
@@ -957,7 +1027,7 @@ describe('ComponentsPage', () => {
         message_args: {},
       }],
     }
-    api.saveBlock.mockRejectedValueOnce(new ManagementApiError({
+    api.createBlock.mockRejectedValueOnce(new ManagementApiError({
       status: 422,
       code: 'configuration_validation_failed',
       message: 'save rejected',

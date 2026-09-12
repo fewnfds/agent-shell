@@ -114,7 +114,10 @@ describe('WorkflowEditorPage', () => {
     wrapper.unmount()
   })
 
-  it('adds a Command and saves the current control document', async () => {
+  it('adds a Command, saves the current document, and reloads authoritative metadata', async () => {
+    vi.mocked(managementApi.getWorkflow)
+      .mockResolvedValueOnce(workflow)
+      .mockResolvedValueOnce({ ...workflow, name: 'Canonical draft', enabled: false })
     const wrapper = await mountEditor()
     await wrapper.get('.workflow-node-library-item').trigger('click')
     await wrapper.get('.workflow-editor-toolbar button[aria-label="Save draft"]').trigger('click')
@@ -125,6 +128,25 @@ describe('WorkflowEditorPage', () => {
         definition: expect.objectContaining({ state_contract: 'agent-shell.workflow.control.v1' }),
       }),
     )
+    expect(managementApi.getWorkflow).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Canonical draft')
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Draft')
+    wrapper.unmount()
+  })
+
+  it('keeps the save reported as successful when the metadata reload fails', async () => {
+    vi.mocked(managementApi.getWorkflow)
+      .mockResolvedValueOnce(workflow)
+      .mockRejectedValueOnce(new Error('metadata unavailable'))
+    const wrapper = await mountEditor()
+    await wrapper.get('.workflow-node-library-item').trigger('click')
+    await wrapper.get('.workflow-editor-toolbar button[aria-label="Save draft"]').trigger('click')
+    await flushPromises()
+
+    // The draft write succeeded, so the editor must not report a save failure.
+    expect(managementApi.saveWorkflowDraft).toHaveBeenCalledOnce()
+    expect(wrapper.text()).not.toContain('workflows.editor.saveFailed')
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Draft')
     wrapper.unmount()
   })
 
@@ -140,8 +162,11 @@ describe('WorkflowEditorPage', () => {
     wrapper.unmount()
   })
 
-  it('publishes after current validation succeeds', async () => {
+  it('publishes after current validation succeeds and reloads authoritative metadata', async () => {
     vi.useFakeTimers()
+    vi.mocked(managementApi.getWorkflow)
+      .mockResolvedValueOnce({ ...workflow, enabled: false })
+      .mockResolvedValueOnce({ ...workflow, name: 'Canonical published', enabled: true })
     const wrapper = await mountEditor()
     await vi.advanceTimersByTimeAsync(350)
     await flushPromises()
@@ -150,6 +175,9 @@ describe('WorkflowEditorPage', () => {
     await publish.trigger('click')
     await flushPromises()
     expect(managementApi.publishWorkflow).toHaveBeenCalledOnce()
+    expect(managementApi.getWorkflow).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Canonical published')
+    expect(wrapper.get('.workflow-editor-toolbar').text()).toContain('Published')
     wrapper.unmount()
   })
 })

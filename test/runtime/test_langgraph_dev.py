@@ -128,10 +128,9 @@ def test_agent_factory_uses_configurable_identity_from_run_start() -> None:
         caller_run_id="caller-1",
         operation_id="operation-1",
     )
-    assert main_agent_assistant_id(main_agent_id) == main_agent_assistant_id(
-        main_agent_id
-    )
-    assert main_agent_assistant_id(main_agent_id) != main_agent_id
+    assistant_id = main_agent_assistant_id(main_agent_id)
+    assert assistant_id == main_agent_assistant_id(main_agent_id.upper())
+    assert assistant_id != main_agent_id
 
 
 def test_agent_graph_inspection_does_not_create_lifecycle_filesystem_data(

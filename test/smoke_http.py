@@ -682,7 +682,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         _request(client, "GET", "/agent-shell/api/catalog", expected=401)
         _request(client, "GET", "/agent-shell/api/catalog", headers=inference, expected=403)
         _request(client, "GET", "/compat/openai/v1/unknown", headers=management, expected=403)
-        _request(client, "GET", "/compat/openai/v1/unknown", headers=inference, expected=401)
+        _request(client, "GET", "/compat/openai/v1/unknown", headers=inference, expected=404)
         catalog = _request(client, "GET", "/agent-shell/api/catalog", headers=management).json()
         assert tuple(item["type"] for item in catalog["block_types"]) == CAPABILITY_TYPES
         tool_templates = _request(

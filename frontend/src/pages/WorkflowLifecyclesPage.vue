@@ -232,9 +232,13 @@ const tableConfig: DataTableConfig<LangGraphLifecycleSummary> = {
     }),
     run: (context) => api.deleteWorkflowLifecyclesMatching(context.applied.query),
     successTitle: (result) => {
-      const response = result as { deleted: number; skipped_active: number }
-      return response.skipped_active
-        ? t('workflowLifecycles.bulkDelete.completedWithActive', response)
+      const response = result as {
+        deleted: number
+        skipped_active: number
+        skipped_unavailable: number
+      }
+      return response.skipped_active || response.skipped_unavailable
+        ? t('workflowLifecycles.bulkDelete.completedWithSkipped', response)
         : t('workflowLifecycles.bulkDelete.completed', response)
     },
     failureTitle: () => t('workflowLifecycles.bulkDelete.failed'),

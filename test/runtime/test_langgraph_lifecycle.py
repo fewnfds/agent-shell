@@ -13,6 +13,7 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleActive,
     LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
+    LangGraphLifecycleUnavailable,
     LangGraphRunNotFound,
 )
 from agent_shell.runtime.lifecycle_store import (
@@ -730,7 +731,10 @@ def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> 
         service = LangGraphLifecycleService(lambda: client)
 
         snapshot = await service.snapshot("lifecycle-1")
-        with pytest.raises(RuntimeError, match="official Thread/Run status is unavailable"):
+        with pytest.raises(
+            LangGraphLifecycleUnavailable,
+            match="official Thread/Run status is unavailable",
+        ):
             await service.delete("lifecycle-1")
         return client, snapshot
 
@@ -743,6 +747,59 @@ def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> 
     assert client.deleted_threads == []
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "input")]
     assert client.store_items[("workflow-lifecycle", "lifecycle-1", "runs")]
+
+
+class _DeletionProbeService(LangGraphLifecycleService):
+    def __init__(self, *, retained_lifecycles: int = 0) -> None:
+        super().__init__(
+            lambda: None,
+            settings=SimpleNamespace(
+                snapshot=lambda: {"retained_lifecycles": retained_lifecycles}
+            ),
+        )
+        self.attempted: list[str] = []
+
+    async def _list_all(self, query: str = "") -> list[dict]:
+        del query
+        return [
+            {"lifecycle_id": "unavailable", "status": "success"},
+            {"lifecycle_id": "active", "status": "success"},
+            {"lifecycle_id": "terminal", "status": "success"},
+        ]
+
+    async def delete(self, lifecycle_id: str) -> int:
+        self.attempted.append(lifecycle_id)
+        if lifecycle_id == "unavailable":
+            raise LangGraphLifecycleUnavailable(lifecycle_id)
+        if lifecycle_id == "active":
+            raise LangGraphLifecycleActive(lifecycle_id)
+        return 1
+
+
+def test_bulk_delete_reports_unavailable_and_continues_with_other_lifecycles() -> None:
+    async def scenario():
+        service = _DeletionProbeService()
+        result = await service.delete_matching("")
+        return service, result
+
+    service, result = asyncio.run(scenario())
+    assert service.attempted == ["unavailable", "active", "terminal"]
+    assert result == {
+        "matched": 3,
+        "deleted": 1,
+        "skipped_active": 1,
+        "skipped_unavailable": 1,
+    }
+
+
+def test_retention_continues_after_unavailable_or_newly_active_lifecycle() -> None:
+    async def scenario():
+        service = _DeletionProbeService()
+        await service.enforce_retention()
+        return service
+
+    service = asyncio.run(scenario())
+    assert service.attempted == ["unavailable", "active", "terminal"]
 
 
 def test_retention_excludes_active_then_deletes_terminal_lifecycle_data() -> None:

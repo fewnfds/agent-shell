@@ -1,7 +1,9 @@
 import { fileURLToPath, URL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+// `vitest/config` re-exports Vite's config helpers and adds the `test` option,
+// which `vite`'s own `defineConfig` does not accept.
+import { defineConfig } from 'vitest/config'
 
 const proxyTarget = process.env.VITE_API_PROXY_TARGET
 

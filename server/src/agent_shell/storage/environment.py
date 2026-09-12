@@ -31,7 +31,12 @@ _MODEL_SECRET_ENVIRONMENT = re.compile(
 _MCP_SECRET_ENVIRONMENT = re.compile(
     r"^AGENT_SHELL_MCP_[0-9A-F]{32}_[0-9A-F]{32}$"
 )
-_ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# `agent-shell.env` is a standard dotenv document: ordinary non-Agent-Shell keys
+# are preserved verbatim and only values the codec cannot represent are rejected.
+# del/`.` style process names such as `AWS-KEY` are ordinary dotenv keys, so the
+# check excludes only the characters that break dotenv parsing: whitespace, the
+# `=` separator, the `#` comment marker and quote characters.
+_ENVIRONMENT_NAME = re.compile(r"^[^\s=#\"']+$")
 _ENVIRONMENT_OWNERS = frozenset(
     {
         SYSTEM_SETTINGS_ENVIRONMENT_OWNER,

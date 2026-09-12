@@ -104,13 +104,21 @@ async def _ensure_assistant(
 
 
 def _root_terminal_status(event: Mapping[str, object]) -> str:
+    """Return the entry Run's own terminal status, or "" for any other event.
+
+    Official ``lifecycle`` events for the Run's nested graphs and node
+    invocations share the same root stream; their identity is carried in
+    ``data.namespace``. Only an event without a nested namespace describes the
+    root Run, so a nested interruption never ends the request subscription.
+    """
+
     if event.get("method") != "lifecycle":
         return ""
     params = event.get("params")
     if not isinstance(params, Mapping) or params.get("namespace") not in (None, []):
         return ""
     data = params.get("data")
-    if not isinstance(data, Mapping):
+    if not isinstance(data, Mapping) or data.get("namespace") not in (None, []):
         return ""
     status = str(data.get("event") or "")
     return status if status in {
@@ -181,6 +189,7 @@ class _OfficialRunEventStream:
         self._events = events
         self._coordinator = coordinator
         self._thread_id = thread_id
+        self.terminal_status = ""
 
     async def __aenter__(self) -> _OfficialRunEventStream:
         return self
@@ -194,6 +203,10 @@ class _OfficialRunEventStream:
     async def _until_terminal(self) -> AsyncIterator[Mapping[str, object]]:
         async for event in self._events:
             status = _root_terminal_status(event)
+            if status:
+                # Fix the Run's own terminal state before the projector sees it
+                # so the response layer can name how the Run actually ended.
+                self.terminal_status = status
             error = (
                 _root_run_error(event)
                 if status in {"failed", "error"}
@@ -207,10 +220,12 @@ class _OfficialRunEventStream:
             if status:
                 if error is not None:
                     raise error
-                if status in {"interrupted", "cancelled"}:
-                    raise asyncio.CancelledError
                 if status in {"timeout", "timed_out"}:
                     raise TimeoutError("The official Workflow Run timed out.")
+                # `interrupted` and `cancelled` are ordinary official terminal
+                # states: they end this subscription like `completed`. Raising
+                # `CancelledError` here would be read as a cancellation of the
+                # local consumer, and the response would never be sealed.
                 return
 
     async def output(self) -> object:
@@ -222,6 +237,10 @@ class _OfficialRunEventGraph:
 
     def __init__(self, stream: _OfficialRunEventStream) -> None:
         self._stream = stream
+
+    @property
+    def terminal_status(self) -> str:
+        return self._stream.terminal_status
 
     async def astream_events(self, *_args: object, **_kwargs: object) -> object:
         return self._stream
@@ -369,6 +388,11 @@ class LifecycleRunCoordinator:
         """Signal the in-flight request-entry response to stop streaming."""
 
         return self._response_terminated
+
+    def response_terminated_flag(self) -> bool:
+        """Report whether an explicit Lifecycle cancel already stopped the response."""
+
+        return self._response_terminated.is_set()
 
     def _begin_lifecycle(self, lifecycle_id: str) -> None:
         if self._lifecycle_id or self._response_scheduler is not None:
@@ -737,9 +761,11 @@ class LifecycleRunCoordinator:
                 binding.thread_id,
                 run_id,
             )
+            execution.response_terminated = self.response_terminated_flag
             if binding.response_consumer:
                 self._response_scheduler = execution.response_scheduler
-            binding.execution_ready.set_result(execution)
+            if not binding.execution_ready.done():
+                binding.execution_ready.set_result(execution)
             return graph
         except BaseException as exc:
             if not binding.execution_ready.done():
@@ -816,9 +842,11 @@ class LifecycleRunCoordinator:
                 binding.thread_id,
                 run_id,
             )
+            execution.response_terminated = self.response_terminated_flag
             if binding.response_consumer:
                 self._response_scheduler = execution.response_scheduler
-            binding.execution_ready.set_result(execution)
+            if not binding.execution_ready.done():
+                binding.execution_ready.set_result(execution)
             return graph
         except BaseException as exc:
             if not binding.execution_ready.done():

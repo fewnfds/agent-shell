@@ -23,6 +23,105 @@ def test_workflow_run_has_stable_openai_completion_reason() -> None:
     assert execution.finish_reason == "stop"
 
 
+def test_official_terminal_status_reaches_finish_reason_and_run_event() -> None:
+    def run_scenario(
+        terminal_status: str,
+        *,
+        response_terminated: bool = False,
+    ) -> tuple[str, str, list[str], list[tuple[str, str]]]:
+        seen: list[tuple[str, str]] = []
+
+        def run_output(event, _origin):
+            if event.get("type") != "agent_shell.workflow_run":
+                return ""
+            seen.append((str(event.get("phase")), str(event.get("status"))))
+            return ""
+
+        class Run:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
+                return None
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+            async def output(self):
+                return {"messages": [], "shared_vars": {}}
+
+        class Graph:
+            async def astream_events(self, _input, *, config, version, transformers=()):
+                return Run()
+
+        # Mirrors the production wrapper that keeps the projector and the Run
+        # stream: only the stream knows how the Run ended.
+        Graph.terminal_status = terminal_status
+
+        class RecordingDiagnostics:
+            def __init__(self) -> None:
+                self.codes: list[str] = []
+
+            async def aobservation_error(self, _exc, *, code: str, **_kwargs) -> None:
+                self.codes.append(code)
+
+            async def aruntime_error(self, _exc, *, code: str, **_kwargs) -> None:
+                self.codes.append(code)
+
+        async def scenario() -> tuple[str, str, list[str], list[tuple[str, str]]]:
+            diagnostics = RecordingDiagnostics()
+            projector = OutputProjector(output_renderer(), run_output=run_output)
+            execution = RunExecution(
+                graph=Graph(),
+                input_state={"messages": [], "shared_vars": {}},
+                response_scheduler=response_scheduler(projector),
+                event_output_projector=projector,
+                middleware_runtimes=(noop_middleware_runtime(),),
+                media_response=noop_media_response(),
+                runtime_diagnostics=diagnostics,  # type: ignore[arg-type]
+                response_terminated=(lambda: response_terminated),
+            )
+            await execution.run()
+            return (
+                execution.finish_reason,
+                execution.end_status,
+                diagnostics.codes,
+                seen,
+            )
+
+        return asyncio.run(scenario())
+
+    # An interruption is a real OpenAI-compatible completion reason: reporting
+    # `stop` would tell every client the Run finished on its own.
+    for terminal_status in ("interrupted", "cancelled"):
+        finish_reason, end_status, codes, seen = run_scenario(terminal_status)
+        assert finish_reason == "interrupted"
+        assert end_status == "interrupted"
+        assert codes == ["run_interrupted"]
+        assert ("end", "interrupted") in seen
+
+    # The operator already answered this response with `completion_cancelled`,
+    # so sealing it late must stay silent.
+    finish_reason, end_status, codes, seen = run_scenario(
+        "cancelled",
+        response_terminated=True,
+    )
+    assert finish_reason == "interrupted"
+    assert end_status == "interrupted"
+    assert codes == []
+    assert ("end", "interrupted") not in seen
+
+    # A Run that ends on its own keeps the established contract.
+    finish_reason, end_status, codes, seen = run_scenario("completed")
+    assert finish_reason == "stop"
+    assert end_status == "completed"
+    assert codes == []
+    assert ("end", "completed") in seen
+
+
 def test_runtime_diagnostic_context_does_not_invent_workflow_identity() -> None:
     without_identity = RunExecution(
         graph=None,

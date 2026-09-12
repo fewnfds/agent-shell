@@ -22,6 +22,7 @@ from agent_shell.storage.environment import (
     InstanceEnvironmentStore,
     MODEL_CONNECTION_ENVIRONMENT_OWNER,
     parse_environment_text,
+    serialize_environment,
 )
 from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelResourceStore
 from agent_shell.provider_secrets import ProviderSecretResolver
@@ -135,6 +136,15 @@ def test_standard_dotenv_codec_round_trips_model_credential_and_preserves_api_ke
         "AGENT_SHELL_API_KEY=old-key\n"
         "AGENT_SHELL_API_KEY=local-api-key\n"
     ) == {"AGENT_SHELL_API_KEY": "local-api-key"}
+    # Ordinary non-Agent-Shell keys are preserved verbatim, including process
+    # names that are not identifier-shaped.
+    parsed_ordinary = parse_environment_text(
+        "AWS-KEY=value\nPATH.OVERRIDE=other\n"
+    )
+    assert parsed_ordinary == {"AWS-KEY": "value", "PATH.OVERRIDE": "other"}
+    assert parse_environment_text(
+        serialize_environment(parsed_ordinary)
+    ) == parsed_ordinary
     mutations = ConfigurationMutationCoordinator()
     environment = InstanceEnvironmentStore(
         tmp_path / "config" / "agent-shell.env",

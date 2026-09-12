@@ -55,6 +55,51 @@ describe('MessageInterceptionPage', () => {
     wrapper.unmount()
   })
 
+  it('keeps a concurrent message refresh while an enabled update finishes', async () => {
+    i18n.global.locale.value = 'zh-CN'
+    let emit: ((event: ManagementEvent) => void) | undefined
+    let resolveUpdate: ((value: MessageInterception) => void) | undefined
+    const update = new Promise<MessageInterception>((resolve) => {
+      resolveUpdate = resolve
+    })
+    const captured: MessageInterception = {
+      enabled: true,
+      latest: {
+        sequence: 2,
+        intercepted_at: '2026-08-17T12:00:01.000+00:00',
+        request_id: 'request-2',
+        request_raw_json: '{"model":"workflow","messages":[{"role":"user","content":"latest"}]}',
+      },
+    }
+    const api = {
+      getMessageInterception: vi.fn()
+        .mockResolvedValueOnce({ enabled: false, latest: null })
+        .mockResolvedValueOnce(captured),
+      updateMessageInterception: vi.fn(() => update),
+      watchApiServerEvents: vi.fn((onEvent: (event: ManagementEvent) => void) => {
+        emit = onEvent
+        return () => undefined
+      }),
+    }
+    const wrapper = mount(MessageInterceptionPage, {
+      props: { api },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+
+    await wrapper.get('#message-interception-enabled').setValue(true)
+    emit?.({ type: 'message_intercepted', sequence: 2 })
+    await flushPromises()
+    resolveUpdate?.({ enabled: true, latest: null })
+    await flushPromises()
+
+    expect((wrapper.get('#message-interception-enabled').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('#message-interception-raw').element as HTMLTextAreaElement).value).toBe(
+      captured.latest?.request_raw_json,
+    )
+    wrapper.unmount()
+  })
+
   it('keeps the latest message when an earlier refresh finishes last', async () => {
     i18n.global.locale.value = 'zh-CN'
     let emit: ((event: ManagementEvent) => void) | undefined

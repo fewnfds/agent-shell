@@ -11,7 +11,7 @@ export interface SystemPromptDraft extends BlockDraftBase {
 
 type SystemPromptApiRecord = SystemPromptDraft
 
-interface SystemPromptPayload {
+export interface SystemPromptPayload {
   name: string
   system_prompt: string
 }

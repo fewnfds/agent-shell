@@ -1,8 +1,10 @@
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
   loading?: boolean
-  layoutTestId?: string
-  asideTestId?: string
+  // `| undefined` lets the explicit `undefined` defaults below type-check
+  // under `exactOptionalPropertyTypes`.
+  layoutTestId?: string | undefined
+  asideTestId?: string | undefined
 }>(), {
   loading: false,
   layoutTestId: undefined,

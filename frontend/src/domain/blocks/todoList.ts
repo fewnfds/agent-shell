@@ -12,12 +12,12 @@ export interface TodoListDraft extends BlockDraftBase {
   tool_description_override: string
 }
 
-interface TodoListApiRecord extends BlockDraftBase {
+export interface TodoListApiRecord extends BlockDraftBase {
   system_prompt_override: string | null
   tool_description_override: string | null
 }
 
-interface TodoListPayload extends BlockPayloadBase {
+export interface TodoListPayload extends BlockPayloadBase {
   system_prompt_override: string | null
   tool_description_override: string | null
 }

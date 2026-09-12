@@ -4,13 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from agent_shell.storage import atomic_files
+from agent_shell.storage import atomic_files, runtime_diagnostic_details
 from agent_shell.storage.atomic_files import (
     write_bytes_atomic,
     write_private_text_atomic,
     write_text_atomic,
 )
 from agent_shell.storage.permissions import PermissionStatus
+from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.owned_paths import (
     OwnedPathError,
     is_plain_tree,
@@ -59,6 +60,32 @@ def test_private_atomic_replace_keeps_previous_file_when_permissions_fail(
 
     assert path.read_text(encoding="utf-8") == "before\n"
     assert list(tmp_path.glob(".agent-shell.env.*.tmp")) == []
+
+
+def test_runtime_diagnostic_detail_checks_private_permissions_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostic_id = "0" * 32
+    store = RuntimeDiagnosticDetailStore(tmp_path)
+    path = tmp_path / f"diagnostic-{diagnostic_id}.log"
+    path.write_text("before\n", encoding="utf-8")
+
+    def reject_permissions(temporary: Path) -> PermissionStatus:
+        assert temporary.stat().st_size == 0
+        return PermissionStatus("file", False, "fixture", "fixture")
+
+    monkeypatch.setattr(
+        runtime_diagnostic_details,
+        "secure_file",
+        reject_permissions,
+    )
+
+    with pytest.raises(PermissionError, match="temporary file is not private"):
+        store.write(diagnostic_id, ("sensitive traceback\n",))
+
+    assert path.read_text(encoding="utf-8") == "before\n"
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
 
 
 @pytest.mark.parametrize(

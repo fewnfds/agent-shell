@@ -41,16 +41,19 @@ export function deferred<T>() {
   return { promise, resolve }
 }
 
+// Must match the backend `BLOCK_MODELS` key and `CAPABILITY_MANIFESTS` entry;
+// there is no `model` capability type (`Contracts.BlockType` has none).
 export const modelManifest: CapabilityManifest = {
-  type: 'model',
-  terminology_key: 'model',
+  type: 'model-requirement',
+  terminology_key: 'model-requirement',
   label: 'Model',
   order: 1,
   icon_key: 'bot',
-  editor_key: 'model',
+  editor_key: 'model_requirement',
   subagent_overrideable: true,
   required: true,
   subagent_policy: 'inherit',
+  agent_selectable: true,
   tool_names: [],
 }
 
@@ -157,7 +160,7 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
       repository_id: '00000000-0000-4000-8000-000000000099',
       repository_revision: 1,
       components: {
-        model: [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
+        'model-requirement': [{ id: '00000000-0000-0000-0000-000000000001', name: 'model block' }],
         'system-prompt': [{ id: '00000000-0000-0000-0000-000000000002', name: 'system-prompt block' }],
         filesystem: [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem block' }],
         'filesystem-tools': [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem-tools block' }],

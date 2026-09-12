@@ -216,7 +216,6 @@ export const zhCN = {
       normalInput: 'Normal 输入端口',
       normalOutput: 'Normal 输出端口',
       start: 'Start',
-      command: 'Command 节点',
       end: 'End',
       saveDraft: '保存草稿',
       publish: '正式保存 Workflow',
@@ -293,7 +292,7 @@ export const zhCN = {
       title: '批量删除运行数据',
       description: '删除当前筛选匹配的 {count} 个 Lifecycle 中已终止的官方运行数据；活动 Lifecycle 以及运行中产生的文件和目录会保留。',
       completed: '已删除 {deleted} 个 Lifecycle 的运行数据。',
-      completedWithActive: '已删除 {deleted} 个 Lifecycle 的运行数据，保留 {skipped_active} 个活动 Lifecycle。',
+      completedWithSkipped: '已删除 {deleted} 个 Lifecycle 的运行数据；保留 {skipped_active} 个活动 Lifecycle 和 {skipped_unavailable} 个状态不可用的 Lifecycle。',
       failed: '无法批量删除运行数据',
     },
   },
@@ -1074,6 +1073,7 @@ export const zhCN = {
     },
     new: {
       title: '新建配置？',
+      description: '将关闭当前配置并打开一个空白的新配置草稿。',
     },
     copy: {
       title: '复制配置',
@@ -1309,6 +1309,7 @@ export const zhCN = {
     workflowLifecycleNotFound: 'Workflow Lifecycle 不存在。',
     workflowRunNotFound: 'Workflow Run 不存在。',
     workflowLifecycleActive: '此 Lifecycle 仍有活动 Workflow Run，无法删除。',
+    workflowLifecycleStatusUnavailable: '官方 Thread/Run 状态不可用，无法安全删除此 Lifecycle。',
     configurationRepositoryConflict: '配置仓库名称或身份冲突。',
     configurationRepositoryInvalid: '配置仓库无法激活。',
     configurationRepositoryNotFound: '配置仓库不存在。',

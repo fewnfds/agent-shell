@@ -210,12 +210,13 @@ async function responsePayload(response: Response): Promise<unknown> {
     return JSON.parse(text) as unknown
   } catch {
     if (!response.ok) return text
+    const requestId = response.headers.get('X-Request-ID')
     throw new ManagementApiError({
       status: response.status,
       code: 'invalid_json_response',
       message: 'The server returned an invalid JSON response.',
       messageKey: 'errors.invalidJsonResponse',
-      requestId: response.headers.get('X-Request-ID') ?? undefined,
+      ...(requestId ? { requestId } : {}),
       payload: text,
     })
   }
@@ -234,18 +235,21 @@ async function parseManagementResponse<T>(response: Response): Promise<T> {
     ? detailRecord.code
     : 'request_failed'
   const fallback = response.statusText || `HTTP ${response.status}`
+  // Resolve once so the narrowing actually holds at the spread below; calling
+  // these twice made TypeScript widen the values back to `| undefined`.
+  const messageArgs = detailRecord?.message_args
+    ? jsonPrimitiveRecord(detailRecord.message_args)
+    : undefined
+  const requestId = requestIdFrom(response, payload)
+  const validation = validationReport(detail)
   throw new ManagementApiError({
     status: response.status,
     code,
     message: errorMessage(detail, fallback),
     ...(messageKey ? { messageKey } : {}),
-    ...(detailRecord?.message_args
-      ? { messageArgs: jsonPrimitiveRecord(detailRecord.message_args) }
-      : {}),
-    ...(requestIdFrom(response, payload)
-      ? { requestId: requestIdFrom(response, payload) }
-      : {}),
-    ...(validationReport(detail) ? { validation: validationReport(detail) } : {}),
+    ...(messageArgs ? { messageArgs } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(validation ? { validation } : {}),
     payload,
   })
 }
@@ -297,6 +301,14 @@ function waitForToken(
   })
 }
 
+async function isManagementAuthenticationFailure(response: Response): Promise<boolean> {
+  if (response.status === 401) return true
+  if (response.status !== 403) return false
+  const payload = await responsePayload(response.clone())
+  const detail = errorPayload(payload)
+  return isRecord(detail) && detail.code === 'insufficient_scope'
+}
+
 async function authenticatedFetch(
   path: string,
   init: RequestInit,
@@ -335,7 +347,7 @@ async function authenticatedFetch(
         messageKey: 'errors.network',
       })
     }
-    if (needsAuth && (response.status === 401 || response.status === 403)) {
+    if (needsAuth && await isManagementAuthenticationFailure(response)) {
       reason = managementAuth.invalidate(requestGeneration) ? 'invalid' : 'required'
       await response.body?.cancel().catch(() => undefined)
       continue
@@ -359,8 +371,10 @@ export const managementAuthorizedFetch: typeof fetch = async (
     const generation = managementAuth.credentialGeneration()
     headers.set('Authorization', `Bearer ${token}`)
     let response: Response
+    const requestInit: RequestInit = { ...init, headers }
+    if (signal) requestInit.signal = signal
     try {
-      response = await fetch(input, { ...init, headers, signal })
+      response = await fetch(input, requestInit)
     } catch (error: unknown) {
       if (isAbortError(error)) throw error
       throw new ManagementApiError({
@@ -370,7 +384,7 @@ export const managementAuthorizedFetch: typeof fetch = async (
         messageKey: 'errors.network',
       })
     }
-    if (response.status === 401 || response.status === 403) {
+    if (await isManagementAuthenticationFailure(response)) {
       reason = managementAuth.invalidate(generation) ? 'invalid' : 'required'
       await response.body?.cancel().catch(() => undefined)
       continue
@@ -488,8 +502,8 @@ export async function managementUpload<T>(
   path: string,
   body: Blob,
   options: {
-    signal?: AbortSignal
-    onProgress?: (loaded: number, total: number) => void
+    signal?: AbortSignal | undefined
+    onProgress?: ((loaded: number, total: number) => void) | undefined
   } = {},
 ): Promise<T> {
   let reason: AuthChallengeReason = 'required'
@@ -503,7 +517,7 @@ export async function managementUpload<T>(
       options.signal,
       options.onProgress,
     )
-    if (response.status === 401 || response.status === 403) {
+    if (await isManagementAuthenticationFailure(response)) {
       reason = managementAuth.invalidate(generation) ? 'invalid' : 'required'
       continue
     }

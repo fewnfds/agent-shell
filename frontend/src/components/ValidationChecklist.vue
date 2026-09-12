@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAccordion, LteAccordionItem, LteAlert } from '@adminlte/vue'
-import { computed } from 'vue'
+import { computed, type DeepReadonly } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ConfigurationValidationState } from '@/composables/useConfigurationValidation'
@@ -8,7 +8,7 @@ import { useValidationIssuePresentation } from '@/composables/useValidationIssue
 
 const props = defineProps<{
   title: string
-  validation: Readonly<ConfigurationValidationState>
+  validation: DeepReadonly<ConfigurationValidationState>
 }>()
 
 const { t } = useI18n()

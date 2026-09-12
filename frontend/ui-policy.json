@@ -35,8 +35,6 @@
   "adminLteVue": {
     "cssImportPaths": ["src/main.ts"],
     "controlledImports": {
-      "LteAppContent": ["src/components/PageShell.vue"],
-      "LteBreadcrumb": ["src/components/PageShell.vue"],
       "LteModal": ["src/components/ModalHost.vue"],
       "LteSidebarNav": ["src/components/AppShell.vue"],
       "LteToast": ["src/components/ToastHost.vue"],

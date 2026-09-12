@@ -46,6 +46,10 @@ class LangGraphLifecycleActive(RuntimeError):
     pass
 
 
+class LangGraphLifecycleUnavailable(RuntimeError):
+    """Raised when official Thread/Run state cannot be read safely."""
+
+
 @dataclass(slots=True)
 class _LifecycleObservation:
     lifecycle: LifecycleRecord
@@ -885,7 +889,7 @@ class LangGraphLifecycleService:
             threads = await self._threads(client, lifecycle_id)
             observation = await self._observe_lifecycle(client, lifecycle, threads)
             if observation.read_failures:
-                raise RuntimeError(
+                raise LangGraphLifecycleUnavailable(
                     "Cannot delete a Lifecycle while its official Thread/Run status "
                     "is unavailable"
                 ) from observation.read_failures[0]
@@ -903,17 +907,21 @@ class LangGraphLifecycleService:
         items = await self._list_all(query)
         deleted = 0
         skipped_active = 0
+        skipped_unavailable = 0
         for item in items:
             try:
                 await self.delete(str(item["lifecycle_id"]))
             except LangGraphLifecycleActive:
                 skipped_active += 1
+            except LangGraphLifecycleUnavailable:
+                skipped_unavailable += 1
             else:
                 deleted += 1
         return {
             "matched": len(items),
             "deleted": deleted,
             "skipped_active": skipped_active,
+            "skipped_unavailable": skipped_unavailable,
         }
 
     async def enforce_retention(self) -> None:
@@ -924,15 +932,19 @@ class LangGraphLifecycleService:
         terminal = [
             item
             for item in items
-            if item["status"] not in {"pending", "running"}
+            if item["status"] in {"success", "error", "interrupted"}
         ]
         for item in terminal[retained_lifecycles:]:
-            await self.delete(str(item["lifecycle_id"]))
+            try:
+                await self.delete(str(item["lifecycle_id"]))
+            except (LangGraphLifecycleActive, LangGraphLifecycleUnavailable):
+                continue
 
 
 __all__ = [
     "LangGraphLifecycleActive",
     "LangGraphLifecycleNotFound",
     "LangGraphLifecycleService",
+    "LangGraphLifecycleUnavailable",
     "LangGraphRunNotFound",
 ]

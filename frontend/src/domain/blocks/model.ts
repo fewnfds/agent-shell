@@ -1,14 +1,15 @@
+import type { ModelConnectionPayload } from '@/api'
+
 import {
   cleanName,
   identity,
   isRecord,
   stringValue,
   type BlockDraftBase,
-  type BlockPayloadBase,
 } from './shared'
 
 type ModelProvider = string
-export type ModelProviderSettingInput = string | number | boolean | '' | null
+export type ModelProviderSettingInput = string | number | boolean | null | undefined
 type ModelProviderSettingsDraft = Record<string, ModelProviderSettingInput>
 
 export interface ModelDraft extends BlockDraftBase {
@@ -34,16 +35,6 @@ export interface ModelApiRecord extends BlockDraftBase {
   model_settings?: unknown
 }
 
-interface ModelPayload extends BlockPayloadBase {
-  provider: ModelProvider
-  base_url: string
-  credential: string | null
-  model: string
-  provider_settings: Record<string, unknown>
-  tool_choice: unknown
-  response_format: unknown
-  model_settings: unknown
-}
 
 function jsonObjectEditorValue(value: unknown, fallback: string): string {
   return isRecord(value) ? JSON.stringify(value) : fallback
@@ -80,7 +71,7 @@ function providerSettingsEditorValue(value: unknown): ModelProviderSettingsDraft
 function providerSettingsPayload(value: ModelProviderSettingsDraft): Record<string, unknown> {
   const settings: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(value)) {
-    if (item === '' || item === null) continue
+    if (item === '' || item === null || item === undefined) continue
     settings[key] = (key === 'stop' || key === 'stop_sequences') && typeof item === 'string'
       ? jsonInputValue(item, null)
       : item
@@ -127,7 +118,7 @@ export const modelAdapter = {
       model_settings: jsonObjectEditorValue(value.model_settings, '{}'),
     }
   },
-  toPayload(value: ModelDraft): ModelPayload {
+  toPayload(value: ModelDraft): ModelConnectionPayload {
     return {
       name: cleanName(value.name),
       provider: value.provider,

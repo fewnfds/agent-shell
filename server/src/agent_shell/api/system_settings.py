@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, NoReturn
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
@@ -16,15 +16,7 @@ class ManagementPasswordUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     operation: Literal["preserve", "replace"]
-    value: str | None = None
-
-    @model_validator(mode="after")
-    def validate_value(self) -> "ManagementPasswordUpdate":
-        if self.operation == "replace" and not self.value:
-            raise ValueError("replace requires a value")
-        if self.operation != "replace" and self.value is not None:
-            raise ValueError("value is accepted only for replace")
-        return self
+    value: SecretStr | None = None
 
 
 class OptionalSecretUpdate(BaseModel):
@@ -32,16 +24,6 @@ class OptionalSecretUpdate(BaseModel):
 
     operation: Literal["keep", "replace", "clear"]
     value: SecretStr | None = None
-
-    @model_validator(mode="after")
-    def validate_value(self) -> "OptionalSecretUpdate":
-        if self.operation == "replace" and (
-            self.value is None or not self.value.get_secret_value()
-        ):
-            raise ValueError("replace requires a value")
-        if self.operation != "replace" and self.value is not None:
-            raise ValueError("value is accepted only for replace")
-        return self
 
 
 class SystemSettingsUpdate(BaseModel):
@@ -108,6 +90,10 @@ def build_system_settings_router(
         if payload.langsmith_api_key.value is not None:
             values["langsmith_api_key"]["value"] = (
                 payload.langsmith_api_key.value.get_secret_value()
+            )
+        if payload.management_token.value is not None:
+            values["management_token"]["value"] = (
+                payload.management_token.value.get_secret_value()
             )
         try:
             result = settings.update(values)

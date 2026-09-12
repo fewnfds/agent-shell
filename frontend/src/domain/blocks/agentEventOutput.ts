@@ -11,7 +11,7 @@ import { cleanName, identity, isRecord, type BlockDraftBase, type BlockPayloadBa
 export interface AgentEventOutputDraft extends BlockDraftBase, PythonPackageDraftState {}
 export type AgentEventOutputCatalogItem = PythonPackageTemplate
 
-interface AgentEventOutputPayload extends BlockPayloadBase {
+export interface AgentEventOutputPayload extends BlockPayloadBase {
   python_package: PythonPackageDraftState['python_package']
   python_package_template?: PythonPackageDraftState['python_package_template']
 }

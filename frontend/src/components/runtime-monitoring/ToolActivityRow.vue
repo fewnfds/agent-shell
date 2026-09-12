@@ -9,8 +9,10 @@ const props = defineProps<{
   callId: string
   status: 'running' | 'finished' | 'error'
   input: unknown
+  // `| undefined` keeps callers that forward a value which may be absent
+  // (`error: string | undefined`) assignable under `exactOptionalPropertyTypes`.
   output?: unknown
-  error?: string
+  error?: string | undefined
 }>()
 
 const { t } = useI18n()

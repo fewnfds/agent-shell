@@ -130,9 +130,9 @@ async function listCategory(
   request: DataTableRequest,
 ): Promise<{ rows: LibraryItem[], total: number }> {
   const query = {
-    q: request.query || undefined,
     offset: (request.page - 1) * request.pageSize,
     limit: request.pageSize,
+    ...(request.query ? { q: request.query } : {}),
   }
   if (category === 'main-agent') {
     const result = await api.value.listMainAgentSummaries(query)

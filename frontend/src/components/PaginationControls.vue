@@ -10,7 +10,9 @@ const props = withDefaults(defineProps<{
   id: string
   total: number
   totalPages: number
-  pageSizeOptions?: number[]
+  // `| undefined` keeps callers that forward an optional value assignable;
+  // an explicit `undefined` still falls back to the default below.
+  pageSizeOptions?: number[] | undefined
 }>(), {
   pageSizeOptions: () => [20, 50, 100],
 })

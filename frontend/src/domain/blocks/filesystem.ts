@@ -34,7 +34,7 @@ export interface FilesystemDraft extends BlockDraftBase {
   skill_package_id: string
   system_prompt_override: string
 }
-interface FilesystemApiRecord extends BlockDraftBase {
+export interface FilesystemApiRecord extends BlockDraftBase {
   backend_type?: FilesystemBackendType
   mapped_directories?: unknown
   virtual_directories?: unknown
@@ -43,7 +43,7 @@ interface FilesystemApiRecord extends BlockDraftBase {
   skill_package_id?: string | null
   system_prompt_override?: string | null
 }
-interface FilesystemPayload extends BlockPayloadBase {
+export interface FilesystemPayload extends BlockPayloadBase {
   backend_type: FilesystemBackendType
   mapped_directories: MappedDirectory[]
   virtual_directories: VirtualSource[]

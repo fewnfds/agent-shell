@@ -16,7 +16,7 @@ export interface CommandDraft extends BlockDraftBase, PythonPackageDraftState {
 export type CommandDefaults = Record<string, never>
 export type CommandCatalogItem = PythonPackageTemplate
 
-interface CommandPayload extends BlockPayloadBase {
+export interface CommandPayload extends BlockPayloadBase {
   python_package: PythonPackageDraftState['python_package']
   python_package_template?: PythonPackageDraftState['python_package_template']
   mcp_refs: McpReference[]

@@ -19,8 +19,12 @@ interface DisplayToolCall {
 
 const SERVER_RUN_ERROR_PREFIX = 'agent-shell.runtime-error.v1:'
 
+// Each `kind` must be its own member: grouping `'text' | 'reasoning'` into a
+// single member stops this being a discriminated union, so narrowing in the
+// template's `v-if`/`v-else-if`/`v-else` chain cannot reach `call` below.
 type MessageBlock =
-  | { kind: 'text' | 'reasoning', id: string, text: string }
+  | { kind: 'text', id: string, text: string }
+  | { kind: 'reasoning', id: string, text: string }
   | { kind: 'tool', id: string, call: DisplayToolCall }
 
 const props = defineProps<{
@@ -63,7 +67,10 @@ function messageKey(message: BaseMessage, index: number): string {
 }
 
 function messageBlocks(message: BaseMessage): MessageBlock[] {
-  return message.contentBlocks.flatMap((block, index) => {
+  // The callback is annotated because the three branches each return their own
+  // literal array type; `flatMap`'s overload resolution then fails to pick the
+  // "returns an array" form. Naming the result keeps the mapping unchanged.
+  return message.contentBlocks.flatMap((block, index): MessageBlock[] => {
     if (block.type === 'text' && typeof block.text === 'string') {
       return [{ kind: 'text' as const, text: block.text, id: String(block.id ?? `text-${index}`) }]
     }

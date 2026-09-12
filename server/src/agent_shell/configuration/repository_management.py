@@ -53,6 +53,7 @@ class ConfigurationRepositoryManagementService:
 
     def delete(self, repository_id: str) -> dict[str, object]:
         with self._repository.exclusive_config_mutation():
+            self._repository.require_repository_deletable(repository_id)
             bindings = self._model_resources.remove_repository_bindings(
                 repository_id
             )

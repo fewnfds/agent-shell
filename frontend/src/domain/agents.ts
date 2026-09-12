@@ -77,14 +77,14 @@ export const managementAgentAuthoringService: AgentAuthoringService = {
   getCatalog: () => managementApi.getCatalog(),
   getConfigurationOptions: () => managementApi.getConfigurationOptions(),
   getMainAgent: (id) => managementApi.getMainAgent(id),
-  createMainAgent: (payload) => managementApi.saveMainAgent(payload),
-  updateMainAgent: (id, payload) => managementApi.saveMainAgent({ id, ...payload }),
+  createMainAgent: (payload) => managementApi.createMainAgent(payload),
+  updateMainAgent: (id, payload) => managementApi.updateMainAgent(id, payload),
   publishMainAgent: (id, payload) => managementApi.publishMainAgent(id, payload),
   copyMainAgent: (id, name) => managementApi.copyMainAgent(id, name),
   deleteMainAgent: (id) => managementApi.deleteMainAgent(id),
   getSubagent: (id) => managementApi.getSubagent(id),
-  createSubagent: (payload) => managementApi.saveSubagent(payload),
-  updateSubagent: (id, payload) => managementApi.saveSubagent({ id, ...payload }),
+  createSubagent: (payload) => managementApi.createSubagent(payload),
+  updateSubagent: (id, payload) => managementApi.updateSubagent(id, payload),
   copySubagent: (id, componentName) => managementApi.copySubagent(id, componentName),
   deleteSubagent: (id) => managementApi.deleteSubagent(id),
   validateDraft: (request) => managementApi.validateDraft(request),
@@ -245,8 +245,13 @@ export function normalizeSubagent(value: unknown): SubagentProfile {
 }
 
 export function overrideSelection(value: SubagentProfile, type: CapabilityType): OverrideSelection {
-  return value.settings.capability_overrides.find((item) => item.type === type)
-    ?? { type, mode: 'inherit', block_id: '' }
+  const stored = value.settings.capability_overrides.find((item) => item.type === type)
+  if (!stored) return { type, mode: 'inherit', block_id: '' }
+  return {
+    type,
+    mode: stored.mode === 'disabled' ? 'disabled' : 'replace',
+    block_id: stored.block_id,
+  }
 }
 
 export function setOverrideSelection(

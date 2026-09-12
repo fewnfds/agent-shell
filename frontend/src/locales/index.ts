@@ -78,7 +78,7 @@ const locale = resolveInitialLocale(
 )
 window.document.documentElement.lang = formattingLocale(locale)
 
-export const i18n = createI18n<[MessageSchema], SupportedLocale>({
+export const i18n = createI18n<[MessageSchema], SupportedLocale, false>({
   legacy: false,
   globalInjection: true,
   locale,

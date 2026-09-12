@@ -8,7 +8,7 @@ import {
   type ViewportTransform,
   type XYPosition,
 } from '@vue-flow/core'
-import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -60,8 +60,12 @@ const { notify } = useToasts()
 const workflow = ref<Workflow | null>(null)
 const commands = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
-const nodes = ref<WorkflowCanvasNode[]>([])
-const edges = ref<WorkflowCanvasEdge[]>([])
+// Vue Flow's `Node`/`Edge` are deeply recursive, so `ref<WorkflowCanvasNode[]>([])`
+// makes TypeScript evaluate `UnwrapRef` past its instantiation depth. Letting the
+// empty array infer `never[]` and asserting the declared type sidesteps that while
+// keeping the deep reactivity `ref` already provides at runtime.
+const nodes = ref([]) as Ref<WorkflowCanvasNode[]>
+const edges = ref([]) as Ref<WorkflowCanvasEdge[]>
 const flow = ref<VueFlowStore | null>(null)
 const stateContract = ref('agent-shell.workflow.control.v1')
 const savedViewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
@@ -202,9 +206,13 @@ function connect(connection: Connection): void {
     {
       id: nextWorkflowCanvasEdgeId(edges.value),
       source: connection.source,
-      sourceHandle: connection.sourceHandle,
+      // `Connection` types the handles as `string | null | undefined`, while an
+      // Edge declares them `string | null`; under `exactOptionalPropertyTypes`
+      // an explicit `undefined` is not the same as an omitted key, so only set
+      // the handle when the connection actually names one.
+      ...(connection.sourceHandle !== undefined ? { sourceHandle: connection.sourceHandle } : {}),
       target: connection.target,
-      targetHandle: connection.targetHandle,
+      ...(connection.targetHandle !== undefined ? { targetHandle: connection.targetHandle } : {}),
       type: 'default',
       ...workflowCanvasEdgeVisual(edgeType, source.data.nodeType, target.data.nodeType),
       selected: true,
@@ -483,6 +491,26 @@ function retryValidation(): void {
   scheduleValidation(0)
 }
 
+// A completed write stays authoritative even when the follow-up metadata read
+// fails; fall back to the written `enabled` value instead of reporting a save
+// failure for a write that actually succeeded.
+async function adoptWorkflowMetadata(
+  targetWorkflowId: string,
+  generation: number,
+  enabled: boolean,
+): Promise<boolean> {
+  if (generation !== loadGeneration) return false
+  try {
+    const metadata = await managementApi.getWorkflow(targetWorkflowId)
+    if (generation !== loadGeneration || targetWorkflowId !== workflowId.value) return false
+    workflow.value = metadata
+  } catch {
+    if (generation !== loadGeneration || targetWorkflowId !== workflowId.value) return false
+    if (workflow.value) workflow.value = { ...workflow.value, enabled }
+  }
+  return true
+}
+
 async function saveDraft(): Promise<void> {
   if (!canSaveDraft.value) return
   const generation = loadGeneration
@@ -492,8 +520,7 @@ async function saveDraft(): Promise<void> {
   saving.value = true
   try {
     await managementApi.saveWorkflowDraft(targetWorkflowId, document)
-    if (generation !== loadGeneration) return
-    if (workflow.value) workflow.value = { ...workflow.value, enabled: false }
+    if (!(await adoptWorkflowMetadata(targetWorkflowId, generation, false))) return
     if (currentDocumentMatches(document)) markClean()
     notify({ tone: 'success', title: t('workflows.editor.draftSaved') })
   } catch (error) {
@@ -527,8 +554,7 @@ async function publish(): Promise<void> {
   saving.value = true
   try {
     await managementApi.publishWorkflow(targetWorkflowId, document)
-    if (generation !== loadGeneration) return
-    if (workflow.value) workflow.value = { ...workflow.value, enabled: true }
+    if (!(await adoptWorkflowMetadata(targetWorkflowId, generation, true))) return
     if (currentDocumentMatches(document)) {
       serverProblems.value = []
       markClean()

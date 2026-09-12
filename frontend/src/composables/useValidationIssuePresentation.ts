@@ -51,11 +51,12 @@ const resolutionKeys: Record<string, string> = {
 }
 
 function pathTokens(path: string): Array<string | number> {
-  return [...path.matchAll(/([^.[\]]+)|\[(\d+)]/g)].flatMap((match) => {
-    const value = match[1] ?? match[2]
-    if (value === undefined) return []
-    return /^\d+$/.test(value) ? [Number(value)] : [value]
-  })
+  return [...path.matchAll(/([^.[\]]+)|\[(\d+)]/g)]
+    .flatMap((match): Array<string | number> => {
+      const value = match[1] ?? match[2]
+      if (value === undefined) return []
+      return /^\d+$/.test(value) ? [Number(value)] : [value]
+    })
 }
 
 export function useValidationIssuePresentation() {
@@ -83,7 +84,12 @@ export function useValidationIssuePresentation() {
   }
 
   function fieldName(issue: ValidationIssue): string {
-    const token = pathTokens(issue.path).findLast((part) => typeof part === 'string')
+    // The last string token; a loop keeps this within the configured `lib`
+    // (ES2022) instead of relying on `Array.prototype.findLast` (ES2023).
+    let token: string | number | undefined
+    for (const part of pathTokens(issue.path)) {
+      if (typeof part === 'string') token = part
+    }
     return typeof token === 'string' ? token : issue.path
   }
 

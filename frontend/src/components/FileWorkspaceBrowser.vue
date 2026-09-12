@@ -46,7 +46,7 @@ interface UploadItem {
 const props = withDefaults(defineProps<{
   initialPath?: string
   highlightedPath?: string
-  api?: FileWorkspaceApi
+  api?: FileWorkspaceApi | undefined
 }>(), {
   initialPath: 'data',
   highlightedPath: '',

@@ -12,7 +12,7 @@ import { useEditorModel } from './shared/useEditorModel'
 
 const props = withDefaults(defineProps<{
   modelValue: CommandDraft
-  defaults?: CommandDefaults
+  defaults?: CommandDefaults | undefined
   catalog?: CommandCatalogItem[]
   errors?: Record<string, LocalizedMessagePayload>
   loading?: boolean

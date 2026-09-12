@@ -12,12 +12,12 @@ export interface SubagentDraft extends BlockDraftBase {
   task_description_override: string
 }
 
-interface SubagentApiRecord extends BlockDraftBase {
+export interface SubagentApiRecord extends BlockDraftBase {
   instruction_override: string | null
   task_description_override: string | null
 }
 
-interface SubagentPayload extends BlockPayloadBase {
+export interface SubagentPayload extends BlockPayloadBase {
   instruction_override: string | null
   task_description_override: string | null
 }

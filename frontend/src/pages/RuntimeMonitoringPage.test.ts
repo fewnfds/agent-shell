@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
+import { defineComponent, h } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -149,7 +149,19 @@ const snapshot: LangGraphLifecycleSnapshot = {
 const AgentThreadViewStub = defineComponent({
   name: 'AgentThreadView',
   props: ['assistantId', 'threadId'],
-  template: '<div data-testid="agent-thread">{{ assistantId }}:{{ threadId }}</div>',
+  emits: ['state'],
+  setup(props, { emit }) {
+    return () => h('button', {
+      'data-testid': 'agent-thread',
+      onClick: () => emit('state', { streamed: true }),
+    }, `${props.assistantId}:${props.threadId}`)
+  },
+})
+
+const RuntimeDataInspectorStub = defineComponent({
+  name: 'RuntimeDataInspector',
+  props: ['state', 'store', 'loading'],
+  template: '<div data-testid="inspector-error">{{ state?.error?.message ?? "" }}</div>',
 })
 
 const WorkflowRuntimeViewStub = defineComponent({
@@ -267,6 +279,177 @@ describe('RuntimeMonitoringPage', () => {
     expect(wrapper.text()).toContain('filesystem')
     expect(wrapper.text()).toContain('workspace')
     expect(wrapper.find('pre').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('reloads the monitoring view when the route switches Lifecycle', async () => {
+    const secondThread = snapshot.threads[0]!
+    const secondSnapshot: LangGraphLifecycleSnapshot = {
+      ...snapshot,
+      lifecycle_id: 'lifecycle-2',
+      request_id: 'request-2',
+      subjects: [{ graph_kind: 'agent', id: 'agent-2', name: 'Second Agent' }],
+      run_count: 1,
+      active_run_count: 1,
+      threads: [{
+        ...secondThread,
+        thread_id: 'thread-second',
+        thread: { ...secondThread.thread, thread_id: 'thread-second' },
+        runs: secondThread.runs.slice(0, 1).map((item) => ({
+          ...item,
+          run_id: 'run-second',
+          run: { ...item.run, run_id: 'run-second', thread_id: 'thread-second' },
+          relation: { ...item.relation!, run_id: 'run-second', thread_id: 'thread-second' },
+        })),
+      }],
+    }
+    vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockImplementation(
+      async (id) => (id === 'lifecycle-2' ? secondSnapshot : snapshot),
+    )
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [],
+    })
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockResolvedValue({
+      run_id: 'run-agent',
+      thread_id: 'thread-agent',
+      state: { values: {}, next: [] },
+      error: null,
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+          component: RuntimeMonitoringPage,
+        },
+      ],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+    const wrapper = mount(RuntimeMonitoringPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: { AgentThreadView: AgentThreadViewStub },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.findAll('.runtime-thread-row')).toHaveLength(2)
+
+    await router.push('/system/workflow-lifecycles/lifecycle-2/monitoring')
+    await flushPromises()
+
+    // The previous Lifecycle's Threads must not survive the route change.
+    expect(wrapper.findAll('.runtime-thread-row')).toHaveLength(1)
+    expect(managementApi.getLangGraphLifecycleSnapshot).toHaveBeenLastCalledWith('lifecycle-2')
+    wrapper.unmount()
+  })
+
+  it('ignores a stale Run state that resolves after a newer selection', async () => {
+    let resolveStale!: (value: unknown) => void
+    const staleState = new Promise((resolve) => { resolveStale = resolve })
+    vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockResolvedValue({
+      ...snapshot,
+      threads: [snapshot.threads[0]!],
+    })
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [],
+    })
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockImplementation(async (_lifecycleId, runId) => {
+      if (runId === 'run-agent') return staleState as never
+      return {
+        run_id: runId,
+        thread_id: 'thread-agent',
+        state: { values: { answer: 2 }, next: [] },
+        error: null,
+      }
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+          component: RuntimeMonitoringPage,
+        },
+      ],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+    const wrapper = mount(RuntimeMonitoringPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: {
+          AgentThreadView: AgentThreadViewStub,
+          RuntimeDataInspector: defineComponent({
+            name: 'RuntimeDataInspector',
+            props: ['state', 'store', 'loading'],
+            template: '<div data-testid="inspector-values">{{ JSON.stringify(state?.state?.values ?? null) }}</div>',
+          }),
+        },
+      },
+    })
+    await flushPromises()
+
+    // Selecting the second Run resolves its own state first.
+    await wrapper.findAll('.runtime-run-item')[1]!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inspector-values"]').text()).toContain('"answer":2')
+
+    // The first Run's request then settles late; it must not overwrite the
+    // state that belongs to the Run currently selected.
+    resolveStale({
+      run_id: 'run-agent',
+      thread_id: 'thread-agent',
+      state: { values: { answer: 999 }, next: [] },
+      error: null,
+    })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inspector-values"]').text()).toContain('"answer":2')
+    expect(wrapper.get('[data-testid="inspector-values"]').text()).not.toContain('999')
+    wrapper.unmount()
+  })
+
+  it('keeps the backend Run error when the agent stream publishes new values', async () => {
+    vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockResolvedValue(snapshot)
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [],
+    })
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockResolvedValue({
+      run_id: 'run-agent',
+      thread_id: 'thread-agent',
+      state: { values: { answer: 42 }, next: [] },
+      error: { code: 'run_failed', message: 'ProviderGatewayError: upstream 503' },
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+          component: RuntimeMonitoringPage,
+        },
+      ],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+    const wrapper = mount(RuntimeMonitoringPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: {
+          AgentThreadView: AgentThreadViewStub,
+          RuntimeDataInspector: RuntimeDataInspectorStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    // A stream update merges values into the shared State, but the concrete
+    // backend Run error must survive instead of being replaced with null.
+    await wrapper.get('[data-testid="agent-thread"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inspector-error"]').text())
+      .toBe('ProviderGatewayError: upstream 503')
     wrapper.unmount()
   })
 

@@ -70,6 +70,47 @@ describe('management transport', () => {
       .toBe('Bearer accepted-token')
   })
 
+  it('preserves business 403 errors without reopening the auth challenge', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: 'file_operation_denied',
+        message: 'This operation is not available for the selected path.',
+        message_key: 'errors.fileOperationDenied',
+      },
+    }), { status: 403 }))
+    vi.stubGlobal('fetch', fetchMock)
+    managementAuth.submit('management-token')
+
+    await expect(managementRequest('/file-manager/files')).rejects.toMatchObject({
+      status: 403,
+      code: 'file_operation_denied',
+      message: 'This operation is not available for the selected path.',
+      messageKey: 'errors.fileOperationDenied',
+    })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(managementAuth.getSnapshot()).toEqual({ open: false, reason: 'required' })
+  })
+
+  it('reopens the auth challenge for an insufficient-scope 403', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        detail: { code: 'insufficient_scope', message: 'Management scope is required.' },
+      }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const request = managementRequest<{ ok: boolean }>('/catalog')
+    managementAuth.submit('wrong-scope-token')
+    await until(() => managementAuth.getSnapshot().reason === 'invalid')
+    managementAuth.submit('management-token')
+
+    await expect(request).resolves.toEqual({ ok: true })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('uses the namespaced public health endpoint without opening the auth challenge', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       status: 'ok',

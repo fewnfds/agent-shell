@@ -9,14 +9,14 @@ export interface ToolCallLimitDraft extends BlockDraftBase {
   exit_behavior: ToolCallLimitExitBehavior
 }
 
-interface ToolCallLimitApiRecord extends BlockDraftBase {
+export interface ToolCallLimitApiRecord extends BlockDraftBase {
   tool_name?: unknown
   run_limit?: unknown
   thread_limit?: unknown
   exit_behavior?: unknown
 }
 
-interface ToolCallLimitPayload extends BlockPayloadBase {
+export interface ToolCallLimitPayload extends BlockPayloadBase {
   tool_name: string | null
   run_limit: number | null
   thread_limit: number | null

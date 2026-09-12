@@ -481,6 +481,26 @@ def test_management_password_replacement_is_write_only_and_persists(
     assert "AGENT_SHELL_HOST" not in env_text
 
 
+def test_invalid_management_password_update_does_not_echo_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+    replacement = "invalid-management-secret"
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(
+            management_token={
+                "operation": "preserve",
+                "value": replacement,
+            }
+        ),
+    )
+
+    assert response.status_code == 422
+    assert replacement not in response.text
+
+
 def test_management_password_can_equal_the_api_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -29,7 +29,7 @@ export type SummarizationDefaults = Omit<SummarizationDraft, 'id' | 'name'> & {
   summary_prompt_default: string
 }
 
-interface SummarizationApiRecord extends BlockDraftBase {
+export interface SummarizationApiRecord extends BlockDraftBase {
   trigger?: unknown
   keep?: unknown
   truncate_args_enabled?: unknown
@@ -40,7 +40,7 @@ interface SummarizationApiRecord extends BlockDraftBase {
   trim_tokens_to_summarize?: unknown
   summary_prompt_override?: unknown
 }
-interface SummarizationPayload extends BlockPayloadBase,
+export interface SummarizationPayload extends BlockPayloadBase,
   Omit<SummarizationDraft, 'id' | 'name' | 'summary_prompt_override'> {
   summary_prompt_override: string | null
 }

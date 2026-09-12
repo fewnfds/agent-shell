@@ -5,12 +5,12 @@ export interface McpRequirementDraft extends BlockDraftBase {
   namespace: string
 }
 
-interface McpRequirementApiRecord extends BlockDraftBase {
+export interface McpRequirementApiRecord extends BlockDraftBase {
   description?: unknown
   namespace?: unknown
 }
 
-interface McpRequirementPayload extends BlockPayloadBase {
+export interface McpRequirementPayload extends BlockPayloadBase {
   description: string
   namespace: string
 }

@@ -130,9 +130,11 @@ class RunExecution:
     public_model: str = ""
     public_output: bool = True
     cancel_run: Callable[[], Awaitable[None]] | None = None
+    response_terminated: Callable[[], bool] | None = None
     final_state: dict[str, Any] | None = None
     _started: bool = False
     _resources_closed: bool = field(default=False, init=False)
+    _terminal_status: str = field(default="", init=False)
 
     def __post_init__(self) -> None:
         self.event_stream = RunEventStream(self.usage_accumulator)
@@ -156,7 +158,41 @@ class RunExecution:
         return self.usage_accumulator.snapshot
 
     @property
+    def terminal_status(self) -> str:
+        """The official Run status this execution actually ended on."""
+
+        return self._terminal_status
+
+    def adopt_terminal_status(self, graph: object) -> None:
+        """Record the official terminal status owned by the Run event graph.
+
+        The graph replaces the run stream at start-up, so reading it back here
+        is the only place where the response layer can learn how the Run ended
+        without adding a second, competing subscription.
+        """
+
+        status = str(getattr(graph, "terminal_status", "") or "")
+        # The normal completion path reads this after the `end` event has been
+        # projected, and `completed` is already the default.  Only a distinct
+        # status is worth adopting.
+        if status and status != "completed":
+            self._terminal_status = status
+
+    @property
+    def end_status(self) -> str:
+        """The product-level status of a Run that reached its own end."""
+
+        if self._terminal_status in {"interrupted", "cancelled"}:
+            return "interrupted"
+        return "completed"
+
+    @property
     def finish_reason(self) -> str:
+        # An `interrupted` Run produced no assistant refusal, but it did not
+        # finish either: reporting `stop` would hide the interruption from every
+        # OpenAI-compatible client.
+        if self._terminal_status in {"interrupted", "cancelled"}:
+            return "interrupted"
         return "stop"
 
     def diagnostic_context(self) -> RuntimeDiagnosticContext:
@@ -248,6 +284,29 @@ class RunExecution:
                     context=self.diagnostic_context(),
                     detail_exception=detail_exception,
                 )
+
+        async def notice_interrupted_run(status: str) -> None:
+            """Report a Run that stopped on its own without a reported failure.
+
+            `interrupted`/`cancelled` are official terminal states, so they end
+            the response like `completed`; without this notice the interruption
+            would be invisible everywhere except the Lifecycle projection.
+            A response stopped by an explicit operator cancel is already
+            reported as `completion_cancelled` and is not repeated here.
+            """
+
+            if self.response_terminated is not None and self.response_terminated():
+                return
+            if self.runtime_diagnostics is None:
+                return
+            await record_runtime_error(
+                AgentRuntimeError(
+                    "run_interrupted",
+                    f"The Run ended as '{status}' before it completed.",
+                    source_exception_type="RunInterrupted",
+                ),
+                "run_interrupted",
+            )
 
         def frame_text(frames: list[PresentationFrame]) -> list[str]:
             text = "".join(frame.text for frame in frames if frame.text)
@@ -539,9 +598,17 @@ class RunExecution:
                     for rendered in take_response_output():
                         if rendered:
                             yield rendered
+            self.adopt_terminal_status(self.graph)
+            if self.response_terminated is not None and self.response_terminated():
+                # The operator already stopped this response and the client was
+                # told the Lifecycle was cancelled; this late seal must not
+                # publish or notify again.
+                return
+            if self._terminal_status in {"interrupted", "cancelled"}:
+                await notice_interrupted_run(self._terminal_status)
             for rendered in project_run_event(
                 "end",
-                status="completed",
+                status=self.end_status,
                 finish_reason=self.finish_reason,
             ):
                 if rendered:
@@ -579,6 +646,7 @@ class RunExecution:
                         if rendered:
                             yield rendered
         except asyncio.CancelledError:
+            self.adopt_terminal_status(self.graph)
             self.event_stream.close()
             if self.origin_resolver is not None:
                 self.origin_resolver.close()

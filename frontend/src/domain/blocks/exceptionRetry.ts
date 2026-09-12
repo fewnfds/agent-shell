@@ -23,7 +23,7 @@ interface ExceptionRetryValue {
 
 export interface ExceptionRetryDraft extends BlockDraftBase, ExceptionRetryValue {}
 type ExceptionRetryApiRecord = ExceptionRetryDraft
-interface ExceptionRetryPayload extends BlockPayloadBase, ExceptionRetryValue {}
+export interface ExceptionRetryPayload extends BlockPayloadBase, ExceptionRetryValue {}
 
 export interface ExceptionRetryDefaults {
   strategies: ExceptionRetryStrategy[]

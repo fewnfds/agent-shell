@@ -21,13 +21,28 @@ export interface WorkflowCanvasNodeData {
   commandId?: string
 }
 
-export type WorkflowCanvasNode = Node<WorkflowCanvasNodeData>
+/**
+ * Vue Flow types `Node` as the *input* shape it accepts, where `data` is
+ * optional; the rendered node is a `GraphNode` where `data` is required and
+ * `selected` is always maintained by Vue Flow. Every canvas node built here is
+ * created with `data`, so restating both members removes the spurious
+ * "possibly undefined" noise without weakening the model.
+ */
+export type WorkflowCanvasNode = Node<WorkflowCanvasNodeData> & {
+  data: WorkflowCanvasNodeData
+  selected?: boolean
+}
 
 export interface WorkflowCanvasEdgeData {
   edgeType: 'normal'
 }
 
-export type WorkflowCanvasEdge = Edge<WorkflowCanvasEdgeData>
+// `Edge` is a union, so it cannot be extended by an interface; an intersection
+// states the same thing.
+export type WorkflowCanvasEdge = Edge<WorkflowCanvasEdgeData> & {
+  data: WorkflowCanvasEdgeData
+  selected?: boolean
+}
 
 export const WORKFLOW_NODE_DRAG_MIME = 'application/x-agent-shell-workflow-node'
 export const WORKFLOW_CANVAS_EDGE_TYPES = ['normal'] as const
@@ -145,7 +160,7 @@ export function workflowCanvasToDocument(
         type: node.data.nodeType,
         type_version: 1,
         config: node.data.nodeType === 'command'
-          ? { command_id: node.data.commandId }
+          ? { command_id: node.data.commandId ?? '' }
           : {},
       })),
       edges: edges.map((edge) => ({
@@ -195,7 +210,7 @@ export function workflowCanvasEdgeVisual(
   return {
     markerEnd: { type: MarkerType.ArrowClosed, color },
     animated: false,
-    class: classes.length > 0 ? classes.join(' ') : undefined,
+    ...(classes.length > 0 ? { class: classes.join(' ') } : {}),
   }
 }
 

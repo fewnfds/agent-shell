@@ -73,7 +73,7 @@ export type {
   PromptCachingDefaults,
   PromptCachingDraft,
 } from './blocks/promptCaching'
-export type { BlockDraftBase } from './blocks/shared'
+export type { BlockDraftBase, BlockPayloadBase } from './blocks/shared'
 export type { SkillCatalogItem, SkillDefaults, SkillDraft } from './blocks/skill'
 export type { SubagentDefaults, SubagentDraft } from './blocks/subagent'
 export type {

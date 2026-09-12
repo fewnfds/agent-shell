@@ -11,6 +11,7 @@ from agent_shell.runtime.langgraph_lifecycle import (
     LangGraphLifecycleActive,
     LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
+    LangGraphLifecycleUnavailable,
 )
 from agent_shell.runtime.request_snapshot import RequestSnapshotRuntime
 from agent_shell.storage.workflow_lifecycle_settings import (
@@ -80,6 +81,16 @@ def build_workflow_lifecycle_router(
                 code="workflow_lifecycle_active",
                 message_key="errors.workflowLifecycleActive",
                 message="An active Workflow Run still belongs to this Lifecycle.",
+            ) from exc
+        except LangGraphLifecycleUnavailable as exc:
+            raise management_error(
+                409,
+                code="workflow_lifecycle_status_unavailable",
+                message_key="errors.workflowLifecycleStatusUnavailable",
+                message=(
+                    "Official Thread/Run status is unavailable, so this Lifecycle "
+                    "cannot be deleted safely."
+                ),
             ) from exc
         return {"ok": True, "deleted_thread_count": deleted_threads}
 

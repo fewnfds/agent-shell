@@ -8,13 +8,13 @@ export interface ModelCallLimitDraft extends BlockDraftBase {
   exit_behavior: ModelCallLimitExitBehavior
 }
 
-interface ModelCallLimitApiRecord extends BlockDraftBase {
+export interface ModelCallLimitApiRecord extends BlockDraftBase {
   run_limit?: unknown
   thread_limit?: unknown
   exit_behavior?: unknown
 }
 
-interface ModelCallLimitPayload extends BlockPayloadBase {
+export interface ModelCallLimitPayload extends BlockPayloadBase {
   run_limit: number | null
   thread_limit: number | null
   exit_behavior: ModelCallLimitExitBehavior

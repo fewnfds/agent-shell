@@ -48,7 +48,7 @@ function selectSection(path: string): void {
       <SectionNav
         v-if="sectionItems.length"
         :active-id="activeSectionPath"
-        :aria-label="t('navigation.sectionAriaLabel')"
+        :ariaLabel="t('navigation.sectionAriaLabel')"
         class="mb-3"
         :items="sectionItems"
         layout="inline"

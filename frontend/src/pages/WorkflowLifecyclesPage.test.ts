@@ -115,6 +115,11 @@ describe('WorkflowLifecyclesPage', () => {
       blob: new Blob(['monitoring']),
       filename: 'lifecycle-1.agent-shell-monitoring.zip',
     })
+    const cancel = vi.spyOn(managementApi, 'cancelWorkflowLifecycle').mockResolvedValue({
+      ok: true,
+      terminated_response: true,
+      cancelled_run_count: 1,
+    })
     const remove = vi.spyOn(managementApi, 'deleteWorkflowLifecycle').mockResolvedValue({ ok: true })
     const { router, wrapper } = await mountPage()
     await flushPromises()
@@ -143,6 +148,14 @@ describe('WorkflowLifecyclesPage', () => {
       '/system/workflow-lifecycles/lifecycle-1/monitoring',
     )
 
+    const cancelButtons = wrapper.findAll('button[data-action="cancel"]')
+    expect(cancelButtons[0]?.attributes('disabled')).toBeUndefined()
+    expect(cancelButtons[1]?.attributes('disabled')).toBeDefined()
+    await cancelButtons[0]!.trigger('click')
+    useConfirmation().accept()
+    await flushPromises()
+    expect(cancel).toHaveBeenCalledWith(lifecycle.lifecycle_id)
+
     const deleteButtons = wrapper.findAll('button[data-action="delete"]')
     expect(deleteButtons[0]?.attributes('disabled')).toBeDefined()
     expect(deleteButtons[1]?.attributes('disabled')).toBeUndefined()
@@ -154,7 +167,7 @@ describe('WorkflowLifecyclesPage', () => {
     wrapper.unmount()
   })
 
-  it('bulk deletes the complete applied query and reports retained active Lifecycles', async () => {
+  it('bulk deletes the complete applied query and reports every retained Lifecycle', async () => {
     vi.spyOn(managementApi, 'listWorkflowLifecycles').mockResolvedValue({
       items: [lifecycle],
       page: 1,
@@ -163,7 +176,12 @@ describe('WorkflowLifecyclesPage', () => {
       total_pages: 2,
     })
     const removeMatching = vi.spyOn(managementApi, 'deleteWorkflowLifecyclesMatching')
-      .mockResolvedValue({ matched: 12, deleted: 11, skipped_active: 1 })
+      .mockResolvedValue({
+        matched: 12,
+        deleted: 10,
+        skipped_active: 1,
+        skipped_unavailable: 1,
+      })
     const { wrapper } = await mountPage()
     await flushPromises()
 
@@ -184,7 +202,7 @@ describe('WorkflowLifecyclesPage', () => {
     expect(removeMatching).toHaveBeenCalledWith('research')
     expect(useToasts().items.value.some(
       (toast) => toast.title
-        === 'Deleted runtime data for 11 Lifecycles and retained 1 active Lifecycles.',
+        === 'Deleted runtime data for 10 Lifecycles; retained 1 active and 1 unavailable Lifecycles.',
     )).toBe(true)
     wrapper.unmount()
   })

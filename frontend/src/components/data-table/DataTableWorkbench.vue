@@ -421,7 +421,7 @@ defineExpose<{
     <PaginationControls
       v-if="!loading && !loadError"
       :id="config.id"
-      :aria-label="label(config.ariaLabel)"
+      :ariaLabel="label(config.ariaLabel)"
       :item-count="rows.length"
       :page="page"
       :page-size="pageSize"

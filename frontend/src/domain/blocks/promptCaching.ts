@@ -14,12 +14,12 @@ export interface PromptCachingDraft extends BlockDraftBase {
 
 export type PromptCachingDefaults = Omit<PromptCachingDraft, 'id' | 'name'>
 
-interface PromptCachingApiRecord extends BlockDraftBase {
+export interface PromptCachingApiRecord extends BlockDraftBase {
   type?: unknown
   ttl?: unknown
   min_messages_to_cache?: unknown
 }
-interface PromptCachingPayload extends BlockPayloadBase, Omit<PromptCachingDraft, 'id' | 'name'> {}
+export interface PromptCachingPayload extends BlockPayloadBase, Omit<PromptCachingDraft, 'id' | 'name'> {}
 
 function normalizeTokenLimit(value: unknown, fallback: number | null): number | string | null {
   if (value === undefined) return fallback

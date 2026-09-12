@@ -15,13 +15,13 @@ export interface SkillDraft extends BlockDraftBase {
   instruction_override: string
 }
 
-interface SkillApiRecord extends BlockDraftBase {
+export interface SkillApiRecord extends BlockDraftBase {
   skill_package?: { folder: string }
   system_prompt_enabled?: boolean
   instruction_override: string | null
 }
 
-interface SkillPayload extends BlockPayloadBase {
+export interface SkillPayload extends BlockPayloadBase {
   skill_package?: { folder: string }
   skill_template_paths?: string[]
   system_prompt_enabled: boolean

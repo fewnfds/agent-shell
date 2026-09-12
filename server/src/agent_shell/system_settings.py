@@ -125,12 +125,11 @@ class SystemSettingsService:
         payload: dict[str, Any],
     ) -> str | None:
         operation = payload.get("operation")
-        if operation == "preserve":
+        value = payload.get("value")
+        if operation == "preserve" and value is None:
             return _secret_value(current)
-        if operation == "replace":
-            value = payload.get("value")
-            if isinstance(value, str) and value:
-                return value
+        if operation == "replace" and isinstance(value, str) and value:
+            return value
         raise SystemSettingsError(
             422,
             "system_secret_operation_invalid",
@@ -216,14 +215,13 @@ class SystemSettingsService:
         payload: dict[str, Any],
     ) -> str | None:
         operation = payload.get("operation")
-        if operation == "keep":
+        value = payload.get("value")
+        if operation == "keep" and value is None:
             return _secret_value(current)
-        if operation == "clear":
+        if operation == "clear" and value is None:
             return None
-        if operation == "replace":
-            value = payload.get("value")
-            if isinstance(value, str) and value:
-                return value
+        if operation == "replace" and isinstance(value, str) and value:
+            return value
         raise SystemSettingsError(
             422,
             "system_secret_operation_invalid",

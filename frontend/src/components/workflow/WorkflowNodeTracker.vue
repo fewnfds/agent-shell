@@ -39,7 +39,6 @@ function nodeTypeLabel(node: WorkflowCanvasNode): string {
         >
           <span class="workflow-node-tracker-icon" aria-hidden="true">
             <i v-if="node.data.nodeType === 'start'" class="bi bi-play-fill" />
-            <i v-else-if="node.data.nodeType === 'agent'" class="bi bi-robot" />
             <i v-else-if="node.data.nodeType === 'command'" class="bi bi-circle-half" />
             <i v-else class="bi bi-stop-fill" />
           </span>

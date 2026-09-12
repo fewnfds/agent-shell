@@ -144,6 +144,7 @@ export function useConfigurationResource<
 
   async function loadDetail(id: string): Promise<void> {
     const sequence = ++loadSequence
+    const previousId = selectedId.value
     saving.value = false
     if (!id) {
       resetDraft(true)
@@ -160,8 +161,8 @@ export function useConfigurationResource<
       markClean()
     } catch (error) {
       if (sequence !== loadSequence) return
-      selectedId.value = form.value.id
       setFailure(definition.messages.loadFailed, error)
+      await router.replace(definition.location(previousId || undefined))
     } finally {
       if (sequence === loadSequence) loading.value = false
     }

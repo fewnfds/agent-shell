@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
 import type { CSSProperties } from 'vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
@@ -79,7 +79,10 @@ const { t } = useI18n()
 const managementError = useManagementError()
 const route = useRoute()
 const lifecycleId = computed(() => String(route.params.lifecycleId || ''))
-const snapshot = ref<LangGraphLifecycleSnapshot | null>(null)
+// The snapshot carries recursive `JsonValue` payloads; letting Vue infer the
+// unwrapped type here exceeds TypeScript's instantiation depth. Asserting the
+// declared type keeps the deep reactivity `ref` already provides at runtime.
+const snapshot = ref<LangGraphLifecycleSnapshot | null>(null) as Ref<LangGraphLifecycleSnapshot | null>
 const store = ref<LangGraphLifecycleStore | null>(null)
 const selectedThreadId = ref('')
 const selectedRunId = ref('')
@@ -95,7 +98,9 @@ const columnPreferences = ref<ColumnPreferences>(readColumnPreferences())
 const activeResize = ref<ActiveResize | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 let workbenchResizeObserver: ResizeObserver | undefined
+let lifecycleGeneration = 0
 let detailGeneration = 0
+let refreshGeneration = 0
 let refreshing = false
 
 const selectedThread = computed<LangGraphThreadObservation | null>(() => (
@@ -256,22 +261,27 @@ function keepOrSelect(snapshotValue: LangGraphLifecycleSnapshot): void {
 }
 
 async function loadLifecycle(): Promise<void> {
+  const targetLifecycleId = lifecycleId.value
+  const generation = ++lifecycleGeneration
   loading.value = snapshot.value === null
   error.value = ''
   try {
     const [snapshotValue, storeValue] = await Promise.all([
-      managementApi.getLangGraphLifecycleSnapshot(lifecycleId.value),
-      managementApi.getLangGraphLifecycleStore(lifecycleId.value),
+      managementApi.getLangGraphLifecycleSnapshot(targetLifecycleId),
+      managementApi.getLangGraphLifecycleStore(targetLifecycleId),
     ])
+    if (generation !== lifecycleGeneration || targetLifecycleId !== lifecycleId.value) return
     snapshot.value = snapshotValue
     store.value = storeValue
     keepOrSelect(snapshotValue)
   }
   catch (cause) {
-    error.value = managementError.describe(cause).display
+    if (generation === lifecycleGeneration && targetLifecycleId === lifecycleId.value) {
+      error.value = managementError.describe(cause).display
+    }
   }
   finally {
-    loading.value = false
+    if (generation === lifecycleGeneration) loading.value = false
   }
 }
 
@@ -308,29 +318,37 @@ async function loadRunDetails(): Promise<void> {
 
 async function refreshActiveFacts(): Promise<void> {
   if (!lifecycleActive.value || refreshing) return
+  const targetLifecycleId = lifecycleId.value
+  const generation = ++refreshGeneration
   refreshing = true
   try {
     const [snapshotValue, storeValue] = await Promise.all([
-      managementApi.getLangGraphLifecycleSnapshot(lifecycleId.value),
-      managementApi.getLangGraphLifecycleStore(lifecycleId.value),
+      managementApi.getLangGraphLifecycleSnapshot(targetLifecycleId),
+      managementApi.getLangGraphLifecycleStore(targetLifecycleId),
     ])
+    if (generation !== refreshGeneration || targetLifecycleId !== lifecycleId.value) return
     snapshot.value = snapshotValue
     store.value = storeValue
     keepOrSelect(snapshotValue)
-    if (selectedGraphKind.value === 'workflow' && selectedRunId.value) {
-      const stateValue = await managementApi.getLangGraphRunState(
-        lifecycleId.value,
-        selectedRunId.value,
-      )
+    const runId = selectedRunId.value
+    if (selectedGraphKind.value === 'workflow' && runId) {
+      const stateValue = await managementApi.getLangGraphRunState(targetLifecycleId, runId)
+      if (
+        generation !== refreshGeneration
+        || targetLifecycleId !== lifecycleId.value
+        || runId !== selectedRunId.value
+      ) return
       state.value = stateValue
       detailError.value = stateValue.error?.message ?? ''
     }
   }
   catch (cause) {
-    detailError.value = managementError.describe(cause).display
+    if (generation === refreshGeneration && targetLifecycleId === lifecycleId.value) {
+      detailError.value = managementError.describe(cause).display
+    }
   }
   finally {
-    refreshing = false
+    if (generation === refreshGeneration) refreshing = false
   }
 }
 
@@ -340,9 +358,25 @@ function updateAgentState(values: Record<string, unknown>): void {
     run_id: selectedRunId.value,
     thread_id: selectedThreadId.value,
     state: { ...(state.value?.state ?? {}), values },
-    error: null,
+    error: state.value?.error ?? null,
   } as LangGraphStateResponse
 }
+
+watch(lifecycleId, () => {
+  lifecycleGeneration += 1
+  refreshGeneration += 1
+  detailGeneration += 1
+  refreshing = false
+  snapshot.value = null
+  store.value = null
+  selectedThreadId.value = ''
+  selectedRunId.value = ''
+  graph.value = null
+  state.value = null
+  error.value = ''
+  detailError.value = ''
+  void loadLifecycle()
+})
 
 watch(
   () => `${selectedThreadId.value}:${selectedRunId.value}:${selectedGraphKind.value ?? ''}`,

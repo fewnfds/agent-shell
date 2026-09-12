@@ -71,6 +71,37 @@ describe('agent authoring pages', () => {
     wrapper.unmount()
   })
 
+  it('restores the loaded Agent route when a replacement detail fails to load', async () => {
+    const firstId = '00000000-0000-0000-0000-000000000021'
+    const missingId = '00000000-0000-0000-0000-000000000022'
+    const api = service({
+      getMainAgent: vi.fn(async (id) => {
+        if (id === missingId) throw new Error('detail unavailable')
+        return {
+          id,
+          name: 'Loaded MainAgent',
+          capability_refs: [],
+          subagents: [],
+        }
+      }),
+    })
+    const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
+
+    await router.push({ path: '/agents/main', query: { id: missingId } })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.id).toBe(firstId)
+    expect((wrapper.get('[data-field="record-name"]').element as HTMLInputElement).value)
+      .toBe('Loaded MainAgent')
+    await buttonByText(wrapper, 'agents.actions.saveDraft').trigger('click')
+    await flushPromises()
+    expect(api.updateMainAgent).toHaveBeenCalledWith(
+      firstId,
+      expect.objectContaining({ name: 'Loaded MainAgent' }),
+    )
+    wrapper.unmount()
+  })
+
   it('keeps the latest Agent route when an earlier query load finishes late', async () => {
     const firstMainAgentId = '00000000-0000-0000-0000-000000000031'
     const secondMainAgentId = '00000000-0000-0000-0000-000000000032'
