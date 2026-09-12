@@ -1029,6 +1029,7 @@ export const en: MessageSchema = {
     all: 'All',
     apiKeyPlaceholder: 'Enter an API key',
     configuredSecretPlaceholder: '••••••••',
+    optionalCredentialPlaceholder: 'This connection does not use a credential',
     recordPicker: {
       load: 'Choose configuration',
       name: 'Configuration name',

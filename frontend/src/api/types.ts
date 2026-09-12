@@ -147,7 +147,7 @@ export interface ModelConnectionPayload {
 
 export interface ModelConnection extends Omit<ModelConnectionPayload, 'credential'> {
   id: string
-  credential: { status: 'masked' | 'missing' }
+  credential: { status: 'masked' | 'missing' | 'none' }
   response_format: Record<string, unknown> | null
   model_settings: Record<string, unknown>
 }

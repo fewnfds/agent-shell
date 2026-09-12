@@ -45,13 +45,16 @@ def _public_record(
 ) -> dict[str, Any]:
     value = deepcopy(record)
     reference = _credential_reference(record)
-    value["credential"] = {
-        "status": (
-            "masked"
-            if reference and environment.get(reference) is not None
-            else "missing"
-        )
-    }
+    if reference is None:
+        # The connection explicitly stores no reference, so it does not use a
+        # credential. This stays distinct from a stored reference whose
+        # environment value is gone, which resolution fails on.
+        status = "none"
+    elif environment.get(reference) is not None:
+        status = "masked"
+    else:
+        status = "missing"
+    value["credential"] = {"status": status}
     return value
 
 

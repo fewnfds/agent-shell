@@ -104,7 +104,7 @@ def test_endpoint_change_without_replacement_clears_saved_secret(
     response = client.put(f"/agent-shell/api/model-connections/{block['id']}", json=changed)
 
     assert response.status_code == 200, response.text
-    assert response.json()["credential"] == {"status": "missing"}
+    assert response.json()["credential"] == {"status": "none"}
     stored, secrets = connection_storage_payload(data_root, block["id"])
     assert stored["base_url"] == "https://other-provider.example/v1"
     assert stored["credential"] is None
@@ -125,7 +125,7 @@ def test_provider_change_without_replacement_clears_saved_secret(
     response = client.put(f"/agent-shell/api/model-connections/{block['id']}", json=changed)
 
     assert response.status_code == 200, response.text
-    assert response.json()["credential"] == {"status": "missing"}
+    assert response.json()["credential"] == {"status": "none"}
     stored, secrets = connection_storage_payload(data_root, block["id"])
     assert stored["provider"] == "anthropic"
     assert stored["credential"] is None
@@ -170,7 +170,7 @@ def test_no_key_is_valid_but_a_broken_reference_fails_closed(
         "/agent-shell/api/model-connections", json=model_payload("No-key model", None)
     )
     assert no_key.status_code == 200, no_key.text
-    assert no_key.json()["credential"] == {"status": "missing"}
+    assert no_key.json()["credential"] == {"status": "none"}
     assert resolver_for(data_root).resolve_model(no_key.json()["id"]) is None
 
     block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
@@ -185,3 +185,35 @@ def test_no_key_is_valid_but_a_broken_reference_fails_closed(
     with pytest.raises(ProviderCredentialError) as captured:
         resolver_for(data_root).resolve_model(block["id"])
     assert captured.value.code == "provider_secret_reference_missing"
+
+
+def test_projection_distinguishes_no_credential_from_a_lost_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection without a reference must not read as a missing secret."""
+
+    client, data_root = make_client(tmp_path, monkeypatch)
+    no_key = client.post(
+        "/agent-shell/api/model-connections", json=model_payload("ADC model", None)
+    ).json()
+    blocked = client.post(
+        "/agent-shell/api/model-connections", json=model_payload("Keyed model")
+    ).json()
+    internal, _ = connection_storage_payload(data_root, blocked["id"])
+    InstanceEnvironmentStore(
+        data_root / "config" / "agent-shell.env"
+    ).patch(
+        MODEL_CONNECTION_ENVIRONMENT_OWNER,
+        remove_keys={internal["credential"]["reference"]},
+    )
+
+    listed = {
+        item["name"]: item["credential"]["status"]
+        for item in client.get("/agent-shell/api/model-connections").json()
+    }
+
+    assert listed["ADC model"] == "none"
+    assert listed["Keyed model"] == "missing"
+    assert client.get(
+        f"/agent-shell/api/model-connections/{no_key['id']}"
+    ).json()["credential"] == {"status": "none"}

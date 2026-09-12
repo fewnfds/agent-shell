@@ -69,7 +69,7 @@ Model Connection 是当前实例私有资源。用户在【模型 / 模型连接
 
 AI 可以说明模型必须满足的能力和兼容条件。不要虚构 Provider Key，不替用户选择未知收费模型，不把 credential 写入可迁移配置。
 
-Model Connection 不进入 Configuration Bundle。credential value 是 write-only secret，普通 GET 只返回 configured、masked 或 missing 状态。
+Model Connection 不进入 Configuration Bundle。credential value 是 write-only secret，普通 GET 只返回 `masked`、`missing` 或 `none` 状态（`none` 表示该连接不使用凭据）。
 
 用户已经建立合适连接后提交 binding：
 

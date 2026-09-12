@@ -1027,6 +1027,7 @@ export const zhCN = {
     all: '全部',
     apiKeyPlaceholder: '请输入 API Key',
     configuredSecretPlaceholder: '••••••••',
+    optionalCredentialPlaceholder: '此连接不使用凭据',
     recordPicker: {
       load: '选择配置',
       name: '配置名称',

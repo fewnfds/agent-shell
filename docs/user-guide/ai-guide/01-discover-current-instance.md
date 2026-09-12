@@ -93,7 +93,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 - `GET /agent-shell/api/blocks/{type}` 返回某类 Component；`GET /agent-shell/api/blocks/{type}/{id}` 返回一条完整记录；
 - `GET /agent-shell/api/main-agents` 和 `GET /agent-shell/api/subagents` 返回 Agent configuration；
 - `GET /agent-shell/api/workflows` 返回全部 Workflow；可以通过通用 collection 参数读取 summary、搜索或分页；
-- `GET /agent-shell/api/model-connections` 返回当前实例私有 Model Connection 的 masked 或 missing projection；
+- `GET /agent-shell/api/model-connections` 返回当前实例私有 Model Connection 的 `masked`、`missing` 或 `none` credential projection；
 - `GET /agent-shell/api/model-requirements` 返回当前 Repository 的 Model Requirement 和本机 binding projection；
 - `GET /agent-shell/api/mcp-connections` 返回当前实例私有 MCP Connection；每个 secret env/Header 只显示 `masked` 或 `missing`；
 - `GET /agent-shell/api/mcp-requirements` 返回当前 Repository 的 MCP Requirement 和本机 binding/Connection projection；

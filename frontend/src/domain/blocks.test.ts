@@ -87,6 +87,12 @@ describe('block adapters', () => {
     })
   })
 
+  it('keeps a credential-free model distinct from a lost credential reference', () => {
+    expect(modelAdapter.fromApi({ ...modelRecord(), credential: { status: 'none' } }).credential_status).toBe('none')
+    expect(modelAdapter.fromApi({ ...modelRecord(), credential: { status: 'missing' } }).credential_status).toBe('missing')
+    expect(modelAdapter.fromApi({ ...modelRecord(), credential: { status: 'masked' } }).credential_status).toBe('masked')
+  })
+
   it('uses explicit sampling defaults for new and switched OpenAI or DeepSeek models', () => {
     const samplingDefaults = {
       temperature: 1,

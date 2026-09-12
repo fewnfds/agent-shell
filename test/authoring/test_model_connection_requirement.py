@@ -202,7 +202,7 @@ def test_connection_change_without_credential_removes_orphan_secret(
     }
     saved = resources.save_connection(connection_id, changed)
 
-    assert saved["credential"] == {"status": "missing"}
+    assert saved["credential"] == {"status": "none"}
     assert resources.resolve_connection(connection_id)["credential"] is None
     assert environment.owned_values(
         MODEL_CONNECTION_ENVIRONMENT_OWNER

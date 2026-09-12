@@ -31,9 +31,11 @@ const { t } = useI18n()
 const draft = useEditorModel(() => props.modelValue, (value) => emit('update:modelValue', value))
 const responseFormatPlaceholder = '{"title":"Result","description":"Structured result","type":"object","properties":{}}'
 const modelSettingsPlaceholder = '{"parallel_tool_calls":false}'
-const credentialPlaceholder = computed(() => draft.credential_status === 'masked'
-  ? t('common.configuredSecretPlaceholder')
-  : t('common.apiKeyPlaceholder'))
+const credentialPlaceholder = computed(() => {
+  if (draft.credential_status === 'masked') return t('common.configuredSecretPlaceholder')
+  if (draft.credential_status === 'none') return t('common.optionalCredentialPlaceholder')
+  return t('common.apiKeyPlaceholder')
+})
 const selectedProviderId = computed(() => draft.provider.trim())
 
 type ParameterKind = 'boolean' | 'boolean-number' | 'enum' | 'number' | 'string-list' | 'text'

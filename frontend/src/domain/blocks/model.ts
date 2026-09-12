@@ -110,7 +110,9 @@ export const modelAdapter = {
       provider: stringValue(value.provider, 'openai'),
       base_url: stringValue(value.base_url),
       credential_secret: '',
-      credential_status: credential.status === 'masked' ? 'masked' : 'missing',
+      credential_status: credential.status === 'masked' || credential.status === 'none'
+        ? credential.status
+        : 'missing',
       model: stringValue(value.model),
       provider_settings: providerSettingsEditorValue(value.provider_settings),
       tool_choice: toolChoiceEditorValue(value.tool_choice),
