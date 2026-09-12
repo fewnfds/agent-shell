@@ -107,13 +107,14 @@ def test_configuration_failure_returns_concrete_error_and_records_diagnostic(
 
     assert response.status_code == 500
     assert response.json()["error"] == {
-        "message": "RuntimeError: snapshot exploded",
+        "message": "The request configuration could not be prepared.",
         "type": "server_error",
         "param": None,
         "code": "configuration_snapshot_failed",
         "request_id": request_id,
     }
     assert response.json()["request_id"] == request_id
+    assert "snapshot exploded" not in response.text
     assert events[0]["summary"].endswith("RuntimeError: snapshot exploded")
 
 
@@ -145,10 +146,7 @@ def test_run_start_failure_returns_exception_chain_and_lifecycle_identity(
     request_id = response.headers["x-request-id"]
     assert response.status_code == 500
     assert response.json()["error"] == {
-        "message": (
-            "RuntimeError: run creation exploded <- "
-            "OSError: provider connection refused"
-        ),
+        "message": "The Run could not be started.",
         "type": "server_error",
         "param": None,
         "code": "run_start_failed",
@@ -157,6 +155,7 @@ def test_run_start_failure_returns_exception_chain_and_lifecycle_identity(
     }
     assert response.json()["request_id"] == request_id
     assert response.json()["lifecycle_id"] == "lifecycle-start-failure"
+    assert "run creation exploded" not in response.text
 
 
 def test_execution_failure_returns_decoded_provider_reason(
@@ -200,15 +199,15 @@ def test_execution_failure_returns_decoded_provider_reason(
     request_id = response.headers["x-request-id"]
     assert response.status_code == 502
     assert response.json()["error"] == {
-        "message": (
-            "ProviderGatewayError: upstream returned 503 with an invalid payload"
-        ),
+        "message": "The provider request failed.",
         "type": "server_error",
         "param": None,
         "code": "provider_request_failed",
         "request_id": request_id,
         "lifecycle_id": "lifecycle-provider-failure",
     }
+    assert "ProviderGatewayError" not in response.text
+    assert "upstream returned 503" not in response.text
 
 
 def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(
@@ -773,8 +772,10 @@ def test_post_publish_command_package_failure_reaches_user_and_runtime_log(
     assert response.status_code == 422
     assert response.headers["content-type"].startswith("application/json")
     assert response.json()["error"]["code"] == "python_package.invalid"
-    assert f"Python package '{folder}' is invalid." in response.json()["error"]["message"]
-    assert "main.py contains a syntax error on line 1" in response.json()["error"]["message"]
+    assert response.json()["error"]["message"] == (
+        "The request could not be executed with the current configuration."
+    )
+    assert "main.py" not in response.text
     assert response.json()["lifecycle_id"]
     assert len(diagnostics) == 1
     assert '"code": "python_package.invalid"' in diagnostics[0]["inline_content"]
@@ -835,9 +836,9 @@ def test_completion_stream_returns_python_package_failure_details(
     assert error_chunk["choices"][0]["finish_reason"] == "error"
     assert error_chunk["error"]["code"] == "python_package.load_failed"
     assert error_chunk["error"]["message"] == (
-        "Python package 'broken-command' could not be loaded. <- "
-        "ImportError: No module named 'workflow_dependency'"
+        "The request could not be executed with the current configuration."
     )
+    assert "workflow_dependency" not in lines[-2]
     assert error_chunk["error"]["request_id"]
     assert error_chunk["error"]["lifecycle_id"] == "lifecycle-package-failure"
 

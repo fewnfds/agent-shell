@@ -194,7 +194,7 @@ GET response 是读取 projection，可能包含 `id`、状态、masked credenti
 - `422`：检查 query、payload shape 或当前 contract；
 - `5xx`：保留 request ID，检查服务日志和运行环境。
 
-诊断材料保留服务端返回的 structured detail、Provider 正文和 traceback，并应用本章的认证 key 投影边界。产品的数据分类与错误披露规则见[安全与部署](../../security-and-deployment.md#数据分类与错误披露)。
+management API 的错误响应保留服务端 structured detail；OpenAI-compatible 响应只返回稳定 code 与基础分类消息。Provider 正文和 traceback 从 management-only 的日志中心诊断与附件读取。应用本章的认证 key 投影边界，产品的数据分类与错误披露规则见[安全与部署](../../security-and-deployment.md#数据分类与错误披露)。
 
 ## 8. 本章完成结果
 

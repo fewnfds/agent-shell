@@ -19,7 +19,7 @@ Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时�
 
 ## 2. 准备目标 Workflow
 
-Lifecycle入口启动时自动冻结active Configuration Repository中当前`enabled=true`的Main Agent/Workflow，以及全部Component/Subagent，无需为调用范围另写声明。草稿不进入快照；capture不重复扫描外部资产或重新判定正式入口有效性。内部调用不要求`is_model_entry=true`，该字段只决定Graph是否可由OpenAI-compatible请求作为入口启动。目标不在范围内时返回`lifecycle_graph_not_in_snapshot`，运行时不会查询live配置扩大范围；引用资产失效会在真实Graph装配或执行边界返回具体错误。
+Lifecycle入口启动时自动冻结active Configuration Repository中当前`enabled=true`的Main Agent/Workflow，以及全部Component/Subagent，无需为调用范围另写声明。草稿不进入快照；capture不重复扫描外部资产或重新判定正式入口有效性。内部调用不要求`is_model_entry=true`，该字段只决定Graph是否可由OpenAI-compatible请求作为入口启动。目标不在范围内时返回`lifecycle_graph_not_in_snapshot`，运行时不会查询live配置扩大范围；引用资产失效会在真实Graph装配或执行边界返回稳定错误码，具体异常链进入运行诊断。
 
 Model/MCP binding与被绑定Connection declaration、本次response scheduling和Run config一并冻结。Python/Skill package、Filesystem或mapped directory、Managed MCP installation和远端服务只冻结路径或declaration reference；这些外部对象失效时Lifecycle运行失败。credential实际值仍由Environment owner保管，绝不写入Lifecycle snapshot。
 

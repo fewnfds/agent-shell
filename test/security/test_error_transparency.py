@@ -139,7 +139,7 @@ def test_wrapped_http_error_keeps_its_underlying_exception_chain(
     )
 
 
-def test_request_validation_keeps_input_except_stored_secret_values(
+def test_request_validation_omits_rejected_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -161,15 +161,14 @@ def test_request_validation_keeps_input_except_stored_secret_values(
     assert response.status_code == 422
     issues = response.json()["detail"]["issues"]
     assert {issue["loc"][-1] for issue in issues} == {"count", "retries"}
+    assert all("input" not in issue for issue in issues)
+    assert MANAGEMENT_TOKEN not in response.text
     assert next(issue for issue in issues if issue["loc"][-1] == "count")[
-        "input"
-    ] == "not-a-number"
-    assert next(issue for issue in issues if issue["loc"][-1] == "retries")[
-        "input"
-    ] == "[REDACTED]"
+        "msg"
+    ] == "Input should be a valid integer, unable to parse string as an integer"
 
 
-def test_openai_error_keeps_reason_and_redacts_stored_secret_value(
+def test_openai_error_returns_classification_and_keeps_details_in_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -189,10 +188,67 @@ def test_openai_error_keeps_reason_and_redacts_stored_secret_value(
             "/compat/openai/v1/chat/completions",
             json={"model": "debug-model", "messages": []},
         )
+        diagnostics = client.get(
+            "/agent-shell/api/event-feed",
+            params={
+                "started_at": "2000-01-01T00:00:00+00:00",
+                "ended_at": "2100-01-01T00:00:00+00:00",
+                "source": "runtime",
+                "query": "configuration_snapshot_failed",
+            },
+        ).json()["items"]
+        detail = client.get(
+            f"/agent-shell/api/event-feed/runtime/{diagnostics[0]['id']}/download"
+        )
 
     assert started.status_code == 200
     assert response.status_code == 500
-    message = response.json()["error"]["message"]
-    assert r"RuntimeError: Provider failed at C:\Users\developer\provider.py" in message
-    assert MANAGEMENT_TOKEN not in message
-    assert "[REDACTED]" in message
+    payload = response.json()
+    assert payload["error"]["code"] == "configuration_snapshot_failed"
+    assert payload["error"]["message"] == (
+        "The request configuration could not be prepared."
+    )
+    assert MANAGEMENT_TOKEN not in response.text
+    assert "provider.py" not in response.text
+    assert payload["request_id"]
+
+    assert len(diagnostics) == 1
+    assert "RuntimeError: Provider failed" in diagnostics[0]["summary"]
+    assert "provider.py" in diagnostics[0]["summary"]
+    assert MANAGEMENT_TOKEN not in diagnostics[0]["summary"]
+    assert detail.status_code == 200
+    assert r"C:\Users\developer\provider.py" in detail.content.decode("utf-8")
+
+
+def test_openai_static_validation_messages_are_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    configure_scope_tokens(monkeypatch, tmp_path)
+    app = create_app()
+
+    with ScopedAuthTestClient(app) as client:
+        started = client.post("/agent-shell/api/api-server/start")
+        missing_model = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={"messages": []},
+        )
+        missing_body_model = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={"model": "absent-model", "messages": []},
+        )
+        invalid_stream = client.post(
+            "/compat/openai/v1/chat/completions",
+            json={"model": "absent-model", "messages": [], "stream": "yes"},
+        )
+
+    assert started.status_code == 200
+    assert missing_model.status_code == 422
+    assert missing_model.json()["error"]["message"] == "A model is required."
+    assert missing_body_model.status_code == 404
+    assert missing_body_model.json()["error"]["message"] == (
+        "The requested model does not exist."
+    )
+    assert invalid_stream.status_code == 422
+    assert invalid_stream.json()["error"]["message"] == "stream must be a boolean."

@@ -252,7 +252,7 @@ Content-Type: application/json
 
 ## 11. Invocation 失败
 
-保留 HTTP status、structured error code、request ID、完整 issue、异常消息、Provider 正文和 traceback。按 owner 定位：
+保留 HTTP status、structured error code、request ID 和完整 issue。management API 响应保留异常消息、Provider 正文和 traceback；OpenAI-compatible 响应只返回稳定 code 与基础分类消息，完整异常链、Provider 正文和 traceback 从日志中心诊断获取。按 owner 定位：
 
 1. 检查所选Main Agent的model entry，或Workflow的enabled/model entry状态；
 2. 检查 Model Mapping 与 MCP Mapping；
@@ -260,11 +260,11 @@ Content-Type: application/json
 4. 检查 Python dependency status；
 5. 检查 Provider endpoint、model capability 和 credential missing state；
 6. 通过 `GET /agent-shell/api/workflow-lifecycles` 找到当前 Lifecycle；
-7. 先读取 OpenAI-compatible response 的具体异常消息、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并按需下载完整 traceback 附件；
+7. 先读取 OpenAI-compatible response 的 `error.code`、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并在诊断中读取完整异常链、按需下载 traceback 附件；
 8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 9. 使用同一个可复现输入重试。
 
-运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error 和日志中心诊断定位。
+运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error（仅含稳定码与基础分类消息）和日志中心诊断定位。
 
 只要一个 Lifecycle 仍显示 active Run，`DELETE /agent-shell/api/workflow-lifecycles/{lifecycle_id}` 就返回 `409 workflow_lifecycle_active`。需要停止它时使用 `POST /agent-shell/api/workflow-lifecycles/{lifecycle_id}/cancel`：它取消该 Lifecycle 的全部 active Run，并结束该 Lifecycle 仍在等待的 OpenAI-compatible 响应，响应以 `completion_cancelled` 收尾。取消只作用于这个 Lifecycle；Run 进入终态后即可删除。
 
@@ -276,7 +276,7 @@ Content-Type: application/json
 - `422`：payload、Graph、package 或 assembly 不符合 contract；
 - `5xx`：Runtime、Provider、外部服务或系统资源失败。
 
-失败响应与本地异常附件可能包含 Provider 正文、host path 或其他运行细节。API Key 与 management token 只提供给受信任的实例操作者，诊断材料按[安全与部署](../../security-and-deployment.md)处理。
+失败响应只含稳定 code 与基础分类消息；Provider 正文、host path 或其他运行细节只出现在 management-only 的日志中心诊断与本地异常附件中。API Key 与 management token 只提供给受信任的实例操作者，诊断材料按[安全与部署](../../security-and-deployment.md)处理。
 
 Lifecycle 和 Run 观测见[Runtime observability](../runtime-observability.md)。
 

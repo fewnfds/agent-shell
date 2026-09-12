@@ -447,11 +447,11 @@ class TrustedProxyHeadersMiddleware:
         request_id = request_id_for_scope(scope)
         try:
             prepared = self._prepare_scope(scope)
-        except ProxyHeaderError as exc:
+        except ProxyHeaderError:
             response = security_error_response(
                 400,
                 "invalid_proxy_headers",
-                f"{type(exc).__name__}: {exc}",
+                "The forwarding headers are invalid for this deployment.",
                 request_id,
                 _required_scope(scope.get("path", "")),
             )

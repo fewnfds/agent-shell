@@ -455,6 +455,46 @@ def test_invalid_candidate_does_not_write_or_reveal_replacement_secrets(
     assert settings_path.read_text(encoding="utf-8") == original
 
 
+M3_SENTINEL = "m3-rejected-candidate-secret"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("management_token", {"operation": "preserve", "value": M3_SENTINEL}),
+        ("management_token", {"value": M3_SENTINEL}),
+        ("management_token", {"operation": "bogus", "value": M3_SENTINEL}),
+        (
+            "management_token",
+            {"operation": "replace", "value": {"secret": M3_SENTINEL}},
+        ),
+        ("langsmith_api_key", {"value": M3_SENTINEL}),
+        ("langsmith_api_key", {"operation": "nope", "value": M3_SENTINEL}),
+        (
+            "langsmith_api_key",
+            {"operation": "replace", "value": {"secret": M3_SENTINEL}},
+        ),
+    ],
+)
+def test_rejected_write_only_credential_shapes_never_echo_the_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: dict,
+) -> None:
+    """Every rejected write-only shape stays out of the request-structure error."""
+
+    _, client = _client(tmp_path, monkeypatch)
+
+    response = client.put(
+        "/agent-shell/api/system/settings",
+        json=_payload(**{field: value}),
+    )
+
+    assert response.status_code == 422, response.text
+    assert M3_SENTINEL not in response.text
+
+
 def test_management_password_replacement_is_write_only_and_persists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

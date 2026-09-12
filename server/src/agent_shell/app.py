@@ -16,7 +16,7 @@ from agent_shell.api.configuration_bundles import build_configuration_bundle_rou
 from agent_shell.api.configuration_repositories import build_configuration_repository_router
 from agent_shell.api.agent_configs import build_agent_config_router
 from agent_shell.api.python_packages import build_python_package_router
-from agent_shell.api.errors import localized_error_detail
+from agent_shell.api.errors import compat_failure_message, localized_error_detail
 from agent_shell.api.system import build_system_router
 from agent_shell.api.api_server import (
     ApiServerEventHub,
@@ -496,7 +496,10 @@ def create_app(
     async def request_validation_error(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        errors = jsonable_encoder(exc.errors())
+        errors = [
+            {key: value for key, value in issue.items() if key != "input"}
+            for issue in jsonable_encoder(exc.errors())
+        ]
         if is_agent_shell_api_path(request.url.path):
             detail: object = {
                 **localized_error_detail(
@@ -546,7 +549,7 @@ def create_app(
         else:
             content = {
                 "error": {
-                    "message": message,
+                    "message": compat_failure_message("internal_error", 500),
                     "type": "internal_error",
                     "param": None,
                     "code": "internal_error",

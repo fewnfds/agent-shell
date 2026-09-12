@@ -139,9 +139,11 @@ def test_invalid_or_untrusted_proxy_headers_fail_closed(
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_proxy_headers"
     assert response.headers["x-request-id"] == response.json()["request_id"]
-    assert response.json()["error"]["message"].startswith("ProxyHeaderError: ")
-    if direct_client[0] == "198.51.100.7":
-        assert "198.51.100.7" in response.text
+    assert response.json()["error"]["message"] == (
+        "The forwarding headers are invalid for this deployment."
+    )
+    assert "ProxyHeaderError" not in response.text
+    assert "198.51.100.7" not in response.text
 
 def test_management_proxy_error_exposes_a_localization_key(
     monkeypatch: pytest.MonkeyPatch,

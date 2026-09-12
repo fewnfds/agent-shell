@@ -33,7 +33,16 @@ Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和�
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
-`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。普通内容是否进入某个载体由该领域 owner 的 contract 决定；内容进入错误事实后，不再根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。经过认证的显式 HTTP 错误、未处理异常与 OpenAI-compatible 推理失败响应保留具体异常链；FastAPI 请求结构错误保留 Pydantic 的被拒绝输入；system log 保存具体错误 message；Lifecycle error 保留 Server 失败 payload；management-only runtime diagnostic 保留异常链，其附件保留完整 traceback。稳定 code、HTTP status 和本地化标题是分类与展示元数据，与真实原因同时保留。
+`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。普通内容是否进入某个载体由该领域 owner 的 contract 决定；内容进入错误事实后，不再根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。
+
+披露内容按鉴权等级分层：
+
+- management 鉴权出口（管理台 `/admin`、`/agent-shell/api/*`、LangGraph Dev 官方路由，以及日志中心与诊断附件下载）返回完整分类、真实原因、具体异常链和完整 traceback 附件；
+- 非 management 出口（`/compat/openai/v1/*`）只返回稳定 code、HTTP status、固定英文分类消息、`request_id` 与已建立的 `lifecycle_id`；调用方凭这些 identity 在日志中心查看完整异常链与 traceback 附件；
+- FastAPI 请求结构错误返回 Pydantic issue 的 `type`、`loc`、`msg` 和 `ctx`，不含被拒绝的原始 `input`；
+- system log 保存具体错误 message；Lifecycle error 保留 Server 失败 payload；management-only runtime diagnostic 保留异常链，其附件保留完整 traceback。
+
+稳定 code、HTTP status 和本地化标题是分类与展示元数据，在 management 出口与真实原因同时保留。
 
 该分类只决定内容投影，不改变认证、credential write-only API、持久化 owner、不受信任代码审查、文件系统权限或 retention 约束。内容是普通事实不等于应把它复制到无关 State、日志或导出物；每个载体仍只保存其 contract 需要的数据。
 
@@ -45,7 +54,7 @@ Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和�
 - Lifecycle 监控 ZIP 在用户下载时通过公共 API 组合 snapshot、Store、Assistant Graph、latest State 和 checkpoint history，其中可能包含消息、reasoning、Tool 输入/输出、State 与文件路径；
 - 用户创建的组件、文件和 Python 资源。
 
-运行诊断列表保存固定结构化 identity、错误码、源异常类型和具体错误链。异常详情附件只从管理台日志中心对应的运行诊断行下载；它保留本地 traceback，跨 Agent Server 时追加 Server source traceback。正常完成不会产生诊断或附件。
+运行诊断列表保存固定结构化 identity、错误码、源异常类型和具体错误链。异常详情附件只从管理台日志中心对应的运行诊断行下载；它保留本地 traceback，跨 Agent Server 时追加 Server source traceback。正常完成不会产生诊断或附件。对外 API 只返回分类信息，日志中心诊断是完整错误事实的唯一出口。
 
 ## 配置 Bundle
 

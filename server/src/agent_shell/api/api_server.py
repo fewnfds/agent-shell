@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from agent_shell.api.errors import management_error
+from agent_shell.api.errors import compat_failure_message, management_error
 from agent_shell.http_surface import (
     API_KEY_BEARER_SCHEME,
     http_surface,
@@ -438,7 +438,7 @@ async def _completion_stream(
                 ],
                 "error": _openai_error_payload(
                     exc.code,
-                    redact_secret_text(describe_exception(exc)),
+                    compat_failure_message(exc.code, exc.status_code),
                     status_code=exc.status_code,
                     request_id=str(getattr(identity, "request_id", "") or ""),
                     lifecycle_id=str(getattr(identity, "lifecycle_id", "") or ""),
@@ -471,7 +471,7 @@ async def _completion_stream(
                 ],
                 "error": _openai_error_payload(
                     "completion_failed",
-                    detail,
+                    compat_failure_message("completion_failed", 500),
                     status_code=500,
                     request_id=str(getattr(identity, "request_id", "") or ""),
                     lifecycle_id=str(getattr(identity, "lifecycle_id", "") or ""),
@@ -774,7 +774,7 @@ def build_api_server_router(
             return _openai_error(
                 500,
                 "configuration_snapshot_failed",
-                detail,
+                compat_failure_message("configuration_snapshot_failed", 500),
                 request_id=request_id,
             )
         workflow = request_snapshot.workflow_by_name(model)
@@ -827,10 +827,11 @@ def build_api_server_router(
                 and exc.validation_report.issues
                 else None
             )
+            code = issue.code if issue is not None else exc.code
             return _openai_error(
                 exc.status_code,
-                issue.code if issue is not None else exc.code,
-                redact_secret_text(describe_exception(exc)),
+                code,
+                compat_failure_message(code, exc.status_code),
                 request_id=request_id,
                 lifecycle_id=lifecycle_id,
             )
@@ -843,7 +844,7 @@ def build_api_server_router(
             return _openai_error(
                 500,
                 "run_start_failed",
-                redact_secret_text(describe_exception(exc)),
+                compat_failure_message("run_start_failed", 500),
                 request_id=request_id,
                 lifecycle_id=lifecycle_id,
             )
@@ -875,7 +876,7 @@ def build_api_server_router(
             return _openai_error(
                 exc.status_code,
                 exc.code,
-                redact_secret_text(describe_exception(exc)),
+                compat_failure_message(exc.code, exc.status_code),
                 request_id=request_id,
                 lifecycle_id=lifecycle_coordinator.lifecycle_id,
             )
@@ -892,7 +893,7 @@ def build_api_server_router(
             return _openai_error(
                 500,
                 "completion_failed",
-                detail,
+                compat_failure_message("completion_failed", 500),
                 request_id=request_id,
                 lifecycle_id=lifecycle_coordinator.lifecycle_id,
             )
