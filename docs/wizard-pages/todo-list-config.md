@@ -10,7 +10,7 @@
 }
 ```
 
-两个 override 各自为 `null` 时使用当前 LangChain 版本的默认文本；非空字符串完整覆写对应文本，每个字段最多 100,000 字符。编辑器默认显示当前默认文本，未修改时保存为 `null`，也可以用“还原默认文本”撤销覆写。
+两个 override 各自为 `null` 时使用当前 LangChain 版本的默认文本；非空字符串完整覆写对应文本。编辑器默认显示当前默认文本，未修改时保存为 `null`，也可以用“还原默认文本”撤销覆写。
 
 选择该组件后，Middleware 向模型提供 `write_todos`。每次调用提交包含 `content` 与 `pending|in_progress|completed` 的完整列表并全量替换当前 todos；未选择组件时不提供该工具。
 

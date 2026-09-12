@@ -86,10 +86,13 @@ Connection、Mapping 和 Requirement 可以保留，供以后重新装配；它�
 Command package 的 `async command(state, runtime)` 从受限的 `runtime.context.mcp` facade 调用自己装配的 MCP。未装配 MCP 时该值为 `None`；它不暴露底层 client、session、Connection 或 secret。
 
 ```python
+from langgraph.types import Command
+
+
 async def command(state, runtime):
     mcp = runtime.context.mcp
     if mcp is None:
-        return {"update": {}, "activate": [], "dispatch": []}
+        return Command(update={})
 
     tools = mcp.available_tools()
     result = await mcp.call_tool(
@@ -99,12 +102,13 @@ async def command(state, runtime):
     )
     if result.status == "error":
         raise RuntimeError(str(result.content))
-    return {
-        "update": {"shared_vars": {"browser_result": result.content}},
-        "activate": [],
-        "dispatch": [],
-    }
+    return Command(
+        update={"shared_vars": {"browser_result": result.content}},
+        goto="finish",
+    )
 ```
+
+返回值必须是官方 `langgraph.types.Command`；`goto` 使用的 Node ID 必须由当前 Command 的一条 outgoing Edge 声明，省略 `goto` 时当前 path 自然结束。上面的 `goto="finish"` 需要 Canvas 上存在该 Node 并由当前 Command 的 outgoing Edge 声明。详见 [Command Node](../wizard-pages/command-config.md)。
 
 `available_tools()` 返回 `namespace -> raw Tool names`。`call_tool(namespace, tool_name, arguments)` 只能调用当前 Command allowlist 内的 Tool，并返回 LangChain `ToolMessage`；脚本通过 `status == "success"|"error"` 区分 MCP 执行结果，读取 `content` 和可选 `artifact`。transport、session 与内容转换异常仍直接抛出。`get_resources(namespace, uris=...)` 与 `get_prompt(namespace, prompt_name, arguments=...)` 保留 adapter 的官方返回对象；它们要求该 namespace 已装配，但 Resource/Prompt 不会伪装成 Agent Tool。
 

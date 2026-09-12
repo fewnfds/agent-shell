@@ -10,11 +10,11 @@ Windows 源码 Clone 从项目根运行：
 .\start_server.bat
 ```
 
-首次运行若 `data/config/` 不存在，启动器会先询问是否初始化；确认后输入两次管理密码（不含空格的可打印 ASCII，两次不一致会重试）。默认管理台地址是 <http://127.0.0.1:19100/admin#/>，监听地址、普通端口、LangGraph Dev Run 槽位数和可选 DAP 调试端口可在【系统 / 系统配置】修改。管理台、Agent Shell API、OpenAI-compatible API 与 LangGraph Agent Server 官方 API 共用同一个普通端口；只有显式填写 DAP 调试端口时才增加一个调试 listener。管理台静态壳可以匿名加载，但其数据和操作通过管理密码保护的 `/agent-shell/api/*`；API Key 在【系统 / 系统配置】的网络卡片设置，用于 `/compat/openai/v1/*`。
+首次运行若 `data/config/` 不存在，启动器会先询问是否初始化；确认后输入两次管理密码（不含空格的可打印 ASCII，两次不一致会重试）。默认管理台地址是 <http://127.0.0.1:19100/admin#/>，监听地址、普通端口、LangGraph Dev Run 槽位数和可选 DAP 调试端口可在【系统 / 系统配置】修改。管理台、Agent Shell API、OpenAI-compatible API 与 LangGraph Agent Server 官方 API 共用同一个普通端口；只有显式填写 DAP 调试端口时才增加一个调试 listener。管理台静态壳可以匿名加载，但其数据和操作通过管理密码保护的 `/agent-shell/api/*`；API Key 在【系统 / 系统配置】的 Agent Shell API Server 卡片设置，用于 `/compat/openai/v1/*`。
 
 ## 管理台入口
 
-- 【首页】：【服务入口】、【API 端点】和当前配置提示；API Server 状态与启停位于全局 navbar；
+- 【首页】：【服务入口】、【LangGraph Dev API】与【OpenAI-compatible API】三张 Card，以及当前配置提示；API Server 状态与启停位于全局 navbar；
 - 【系统】：系统配置、拦截消息、日志中心和运行监控；
 - 【文件管理】：浏览和编辑允许开放的真实 `data/...` 目录；
 - 【模型】：模型连接编辑器与模型映射；
@@ -28,7 +28,7 @@ Windows 源码 Clone 从项目根运行：
 
 ## 服务入口与路径边界
 
-首页将可打开或连接的【服务入口】与用于程序调用的【API 端点】分开显示。以下路径共享当前实例的 `<origin>`，例如 `http://127.0.0.1:19100`：
+首页将可打开或连接的【服务入口】与用于程序调用的【LangGraph Dev API】、【OpenAI-compatible API】分开显示。以下路径共享当前实例的 `<origin>`，例如 `http://127.0.0.1:19100`：
 
 | Owner | 地址或路径 | 用途 |
 | --- | --- | --- |

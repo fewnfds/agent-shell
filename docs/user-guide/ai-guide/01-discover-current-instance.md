@@ -11,7 +11,7 @@
 Agent Shell 使用两类 credential：
 
 - `/agent-shell/api/*` 使用 management token，负责配置、validation、API Server 控制和 Lifecycle 管理；
-- `/compat/openai/v1/*` 使用独立 API Key，负责列出和运行 `enabled=true` 且 `is_model_entry=true` 的 Workflow。
+- `/compat/openai/v1/*` 使用独立 API Key，负责列出和运行 `enabled=true` 且 `is_model_entry=true` 的 Main Agent 和 Workflow。
 
 Management API 没有提交密码后再换取 token 的登录接口。首次启动设置的管理密码就是 `/agent-shell/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
 
@@ -76,7 +76,7 @@ health 失败时先解决地址或服务问题。readiness 失败时读取 struc
 
 1. `GET /agent-shell/api/configuration-repositories`，记录 active Repository；
 2. `GET /agent-shell/api/catalog`，读取 Component type、required flag、Subagent policy 和 editor default；
-3. `GET /agent-shell/api/workflow-node-catalog`，读取 Node type、version、`config_schema`、input handle 和 output handle；
+3. `GET /agent-shell/api/workflow-node-catalog`，读取 Node `type`、`type_version`、`runtime_kind`、`config_schema`、`input_handles` 和 `output_handles`（handles 为数组，元素含 `id` 与 `edge_type`）；
 4. `GET /agent-shell/api/configuration-options`，取得当前 Repository 的引用摘要；
 5. 读取准备复用、修改或排查的完整对象；
 6. 需要 Python-backed component 时，读取对应 template catalog；

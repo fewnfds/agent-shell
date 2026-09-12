@@ -1,6 +1,6 @@
 # LangChain Agent runtime 基线
 
-Agent Shell 使用锁定的 `langchain==1.4.0`，通过
+Agent Shell 使用 `langchain>=1.4.0,<2.0`，并精确锁定 `deepagents==0.7.13`，通过
 `langchain.agents.create_agent()` 构造 Main Agent。返回的
 `CompiledStateGraph` 直接注册为 `agent-shell-agent` root graph。Deep Agents
 继续提供 Filesystem、Skills、增强 Summarization、PatchToolCalls、同步

@@ -25,7 +25,7 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 
 ## Model Requirement
 
-模型要求是代理组件中的可迁移 Component type `model-requirement`，payload 只包含名称和多行 `description`。`name` 去空白后为 1-120 个字符且在作用域内大小写不敏感唯一，`description` 为必填的 1-100000 字符文本；Main Agent 必须引用模型要求，Subagent 只能继承或替换，不能禁用该必选能力：
+模型要求是代理组件中的可迁移 Component type `model-requirement`，payload 只包含名称和多行 `description`。`name` 去空白后为 1-120 个字符且在作用域内大小写不敏感唯一，`description` 为必填字符串，至少 1 个字符；Main Agent 必须引用模型要求，Subagent 只能继承或替换，不能禁用该必选能力：
 
 ```json
 {

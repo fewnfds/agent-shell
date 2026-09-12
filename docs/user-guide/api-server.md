@@ -1,7 +1,7 @@
 # API Server
 
-首页使用【服务入口】和【API 端点】两张 Card 展示当前实例地址、LangGraph 官方路径族、诊断端点与认证边界。OpenAI-compatible Base URL 是 `<origin>/compat/openai/v1`；Agent Shell API Base URL 是 `<origin>/agent-shell/api`。API Server 运行状态与启动、停止按钮位于管理台 navbar，在所有页面可见；
-API Key 位于【系统 / 系统配置】的 API Server Card，由 `PUT /agent-shell/api/api-server` 保存。
+首页使用【服务入口】、【LangGraph Dev API】与【OpenAI-compatible API】三张 Card 展示当前实例地址、LangGraph 官方路径族、诊断端点与认证边界。OpenAI-compatible Base URL 是 `<origin>/compat/openai/v1`；Agent Shell API Base URL 是 `<origin>/agent-shell/api`。API Server 运行状态与启动、停止按钮位于管理台 navbar，在所有页面可见；
+API Key 位于【系统 / 系统配置】的 Agent Shell API Server Card，由 `PUT /agent-shell/api/api-server` 保存。
 
 ## 接口
 

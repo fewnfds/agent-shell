@@ -2,7 +2,7 @@
 
 These fixtures intentionally keep the official envelope and channel-specific
 Python payload. They omit incidental LangGraph metadata that Agent Shell does
-not consume. The shapes are locked to langgraph 1.2.11 / langchain 1.3.18 and
+not consume. The shapes are locked to langgraph 1.2.11 / langchain 1.4.0 and
 are checked against real public ``astream_events(version="v3")`` runs.
 """
 

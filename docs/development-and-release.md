@@ -118,7 +118,7 @@ $python = Join-Path (Join-Path ..\runtime\app $pythonHome) python.exe
 
 之后的日常定向 pytest 直接使用项目 `.venv`。测试会在 session startup 校验 `agent_shell` 的实际来源必须是当前仓库的 `server/src/agent_shell`；如果系统 Python 或用户级 editable 安装把其他项目注入 `sys.path`，测试会立即失败，不会静默执行错误源码。避免每轮测试都让 `uv` 重复检查环境。pytest 临时文件使用 Windows 系统临时目录，不在源码目录设置 `basetemp`；同时禁用 pytest cache provider，避免生成仓库内 `.pytest_cache`。不要为一次局部改动运行完整 `test/`。大量 TestClient 用例会分别创建隔离 data root 和 SQLite，Windows 杀毒软件与目录索引会放大这类全量运行的磁盘成本。
 
-永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/fixtures/` 和 `test/` 的直接支撑模块中。
+永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/` 的直接支撑模块中（例如 `test/support.py`、`test/api_server/support.py`、`test/runtime/protocol_event_fixtures.py`）。
 用户可观察行为、API 和持久化结果是验收证据。
 
 推送 `dev` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 lint、typecheck、UI policy 与 Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：

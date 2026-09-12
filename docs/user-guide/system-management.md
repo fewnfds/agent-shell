@@ -73,7 +73,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 
 ## 系统设置
 
-【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、Provider 出站网络、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
+【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、Provider Network、限制策略、响应流调度、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、Provider 出站网络、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`debug_port` 默认留空；填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。
 
@@ -91,7 +91,7 @@ Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设�
 
 【系统 / 运行监控】顶部的【监控设定】Card 管理 `retained_lifecycles`。默认值为 `20`、最小值为 `0`，没有产品最大值；只计算 terminal Lifecycle，active Lifecycle 不计入数量。`0` 表示不保留已结束的 Lifecycle；降低数值会通过公共 Thread/Store 删除 API 清理超出的终态运行数据。普通文件、生成媒体和 mapped directory 不随 Lifecycle 自动清理。完整边界见[日志中心与 Workflow 观测](runtime-observability.md)。
 
-Agent Shell API Server、代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Provider Network 只管理 Provider 出站线路与普通 HTTP 参数；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
+Agent Shell API Server、代理设置、Provider Network、限制策略、响应流调度、LangGraph Dev 和 LangSmith 分别使用自己的 Card 和 Save。代理设置包含监听地址、普通端口、远程访问、管理密码、CORS 与可信代理；Provider Network 只管理 Provider 出站线路与普通 HTTP 参数；Agent Shell API Server 只管理 API Key，Lifecycle 保留数量由运行监控页面的监控设定单独保存。
 
 当前锁定版本的 LangGraph Dev 公共 CLI 没有关闭 API Docs 或 Studio 的配置选项。API Docs 路由由官方开发服务提供，Studio 链接指向 LangSmith 托管页面；首页服务入口 Card 提供入口，不把它们伪装成可关闭的本地开关。需要对外隐藏这些路径时，应在反向代理层按部署策略阻断，而不是修改 Agent Shell 的官方 API contract。
 
