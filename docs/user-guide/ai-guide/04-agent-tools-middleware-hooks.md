@@ -106,8 +106,8 @@ def create_tool() -> BaseTool:
 `ToolRuntime` 是 LangChain 注入参数，不进入发送给模型的 Tool input schema。它提供：
 
 - `runtime.state`：current Agent State；
-- `runtime.context`：current runtime context，包含明确命名的Lifecycle、root Graph、Run和Agent profile identity；
-- `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；
+- `runtime.context`：current runtime context，包含明确命名的 Lifecycle、root Graph、Run 和 Agent profile identity；它不含官方 `run_id`、`thread_id` 或 `checkpoint_id`；
+- `runtime.execution_info`：LangGraph 提供的 current thread、run、checkpoint、task 和 node attempt 信息；扩展需要官方 Run 身份时从这里读 `runtime.execution_info.run_id`；
 - `runtime.store`：Server注入的LangGraph Store；
 - `runtime.stream_writer`：Tool stream writer；
 

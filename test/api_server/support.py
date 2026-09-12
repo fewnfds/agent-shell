@@ -101,6 +101,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             request_id=str(kwargs.get("request_id", "")),
             public_model=str(kwargs.get("public_model", workflow["name"])),
             lifecycle_id=lifecycle_id,
+            run_id=str(uuid4()),
             response_scheduler=coordinator._response_scheduler,
         )
 

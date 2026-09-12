@@ -1185,7 +1185,7 @@ class AgentRuntime:
 
         runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
         workflow_identity = dict(workflow_snapshot or {})
-        resolved_run_id = run_id or ("" if server_managed else str(uuid4()))
+        resolved_run_id = run_id or ""
         workflow_id = str(workflow_identity.get("id", ""))
         workflow_name = str(
             workflow_identity.get("name", public_model or "workflow")

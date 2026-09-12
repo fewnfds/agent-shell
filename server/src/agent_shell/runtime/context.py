@@ -32,9 +32,12 @@ class AgentRunContext:
 
 @dataclass(frozen=True, slots=True)
 class AgentRuntimeContext(AgentRunContext):
-    """Execution dependencies visible to Main Agent middleware and tools."""
+    """Execution dependencies visible to Main Agent middleware and tools.
 
-    run_id: str = ""
+    LangGraph execution identity lives in ``Runtime.execution_info``; this
+    context carries only Shell product scope and the Main Agent identity.
+    """
+
     main_agent_id: str = ""
 
     @classmethod
@@ -44,7 +47,6 @@ class AgentRuntimeContext(AgentRunContext):
             lifecycle_id=identity.lifecycle_id,
             caller_run_id=identity.caller_run_id,
             operation_id=identity.operation_id,
-            run_id=identity.run_id,
             main_agent_id=identity.main_agent_id,
         )
 

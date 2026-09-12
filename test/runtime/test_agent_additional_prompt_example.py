@@ -39,7 +39,6 @@ def test_agent_additional_prompt_example_initializes_one_agent_thread_once() -> 
     context = AgentRuntimeContext(
         request_id="request-id",
         lifecycle_id="lifecycle-id",
-        run_id="run-id",
         main_agent_id="agent-id",
     )
 
