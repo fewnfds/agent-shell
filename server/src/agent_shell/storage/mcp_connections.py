@@ -657,10 +657,19 @@ class McpResourceStore:
             return True
 
     def install_connection(self, connection_id: str) -> dict[str, Any]:
+        """Install one local MCP Connection without holding the store lock.
+
+        The store lock guards canonical Connection, binding and secret
+        mutations only. Installation resolves its input snapshot up front and
+        publishes artifacts under the installation owner's own roots, so a
+        multi-minute package download must not block unrelated Connection
+        reads, writes or request-snapshot freezing.
+        """
+
         connection_id = require_configuration_id(connection_id, label="MCP connection id")
         with self._lock:
             declared = self._snapshot_unlocked().copy_input(connection_id)
-            return self._installations.install(connection_id, declared)
+        return self._installations.install(connection_id, declared)
 
     def set_binding(self, repository_id: str, requirement_id: str, connection_id: str | None) -> None:
         if repository_id:

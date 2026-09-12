@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import json
+import threading
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -330,3 +331,44 @@ def test_mcp_connection_api_imports_atomically_and_maps_requirement(
     )
     assert failed.status_code == 422
     assert [item["name"] for item in resources.list_connections()] == ["browser"]
+
+
+def test_mcp_install_does_not_hold_the_store_lock(tmp_path: Path, monkeypatch) -> None:
+    resources = managed_resources(tmp_path)
+    resources.save_connection(CONNECTION_ID, stdio_connection_payload())
+
+    install_started = threading.Event()
+    install_release = threading.Event()
+
+    def slow_install(connection_id: str, connection: dict) -> dict:
+        assert connection_id == CONNECTION_ID
+        assert connection["name"] == "Browser MCP"
+        install_started.set()
+        assert install_release.wait(timeout=10)
+        return {"status": "ready"}
+
+    monkeypatch.setattr(resources._installations, "install", slow_install)
+
+    installed: list[dict] = []
+    installer = threading.Thread(
+        target=lambda: installed.append(resources.install_connection(CONNECTION_ID))
+    )
+    installer.start()
+    try:
+        assert install_started.wait(timeout=10)
+        assert not install_release.is_set()
+
+        read = threading.Thread(target=lambda: resources.list_connections())
+        read.start()
+        read.join(timeout=5)
+        assert not read.is_alive(), (
+            "reading MCP Connections must not wait for a running installation"
+        )
+        assert resources.get_connection(CONNECTION_ID)["name"] == "Browser MCP"
+        assert resources.revision() >= 1
+    finally:
+        install_release.set()
+        installer.join(timeout=10)
+
+    assert not installer.is_alive()
+    assert installed == [{"status": "ready"}]
