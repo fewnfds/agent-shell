@@ -108,6 +108,49 @@ def test_unhandled_error_keeps_exception_reason_and_host_path(
     )
 
 
+def test_anonymous_unhandled_error_hides_exception_chain_and_keeps_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    configure_scope_tokens(monkeypatch, tmp_path)
+    app = create_app(serve_frontend=False)
+
+    @app.get("/admin/unhandled-anonymous-error")
+    async def unhandled_anonymous_error() -> None:
+        raise RuntimeError(
+            rf"admin shell failed at C:\Users\developer\anonymous.py with {MANAGEMENT_TOKEN}"
+        )
+
+    with ScopedAuthTestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/admin/unhandled-anonymous-error")
+        diagnostics = client.get(
+            "/agent-shell/api/event-feed",
+            params={
+                "started_at": "2000-01-01T00:00:00+00:00",
+                "ended_at": "2100-01-01T00:00:00+00:00",
+                "source": "runtime",
+                "query": "internal_error",
+            },
+        ).json()["items"]
+
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload["error"]["code"] == "internal_error"
+    assert payload["error"]["message"] == (
+        "The request failed due to an internal server error."
+    )
+    assert payload["request_id"]
+    assert MANAGEMENT_TOKEN not in response.text
+    assert "anonymous.py" not in response.text
+    assert "RuntimeError" not in response.text
+
+    assert len(diagnostics) == 1
+    assert "RuntimeError: admin shell failed" in diagnostics[0]["summary"]
+    assert "anonymous.py" in diagnostics[0]["summary"]
+    assert MANAGEMENT_TOKEN not in diagnostics[0]["summary"]
+
+
 def test_wrapped_http_error_keeps_its_underlying_exception_chain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
