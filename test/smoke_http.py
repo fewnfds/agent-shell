@@ -252,7 +252,6 @@ def _payload(
         "system-prompt": {"name": name, "system_prompt": "Smoke prompt."},
         "subagent": {"name": name},
         "summarization": {"name": name},
-        "prompt-caching": {"name": name},
         "todo-list": {"name": name},
         "model-call-limit": {"name": name, "run_limit": 20},
         "tool-call-limit": {"name": name, "run_limit": 20},

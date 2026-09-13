@@ -9,7 +9,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRetryMiddleware
 
 
 def _retry_field(provider: object) -> str:
-    return "retries" if provider == "google_genai" else "max_retries"
+    return "max_retries"
 
 
 def model_block_with_retry_overrides(

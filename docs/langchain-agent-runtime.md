@@ -48,8 +48,7 @@ Main Agent middleware 顺序如下：
 11. `ProviderErrorBoundaryMiddleware`；
 12. 可选 Exception Retry middleware；
 13. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
-14. 按配置顺序排列的 Custom Middleware；
-15. 可选 `AnthropicPromptCachingMiddleware`。
+14. 按配置顺序排列的 Custom Middleware。
 
 列表顺序同时决定 wrapper 嵌套和 hook 顺序。LangChain 按正向顺序执行 before hook，
 按反向顺序执行 after hook。每个 Run 使用本次装配产生的 middleware 实例。
@@ -80,8 +79,7 @@ Subagent middleware 顺序如下：
 10. `ProviderErrorBoundaryMiddleware`；
 11. 可选 Exception Retry middleware；
 12. 按配置顺序排列的 Custom Middleware；
-13. `EmptySystemMessageMiddleware`；
-14. 可选 `AnthropicPromptCachingMiddleware`。
+13. `EmptySystemMessageMiddleware`。
 
 Deep Agents `0.7.13` 的 declarative child helper 在未配置 system prompt 时传入空字符串。
 child-only compatibility middleware 将精确的空 `SystemMessage` 投影为 `None`；所有非空

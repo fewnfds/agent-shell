@@ -4,9 +4,9 @@
 
 Model Connection 是实例私有资源（instance-level Model Connection），在【模型 -> 模型连接】创建和维护；【配置库 / 全局 / 模型连接】复用同一个列表，编辑页仍位于【模型 / 模型连接】。它保存 LangChain Provider、`base_url`、具体 `model`、`provider_settings`、`model_settings`、`tool_choice`、`response_format` 以及 write-only `credential`。连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，凭据值只位于 `data/config/agent-shell.env`；API response 的 `credential.status` 为 `masked`（已有可用值）、`missing`（保存了引用但环境值缺失）或 `none`（该连接不使用凭据）。
 
-当前开发测试主要覆盖 OpenAI-compatible（Chat Completions）、OpenAI Responses API 和 DeepSeek。其他 Provider 为 TBD，尚未经过大范围验证，实际可用性取决于 Provider integration、模型和上游端点。
+本版本内置 Provider 为 OpenAI 和 DeepSeek：OpenAI 支持 OpenAI-compatible（Chat Completions）与 OpenAI Responses API 两种连接类型，DeepSeek 使用 OpenAI-compatible。实际可用性取决于 Provider integration、模型和上游端点。
 
-【系统 -> 系统配置 -> Provider Network】保存进程级 Provider 出站网络设置。`httpx` 是标准线路，`curl_cffi` 是保留 Chrome TLS/HTTP fingerprint 的浏览器兼容线路；curl-cffi 依赖始终安装，选择只决定请求经过哪条线路，也不会在失败后自动重放。完整共享 transport 当前接入 OpenAI、DeepSeek、xAI 与模型目录；Anthropic 只使用全局 Header 和显式 proxy，Google GenAI / Vertex AI 只使用全局 Header。全局 Header 是 `system.yaml` 中的普通配置，`model_settings.extra_headers` 同名值在请求级覆盖它；API Key 仍只写入 Model Connection credential。
+【系统 -> 系统配置 -> Provider Network】保存进程级 Provider 出站网络设置。`httpx` 是标准线路，`curl_cffi` 是保留 Chrome TLS/HTTP fingerprint 的浏览器兼容线路；curl-cffi 依赖始终安装，选择只决定请求经过哪条线路，也不会在失败后自动重放。完整共享 transport 接入全部内置 Provider 与模型目录。全局 Header 是 `system.yaml` 中的普通配置，`model_settings.extra_headers` 同名值在请求级覆盖它；API Key 仍只写入 Model Connection credential。
 
 模型连接不属于 Configuration Repository，不进入配置 Bundle，也不提供下载。接口为：
 
@@ -16,10 +16,10 @@ Model Connection 是实例私有资源（instance-level Model Connection），�
 - `GET /agent-shell/api/model-requirements`，返回当前 Configuration Repository 的模型要求及绑定投影；
 - `PUT /agent-shell/api/model-requirements/{id}/binding`，body 为 `{"connection_id":"<uuid>"}` 或 `{"connection_id":null}`，后者表示解绑。
 
-模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。`google_vertexai` 使用无 credential 配置。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
+模型连接表单沿用现有 Provider contract；`credential` 省略或为 `null` 时，Provider 与 `base_url` 均未变会复用已有 secret，其他变更会把状态设为 `missing` 并等待重新输入。GET 返回的 `masked` 字段是只读状态；PUT 的 `credential` 接受 `null` 或新的 Key。
 `name` 去除首尾空白后必须包含 1 到 120 个字符，并在实例内按大小写不敏感规则保持唯一。空白或超长名称返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。
 
-新建连接及切换到 OpenAI 或 DeepSeek 时，表单会预填原生生成参数 `temperature=1`、`top_p=1`、`presence_penalty=0` 和 `frequency_penalty=0`。切换 Provider 会清除前一个 Provider 的专用参数；其他 Provider 当前从空参数表单开始。`stream_usage`、`streaming` 和 `logprobs` 保持 Provider 默认行为，直到用户显式设置。
+新建连接及切换 Provider 时，表单会预填原生生成参数 `temperature=1`、`top_p=1`、`presence_penalty=0` 和 `frequency_penalty=0`。`stream_usage`、`streaming` 和 `logprobs` 保持 Provider 默认行为，直到用户显式设置。
 
 `provider_settings.streaming`首先决定模型调用是否提供 token delta。显式设为`false`时，运行时同时设置 LangChain BaseChatModel的`disable_streaming=true`，因此 LangGraph application streaming不会通过 auto-streaming重新开启该模型。Exception Retry的`force_non_streaming=true`可以在 Agent装配时把最终设置单向覆盖为关闭。这个上游设置只改变 delta何时可用；Agent Event Output仍统一接收 additive `start / delta / end`，非流式完整正文会成为一个合成 delta。
 

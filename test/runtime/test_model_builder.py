@@ -122,26 +122,6 @@ def test_deepseek_provider_adapter_preserves_streamed_reasoning_blocks(
         ),
         (
             "deepseek",
-            {"max_tokens": 100, "stop_sequences": ["END"], "reasoning_effort": "high"},
-            "secret",
-        ),
-        (
-            "anthropic",
-            {"max_tokens_to_sample": 100, "stop": ["END"], "effort": "high"},
-            "secret",
-        ),
-        (
-            "google_genai",
-            {"max_tokens": 100, "request_timeout": 4, "retries": 3, "thinking_level": "high"},
-            "secret",
-        ),
-        (
-            "google_vertexai",
-            {"max_tokens": 100, "timeout": 4, "max_retries": 3},
-            None,
-        ),
-        (
-            "xai",
             {
                 "max_tokens": 100,
                 "stop_sequences": ["END"],
@@ -180,29 +160,14 @@ def test_model_builder_passes_native_provider_fields_unchanged(
     assert captured["model_provider"] == provider
     assert captured["base_url"] == "https://provider.example.invalid/v1"
     assert {key: captured[key] for key in settings} == settings
-    if provider == "google_vertexai":
-        assert "api_key" not in captured
+    assert captured["api_key"].get_secret_value() == credential
+    assert captured["http_client"] is provider_http_clients.sync_client
+    assert captured["http_async_client"] is provider_http_clients.async_client
+    assert captured["default_headers"] == {"User-Agent": "Agent-Shell/0.2.0"}
+    if "timeout" in settings:
+        assert captured["timeout"] == settings["timeout"]
     else:
-        assert captured["api_key"].get_secret_value() == credential
-    if provider in {"deepseek", "openai", "xai"}:
-        assert captured["http_client"] is provider_http_clients.sync_client
-        assert captured["http_async_client"] is provider_http_clients.async_client
-        assert captured["default_headers"] == {"User-Agent": "Agent-Shell/0.2.0"}
-        if "timeout" in settings:
-            assert captured["timeout"] == settings["timeout"]
-        else:
-            assert "timeout" not in captured
-    else:
-        assert "http_client" not in captured
-        assert "http_async_client" not in captured
-        if provider == "anthropic":
-            assert captured["default_headers"] == {
-                "User-Agent": "Agent-Shell/0.2.0"
-            }
-        else:
-            assert captured["additional_headers"] == {
-                "User-Agent": "Agent-Shell/0.2.0"
-            }
+        assert "timeout" not in captured
 
 
 def test_model_builder_applies_system_provider_headers_case_insensitively(
@@ -252,22 +217,3 @@ def test_provider_setting_contracts_use_current_official_constructor_names() -> 
         contract_fields = _SETTINGS_BY_PROVIDER[integration.provider].model_fields
 
         assert contract_fields.keys() <= constructor_fields.keys(), integration.provider
-
-def test_model_builder_requires_vertex_application_default_credentials(
-    monkeypatch, provider_http_clients
-) -> None:
-    monkeypatch.setattr(agent_builder, "init_chat_model", lambda **kwargs: kwargs)
-
-    with pytest.raises(AgentRuntimeError) as vertex_credential:
-        _build_chat_model(
-            {
-                "provider": "google_vertexai",
-                "model": "gemini",
-                "base_url": "https://aiplatform.googleapis.com",
-                "provider_settings": {},
-            },
-            "api-key-is-not-google-credentials",
-            provider_http_clients,
-        )
-
-    assert vertex_credential.value.code == "model_configuration_invalid"

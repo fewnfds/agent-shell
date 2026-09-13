@@ -93,7 +93,7 @@ describe('block adapters', () => {
     expect(modelAdapter.fromApi({ ...modelRecord(), credential: { status: 'masked' } }).credential_status).toBe('masked')
   })
 
-  it('uses explicit sampling defaults for new and switched OpenAI or DeepSeek models', () => {
+  it('uses explicit sampling defaults for new and switched models', () => {
     const samplingDefaults = {
       temperature: 1,
       top_p: 1,
@@ -104,7 +104,6 @@ describe('block adapters', () => {
     expect(modelAdapter.blank().provider_settings).toEqual(samplingDefaults)
     expect(providerDefaultSettings('openai')).toEqual(samplingDefaults)
     expect(providerDefaultSettings('deepseek')).toEqual(samplingDefaults)
-    expect(providerDefaultSettings('google_vertexai')).toEqual({})
   })
 
   it('keeps the configuration extension reference and template selection mechanical', () => {

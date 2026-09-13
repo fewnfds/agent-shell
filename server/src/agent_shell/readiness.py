@@ -9,12 +9,8 @@ from agent_shell.storage.permissions import PermissionStatus
 
 _DEPENDENCIES = {
     "langchain": "langchain",
-    "anthropic_provider": "langchain_anthropic",
     "deepseek_provider": "langchain_deepseek",
-    "google_genai_provider": "langchain_google_genai",
-    "google_vertexai_provider": "langchain_google_vertexai",
     "openai_provider": "langchain_openai",
-    "xai_provider": "langchain_xai",
     "deepagents": "deepagents",
 }
 

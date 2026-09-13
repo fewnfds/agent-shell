@@ -8,9 +8,9 @@
 | --- | ---: | --- |
 | Deep Agents | `0.7.13` | 精确锁定；项目显式使用其 Filesystem、Skills、Summarization、PatchToolCalls、Subagent、Backend、State 和 trace policy；fork mode 未启用 |
 | LangChain / Python Core | `1.4.0` / `1.6.2` | Main Agent root 使用 `create_agent()`；保持当前 major；`langchain.mcp` 是尚未启用的 beta 能力，现有 MCP 继续由 adapters 提供 |
-| Anthropic / OpenAI | `1.7.1` / `1.6.1` | 按 Provider 分组升级并复核 model profile、content block 和错误边界 |
-| Google GenAI / Vertex AI | `4.4.0` / `3.2.4` | 各自保持当前 major；Google GenAI 当前配套底层 `google-genai 2.22.0` |
-| DeepSeek / xAI | `1.1.0` / `1.3.0` | 各自保持当前 major，并与 OpenAI-compatible 路径一起回归 |
+| OpenAI | `1.6.1` | 升级时复核 model profile、content block 和错误边界 |
+| DeepSeek | `1.1.0` | 保持当前 major，并与 OpenAI-compatible 路径一起回归 |
+| Deep Agents 传递依赖 | Anthropic `1.7.1`；Google GenAI `4.4.0` | 由 Deep Agents `0.7.13` 传递引入，项目不直接维护 |
 | MCP adapters | `0.3.2` | 当前使用 `MultiServerMCPClient`；新的 beta `langchain.mcp` 属于独立功能迁移 |
 | LangGraph / SQLite checkpoint | `1.2.11` / `3.1.1` | LangGraph 保持 `<1.3.0`，Checkpoint-SQLite 保持 `<4.0` |
 | LangGraph Agent Server | API `0.14.0`；runtime `0.34.0`；CLI `0.4.31`；SDK `0.4.4` | API/runtime 按官方协同发布线升级；当前未启用 LangSmith API-key auth、encryption、BYOC logging 或 `cancel_on_disconnect` |

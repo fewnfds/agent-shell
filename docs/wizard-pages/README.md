@@ -18,7 +18,6 @@
 | Agent / 12 | [Tool Call Limit](tool-call-limit-config.md) | `tool-call-limit` |
 | Agent / 13 | [Subagent Delegation](subagent-config.md) | `subagent` |
 | Agent / 14 | [Summarization](summarization-config.md) | `summarization` |
-| Agent / 15 | [Prompt Caching](prompt-caching-config.md) | `prompt-caching` |
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |
 | Workflow | [Workflow Event Output](workflow-event-output-config.md) | `workflow-event-output` |
 | Workflow | [Command Node](command-config.md) | `command` |

@@ -28,7 +28,6 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
     todo = _middleware("Todo")
     retry = _middleware("Retry")
     package = _middleware("Package")
-    prompt_caching = _middleware("PromptCaching")
     patch = _middleware("Patch")
     tool_boundary = _middleware("ToolBoundary")
     model_settings = _middleware("ModelSettings")
@@ -85,7 +84,6 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
             summarization_middleware=summarization,
             model_call_limit_middleware=model_call_limit,
             tool_call_limit_middleware=tool_call_limit,
-            prompt_caching_middleware=prompt_caching,
             package_middleware=(package,),
             tool_choice="auto",
             model_settings={"temperature": 0},
@@ -147,5 +145,4 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
         retry,
         package,
         empty_prompt,
-        prompt_caching,
     ]

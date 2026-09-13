@@ -14,40 +14,16 @@ class ProviderIntegration:
 
 _BUNDLED_PROVIDER_INTEGRATIONS = (
     ProviderIntegration(
-        provider="anthropic",
-        package="langchain-anthropic",
-        module="langchain_anthropic",
-        class_name="ChatAnthropic",
-    ),
-    ProviderIntegration(
         provider="deepseek",
         package="langchain-deepseek",
         module="langchain_deepseek",
         class_name="ChatDeepSeek",
     ),
     ProviderIntegration(
-        provider="google_genai",
-        package="langchain-google-genai",
-        module="langchain_google_genai",
-        class_name="ChatGoogleGenerativeAI",
-    ),
-    ProviderIntegration(
-        provider="google_vertexai",
-        package="langchain-google-vertexai",
-        module="langchain_google_vertexai",
-        class_name="ChatVertexAI",
-    ),
-    ProviderIntegration(
         provider="openai",
         package="langchain-openai",
         module="langchain_openai",
         class_name="ChatOpenAI",
-    ),
-    ProviderIntegration(
-        provider="xai",
-        package="langchain-xai",
-        module="langchain_xai",
-        class_name="ChatXAI",
     ),
 )
 

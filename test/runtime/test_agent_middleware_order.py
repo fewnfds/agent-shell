@@ -38,7 +38,6 @@ def _resources(
     summarization: object,
     model_call_limit: object,
     tool_call_limit: object,
-    prompt_caching: object,
     retry: object,
     packages: tuple[object, ...],
     workspace: object,
@@ -56,7 +55,6 @@ def _resources(
         summarization_middleware=summarization,
         model_call_limit_middleware=model_call_limit,
         tool_call_limit_middleware=tool_call_limit,
-        prompt_caching_middleware=prompt_caching,
         package_middleware=packages,
         backend=object(),
         middleware_backend=object(),
@@ -74,7 +72,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
     main_summarization = _middleware("MainSummarization")
     main_model_call_limit = _middleware("MainModelCallLimit")
     main_tool_call_limit = _middleware("MainToolCallLimit")
-    main_prompt_caching = _middleware("MainPromptCaching")
     main_retry = _middleware("MainRetry")
     main_packages = (
         _middleware("MainPackageOne", state_schema=object),
@@ -86,7 +83,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         summarization=main_summarization,
         model_call_limit=main_model_call_limit,
         tool_call_limit=main_tool_call_limit,
-        prompt_caching=main_prompt_caching,
         retry=main_retry,
         packages=main_packages,
         workspace=SimpleNamespace(initial_files={"/seed.txt": "seed"}),
@@ -98,7 +94,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
     child_summarization = _middleware("ChildSummarization")
     child_model_call_limit = _middleware("ChildModelCallLimit")
     child_tool_call_limit = _middleware("ChildToolCallLimit")
-    child_prompt_caching = _middleware("ChildPromptCaching")
     child_retry = _middleware("ChildRetry")
     child_packages = (
         _middleware("ChildPackageOne"),
@@ -110,7 +105,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         summarization=child_summarization,
         model_call_limit=child_model_call_limit,
         tool_call_limit=child_tool_call_limit,
-        prompt_caching=child_prompt_caching,
         retry=child_retry,
         packages=child_packages,
         workspace=SimpleNamespace(initial_files={}),
@@ -277,7 +271,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         main_retry,
         main_initial_files,
         *main_packages,
-        main_prompt_caching,
     ]
     assert captured["delegation_input"] == [
         main_skill,
@@ -293,7 +286,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         main_retry,
         main_initial_files,
         *main_packages,
-        main_prompt_caching,
     ]
 
     child_spec = captured["subagent_specs"][0]
@@ -313,7 +305,6 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         child_retry,
         *child_packages,
         child_empty_prompt,
-        child_prompt_caching,
     ]
 
 

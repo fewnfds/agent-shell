@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
@@ -55,61 +55,9 @@ class DeepSeekProviderSettings(ProviderSettings):
     top_logprobs: NonNegativeInteger | None = None
 
 
-class XAIProviderSettings(DeepSeekProviderSettings):
-    pass
-
-
-class AnthropicProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = 1
-    max_tokens_to_sample: PositiveInteger | None = None
-    top_p: FiniteFloat | None = 1
-    stop: StopSequences | None = None
-    timeout: PositiveFloat | None = None
-    max_retries: NonNegativeInteger | None = None
-    stream_usage: StrictBoolean | None = None
-    streaming: StrictBoolean | None = None
-    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
-
-
-class GoogleGenAIProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = 1
-    max_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = 1
-    stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = 0
-    frequency_penalty: FiniteFloat | None = 0
-    seed: StrictInteger | None = None
-    request_timeout: PositiveFloat | None = None
-    retries: NonNegativeInteger | None = None
-    streaming: StrictBoolean | None = None
-    thinking_level: Literal["minimal", "low", "medium", "high"] | None = None
-    thinking_budget: NonNegativeInteger | None = None
-    include_thoughts: StrictBoolean | None = None
-
-
-class GoogleVertexAIProviderSettings(ProviderSettings):
-    temperature: FiniteFloat | None = 1
-    max_tokens: PositiveInteger | None = None
-    top_p: FiniteFloat | None = 1
-    stop_sequences: StopSequences | None = None
-    presence_penalty: FiniteFloat | None = 0
-    frequency_penalty: FiniteFloat | None = 0
-    seed: StrictInteger | None = None
-    timeout: PositiveFloat | None = None
-    max_retries: NonNegativeInteger | None = None
-    streaming: StrictBoolean | None = None
-    logprobs: StrictBoolean | NonNegativeInteger | None = None
-    thinking_budget: NonNegativeInteger | None = None
-    include_thoughts: StrictBoolean | None = None
-
-
 _SETTINGS_BY_PROVIDER: dict[str, type[ProviderSettings]] = {
     "openai": OpenAIProviderSettings,
-    "anthropic": AnthropicProviderSettings,
-    "google_vertexai": GoogleVertexAIProviderSettings,
-    "google_genai": GoogleGenAIProviderSettings,
     "deepseek": DeepSeekProviderSettings,
-    "xai": XAIProviderSettings,
 }
 
 

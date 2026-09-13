@@ -119,7 +119,6 @@ def _build_subagent_spec(
         ),
         package=child.package_middleware,
         empty_system_message=EmptySystemMessageMiddleware(),
-        prompt_caching=child.prompt_caching_middleware,
     )
 
     try:

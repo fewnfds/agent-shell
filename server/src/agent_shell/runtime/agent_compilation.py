@@ -35,7 +35,6 @@ class MaterializedAgentResources:
     summarization_middleware: Any | None
     model_call_limit_middleware: Any | None
     tool_call_limit_middleware: Any | None
-    prompt_caching_middleware: Any | None
     package_middleware: tuple[Any, ...]
     backend: Any | None
     middleware_backend: Any | None
@@ -77,7 +76,6 @@ def assemble_agent_middleware(
     initial_files: Any | None = None,
     package: Sequence[Any] = (),
     empty_system_message: Any | None = None,
-    prompt_caching: Any | None = None,
 ) -> list[Any]:
     """Assemble the complete Agent Shell middleware stack in owned slots."""
 
@@ -103,8 +101,6 @@ def assemble_agent_middleware(
     middleware.extend(package)
     if empty_system_message is not None:
         middleware.append(empty_system_message)
-    if prompt_caching is not None:
-        middleware.append(prompt_caching)
     return middleware
 
 

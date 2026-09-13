@@ -386,7 +386,7 @@ export const zhCN = {
       headersHint: '这些值按普通系统配置保存在 system.yaml；API Key 等凭据继续使用 Model Connection credential。请求级 extra_headers 可以覆盖同名值。添加 User-Agent 即可替换 Agent-Shell/<version>。',
       httpxHint: '标准路线使用其他 LangChain Agent 项目常用的 HTTPX 网络栈。',
       curlCffiHint: '浏览器兼容路线保留当前 Chrome TLS/HTTP 指纹；它不执行 JavaScript、Turnstile 或 CAPTCHA。',
-      coverageHint: '完整网络路线用于 OpenAI、DeepSeek、xAI 和模型目录请求；Anthropic 使用全局 Header 与显式 Proxy，Google GenAI / Vertex AI 使用全局 Header。',
+      coverageHint: '完整网络路线用于 OpenAI、DeepSeek 和模型目录请求。',
       invalid: '请修正 Provider 网络配置中的无效字段或重复 Header。',
       saved: 'Provider 网络配置已保存，重启后生效。',
       saveFailed: '无法保存 Provider 网络配置',
@@ -617,9 +617,6 @@ export const zhCN = {
     summarization: {
       label: '上下文摘要',
     },
-    'prompt-caching': {
-      label: 'Prompt 缓存',
-    },
     'workflow-event-output': {
       label: 'Workflow 事件输出',
     },
@@ -711,11 +708,6 @@ export const zhCN = {
       trim_tokens_to_summarize: '摘要输入最大 token',
       summary_prompt_override: '摘要 Prompt',
     },
-    prompt_caching: {
-      type: '缓存类型',
-      ttl: '缓存 TTL',
-      min_messages_to_cache: '启用缓存的最少消息数',
-    },
     tool_configs: '工具配置',
     permissions: '路径权限',
     path: '路径',
@@ -787,7 +779,6 @@ export const zhCN = {
       providerCatalogLoading: '正在加载 LangChain Provider 目录…',
       providerBundled: '软件内置',
       providerUnavailable: 'runtime 缺少对应包',
-      vertexCredentialHint: 'Google Vertex AI 使用 runtime 环境中的 Application Default Credentials，不使用 API key 输入框。',
       connectionTypeLabel: '连接类型',
       connectionTypes: {
         compatible: 'OpenAI-compatible（Chat Completions）',
@@ -971,9 +962,6 @@ export const zhCN = {
         tokens: 'Token 数',
         messages: '消息数',
       },
-    },
-    promptCaching: {
-      cacheTypes: { ephemeral: '临时缓存（ephemeral）' },
     },
     command: {
       packageTitle: 'Command Python 包',

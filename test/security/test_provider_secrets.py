@@ -119,15 +119,15 @@ def test_provider_change_without_replacement_clears_saved_secret(
     client, data_root = make_client(tmp_path, monkeypatch)
     block = client.post("/agent-shell/api/model-connections", json=model_payload()).json()
     changed = model_payload("Changed Provider", None)
-    changed["provider"] = "anthropic"
-    changed["provider_settings"] = {"max_tokens_to_sample": 1024}
+    changed["provider"] = "deepseek"
+    changed["provider_settings"] = {"max_tokens": 1024}
 
     response = client.put(f"/agent-shell/api/model-connections/{block['id']}", json=changed)
 
     assert response.status_code == 200, response.text
     assert response.json()["credential"] == {"status": "none"}
     stored, secrets = connection_storage_payload(data_root, block["id"])
-    assert stored["provider"] == "anthropic"
+    assert stored["provider"] == "deepseek"
     assert stored["credential"] is None
     assert secrets == []
 
@@ -194,7 +194,7 @@ def test_projection_distinguishes_no_credential_from_a_lost_reference(
 
     client, data_root = make_client(tmp_path, monkeypatch)
     no_key = client.post(
-        "/agent-shell/api/model-connections", json=model_payload("ADC model", None)
+        "/agent-shell/api/model-connections", json=model_payload("No-credential model", None)
     ).json()
     blocked = client.post(
         "/agent-shell/api/model-connections", json=model_payload("Keyed model")
@@ -212,7 +212,7 @@ def test_projection_distinguishes_no_credential_from_a_lost_reference(
         for item in client.get("/agent-shell/api/model-connections").json()
     }
 
-    assert listed["ADC model"] == "none"
+    assert listed["No-credential model"] == "none"
     assert listed["Keyed model"] == "missing"
     assert client.get(
         f"/agent-shell/api/model-connections/{no_key['id']}"

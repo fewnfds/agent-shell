@@ -212,14 +212,6 @@ def block_cases(client: TestClient, tmp_path: Path) -> list[tuple[str, dict]]:
             },
         ),
         (
-            "prompt-caching",
-            {
-                "name": "One-hour prompt cache",
-                "ttl": "1h",
-                "min_messages_to_cache": 4,
-            },
-        ),
-        (
             "todo-list",
             {
                 "name": "Complex task planning",

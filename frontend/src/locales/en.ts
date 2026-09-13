@@ -388,7 +388,7 @@ export const en: MessageSchema = {
       headersHint: 'These values are ordinary system configuration stored in system.yaml. Keep API keys and other credentials in the Model Connection credential. Request-level extra_headers override matching names. Add User-Agent to replace Agent-Shell/<version>.',
       httpxHint: 'The standard route uses the HTTPX stack commonly used by other LangChain Agent projects.',
       curlCffiHint: 'The browser-compatible route preserves the current Chrome TLS/HTTP fingerprint. It does not execute JavaScript, Turnstile, or CAPTCHA.',
-      coverageHint: 'The full transport route applies to OpenAI, DeepSeek, xAI, and model catalog requests. Anthropic uses global headers and the explicit proxy; Google GenAI / Vertex AI use global headers.',
+      coverageHint: 'The full transport route applies to OpenAI, DeepSeek, and model catalog requests.',
       invalid: 'Correct invalid Provider network fields or duplicate headers.',
       saved: 'Provider network settings saved. Restart to apply.',
       saveFailed: 'Could not save Provider network settings',
@@ -619,9 +619,6 @@ export const en: MessageSchema = {
     summarization: {
       label: 'Context summarization',
     },
-    'prompt-caching': {
-      label: 'Prompt caching',
-    },
     'workflow-event-output': {
       label: 'Workflow event output',
     },
@@ -713,11 +710,6 @@ export const en: MessageSchema = {
       trim_tokens_to_summarize: 'Maximum summary input tokens',
       summary_prompt_override: 'Summary prompt',
     },
-    prompt_caching: {
-      type: 'Cache type',
-      ttl: 'Cache TTL',
-      min_messages_to_cache: 'Minimum messages before caching',
-    },
     tool_configs: 'Tool configuration',
     permissions: 'Path permissions',
     path: 'Path',
@@ -789,7 +781,6 @@ export const en: MessageSchema = {
       providerCatalogLoading: 'Loading the LangChain Provider catalog…',
       providerBundled: 'Bundled',
       providerUnavailable: 'Runtime package missing',
-      vertexCredentialHint: 'Google Vertex AI uses Application Default Credentials from the runtime environment; the API key field is not used.',
       connectionTypeLabel: 'Connection type',
       connectionTypes: {
         compatible: 'OpenAI-compatible (Chat Completions)',
@@ -973,9 +964,6 @@ export const en: MessageSchema = {
         tokens: 'Tokens',
         messages: 'Messages',
       },
-    },
-    promptCaching: {
-      cacheTypes: { ephemeral: 'Ephemeral cache' },
     },
     command: {
       packageTitle: 'Command Node package',

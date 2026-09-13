@@ -1,7 +1,7 @@
 # Third-party notices
 
 Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.
-Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
+Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
 
 `Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.
 
@@ -141,9 +141,6 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | npm | webpack-virtual-modules | `0.6.2` | MIT | https://www.npmjs.com/package/webpack-virtual-modules/v/0.6.2 |
 | npm | yaml | `2.9.0` | ISC | https://www.npmjs.com/package/yaml/v/2.9.0 |
 | npm | zod | `4.5.4` | MIT | https://www.npmjs.com/package/zod/v/4.5.4 |
-| pypi | aiohappyeyeballs | `2.7.1` | PSF-2.0 | https://pypi.org/project/aiohappyeyeballs/2.7.1/ |
-| pypi | aiohttp | `3.14.3` | Apache-2.0 AND MIT | https://pypi.org/project/aiohttp/3.14.3/ |
-| pypi | aiosignal | `1.4.0` | Apache 2.0 | https://pypi.org/project/aiosignal/1.4.0/ |
 | pypi | aiosqlite | `0.22.1` | NOASSERTION | https://pypi.org/project/aiosqlite/0.22.1/ |
 | pypi | annotated-doc | `0.0.5` | MIT | https://pypi.org/project/annotated-doc/0.0.5/ |
 | pypi | annotated-types | `0.8.0` | MIT | https://pypi.org/project/annotated-types/0.8.0/ |
@@ -151,7 +148,6 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | anyio | `4.14.2` | MIT | https://pypi.org/project/anyio/4.14.2/ |
 | pypi | attrs | `26.1.0` | MIT | https://pypi.org/project/attrs/26.1.0/ |
 | pypi | blockbuster | `1.5.27` | NOASSERTION | https://pypi.org/project/blockbuster/1.5.27/ |
-| pypi | bottleneck | `1.6.0` | Simplified BSD | https://pypi.org/project/bottleneck/1.6.0/ |
 | pypi | bracex | `3.0.1` | MIT | https://pypi.org/project/bracex/3.0.1/ |
 | pypi | certifi | `2026.7.22` | MPL-2.0 | https://pypi.org/project/certifi/2026.7.22/ |
 | pypi | cffi | `2.1.1` | MIT-0 | https://pypi.org/project/cffi/2.1.1/ |
@@ -168,20 +164,9 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | fastapi | `0.141.1` | MIT | https://pypi.org/project/fastapi/0.141.1/ |
 | pypi | filetype | `1.2.0` | MIT | https://pypi.org/project/filetype/1.2.0/ |
 | pypi | forbiddenfruit | `0.1.4` | NOASSERTION | https://pypi.org/project/forbiddenfruit/0.1.4/ |
-| pypi | frozenlist | `1.8.0` | Apache-2.0 | https://pypi.org/project/frozenlist/1.8.0/ |
-| pypi | google-api-core | `2.34.0` | Apache 2.0 | https://pypi.org/project/google-api-core/2.34.0/ |
 | pypi | google-auth | `2.56.3` | Apache 2.0 | https://pypi.org/project/google-auth/2.56.3/ |
-| pypi | google-cloud-aiplatform | `1.163.0` | Apache 2.0 | https://pypi.org/project/google-cloud-aiplatform/1.163.0/ |
-| pypi | google-cloud-bigquery | `3.43.0` | Apache 2.0 | https://pypi.org/project/google-cloud-bigquery/3.43.0/ |
-| pypi | google-cloud-core | `2.6.1` | Apache 2.0 | https://pypi.org/project/google-cloud-core/2.6.1/ |
-| pypi | google-cloud-resource-manager | `1.18.0` | Apache-2.0 | https://pypi.org/project/google-cloud-resource-manager/1.18.0/ |
-| pypi | google-cloud-storage | `3.13.1` | Apache-2.0 | https://pypi.org/project/google-cloud-storage/3.13.1/ |
-| pypi | google-cloud-vectorsearch | `0.11.1` | Apache-2.0 | https://pypi.org/project/google-cloud-vectorsearch/0.11.1/ |
-| pypi | google-crc32c | `1.8.0` | NOASSERTION | https://pypi.org/project/google-crc32c/1.8.0/ |
 | pypi | google-genai | `2.22.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.22.0/ |
-| pypi | google-resumable-media | `2.10.1` | Apache 2.0 | https://pypi.org/project/google-resumable-media/2.10.1/ |
 | pypi | googleapis-common-protos | `1.75.1` | Apache 2.0 | https://pypi.org/project/googleapis-common-protos/1.75.1/ |
-| pypi | grpc-google-iam-v1 | `0.14.5` | Apache 2.0 | https://pypi.org/project/grpc-google-iam-v1/0.14.5/ |
 | pypi | grpcio | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio/1.81.1/ |
 | pypi | grpcio-health-checking | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio-health-checking/1.81.1/ |
 | pypi | grpcio-tools | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio-tools/1.81.1/ |
@@ -204,11 +189,9 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | langchain-core | `1.6.2` | MIT | https://pypi.org/project/langchain-core/1.6.2/ |
 | pypi | langchain-deepseek | `1.1.0` | MIT | https://pypi.org/project/langchain-deepseek/1.1.0/ |
 | pypi | langchain-google-genai | `4.4.0` | MIT | https://pypi.org/project/langchain-google-genai/4.4.0/ |
-| pypi | langchain-google-vertexai | `3.2.4` | MIT | https://pypi.org/project/langchain-google-vertexai/3.2.4/ |
 | pypi | langchain-mcp-adapters | `0.3.2` | MIT | https://pypi.org/project/langchain-mcp-adapters/0.3.2/ |
 | pypi | langchain-openai | `1.6.1` | MIT | https://pypi.org/project/langchain-openai/1.6.1/ |
 | pypi | langchain-protocol | `0.0.19` | MIT | https://pypi.org/project/langchain-protocol/0.0.19/ |
-| pypi | langchain-xai | `1.3.0` | MIT | https://pypi.org/project/langchain-xai/1.3.0/ |
 | pypi | langgraph | `1.2.11` | MIT | https://pypi.org/project/langgraph/1.2.11/ |
 | pypi | langgraph-api | `0.14.0` | Elastic-2.0 | https://pypi.org/project/langgraph-api/0.14.0/ |
 | pypi | langgraph-checkpoint | `4.2.0` | MIT | https://pypi.org/project/langgraph-checkpoint/4.2.0/ |
@@ -219,9 +202,6 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | langgraph-sdk | `0.4.4` | MIT | https://pypi.org/project/langgraph-sdk/0.4.4/ |
 | pypi | langsmith | `0.12.2` | MIT | https://pypi.org/project/langsmith/0.12.2/ |
 | pypi | mcp | `1.29.1` | MIT | https://pypi.org/project/mcp/1.29.1/ |
-| pypi | multidict | `6.7.1` | Apache License 2.0 | https://pypi.org/project/multidict/6.7.1/ |
-| pypi | numexpr | `2.14.2` | MIT | https://pypi.org/project/numexpr/2.14.2/ |
-| pypi | numpy | `2.5.1` | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | https://pypi.org/project/numpy/2.5.1/ |
 | pypi | openai | `2.53.0` | Apache-2.0 | https://pypi.org/project/openai/2.53.0/ |
 | pypi | opentelemetry-api | `1.42.1` | Apache-2.0 | https://pypi.org/project/opentelemetry-api/1.42.1/ |
 | pypi | opentelemetry-exporter-otlp-proto-common | `1.42.1` | Apache-2.0 | https://pypi.org/project/opentelemetry-exporter-otlp-proto-common/1.42.1/ |
@@ -235,10 +215,7 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | packaging | `26.3` | Apache-2.0 OR BSD-2-Clause | https://pypi.org/project/packaging/26.3/ |
 | pypi | pathspec | `1.1.1` | NOASSERTION | https://pypi.org/project/pathspec/1.1.1/ |
 | pypi | prometheus-client | `0.26.0` | Apache-2.0 AND BSD-2-Clause | https://pypi.org/project/prometheus-client/0.26.0/ |
-| pypi | propcache | `0.5.2` | Apache-2.0 | https://pypi.org/project/propcache/0.5.2/ |
-| pypi | proto-plus | `1.28.3` | Apache 2.0 | https://pypi.org/project/proto-plus/1.28.3/ |
 | pypi | protobuf | `6.33.6` | 3-Clause BSD License | https://pypi.org/project/protobuf/6.33.6/ |
-| pypi | pyarrow | `23.0.1` | Apache-2.0 | https://pypi.org/project/pyarrow/23.0.1/ |
 | pypi | pyasn1 | `0.6.4` | BSD-2-Clause | https://pypi.org/project/pyasn1/0.6.4/ |
 | pypi | pyasn1-modules | `0.4.2` | BSD | https://pypi.org/project/pyasn1-modules/0.4.2/ |
 | pypi | pycparser | `3.0` | BSD-3-Clause | https://pypi.org/project/pycparser/3.0/ |
@@ -272,12 +249,10 @@ Counts: npm 134, pypi 138, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | urllib3 | `2.7.0` | MIT | https://pypi.org/project/urllib3/2.7.0/ |
 | pypi | uuid-utils | `0.17.0` | BSD-3-Clause | https://pypi.org/project/uuid-utils/0.17.0/ |
 | pypi | uvicorn | `0.52.1` | BSD-3-Clause | https://pypi.org/project/uvicorn/0.52.1/ |
-| pypi | validators | `0.35.0` | MIT | https://pypi.org/project/validators/0.35.0/ |
 | pypi | watchfiles | `1.2.0` | MIT | https://pypi.org/project/watchfiles/1.2.0/ |
 | pypi | wcmatch | `11.0` | MIT | https://pypi.org/project/wcmatch/11.0/ |
 | pypi | websockets | `15.0.1` | BSD-3-Clause | https://pypi.org/project/websockets/15.0.1/ |
 | pypi | xxhash | `3.8.1` | BSD-2-Clause | https://pypi.org/project/xxhash/3.8.1/ |
-| pypi | yarl | `1.24.5` | Apache-2.0 | https://pypi.org/project/yarl/1.24.5/ |
 | pypi | zstandard | `0.25.0` | BSD-3-Clause | https://pypi.org/project/zstandard/0.25.0/ |
 | runtime | CPython | `3.12.13` | PSF-2.0 | https://www.python.org/ |
 | runtime | Node.js | `22.23.2` | MIT | https://nodejs.org/ |

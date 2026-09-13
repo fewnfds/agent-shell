@@ -225,10 +225,6 @@ class ModelConnectionBlock(StrictBlock):
 
     @model_validator(mode="after")
     def validate_settings_for_provider(self) -> ModelConnectionBlock:
-        if self.provider == "google_vertexai" and self.credential is not None:
-            raise ValueError(
-                "google_vertexai uses Application Default Credentials"
-            )
         self.provider_settings = validate_provider_settings(
             self.provider,
             self.provider_settings,
@@ -816,12 +812,6 @@ class SummarizationBlock(StrictBlock):
     summary_prompt_override: PromptOverrideText | None = None
 
 
-class PromptCachingBlock(StrictBlock):
-    type: Literal["ephemeral"] = "ephemeral"
-    ttl: Literal["5m", "1h"] = "5m"
-    min_messages_to_cache: Annotated[int, Field(ge=0)] = 0
-
-
 class TodoListBlock(StrictBlock):
     system_prompt_override: PromptOverrideText | None = None
     tool_description_override: PromptOverrideText | None = None
@@ -985,7 +975,6 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "tool-call-limit": ToolCallLimitBlock,
     "subagent": SubagentBlock,
     "summarization": SummarizationBlock,
-    "prompt-caching": PromptCachingBlock,
 }
 
 validate_capability_manifests(CAPABILITY_MANIFESTS, BLOCK_MODELS)

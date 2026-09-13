@@ -96,14 +96,6 @@ def test_retry_owner_overrides_current_provider_parameter_names() -> None:
         ),
     )
     middleware = model_block_with_retry_overrides(base, capability())
-    google = model_block_with_retry_overrides(
-        {
-            **base,
-            "provider": "google_genai",
-            "provider_settings": {"streaming": True, "retries": 4},
-        },
-        capability(strategy="provider_native", max_retries=6),
-    )
 
     assert provider_native["provider_settings"] == {
         "streaming": False,
@@ -111,8 +103,6 @@ def test_retry_owner_overrides_current_provider_parameter_names() -> None:
     }
     assert provider_native["model_settings"] == {"parallel_tool_calls": True}
     assert middleware["provider_settings"]["max_retries"] == 0
-    assert google["provider_settings"]["retries"] == 6
-    assert "max_retries" not in google["provider_settings"]
     assert materialize_exception_retry(
         capability(strategy="provider_native")
     ).after_provider_boundary == ()

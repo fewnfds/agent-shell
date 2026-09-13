@@ -46,10 +46,6 @@ def test_model_provider_is_required_and_limited_to_release_bundle(
     missing.pop("provider")
     unsupported = model_payload("Unsupported Provider")
     unsupported["provider"] = "automatic"
-    aliased = model_payload("Aliased Provider")
-    aliased["provider"] = "google-vertexai"
-    aliased["provider_settings"] = {}
-    aliased["credential"] = None
     deepseek = model_payload("DeepSeek Provider")
     deepseek["provider"] = "deepseek"
     deepseek["provider_settings"] = {"max_tokens": 4096}
@@ -58,7 +54,6 @@ def test_model_provider_is_required_and_limited_to_release_bundle(
 
     assert client.post("/agent-shell/api/model-connections", json=missing).status_code == 422
     assert client.post("/agent-shell/api/model-connections", json=unsupported).status_code == 422
-    assert client.post("/agent-shell/api/model-connections", json=aliased).status_code == 422
     response = client.post("/agent-shell/api/model-connections", json=deepseek)
     assert response.status_code == 200, response.text
     assert response.json()["provider"] == "deepseek"
@@ -74,15 +69,7 @@ def test_model_provider_is_required_and_limited_to_release_bundle(
             {"max_completion_tokens": 512, "use_responses_api": True},
             "secret",
         ),
-        ("anthropic", {"max_tokens_to_sample": 512, "effort": "high"}, "secret"),
-        ("google_genai", {"max_tokens": 512, "retries": 2}, "secret"),
-        (
-            "google_vertexai",
-            {"max_tokens": 512, "thinking_budget": 128},
-            None,
-        ),
         ("deepseek", {"max_tokens": 512, "reasoning_effort": "high"}, "secret"),
-        ("xai", {"max_tokens": 512, "reasoning_effort": "high"}, "secret"),
     ],
 )
 def test_model_provider_settings_use_each_official_constructor_contract(
@@ -103,9 +90,12 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     response = client.post("/agent-shell/api/model-connections", json=payload)
 
     assert response.status_code == 200, response.text
-    expected_defaults = {"temperature": 1, "top_p": 1}
-    if provider != "anthropic":
-        expected_defaults.update(presence_penalty=0, frequency_penalty=0)
+    expected_defaults = {
+        "temperature": 1,
+        "top_p": 1,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+    }
     assert response.json()["provider_settings"] == {
         **expected_defaults,
         **provider_settings,
@@ -116,9 +106,7 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     ("provider", "provider_settings", "credential"),
     [
         ("openai", {"max_tokens": 512}, "secret"),
-        ("anthropic", {"max_completion_tokens": 512}, "secret"),
-        ("google_genai", {"max_tokens_to_sample": 512}, "secret"),
-        ("google_vertexai", {"max_tokens": 512}, "string-is-not-adc"),
+        ("deepseek", {"max_completion_tokens": 512}, "secret"),
     ],
 )
 def test_model_provider_settings_reject_cross_provider_parameters(

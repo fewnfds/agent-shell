@@ -18,7 +18,6 @@
 | 工具调用限制 | `ToolCallLimitMiddleware` 的全局或指定 Tool 调用上限 | 可选 | 继承、替换或关闭 |
 | Subagent Delegation | synchronous Subagent 的提示与 `task` 说明 | 可选 | 只用于 top-level Main Agent |
 | 上下文摘要 | `SummarizationMiddleware` 阈值、保留和工具参数截断 | 可选 | 继承、替换或关闭 |
-| Prompt 缓存 | Anthropic prompt caching TTL 与最少消息数 | 可选 | 继承、替换或关闭 |
 | MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |
 | Workflow Event Output | 用文件化 Python 扩展把 Workflow-owned v3 事件投影为响应字符串 | Workflow 可选绑定 | 不属于 Agent capability |
 | Command | 读取 Workflow State/Context并直接返回官方`Command(update, goto)`；可通过Run facade启动独立Agent/Workflow | canvas Node引用 | 不属于Agent capability |

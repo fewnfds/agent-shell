@@ -10,7 +10,6 @@ from agent_shell.contracts import (
     ExceptionRetryBlock,
     FilesystemToolConfigs,
     FilesystemToolsBlock,
-    PromptCachingBlock,
     SKILL_PROMPT_FIELDS,
     SummarizationBlock,
 )
@@ -370,10 +369,6 @@ _EDITOR_DEFAULTS = {
         ),
         "summary_prompt_default": DEEPAGENTS_SUMMARY_PROMPT,
     },
-    "prompt_caching": PromptCachingBlock(name="Prompt caching").model_dump(
-        mode="json",
-        exclude={"name"},
-    ),
     "workflow_event_output": {},
     "command": {},
 }

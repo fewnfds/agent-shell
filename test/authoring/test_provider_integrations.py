@@ -18,11 +18,7 @@ def test_catalog_exposes_release_managed_provider_integrations(
     providers = {item["provider"]: item for item in response.json()["providers"]}
     assert set(providers) == {
         "openai",
-        "anthropic",
-        "google_vertexai",
-        "google_genai",
         "deepseek",
-        "xai",
     }
     assert all(item["installed"] for item in providers.values())
     assert all(item["version"] for item in providers.values())
@@ -35,4 +31,5 @@ def test_bundled_provider_set_is_owned_by_the_release() -> None:
     assert integrations["openai"].module == "langchain_openai"
     assert integrations["openai"].class_name == "ChatOpenAI"
     assert integrations["deepseek"].package == "langchain-deepseek"
-    assert integrations["xai"].package == "langchain-xai"
+    assert integrations["deepseek"].module == "langchain_deepseek"
+    assert integrations["deepseek"].class_name == "ChatDeepSeek"

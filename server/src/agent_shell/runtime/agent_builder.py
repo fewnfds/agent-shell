@@ -34,9 +34,6 @@ from agent_shell.runtime.capabilities.call_limits import (
     materialize_model_call_limit_middleware,
     materialize_tool_call_limit_middleware,
 )
-from agent_shell.runtime.capabilities.prompt_caching import (
-    materialize_prompt_caching_middleware,
-)
 from agent_shell.runtime.capabilities.summarization import (
     materialize_summarization_middleware,
 )
@@ -75,7 +72,7 @@ from agent_shell.validation.assembly import ResolvedMcpReference
 from agent_shell.tool_packages import ToolPackageRuntime
 
 
-_OPENAI_COMPATIBLE_PROVIDERS = frozenset({"deepseek", "openai", "xai"})
+_OPENAI_COMPATIBLE_PROVIDERS = frozenset({"deepseek", "openai"})
 
 
 def _build_chat_model(
@@ -91,15 +88,9 @@ def _build_chat_model(
         }
         if kwargs.get("streaming") is False:
             kwargs["disable_streaming"] = True
-        if provider == "google_vertexai":
-            if credential:
-                raise ValueError(
-                    "google_vertexai uses Application Default Credentials"
-                )
-        else:
-            kwargs["api_key"] = SecretStr(
-                credential or "agent-shell-no-credential"
-            )
+        kwargs["api_key"] = SecretStr(
+            credential or "agent-shell-no-credential"
+        )
         if provider in _OPENAI_COMPATIBLE_PROVIDERS:
             kwargs.update(
                 {
@@ -109,18 +100,6 @@ def _build_chat_model(
                     "http_client": provider_http_clients.sync_client,
                     "http_async_client": provider_http_clients.async_client,
                 }
-            )
-        elif provider == "anthropic":
-            kwargs["default_headers"] = provider_http_clients.request_headers(
-                {"User-Agent": f"Agent-Shell/{__version__}"}
-            )
-            if provider_http_clients.settings.proxy_url is not None:
-                kwargs["anthropic_proxy"] = (
-                    provider_http_clients.settings.proxy_url
-                )
-        elif provider in {"google_genai", "google_vertexai"}:
-            kwargs["additional_headers"] = provider_http_clients.request_headers(
-                {"User-Agent": f"Agent-Shell/{__version__}"}
             )
         if provider == "openai":
             # Chat Completions is the explicit default for arbitrary gateway URLs.
@@ -512,23 +491,6 @@ class AgentBuilder:
                     owner_name=owner_name,
                     path="capability_refs.summarization",
                 ) from exc
-        prompt_caching_middleware = None
-        prompt_caching = selected_blocks.get("prompt-caching")
-        if prompt_caching is not None:
-            try:
-                prompt_caching_middleware = materialize_prompt_caching_middleware(
-                    prompt_caching
-                )
-            except Exception as exc:
-                raise configuration_error(
-                    "middleware_materialization_failed",
-                    "The selected prompt-caching configuration could not be constructed.",
-                    status_code=422,
-                    scope=scope,
-                    owner_id=owner_id,
-                    owner_name=owner_name,
-                    path="capability_refs.prompt-caching",
-                ) from exc
         model_call_limit_middleware = None
         model_call_limit = selected_blocks.get("model-call-limit")
         if model_call_limit is not None:
@@ -613,7 +575,6 @@ class AgentBuilder:
             summarization_middleware=summarization_middleware,
             model_call_limit_middleware=model_call_limit_middleware,
             tool_call_limit_middleware=tool_call_limit_middleware,
-            prompt_caching_middleware=prompt_caching_middleware,
             package_middleware=package_middleware,
             backend=backend,
             middleware_backend=middleware_backend,
@@ -830,7 +791,6 @@ class AgentBuilder:
             exception_retry=exception_retry_middleware,
             initial_files=initial_files_middleware,
             package=materialized.package_middleware,
-            prompt_caching=materialized.prompt_caching_middleware,
         )
 
         try:
@@ -861,7 +821,6 @@ class AgentBuilder:
                 exception_retry=exception_retry_middleware,
                 initial_files=initial_files_middleware,
                 package=materialized.package_middleware,
-                prompt_caching=materialized.prompt_caching_middleware,
             )
             validate_middleware_names(middleware, owner="Main Agent")
             validate_model_visible_tool_names(

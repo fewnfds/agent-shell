@@ -11,7 +11,6 @@ import {
   filesystemToolsAdapter,
   modelCallLimitAdapter,
   modelAdapter,
-  promptCachingAdapter,
   skillAdapter,
   subagentAdapter,
   summarizationAdapter,
@@ -22,7 +21,6 @@ import {
   type FilesystemDefaults,
   type FilesystemToolsDefaults,
   workflowEventOutputAdapter,
-  type PromptCachingDefaults,
   type SkillDefaults,
   type SubagentDefaults,
   type SummarizationDefaults,
@@ -38,7 +36,6 @@ import {
   FilesystemToolsEditor,
   ModelEditor,
   ModelCallLimitEditor,
-  PromptCachingEditor,
   SkillEditor,
   SubagentCapabilityEditor,
   SummarizationEditor,
@@ -87,11 +84,6 @@ const summarizationDefaults: SummarizationDefaults = {
   truncate_args_text: '...(argument truncated)',
   trim_tokens_to_summarize: 4_000,
   summary_prompt_override: '',
-}
-const promptCachingDefaults: PromptCachingDefaults = {
-  type: 'ephemeral',
-  ttl: '5m',
-  min_messages_to_cache: 0,
 }
 const exceptionRetryDefaults: ExceptionRetryDefaults = {
   strategies: ['provider_native', 'model_retry_middleware'],
@@ -516,14 +508,6 @@ describe('dedicated block editors', () => {
           version: '1.4.1',
           documentation_url: 'https://docs.langchain.com/providers',
         },
-        {
-          provider: 'google_vertexai',
-          package: 'langchain-google-vertexai',
-          class_name: 'ChatVertexAI',
-          installed: true,
-          version: '3.2.4',
-          documentation_url: 'https://docs.langchain.com/providers',
-        },
       ],
     })
     const select = editor.get('[data-testid="model-provider-input"]')
@@ -532,13 +516,11 @@ describe('dedicated block editors', () => {
       '',
       'openai',
       'deepseek',
-      'google_vertexai',
     ])
     expect(select.findAll('option').map((option) => option.text())).toEqual([
       'editors.model.providerPlaceholder',
       'langchain-openai',
       'langchain-deepseek',
-      'langchain-google-vertexai',
     ])
 
     await select.setValue('deepseek')
@@ -551,16 +533,7 @@ describe('dedicated block editors', () => {
         frequency_penalty: 0,
       },
     })
-
-    await select.setValue('google_vertexai')
     expect(editor.find('[data-testid="openai-connection-type"]').exists()).toBe(false)
-    expect(editor.find('[data-provider-setting="max_completion_tokens"]').exists()).toBe(false)
-    expect(editor.find('[data-provider-setting="max_tokens"]').exists()).toBe(true)
-    expect(editor.find('[data-provider-setting="thinking_budget"]').exists()).toBe(true)
-    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
-      provider: 'google_vertexai',
-      provider_settings: {},
-    })
 
     await select.setValue('openai')
     expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
@@ -606,17 +579,6 @@ describe('dedicated block editors', () => {
     await summaryPrompt?.setValue('custom summary prompt')
     await editor.get('[data-action="restore-summary-prompt"]').trigger('click')
     expect(summaryPrompt?.element).toHaveProperty('value', summarizationDefaults.summary_prompt_default)
-  })
-
-  it('edits Prompt Caching independently from summarization', async () => {
-    const editor = mountEditor(PromptCachingEditor, {
-      modelValue: promptCachingAdapter.blank(promptCachingDefaults),
-      defaults: promptCachingDefaults,
-    })
-
-    expect(editor.find('[data-editor="summarization"]').exists()).toBe(false)
-    await editor.findAll('select')[1]!.setValue('1h')
-    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ ttl: '1h' })
   })
 
   it('uses compact field-only editors for model and tool call limits', async () => {

@@ -79,68 +79,9 @@ const deepSeekFields: ProviderParameterField[] = [
   { key: 'logprobs', kind: 'boolean' },
   { key: 'top_logprobs', kind: 'number' },
 ]
-const xAIFields: ProviderParameterField[] = [
-  { key: 'temperature', kind: 'number' },
-  { key: 'max_tokens', kind: 'number' },
-  { key: 'top_p', kind: 'number' },
-  { key: 'stop_sequences', kind: 'string-list' },
-  { key: 'presence_penalty', kind: 'number' },
-  { key: 'frequency_penalty', kind: 'number' },
-  { key: 'seed', kind: 'number' },
-  { key: 'timeout', kind: 'number' },
-  { key: 'max_retries', kind: 'number' },
-  { key: 'stream_usage', kind: 'boolean' },
-  { key: 'streaming', kind: 'boolean' },
-  { key: 'reasoning_effort', kind: 'text' },
-  { key: 'service_tier', kind: 'text' },
-  { key: 'logprobs', kind: 'boolean' },
-  { key: 'top_logprobs', kind: 'number' },
-]
 const providerParameterFields: Record<string, ProviderParameterField[]> = {
   openai: openAIFields,
   deepseek: deepSeekFields,
-  xai: xAIFields,
-  anthropic: [
-    { key: 'temperature', kind: 'number' },
-    { key: 'max_tokens_to_sample', kind: 'number' },
-    { key: 'top_p', kind: 'number' },
-    { key: 'stop', kind: 'string-list' },
-    { key: 'timeout', kind: 'number' },
-    { key: 'max_retries', kind: 'number' },
-    { key: 'stream_usage', kind: 'boolean' },
-    { key: 'streaming', kind: 'boolean' },
-    { key: 'effort', kind: 'enum', options: ['low', 'medium', 'high', 'xhigh', 'max'] },
-  ],
-  google_genai: [
-    { key: 'temperature', kind: 'number' },
-    { key: 'max_tokens', kind: 'number' },
-    { key: 'top_p', kind: 'number' },
-    { key: 'stop_sequences', kind: 'string-list' },
-    { key: 'presence_penalty', kind: 'number' },
-    { key: 'frequency_penalty', kind: 'number' },
-    { key: 'seed', kind: 'number' },
-    { key: 'request_timeout', kind: 'number' },
-    { key: 'retries', kind: 'number' },
-    { key: 'streaming', kind: 'boolean' },
-    { key: 'thinking_level', kind: 'enum', options: ['minimal', 'low', 'medium', 'high'] },
-    { key: 'thinking_budget', kind: 'number' },
-    { key: 'include_thoughts', kind: 'boolean' },
-  ],
-  google_vertexai: [
-    { key: 'temperature', kind: 'number' },
-    { key: 'max_tokens', kind: 'number' },
-    { key: 'top_p', kind: 'number' },
-    { key: 'stop_sequences', kind: 'string-list' },
-    { key: 'presence_penalty', kind: 'number' },
-    { key: 'frequency_penalty', kind: 'number' },
-    { key: 'seed', kind: 'number' },
-    { key: 'timeout', kind: 'number' },
-    { key: 'max_retries', kind: 'number' },
-    { key: 'streaming', kind: 'boolean' },
-    { key: 'logprobs', kind: 'boolean-number' },
-    { key: 'thinking_budget', kind: 'number' },
-    { key: 'include_thoughts', kind: 'boolean' },
-  ],
 }
 const parameterFields = computed(() => providerParameterFields[selectedProviderId.value] ?? [])
 
@@ -270,13 +211,9 @@ function setBooleanNumber(key: string, event: Event): void {
               <LteInput
                 v-model="draft.credential_secret"
                 autocomplete="new-password"
-                :disabled="selectedProviderId === 'google_vertexai'"
                 :placeholder="credentialPlaceholder"
                 type="password"
               />
-              <p v-if="selectedProviderId === 'google_vertexai'" class="small text-body-secondary mb-0 mt-2">
-                {{ t('editors.model.vertexCredentialHint') }}
-              </p>
             </FormField>
           </div>
           <div v-if="selectedProviderId === 'openai'" class="col-md-6">

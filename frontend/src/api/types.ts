@@ -21,7 +21,6 @@ export type BlockType =
   | 'tool-call-limit'
   | 'subagent'
   | 'summarization'
-  | 'prompt-caching'
 
 export type WorkflowComponentType =
   | 'workflow-event-output'

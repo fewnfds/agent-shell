@@ -8,7 +8,6 @@ import { filesystemToolsAdapter } from './blocks/filesystemTools'
 import { modelRequirementAdapter } from './blocks/modelRequirement'
 import { mcpRequirementAdapter } from './blocks/mcpRequirement'
 import { agentEventOutputAdapter } from './blocks/agentEventOutput'
-import { promptCachingAdapter } from './blocks/promptCaching'
 import { skillAdapter } from './blocks/skill'
 import { subagentAdapter } from './blocks/subagent'
 import { summarizationAdapter } from './blocks/summarization'
@@ -69,10 +68,6 @@ export type {
   AgentEventOutputCatalogItem,
   AgentEventOutputDraft,
 } from './blocks/agentEventOutput'
-export type {
-  PromptCachingDefaults,
-  PromptCachingDraft,
-} from './blocks/promptCaching'
 export type { BlockDraftBase, BlockPayloadBase } from './blocks/shared'
 export type { SkillCatalogItem, SkillDefaults, SkillDraft } from './blocks/skill'
 export type { SubagentDefaults, SubagentDraft } from './blocks/subagent'
@@ -105,7 +100,6 @@ export {
   modelRequirementAdapter,
   mcpRequirementAdapter,
   agentEventOutputAdapter,
-  promptCachingAdapter,
   skillAdapter,
   subagentAdapter,
   summarizationAdapter,
@@ -130,7 +124,6 @@ export const blockTypes = [
   'subagent',
   'todo-list',
   'summarization',
-  'prompt-caching',
 ] as const
 
 export const managedComponentTypes = [
@@ -155,7 +148,6 @@ export const blockAdapters = {
   subagent: subagentAdapter,
   'todo-list': todoListAdapter,
   summarization: summarizationAdapter,
-  'prompt-caching': promptCachingAdapter,
   'mcp-requirement': mcpRequirementAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'command': commandAdapter,

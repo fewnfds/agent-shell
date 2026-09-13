@@ -125,11 +125,6 @@ CAPABILITY_MANIFESTS = (
         "file-text", "summarization",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
-    CapabilityManifest(
-        "prompt-caching", "prompt-caching", "Prompt 缓存", 15,
-        "database", "prompt_caching",
-        subagent_overrideable=True, required=False, subagent_policy="inherit",
-    ),
 )
 
 
