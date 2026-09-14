@@ -15,7 +15,7 @@
 
 - 需要可审计的确定性顺序、条件、循环或外部系统步骤；
 - 需要显式start/check/join/cancel独立Main Agent或Workflow Run；
-- 需要在`shared_vars`中保留少量控制状态；
+- 需要在 state、store、file 甚至外部 database 中保留状态机控制状态或数据；
 - AI工作与控制脚本需要独立State、Thread和失败边界。
 
 不要为了运行一个Main Agent创建单Agent Workflow。Main Agent本身就是Agent Server root graph。

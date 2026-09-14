@@ -13,9 +13,9 @@ Agent Shell 使用两类 credential：
 - `/agent-shell/api/*` 使用 management token，负责配置、validation、API Server 控制和 Lifecycle 管理；
 - `/compat/openai/v1/*` 使用独立 API Key，负责列出和运行 `enabled=true` 且 `is_model_entry=true` 的 Main Agent 和 Workflow。
 
-Management API 没有提交密码后再换取 token 的登录接口。首次启动设置的管理密码就是 `/agent-shell/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
+首次启动设置的管理密码就是 Management API `/agent-shell/api/*` 使用的 management Bearer credential，在实例 secret store 中的名称是 `AGENT_SHELL_MANAGEMENT_TOKEN`。
 
-`GET /agent-shell/api/health` 是匿名存活探测。其他 `/agent-shell/api/*` 请求通常需要：
+`/agent-shell/api/*` 请求通常需要：
 
 ```http
 Authorization: Bearer ${AGENT_SHELL_MANAGEMENT_TOKEN}
@@ -27,11 +27,12 @@ Authorization: Bearer ${AGENT_SHELL_MANAGEMENT_TOKEN}
 Authorization: Bearer ${AGENT_SHELL_API_KEY}
 ```
 
-`${...}` 在本指南中表示 HTTP client 在本地执行边界注入值，不是要按字面发送的 header 内容。两类 credential 不能互换：`AGENT_SHELL_MANAGEMENT_TOKEN` 只用于 `/agent-shell/api/*`，`AGENT_SHELL_API_KEY` 只用于 `/compat/openai/v1/*`。
+`${...}` 在本指南中表示 HTTP client 在本地执行边界注入值，不是要按字面发送的 header 内容。
+实际值位于 `<data-root>/config/agent-shell.env`。
+默认 data root 是 `<application-home>/data`；使用 `--data-dir` 启动时以该参数为准。
+仓库根目录的 [`.env.example`](../../../.env.example) 只说明当前 key 格式，不参与运行，也不保存实际值。
 
-实际值位于 `<data-root>/config/agent-shell.env`。默认 data root 是 `<application-home>/data`；使用 `--data-dir` 启动时以该参数为准。仓库根目录的 [`.env.example`](../../../.env.example) 只说明当前 key 格式，不参与运行，也不保存实际值。
-
-用户已授权操作同一台机器上的实例时，本地 API client 使用 dotenv parser 从 `agent-shell.env` 把所需认证 key 加载到进程内存，并直接构造 HTTP Authorization Header。不序列化 dotenv mapping、key 值或未投影的 Authorization Header；输出请求、trace 或异常前，先替换其中已加载 key 值的实际出现。远程或隔离执行环境不能访问实例 secret store 时，由运行平台在对话之外注入 credential；缺失时报告 key name 和 `missing` 状态。
+用户已授权操作本地实例时，使用 dotenv parser 从 `agent-shell.env` 把所需认证 key 加载到进程内存，并直接构造 HTTP Authorization Header。不序列化 dotenv mapping、key 值或未投影的 Authorization Header；输出请求、trace 或异常前，先替换其中已加载 key 值的实际出现。远程或隔离执行环境不能访问实例 secret store 时，由运行平台在对话之外注入 credential；登录困难或缺失时报告 key name 和 API 状态。
 
 以下跨平台 Python 示例只把 `/agent-shell/api/readiness` response 返回给操作 Agent。其他语言使用相同边界：dotenv parser -> 进程内局部变量 -> HTTP client Header -> response。
 
@@ -59,16 +60,19 @@ with urlopen(request) as response:
     print(response.read().decode("utf-8"))
 ```
 
-不要打印 token 或完整 dotenv mapping。request、response 或 headers 进入调试输出前，必须完成上述 key 值投影。Model Connection credential、MCP secret 和 LangSmith API Key 由 Agent Shell 自己解析和使用；操作 Agent 通过 Management API 的 `masked`、`missing`、configured 状态及真实 Workflow invocation 验证它们。
+未征得用户同意之前，禁止直接阅读 secret store 文本内容。不要打印 token 或完整 dotenv mapping。request、response 或 headers 进入调试输出前，必须完成上述 key 值投影。Model Connection credential、MCP secret 和 LangSmith API Key 由 Agent Shell 自己解析和使用；操作 Agent 通过 Management API 的 `masked`、`missing`、configured 状态及真实 Workflow invocation 验证它们。
 
-先调用：
+先调用匿名存活探测，health 失败时先解决地址或服务问题。
 
 ```text
 GET /agent-shell/api/health
-GET /agent-shell/api/readiness
 ```
 
-health 失败时先解决地址或服务问题。readiness 失败时读取 structured response，不继续写配置。
+readiness 失败时读取 structured response，不继续写配置。
+
+```text
+GET /agent-shell/api/readiness
+```
 
 ## 2. 按顺序读取事实
 
