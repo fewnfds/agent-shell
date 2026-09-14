@@ -152,8 +152,9 @@ def test_windows_runtime_retries_only_uv_python_sharing_conflicts() -> None:
         REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
     ).read_text(encoding="utf-8")
 
-    sharing_retry = '-MaxAttempts 61 -RetryOutputPattern "0xc0000043"'
+    sharing_retry = r'-MaxAttempts 61 -RetryOutputPattern "0xc0000043|\(os error 32\)"'
     assert bootstrap.count(sharing_retry) == 2
+    assert r"\(os error 32\)" in bootstrap
     assert '$ErrorActionPreference = "Continue"' in bootstrap
     assert "$_ -is [System.Management.Automation.ErrorRecord]" in bootstrap
     assert "Write-Host $nativeLine" in bootstrap
@@ -206,6 +207,63 @@ def test_windows_runtime_accepts_successful_native_stderr() -> None:
     assert result.returncode == 0, result.stderr
     assert "normal native stderr" in result.stdout
     assert "NativeCommandError" not in result.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="source launcher is Windows-only")
+def test_windows_runtime_retries_uv_os_error_sharing_conflict(
+    tmp_path: Path,
+) -> None:
+    bootstrap_path = (
+        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    )
+    escaped_bootstrap_path = str(bootstrap_path).replace("'", "''")
+    marker = tmp_path / "retry.marker"
+    fail_script = tmp_path / "fail-once.cmd"
+    escaped_fail_script = str(fail_script).replace("'", "''")
+    fail_script.write_text(
+        "@echo off\r\n"
+        f'if exist "{marker}" exit /b 0\r\n'
+        f'echo.> "{marker}"\r\n'
+        "echo failed to inspect interpreter (os error 32) 1>&2\r\n"
+        "exit /b 2\r\n",
+        encoding="ascii",
+    )
+    command = (
+        "$tokens = $null\n"
+        "$parseErrors = $null\n"
+        "$ast = [System.Management.Automation.Language.Parser]::ParseFile(\n"
+        f"    '{escaped_bootstrap_path}', [ref]$tokens, [ref]$parseErrors\n"
+        ")\n"
+        "$invokeNative = $ast.Find({\n"
+        "    param($node)\n"
+        "    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
+        "-and $node.Name -eq 'Invoke-Native'\n"
+        "}, $true)\n"
+        "Invoke-Expression $invokeNative.Extent.Text\n"
+        f"$failScript = '{escaped_fail_script}'\n"
+        '$ErrorActionPreference = "Stop"\n'
+        "Invoke-Native $failScript @('run') (Get-Location).Path "
+        "-MaxAttempts 3 -RetryOutputPattern '\\(os error 32\\)'\n"
+    )
+
+    result = subprocess.run(
+        [
+            str(WINDOWS_POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert marker.exists()
 
 
 def test_windows_runtime_manifest_is_written_as_utf8_without_bom() -> None:

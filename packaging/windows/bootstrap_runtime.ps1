@@ -446,7 +446,7 @@ try {
         "--python-version", ([string]$lock.python),
         "--python-platform", "x86_64-pc-windows-msvc",
         "--no-deps", "--require-hashes", "--requirements", $requirementsPath
-    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043"
+    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043|\(os error 32\)"
     Get-ChildItem -LiteralPath $installTarget -Filter "direct_url.json" -File -Recurse |
         Remove-Item -Force
 
@@ -480,7 +480,7 @@ try {
 
     Invoke-Native $uvExe @(
         "pip", "check", "--python", $pythonExe.FullName
-    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043"
+    ) $project -MaxAttempts 61 -RetryOutputPattern "0xc0000043|\(os error 32\)"
     # uv may recreate version aliases while discovering an interpreter for pip.
     # Keep only the fully-versioned physical runtime selected above.
     Remove-UvPythonInstallArtifacts $pythonInstallRoot $pythonExe.Directory.FullName
