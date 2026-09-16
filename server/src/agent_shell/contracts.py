@@ -960,6 +960,107 @@ class SubagentProfile(BaseModel):
     settings: SubagentSettings = Field(default_factory=SubagentSettings)
 
 
+EXTERNAL_AGENT_PROVIDERS = ("antigravity-cli",)
+
+# Built-in tools the 1.2.4 executor registers for a session. Agent Markdown
+# frontmatter ``tools`` is a strict allow-list and the CLI fails at startup for
+# any name outside this registry.
+ANTIGRAVITY_CLI_TOOLS = (
+    "view_file",
+    "run_command",
+    "manage_task",
+    "send_message",
+    "schedule",
+    "invoke_subagent",
+    "define_subagent",
+    "manage_subagents",
+    "write_to_file",
+    "replace_file_content",
+    "generate_image",
+    "read_url_content",
+    "search_web",
+    "find_by_name",
+    "grep_search",
+    "list_dir",
+    "ask_question",
+)
+
+AntigravityCliTool = Literal[
+    "view_file",
+    "run_command",
+    "manage_task",
+    "send_message",
+    "schedule",
+    "invoke_subagent",
+    "define_subagent",
+    "manage_subagents",
+    "write_to_file",
+    "replace_file_content",
+    "generate_image",
+    "read_url_content",
+    "search_web",
+    "find_by_name",
+    "grep_search",
+    "list_dir",
+    "ask_question",
+]
+ExternalAgentText = Annotated[str, StringConstraints(strict=True, strip_whitespace=True)]
+
+
+class ExternalAgentProfile(BaseModel):
+    """Preset for an agent that runs outside the LangChain assembly.
+
+    ``tools`` is the same deny-then-allow mechanism the Antigravity CLI itself
+    uses: ``exclude_default_components`` removes every built-in tool, and each
+    listed tool is added back by name.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: BlockName
+    description: Annotated[str, Field(min_length=1)]
+    provider: Literal["antigravity-cli"]
+    agent_name: Annotated[
+        str,
+        Field(min_length=1, pattern=r"^[a-z][a-z0-9_-]*$"),
+    ]
+    system_prompt: Annotated[str, Field(min_length=1)]
+    model: Annotated[str, Field(min_length=1)] | None = None
+    effort: Literal["low", "medium", "high"] | None = None
+    print_timeout: Annotated[
+        str,
+        Field(pattern=r"^[1-9][0-9]*(s|m|h)$"),
+    ] = "5m"
+    output_format: Literal["text", "json", "stream-json"] = "stream-json"
+    conversation: Literal["new", "continue-latest"] = "new"
+    exclude_default_components: ModelBoolean = True
+    tools: list[AntigravityCliTool] = Field(default_factory=list)
+    tool_guidance: ExternalAgentText = ""
+    tool_permission: Literal[
+        "request-review",
+        "proceed-in-sandbox",
+        "always-proceed",
+        "strict",
+    ] = "request-review"
+    permission_allow: list[ExternalAgentText] = Field(default_factory=list)
+    env: dict[
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")],
+        ExternalAgentText,
+    ] = Field(default_factory=dict)
+
+    @field_validator("env")
+    @classmethod
+    def _reject_runtime_owned_env(cls, value: dict[str, str]) -> dict[str, str]:
+        reserved = {"USERPROFILE", "HOME", "XDG_CONFIG_HOME"}
+        offending = sorted(reserved & set(value))
+        if offending:
+            raise ValueError(
+                "env must not override the runtime-owned variables: "
+                + ", ".join(offending)
+            )
+        return value
+
+
 BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "model-requirement": ModelRequirementBlock,
     "system-prompt": SystemPromptBlock,

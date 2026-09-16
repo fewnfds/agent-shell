@@ -44,7 +44,7 @@ def validate_configuration_snapshot(
         ):
             raise ValueError("component type keys must be normalized path segments")
         _record_list(records, label=f"components.{component_type}")
-    for key in ("main_agents", "subagents", "workflows"):
+    for key in ("external_agents", "main_agents", "subagents", "workflows"):
         _record_list(config.get(key), label=key)
 
     seen_ids: dict[str, str] = {}

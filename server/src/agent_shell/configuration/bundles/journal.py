@@ -118,6 +118,8 @@ def _configuration_path(config_root: Path, record: JournalRecord) -> Path:
         return config_root / "agents" / "main" / f"{record.target_id}.yaml"
     if record.kind == "subagent":
         return config_root / "agents" / "subagent" / f"{record.target_id}.yaml"
+    if record.kind == "external_agent":
+        return config_root / "agents" / "external" / f"{record.target_id}.yaml"
     return config_root / "workflows" / f"{record.target_id}.yaml"
 
 

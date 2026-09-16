@@ -137,6 +137,7 @@ def create_configuration_repository(
         )
         for directory in (
             root / "components",
+            root / "agents" / "external",
             root / "agents" / "main",
             root / "agents" / "subagent",
             root / "workflows",

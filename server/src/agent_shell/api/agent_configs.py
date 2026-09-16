@@ -21,6 +21,8 @@ from agent_shell.validation.service import ConfigurationValidationService
 
 MAIN_AGENT_TABLE = "main_agents"
 SUBAGENT_TABLE = "subagents"
+EXTERNAL_AGENT_TABLE = "external_agents"
+EXTERNAL_AGENT_SEARCH_FIELDS = ("name", "description", "provider", "agent_name", "id")
 
 
 class ConfigurationBulkDelete(BaseModel):
@@ -515,6 +517,176 @@ def build_agent_config_router(
             )
         config_store.delete_item(
             SUBAGENT_TABLE,
+            item_id,
+            expected_repository_id=mutation_repository_id,
+        )
+        return {"ok": True}
+
+    def external_agent_not_found(code: str) -> HTTPException:
+        return management_error(
+            404,
+            code=code,
+            message_key="errors.externalAgentNotFound",
+            message="The External Agent preset does not exist.",
+        )
+
+    @router.get("/external-agents")
+    def list_external_agents(
+        request: Request,
+        view: Literal["full", "summary"] = "full",
+        q: str | None = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1)] = None,
+    ) -> list[dict] | dict:
+        if not configuration_collection_requested(request.query_params):
+            return config_store.list_items(EXTERNAL_AGENT_TABLE)
+        items = (
+            config_store.list_items(EXTERNAL_AGENT_TABLE)
+            if view == "full"
+            else config_store.list_item_summaries(EXTERNAL_AGENT_TABLE)
+        )
+        return configuration_collection(
+            items,
+            repository_context=config_store.repository_context(),
+            query=q,
+            search_fields=EXTERNAL_AGENT_SEARCH_FIELDS,
+            offset=offset,
+            limit=limit,
+        )
+
+    @router.post("/external-agents/delete")
+    def delete_external_agents(
+        payload: ConfigurationBulkDelete,
+    ) -> dict[str, int]:
+        mutation_repository_id = config_store.repository_id()
+        ids = (
+            list(dict.fromkeys(payload.ids))
+            if payload.ids is not None
+            else [
+                str(item["id"])
+                for item in config_store.list_item_summaries(
+                    EXTERNAL_AGENT_TABLE
+                )
+                if matches_configuration_query(
+                    item,
+                    payload.q or "",
+                    EXTERNAL_AGENT_SEARCH_FIELDS,
+                )
+            ]
+        )
+        if any(
+            config_store.get_item(EXTERNAL_AGENT_TABLE, item_id) is None
+            for item_id in ids
+        ):
+            raise external_agent_not_found("external_agent_not_found")
+        return {
+            "deleted": config_store.delete_items(
+                EXTERNAL_AGENT_TABLE,
+                ids,
+                expected_repository_id=mutation_repository_id,
+            )
+        }
+
+    @router.get("/external-agents/{item_id}")
+    def get_external_agent(item_id: str) -> dict:
+        item = config_store.get_item(EXTERNAL_AGENT_TABLE, item_id)
+        if item is None:
+            raise external_agent_not_found("external_agent_not_found")
+        return item
+
+    @router.post("/external-agents")
+    def create_external_agent(payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        report, validated = validation.validate_external_agent(
+            payload,
+            stage="external_agent_save",
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        item_id = config_store.new_id()
+        try:
+            config_store.save_item(
+                EXTERNAL_AGENT_TABLE,
+                item_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(EXTERNAL_AGENT_TABLE, item_id)
+
+    @router.post("/external-agents/{item_id}/copy")
+    def copy_external_agent(item_id: str, payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        name = _copy_name(payload)
+        source = config_store.get_item(EXTERNAL_AGENT_TABLE, item_id)
+        if source is None:
+            raise external_agent_not_found("external_agent_not_found")
+        candidate = dict(source)
+        candidate["name"] = name
+        report, validated = validation.validate_external_agent(
+            candidate,
+            stage="external_agent_copy",
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        copy_id = config_store.new_id()
+        try:
+            config_store.save_item(
+                EXTERNAL_AGENT_TABLE,
+                copy_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(EXTERNAL_AGENT_TABLE, copy_id)
+
+    @router.put("/external-agents/{item_id}")
+    def update_external_agent(item_id: str, payload: dict) -> dict:
+        mutation_repository_id = config_store.repository_id()
+        if config_store.get_item(EXTERNAL_AGENT_TABLE, item_id) is None:
+            raise external_agent_not_found("external_agent_not_found")
+        report, validated = validation.validate_external_agent(
+            payload,
+            stage="external_agent_save",
+            owner_id=item_id,
+        )
+        _raise_if_invalid(report)
+        assert validated is not None
+        try:
+            config_store.save_item(
+                EXTERNAL_AGENT_TABLE,
+                item_id,
+                validated,
+                expected_repository_id=mutation_repository_id,
+            )
+        except ValueError as exc:
+            raise management_error(
+                409,
+                code="configuration_name_conflict",
+                message_key="errors.configurationNameConflict",
+                message="A configuration with this name already exists.",
+            ) from exc
+        return config_store.get_item(EXTERNAL_AGENT_TABLE, item_id)
+
+    @router.delete("/external-agents/{item_id}")
+    def delete_external_agent(item_id: str) -> dict[str, bool]:
+        mutation_repository_id = config_store.repository_id()
+        if config_store.get_item(EXTERNAL_AGENT_TABLE, item_id) is None:
+            raise external_agent_not_found("external_agent_not_found")
+        config_store.delete_item(
+            EXTERNAL_AGENT_TABLE,
             item_id,
             expected_repository_id=mutation_repository_id,
         )

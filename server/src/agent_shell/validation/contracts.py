@@ -124,6 +124,15 @@ def _specific_contract_identity(
             "contract.python_package_folder_format_invalid",
             "validation.issue.contract.pythonPackageFolderFormatInvalid",
         )
+    if (
+        error_type == "value_error"
+        and scope == "external_agent"
+        and path == "env"
+    ):
+        return (
+            "contract.external_agent_env_reserved",
+            "validation.issue.contract.externalAgentEnvReserved",
+        )
     return None
 
 

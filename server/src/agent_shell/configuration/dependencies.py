@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 ConfigurationEntityKind = Literal[
     "component",
+    "external_agent",
     "main_agent",
     "subagent",
     "workflow",
@@ -69,6 +70,13 @@ def iter_configuration_entities(
             id=str(record.get("id", "")),
             kind="subagent",
             name=str(record.get("component_name", "")),
+            payload=record,
+        )
+    for record in _records(config.get("external_agents", [])):
+        yield ConfigurationEntity(
+            id=str(record.get("id", "")),
+            kind="external_agent",
+            name=str(record.get("name", "")),
             payload=record,
         )
     for record in _records(config.get("workflows", [])):

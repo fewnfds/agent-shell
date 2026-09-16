@@ -24,6 +24,9 @@ import type {
   ConfigurationCollection,
   ConfigurationOptions,
   ConfigurationSummary,
+  ExternalAgent,
+  ExternalAgentPayload,
+  ExternalAgentSummary,
   LangGraphGraphResponse,
   LangGraphHistoryResponse,
   LangGraphLifecyclePage,
@@ -794,6 +797,56 @@ export const managementApi = {
 
   deleteSubagentsMatching(query: string): Promise<{ deleted: number }> {
     return managementRequest('/subagents/delete', jsonBody({ q: query }))
+  },
+
+  listExternalAgentSummaries(
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<ExternalAgentSummary>> {
+    return managementRequest(`/external-agents${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
+  },
+
+  getExternalAgent(id: string): Promise<ExternalAgent> {
+    return managementRequest(recordPath('/external-agents', id))
+  },
+
+  createExternalAgent(payload: ExternalAgentPayload): Promise<ExternalAgent> {
+    return managementRequest('/external-agents', jsonBody(payload))
+  },
+
+  updateExternalAgent(
+    id: string,
+    payload: ExternalAgentPayload,
+  ): Promise<ExternalAgent> {
+    return managementRequest(recordPath('/external-agents', id), {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  copyExternalAgent(id: string, name: string): Promise<ExternalAgent> {
+    return managementRequest(
+      `${recordPath('/external-agents', id)}/copy`,
+      jsonBody({ name }),
+    )
+  },
+
+  deleteExternalAgent(id: string): Promise<{ ok: boolean }> {
+    return managementRequest(recordPath('/external-agents', id), {
+      method: 'DELETE',
+    })
+  },
+
+  deleteExternalAgents(ids: string[]): Promise<{ deleted: number }> {
+    return managementRequest('/external-agents/delete', jsonBody({ ids }))
+  },
+
+  deleteExternalAgentsMatching(query: string): Promise<{ deleted: number }> {
+    return managementRequest('/external-agents/delete', jsonBody({ q: query }))
   },
 
   getApiServer(): Promise<ApiServerSettings> {

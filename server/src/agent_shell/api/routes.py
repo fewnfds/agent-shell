@@ -160,6 +160,9 @@ def build_router(
             },
             "main_agents": config_store.list_item_summaries("main_agents"),
             "subagents": config_store.list_item_summaries("subagents"),
+            "external_agents": config_store.list_item_summaries(
+                "external_agents"
+            ),
             "workflows": workflow_store.list_item_summaries(),
         }
 

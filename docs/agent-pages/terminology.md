@@ -33,6 +33,7 @@
 | Endpoint | Node Catalog声明的输入/输出控制流端点 |
 | Edge | 从source endpoint到target endpoint的Control Edge；Start Edge静态激活，Command Edge声明goto目标 |
 | Subagent | 具有组件配置名、路由名、说明和 settings，可由 parent Agent 通过 `task` 同步调用的实体 |
+| External Agent / 外部 Agent | 保存由外部 CLI 承载的 agent 预设的配置实体；不进入 LangChain 装配，不产生官方 Thread 或 Run |
 | 代理组件 | 可被 Agent 按 UUID 引用的能力配置 |
 | 工作流组件 | 被 Workflow metadata 或 canvas Node 引用的固定类型配置 |
 | Subagent reference | Main Agent 保存的 `subagent_id`，运行时投影为官方 dictionary-based SubAgent |

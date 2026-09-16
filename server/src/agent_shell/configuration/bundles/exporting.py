@@ -129,6 +129,7 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
     config: dict[str, Any] = {
         "config_version": CONFIG_VERSION,
         "components": {},
+        "external_agents": [],
         "main_agents": [],
         "subagents": [],
         "workflows": [],
@@ -141,6 +142,8 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
             config["main_agents"].append(record)
         elif entity.kind == "subagent":
             config["subagents"].append(record)
+        elif entity.kind == "external_agent":
+            config["external_agents"].append(record)
         else:
             config["workflows"].append(record)
     return config

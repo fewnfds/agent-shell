@@ -157,6 +157,13 @@ class RepositoryValidationService:
                 stored=True,
             )
             issues.extend(self._semantic_issues(report))
+        for external_agent in config.get("external_agents", []):
+            report, _ = self._configuration_validation.validate_external_agent(
+                external_agent,
+                stage=stage,
+                owner_id=str(external_agent.get("id", "")),
+            )
+            issues.extend(self._semantic_issues(report))
         for main_agent in config.get("main_agents", []):
             report, _, _ = self._configuration_validation.validate_main_agent(
                 main_agent,

@@ -823,11 +823,71 @@ export interface SubagentPayload {
 
 export type Subagent = SubagentPayload & { id: string }
 
+export type ExternalAgentProvider = 'antigravity-cli'
+export type ExternalAgentEffort = 'low' | 'medium' | 'high'
+export type ExternalAgentConversation = 'new' | 'continue-latest'
+export type ExternalAgentOutputFormat = 'text' | 'json' | 'stream-json'
+export type ExternalAgentToolPermission =
+  | 'request-review'
+  | 'proceed-in-sandbox'
+  | 'always-proceed'
+  | 'strict'
+
+/** Built-in Antigravity CLI tools that `tools` may re-enable after the deny-all baseline. */
+export type ExternalAgentTool =
+  | 'view_file'
+  | 'run_command'
+  | 'manage_task'
+  | 'send_message'
+  | 'schedule'
+  | 'invoke_subagent'
+  | 'define_subagent'
+  | 'manage_subagents'
+  | 'write_to_file'
+  | 'replace_file_content'
+  | 'generate_image'
+  | 'read_url_content'
+  | 'search_web'
+  | 'find_by_name'
+  | 'grep_search'
+  | 'list_dir'
+  | 'ask_question'
+
+export interface ExternalAgentSummary {
+  id: string
+  name: string
+  description: string
+  provider: ExternalAgentProvider
+  agent_name: string
+}
+
+export interface ExternalAgentPayload {
+  name: string
+  description: string
+  provider: ExternalAgentProvider
+  agent_name: string
+  system_prompt: string
+  model: string | null
+  effort: ExternalAgentEffort | null
+  print_timeout: string
+  output_format: ExternalAgentOutputFormat
+  conversation: ExternalAgentConversation
+  exclude_default_components: boolean
+  tools: ExternalAgentTool[]
+  tool_guidance: string
+  tool_permission: ExternalAgentToolPermission
+  permission_allow: string[]
+  env: Record<string, string>
+}
+
+export type ExternalAgent = ExternalAgentPayload & { id: string }
+
 // Mirrors the backend `DraftValidationTarget` / `DraftValidationRequest`
 // (server/src/agent_shell/api/validation.py). `type` is an optional string that
 // defaults to "", and `payload` is an untyped JSON object (`dict[str, Any]`).
 type ValidationTarget =
   | { kind: 'block'; type: ManagedComponentType; id?: string }
+  | { kind: 'external_agent'; type?: string; id?: string }
   | { kind: 'main_agent'; type?: string; id?: string }
   | { kind: 'model_connection'; type?: string; id?: string }
   | { kind: 'subagent'; type?: string; id?: string }

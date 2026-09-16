@@ -14,6 +14,7 @@ from agent_shell.contracts import (
     BLOCK_MODELS,
     MANAGED_COMPONENT_MODELS,
     CapabilityReference,
+    ExternalAgentProfile,
     FilesystemToolConfigs,
     MainAgentProfile,
     StoredMainAgentProfile,
@@ -360,6 +361,36 @@ class ConfigurationValidationService:
                 )
             )
         return ValidationReport(stage=stage, issues=tuple(issues)), validated
+
+    def validate_external_agent(
+        self,
+        payload: dict[str, Any],
+        *,
+        stage: str,
+        owner_id: str = "",
+    ) -> tuple[ValidationReport, dict[str, Any] | None]:
+        """Validate a preset for an agent that runs outside the assembly."""
+
+        try:
+            model = ExternalAgentProfile.model_validate(
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "id"
+                }
+            )
+        except ValidationError as exc:
+            return (
+                report_from_validation_error(
+                    exc,
+                    stage=stage,
+                    scope="external_agent",
+                    owner_id=owner_id,
+                    owner_name=str(payload.get("name", "")),
+                ),
+                None,
+            )
+        return ValidationReport(stage=stage), model.model_dump(mode="json")
 
     def resolve_main_agent(
         self,

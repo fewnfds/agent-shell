@@ -5,6 +5,7 @@ const ComponentsPage = () => import('@/pages/ComponentsPage.vue')
 const ConfigLibraryPage = () => import('@/pages/ConfigLibraryPage.vue')
 const ConfigurationRepositoriesPage = () => import('@/pages/ConfigurationRepositoriesPage.vue')
 const EventFeedPage = () => import('@/pages/EventFeedPage.vue')
+const ExternalAgentPage = () => import('@/pages/ExternalAgentPage.vue')
 const FileManagerPage = () => import('@/pages/FileManagerPage.vue')
 const MainAgentPage = () => import('@/pages/MainAgentPage.vue')
 const MessageInterceptionPage = () => import('@/pages/MessageInterceptionPage.vue')
@@ -57,6 +58,7 @@ export const router = createRouter({
     { path: '/agents', redirect: '/agents/main' },
     { path: '/agents/main', component: MainAgentPage, meta: { titleKey: 'navigation.agents' } },
     { path: '/agents/subagents', component: SubagentPage, meta: { titleKey: 'navigation.agents' } },
+    { path: '/agents/external', component: ExternalAgentPage, meta: { titleKey: 'navigation.agents' } },
     { path: '/agent-components', component: ComponentsPage, meta: { titleKey: 'components.title' } },
     { path: '/agent-components/:type', component: ComponentsPage, meta: { titleKey: 'components.title' } },
     {

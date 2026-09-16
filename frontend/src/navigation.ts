@@ -64,6 +64,7 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
     items: [
       { path: '/agents/main', labelKey: 'navigation.sections.mainAgent' },
       { path: '/agents/subagents', labelKey: 'navigation.sections.subagents' },
+      { path: '/agents/external', labelKey: 'navigation.sections.externalAgents' },
     ],
   },
   {

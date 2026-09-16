@@ -23,6 +23,7 @@ class DraftValidationTarget(BaseModel):
 
     kind: Literal[
         "block",
+        "external_agent",
         "main_agent",
         "model_connection",
         "subagent",
@@ -94,6 +95,12 @@ def build_validation_router(
             )
         elif target.kind == "subagent":
             report, _ = validation.validate_subagent(
+                request.payload,
+                stage="draft_validation",
+                owner_id=target.id,
+            )
+        elif target.kind == "external_agent":
+            report, _ = validation.validate_external_agent(
                 request.payload,
                 stage="draft_validation",
                 owner_id=target.id,

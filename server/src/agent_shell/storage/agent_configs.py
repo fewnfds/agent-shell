@@ -13,6 +13,7 @@ from agent_shell.storage.file_config import FileConfigRepository
 
 class AgentConfigStore:
     _IDENTITY_COLUMNS = {
+        "external_agents": "name",
         "main_agents": "name",
         "subagents": "component_name",
     }
@@ -41,6 +42,13 @@ class AgentConfigStore:
         table = self._table(table)
         identity = self._identity_column(table)
         fields = {
+            "external_agents": (
+                "id",
+                "name",
+                "description",
+                "provider",
+                "agent_name",
+            ),
             "main_agents": ("id", "name", "enabled"),
             "subagents": ("id", "component_name", "name", "description"),
         }[table]
@@ -106,6 +114,7 @@ class AgentConfigStore:
             self._events,
             action="updated" if existing is not None else "created",
             entity={
+                "external_agents": "external-agent",
                 "main_agents": "main-agent",
                 "subagents": "subagent",
             }[table],
@@ -150,6 +159,7 @@ class AgentConfigStore:
                 self._events,
                 action="deleted",
                 entity={
+                    "external_agents": "external-agent",
                     "main_agents": "main-agent",
                     "subagents": "subagent",
                 }[table],

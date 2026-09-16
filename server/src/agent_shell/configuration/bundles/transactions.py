@@ -38,6 +38,8 @@ def _append_imported_records(config: dict, prepared: PreparedImport) -> None:
             config.setdefault("main_agents", []).append(record)
         elif entity.kind == "subagent":
             config.setdefault("subagents", []).append(record)
+        elif entity.kind == "external_agent":
+            config.setdefault("external_agents", []).append(record)
         else:
             record["enabled"] = False
             config.setdefault("workflows", []).append(record)
@@ -54,7 +56,12 @@ def _remove_imported_records(config: dict, target_ids: set[str]) -> None:
                     if not isinstance(record, dict)
                     or record.get("id") not in target_ids
                 ]
-    for key in ("main_agents", "subagents", "workflows"):
+    for key in (
+        "external_agents",
+        "main_agents",
+        "subagents",
+        "workflows",
+    ):
         records = config.get(key, [])
         if isinstance(records, list):
             config[key] = [

@@ -70,6 +70,7 @@ def _default_config() -> dict[str, Any]:
     return {
         "config_version": CONFIG_VERSION,
         "components": {},
+        "external_agents": [],
         "main_agents": [],
         "subagents": [],
         "workflows": [],
@@ -176,7 +177,9 @@ class FileConfigRepository:
     """Persistent configuration repository backed by layered YAML files."""
 
     _COMPONENT_DIR = "components"
-    _RECORD_SECTIONS = frozenset({"main_agents", "subagents", "workflows"})
+    _RECORD_SECTIONS = frozenset(
+        {"external_agents", "main_agents", "subagents", "workflows"}
+    )
 
     def __init__(
         self,
@@ -299,6 +302,7 @@ class FileConfigRepository:
             config["components"][directory.name] = records
 
         for category, key, identity, kind in (
+            ("external", "external_agents", "name", "external_agent"),
             ("main", "main_agents", "name", "main_agent"),
             ("subagent", "subagents", "component_name", "subagent"),
         ):
@@ -339,6 +343,7 @@ class FileConfigRepository:
     def _normalize_config(config: dict[str, Any]) -> None:
         config.setdefault("config_version", CONFIG_VERSION)
         config.setdefault("components", {})
+        config.setdefault("external_agents", [])
         config.setdefault("main_agents", [])
         config.setdefault("subagents", [])
         config.setdefault("workflows", [])
@@ -446,6 +451,8 @@ class FileConfigRepository:
                 config["main_agents"].append(record)
             elif entity.kind == "subagent":
                 config["subagents"].append(record)
+            elif entity.kind == "external_agent":
+                config["external_agents"].append(record)
             else:
                 config["workflows"].append(record)
         return config
@@ -1073,6 +1080,7 @@ class FileConfigRepository:
 
     def _write_agents(self, config: dict[str, Any], expected: set[Path]) -> None:
         for category, key, identity, kind in (
+            ("external", "external_agents", "name", "external_agent"),
             ("main", "main_agents", "name", "main_agent"),
             ("subagent", "subagents", "component_name", "subagent"),
         ):
