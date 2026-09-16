@@ -27,6 +27,7 @@ import type {
   ExternalAgent,
   ExternalAgentPayload,
   ExternalAgentRuntimeStatus,
+  ExternalAgentSessionDetail,
   ExternalAgentSummary,
   LangGraphGraphResponse,
   LangGraphHistoryResponse,
@@ -441,6 +442,15 @@ export const managementApi = {
     return managementRequest(
       `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/snapshot`,
       signal ? { signal } : {},
+    )
+  },
+
+  getExternalAgentSession(
+    lifecycleId: string,
+    sessionId: string,
+  ): Promise<ExternalAgentSessionDetail> {
+    return managementRequest(
+      `/workflow-lifecycles/${encodeURIComponent(lifecycleId)}/monitoring/external-agents/${encodeURIComponent(sessionId)}/events`,
     )
   },
 

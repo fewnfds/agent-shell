@@ -7,6 +7,8 @@ import { useRoute } from 'vue-router'
 
 import {
   managementApi,
+  type ExternalAgentSessionDetail,
+  type ExternalAgentSessionObservation,
   type LangGraphGraphResponse,
   type LangGraphLifecycleSnapshot,
   type LangGraphLifecycleStore,
@@ -16,6 +18,7 @@ import {
 } from '@/api'
 import PageShell from '@/components/PageShell.vue'
 import AgentThreadView from '@/components/runtime-monitoring/AgentThreadView.vue'
+import ExternalAgentSessionView from '@/components/runtime-monitoring/ExternalAgentSessionView.vue'
 import {
   monitoringPrimaryRun,
   monitoringThreadActive,
@@ -86,12 +89,16 @@ const snapshot = ref<LangGraphLifecycleSnapshot | null>(null) as Ref<LangGraphLi
 const store = ref<LangGraphLifecycleStore | null>(null)
 const selectedThreadId = ref('')
 const selectedRunId = ref('')
+const selectedExternalAgentSessionId = ref('')
+const externalAgentDetail = ref<ExternalAgentSessionDetail | null>(null)
 const graph = ref<LangGraphGraphResponse | null>(null)
 const state = ref<LangGraphStateResponse | null>(null)
 const loading = ref(false)
 const detailLoading = ref(false)
+const externalAgentLoading = ref(false)
 const error = ref('')
 const detailError = ref('')
+const externalAgentError = ref('')
 const workbench = ref<HTMLElement | null>(null)
 const workbenchWidth = ref(0)
 const columnPreferences = ref<ColumnPreferences>(readColumnPreferences())
@@ -100,6 +107,7 @@ let refreshTimer: ReturnType<typeof setInterval> | undefined
 let workbenchResizeObserver: ResizeObserver | undefined
 let lifecycleGeneration = 0
 let detailGeneration = 0
+let externalAgentGeneration = 0
 let refreshGeneration = 0
 let refreshing = false
 
@@ -231,11 +239,37 @@ function resizeColumnWithKeyboard(target: ActiveResize['target'], event: Keyboar
 }
 
 function selectThread(thread: LangGraphThreadObservation): void {
+  selectedExternalAgentSessionId.value = ''
+  externalAgentDetail.value = null
+  externalAgentError.value = ''
   selectedThreadId.value = thread.thread_id
   selectedRunId.value = monitoringPrimaryRun(thread)?.run_id ?? ''
 }
 
+function selectExternalAgent(session: ExternalAgentSessionObservation): void {
+  selectedThreadId.value = ''
+  selectedRunId.value = ''
+  graph.value = null
+  state.value = null
+  detailError.value = ''
+  selectedExternalAgentSessionId.value = session.session_id
+}
+
 function keepOrSelect(snapshotValue: LangGraphLifecycleSnapshot): void {
+  const currentExternalAgent = snapshotValue.external_agent_sessions.find((session) => (
+    session.session_id === selectedExternalAgentSessionId.value
+  ))
+  if (currentExternalAgent) {
+    selectedThreadId.value = ''
+    selectedRunId.value = ''
+    return
+  }
+  if (selectedExternalAgentSessionId.value) {
+    selectedExternalAgentSessionId.value = ''
+    externalAgentDetail.value = null
+    externalAgentError.value = ''
+  }
+
   const currentThread = snapshotValue.threads.find((thread) => (
     thread.thread_id === selectedThreadId.value
   ))
@@ -253,7 +287,11 @@ function keepOrSelect(snapshotValue: LangGraphLifecycleSnapshot): void {
   const defaultThread = requestedThread
     ?? snapshotValue.threads.find(monitoringThreadActive)
     ?? snapshotValue.threads.at(-1)
-  if (!defaultThread) return
+  if (!defaultThread) {
+    const defaultExternalAgent = snapshotValue.external_agent_sessions.at(-1)
+    if (defaultExternalAgent) selectExternalAgent(defaultExternalAgent)
+    return
+  }
   selectedThreadId.value = defaultThread.thread_id
   selectedRunId.value = requestedRunId && requestedThread
     ? requestedRunId
@@ -316,6 +354,37 @@ async function loadRunDetails(): Promise<void> {
   }
 }
 
+async function loadExternalAgentSession(): Promise<void> {
+  const sessionId = selectedExternalAgentSessionId.value
+  const generation = ++externalAgentGeneration
+  externalAgentError.value = ''
+  if (!sessionId) {
+    externalAgentDetail.value = null
+    externalAgentLoading.value = false
+    return
+  }
+  externalAgentLoading.value = true
+  try {
+    const detail = await managementApi.getExternalAgentSession(lifecycleId.value, sessionId)
+    if (
+      generation !== externalAgentGeneration
+      || sessionId !== selectedExternalAgentSessionId.value
+    ) return
+    externalAgentDetail.value = detail
+  }
+  catch (cause) {
+    if (
+      generation === externalAgentGeneration
+      && sessionId === selectedExternalAgentSessionId.value
+    ) {
+      externalAgentError.value = managementError.describe(cause).display
+    }
+  }
+  finally {
+    if (generation === externalAgentGeneration) externalAgentLoading.value = false
+  }
+}
+
 async function refreshActiveFacts(): Promise<void> {
   if (!lifecycleActive.value || refreshing) return
   const targetLifecycleId = lifecycleId.value
@@ -330,6 +399,9 @@ async function refreshActiveFacts(): Promise<void> {
     snapshot.value = snapshotValue
     store.value = storeValue
     keepOrSelect(snapshotValue)
+    if (selectedExternalAgentSessionId.value) {
+      await loadExternalAgentSession()
+    }
     const runId = selectedRunId.value
     if (selectedGraphKind.value === 'workflow' && runId) {
       const stateValue = await managementApi.getLangGraphRunState(targetLifecycleId, runId)
@@ -366,21 +438,39 @@ watch(lifecycleId, () => {
   lifecycleGeneration += 1
   refreshGeneration += 1
   detailGeneration += 1
+  externalAgentGeneration += 1
   refreshing = false
   snapshot.value = null
   store.value = null
   selectedThreadId.value = ''
   selectedRunId.value = ''
+  selectedExternalAgentSessionId.value = ''
+  externalAgentDetail.value = null
   graph.value = null
   state.value = null
   error.value = ''
   detailError.value = ''
+  externalAgentError.value = ''
   void loadLifecycle()
 })
 
 watch(
-  () => `${selectedThreadId.value}:${selectedRunId.value}:${selectedGraphKind.value ?? ''}`,
-  () => { void loadRunDetails() },
+  () => [
+    selectedThreadId.value,
+    selectedRunId.value,
+    selectedGraphKind.value ?? '',
+    selectedExternalAgentSessionId.value,
+  ].join(':'),
+  () => {
+    if (selectedExternalAgentSessionId.value) {
+      void loadExternalAgentSession()
+    }
+    else {
+      externalAgentDetail.value = null
+      externalAgentError.value = ''
+      void loadRunDetails()
+    }
+  },
 )
 
 watch(workbench, (element) => {
@@ -400,6 +490,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  lifecycleGeneration += 1
+  refreshGeneration += 1
+  detailGeneration += 1
+  externalAgentGeneration += 1
   if (refreshTimer) clearInterval(refreshTimer)
   workbenchResizeObserver?.disconnect()
   finishColumnResize()
@@ -425,8 +519,11 @@ onUnmounted(() => {
     >
       <RuntimeThreadIndex
         id="runtime-monitoring-threads"
+        :external-agents="snapshot.external_agent_sessions"
+        :selected-external-agent-session-id="selectedExternalAgentSessionId"
         :threads="snapshot.threads"
         :selected-thread-id="selectedThreadId"
+        @select-external-agent="selectExternalAgent"
         @select="selectThread"
       />
 
@@ -454,8 +551,14 @@ onUnmounted(() => {
 
         <div class="runtime-detail-grid">
           <section id="runtime-monitoring-primary" class="runtime-primary-view">
+            <ExternalAgentSessionView
+              v-if="selectedExternalAgentSessionId"
+              :detail="externalAgentDetail"
+              :error="externalAgentError"
+              :loading="externalAgentLoading"
+            />
             <AgentThreadView
-              v-if="selectedGraphKind === 'agent' && selectedThreadAvailable && selectedAssistantId"
+              v-else-if="selectedGraphKind === 'agent' && selectedThreadAvailable && selectedAssistantId"
               :key="`${selectedAssistantId}:${selectedThreadId}`"
               :assistant-id="selectedAssistantId"
               :thread-id="selectedThreadId"

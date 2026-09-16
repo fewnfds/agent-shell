@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from agent_shell.http_surface import management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.runtime.langgraph_lifecycle import (
+    LangGraphExternalAgentSessionNotFound,
     LangGraphLifecycleNotFound,
     LangGraphLifecycleService,
     LangGraphRunNotFound,
@@ -19,6 +20,13 @@ def _not_found(exc: LookupError):
             code="workflow_lifecycle_not_found",
             message_key="errors.workflowLifecycleNotFound",
             message="The Workflow Lifecycle does not exist.",
+        )
+    if isinstance(exc, LangGraphExternalAgentSessionNotFound):
+        return management_error(
+            404,
+            code="external_agent_session_not_found",
+            message_key="errors.externalAgentSessionNotFound",
+            message="The External Agent session does not exist in this Lifecycle.",
         )
     return management_error(
         404,
@@ -37,7 +45,11 @@ def build_runtime_monitoring_router(service: LangGraphLifecycleService) -> APIRo
     async def read(call):
         try:
             return await call()
-        except (LangGraphLifecycleNotFound, LangGraphRunNotFound) as exc:
+        except (
+            LangGraphExternalAgentSessionNotFound,
+            LangGraphLifecycleNotFound,
+            LangGraphRunNotFound,
+        ) as exc:
             raise _not_found(exc) from exc
 
     @router.get(prefix + "/snapshot")
@@ -47,6 +59,12 @@ def build_runtime_monitoring_router(service: LangGraphLifecycleService) -> APIRo
     @router.get(prefix + "/store")
     async def store(lifecycle_id: str):
         return await read(lambda: service.store(lifecycle_id))
+
+    @router.get(prefix + "/external-agents/{session_id}/events")
+    async def external_agent_events(lifecycle_id: str, session_id: str):
+        return await read(
+            lambda: service.external_agent_session(lifecycle_id, session_id)
+        )
 
     @router.get(prefix + "/download")
     async def download(lifecycle_id: str):

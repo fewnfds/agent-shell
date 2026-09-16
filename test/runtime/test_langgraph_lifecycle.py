@@ -709,6 +709,7 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
         "run-peer-2",
     ]
     assert snapshot["run_count"] == 3
+    assert snapshot["external_agent_sessions"] == []
     assert [namespace["namespace"][-1] for namespace in store["namespaces"]] == [
         "configuration",
         "input",
@@ -731,6 +732,7 @@ def test_snapshot_groups_multiple_runs_and_export_uses_public_resources() -> Non
     assert "threads/thread-peer/state.json" in names
     assert "threads/thread-peer/history.json" in names
     assert archived_snapshot["run_count"] == 3
+    assert archived_snapshot["external_agent_sessions"] == []
     assert len(archived_store["namespaces"]) == 4
     assert client.assistants.graph_reads.count("assistant-peer") == 1
 

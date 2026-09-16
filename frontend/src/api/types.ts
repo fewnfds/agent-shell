@@ -660,6 +660,46 @@ export interface LangGraphThreadObservation {
   error: LangGraphMonitoringError | null
 }
 
+export type ExternalAgentSessionStatus =
+  | 'running'
+  | 'success'
+  | 'timeout'
+  | 'denied'
+  | 'failed'
+
+export interface ExternalAgentSessionObservation {
+  session_id: string
+  external_agent_id: string
+  external_agent_name: string
+  provider: string
+  agent_name: string
+  status: ExternalAgentSessionStatus
+  conversation_requested: string
+  conversation_id: string | null
+  conversation_reused: boolean | null
+  model: string | null
+  effort: string | null
+  started_at: string | null
+  finished_at: string | null
+  duration_ms: number | null
+  usage: Record<string, number>
+  denied_actions: string[]
+  error_code: string | null
+  error_message: string | null
+  home_path: string | null
+  workspace_path: string | null
+  event_log: string | null
+  stderr_log: string | null
+  result_file: string | null
+  error: string | null
+}
+
+export interface ExternalAgentSessionDetail {
+  session: ExternalAgentSessionObservation
+  events: Array<Record<string, JsonValue>>
+  result: Record<string, JsonValue> | null
+}
+
 export interface LangGraphLifecycleSubject {
   graph_kind: 'agent' | 'workflow'
   id: string
@@ -682,6 +722,7 @@ export type LangGraphLifecyclePage = PaginationResponse<LangGraphLifecycleSummar
 
 export interface LangGraphLifecycleSnapshot extends LangGraphLifecycleSummary {
   threads: LangGraphThreadObservation[]
+  external_agent_sessions: ExternalAgentSessionObservation[]
 }
 
 export interface LangGraphGraphResponse {

@@ -22,6 +22,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
   run_count: 3,
   active_run_count: 1,
   error_run_count: 0,
+  external_agent_sessions: [],
   threads: [
     {
       thread_id: 'thread-agent',
@@ -168,6 +169,12 @@ const WorkflowRuntimeViewStub = defineComponent({
   name: 'WorkflowRuntimeView',
   props: ['graph', 'state'],
   template: '<div data-testid="workflow-runtime">{{ state?.next?.join(",") }}</div>',
+})
+
+const ExternalAgentSessionViewStub = defineComponent({
+  name: 'ExternalAgentSessionView',
+  props: ['detail', 'error', 'loading'],
+  template: '<div data-testid="external-agent-session">{{ detail?.result?.response ?? "" }}</div>',
 })
 
 const browserStorage = new Map<string, string>()
@@ -510,5 +517,89 @@ describe('RuntimeMonitoringPage', () => {
     expect((restoredWrapper.get('.runtime-monitoring-workbench').element as HTMLElement)
       .style.getPropertyValue('--runtime-threads-width')).toBe('336px')
     restoredWrapper.unmount()
+  })
+
+  it('selects an External Agent session and renders its persisted events', async () => {
+    const externalAgent = {
+      session_id: '11111111-1111-4111-8111-111111111111',
+      external_agent_id: '22222222-2222-4222-8222-222222222222',
+      external_agent_name: 'Antigravity Reviewer',
+      provider: 'antigravity-cli',
+      agent_name: 'reviewer',
+      status: 'success' as const,
+      conversation_requested: 'new',
+      conversation_id: null,
+      conversation_reused: false,
+      model: null,
+      effort: 'low',
+      started_at: '2026-09-06T00:00:00Z',
+      finished_at: '2026-09-06T00:00:01Z',
+      duration_ms: 1000,
+      usage: { total_tokens: 10 },
+      denied_actions: [],
+      error_code: null,
+      error_message: null,
+      home_path: null,
+      workspace_path: 'H:/workspace',
+      event_log: null,
+      stderr_log: null,
+      result_file: null,
+      error: null,
+    }
+    vi.spyOn(managementApi, 'getLangGraphLifecycleSnapshot').mockResolvedValue({
+      ...snapshot,
+      external_agent_sessions: [externalAgent],
+    })
+    vi.spyOn(managementApi, 'getLangGraphLifecycleStore').mockResolvedValue({
+      lifecycle_id: 'lifecycle-1',
+      namespaces: [],
+    })
+    vi.spyOn(managementApi, 'getLangGraphRunState').mockResolvedValue({
+      run_id: 'run-agent',
+      thread_id: 'thread-agent',
+      state: { values: {}, next: [] },
+      error: null,
+    })
+    const detailSpy = vi.spyOn(managementApi, 'getExternalAgentSession').mockResolvedValue({
+      session: externalAgent,
+      events: [{ kind: 'text_delta', payload: { text: 'hello' }, at: 't1' }],
+      result: { status: 'success', response: 'P6-EXTERNAL-OK' },
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
+          component: RuntimeMonitoringPage,
+        },
+      ],
+    })
+    await router.push('/system/workflow-lifecycles/lifecycle-1/monitoring')
+    await router.isReady()
+    const wrapper = mount(RuntimeMonitoringPage, {
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } }), router],
+        stubs: {
+          AgentThreadView: AgentThreadViewStub,
+          ExternalAgentSessionView: ExternalAgentSessionViewStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const externalRow = wrapper.findAll('.runtime-thread-row')
+      .find((row) => row.text().includes('Antigravity Reviewer'))
+    expect(externalRow).toBeDefined()
+    await externalRow?.trigger('click')
+    await flushPromises()
+
+    expect(detailSpy).toHaveBeenCalledWith(
+      'lifecycle-1',
+      '11111111-1111-4111-8111-111111111111',
+    )
+    expect(wrapper.get('[data-testid="external-agent-session"]').text()).toBe(
+      'P6-EXTERNAL-OK',
+    )
+    wrapper.unmount()
   })
 })

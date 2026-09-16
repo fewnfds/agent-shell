@@ -104,6 +104,8 @@ sessions/<session_id>/             meta.json / events.ndjson / stderr.log / resu
 
 四种终态与 `events.ndjson`、`stderr.log`、`result.json` 一起保留在 `sessions/<session_id>/`，供运行监控与排查使用。
 
+运行监控按 Lifecycle 读取这些 Session，并在 Thread 列表旁显示预设名、session ID 与状态；选中后展示最终响应、错误和事件时间线。它们是 Shell-owned 的外部运行记录，不会显示为 LangGraph Thread/Run。
+
 ## 页面
 
 管理台【外部 Agent】页面提供预设的新建、编辑、复制与删除。新建预设的第一步是选择 `provider`，字段集由该取值决定；`antigravity-cli` 之外的 provider 在契约层被拒绝，不进入配置。

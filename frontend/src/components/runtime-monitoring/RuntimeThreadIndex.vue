@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-import type { LangGraphThreadObservation } from '@/api'
+import type {
+  ExternalAgentSessionObservation,
+  LangGraphThreadObservation,
+} from '@/api'
 
 import {
   monitoringCompactTime,
@@ -14,11 +17,14 @@ import {
 } from './presentation'
 
 defineProps<{
+  externalAgents: ExternalAgentSessionObservation[]
   threads: LangGraphThreadObservation[]
+  selectedExternalAgentSessionId: string
   selectedThreadId: string
 }>()
 
 const emit = defineEmits<{
+  selectExternalAgent: [session: ExternalAgentSessionObservation]
   select: [thread: LangGraphThreadObservation]
 }>()
 const { t } = useI18n()
@@ -31,13 +37,17 @@ function threadName(thread: LangGraphThreadObservation): string {
 function threadUpdatedAt(thread: LangGraphThreadObservation): string {
   return thread.thread?.updated_at ?? monitoringPrimaryRun(thread)?.run?.updated_at ?? ''
 }
+
+function externalAgentUpdatedAt(session: ExternalAgentSessionObservation): string {
+  return session.finished_at ?? session.started_at ?? ''
+}
 </script>
 
 <template>
   <aside class="runtime-thread-index" :aria-label="t('runtimeMonitoring.threads')">
     <header class="runtime-panel-heading">
       <h2>{{ t('runtimeMonitoring.threads') }}</h2>
-      <span>{{ threads.length }}</span>
+      <span>{{ threads.length + externalAgents.length }}</span>
     </header>
     <div class="runtime-thread-list" role="listbox">
       <button
@@ -78,6 +88,42 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
             </span>
             <span class="runtime-thread-status">
               {{ t(`workflowLifecycles.runStatuses.${monitoringThreadStatus(thread)}`) }}
+            </span>
+          </span>
+        </span>
+      </button>
+      <button
+        v-for="session in externalAgents"
+        :key="session.session_id"
+        class="runtime-thread-row runtime-thread-row--external"
+        :class="[
+          { 'runtime-thread-row--selected': session.session_id === selectedExternalAgentSessionId },
+          `runtime-thread-row--${session.status}`,
+        ]"
+        type="button"
+        role="option"
+        :aria-selected="session.session_id === selectedExternalAgentSessionId"
+        @click="emit('selectExternalAgent', session)"
+      >
+        <span class="runtime-thread-icon">
+          <i class="bi bi-terminal" aria-hidden="true" />
+        </span>
+        <span class="runtime-thread-main">
+          <span class="runtime-thread-summary">
+            <strong>{{ session.external_agent_name || session.session_id }}</strong>
+            <time
+              :datetime="externalAgentUpdatedAt(session)"
+              :title="monitoringLocalTime(externalAgentUpdatedAt(session))"
+            >{{ monitoringCompactTime(externalAgentUpdatedAt(session)) }}</time>
+          </span>
+          <span class="runtime-thread-meta">
+            <span class="runtime-thread-identity" :title="session.session_id">
+              {{ monitoringShortId(session.session_id) }}
+              <span aria-hidden="true">·</span>
+              {{ t('runtimeMonitoring.externalAgent.label') }}
+            </span>
+            <span class="runtime-thread-status">
+              {{ t(`runtimeMonitoring.externalAgentStatuses.${session.status}`) }}
             </span>
           </span>
         </span>
@@ -165,12 +211,14 @@ function threadUpdatedAt(thread: LangGraphThreadObservation): string {
   color: var(--bs-success);
 }
 
-.runtime-thread-row--error .runtime-thread-icon {
+.runtime-thread-row--error .runtime-thread-icon,
+.runtime-thread-row--failed .runtime-thread-icon {
   color: var(--bs-danger);
 }
 
 .runtime-thread-row--timeout .runtime-thread-icon,
-.runtime-thread-row--interrupted .runtime-thread-icon {
+.runtime-thread-row--interrupted .runtime-thread-icon,
+.runtime-thread-row--denied .runtime-thread-icon {
   color: var(--bs-warning);
 }
 

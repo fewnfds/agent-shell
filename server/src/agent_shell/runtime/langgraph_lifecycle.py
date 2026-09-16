@@ -9,6 +9,10 @@ from typing import Any
 from urllib.parse import quote
 
 from agent_shell.external_agents.layout import remove_antigravity_lifecycle_state
+from agent_shell.external_agents.monitoring import (
+    read_external_agent_session,
+    read_external_agent_sessions,
+)
 from agent_shell.runtime.lifecycle_monitoring_archive import (
     LifecycleMonitoringArchive,
     build_lifecycle_monitoring_archive,
@@ -44,6 +48,10 @@ class LangGraphRunNotFound(LookupError):
     pass
 
 
+class LangGraphExternalAgentSessionNotFound(LookupError):
+    pass
+
+
 class LangGraphLifecycleActive(RuntimeError):
     pass
 
@@ -58,6 +66,7 @@ class _LifecycleObservation:
     threads: list[dict[str, Any]]
     thread_groups: list[dict[str, Any]]
     run_entries: list[dict[str, Any]]
+    external_agent_sessions: list[dict[str, Any]]
     relations: list[GraphRunCallRelation]
     read_failures: list[Exception]
     start_error: dict[str, Any] | None = None
@@ -237,6 +246,11 @@ class LangGraphLifecycleService:
 
         lifecycle_id = lifecycle.lifecycle_id
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
+        external_agent_sessions = await asyncio.to_thread(
+            read_external_agent_sessions,
+            self._data_root,
+            lifecycle_id,
+        )
         start_error: dict[str, Any] | None = None
         error_item = await client.store.get_item(
             lifecycle_input_namespace(lifecycle_id),
@@ -354,6 +368,7 @@ class LangGraphLifecycleService:
             threads=threads,
             thread_groups=thread_groups,
             run_entries=run_entries,
+            external_agent_sessions=external_agent_sessions,
             relations=relations,
             read_failures=read_failures,
             start_error=start_error,
@@ -373,6 +388,11 @@ class LangGraphLifecycleService:
             for thread in threads
             if (timestamp := _utc_datetime(thread.get("updated_at"))) is not None
         )
+        for session in observation.external_agent_sessions:
+            for field in ("finished_at", "started_at"):
+                timestamp = _utc_datetime(session.get(field))
+                if timestamp is not None:
+                    updated_values.append(timestamp)
         if observation.start_error:
             start_error_timestamp = _utc_datetime(
                 observation.start_error.get("occurred_at")
@@ -605,7 +625,26 @@ class LangGraphLifecycleService:
         return {
             **self._summary(observation),
             "threads": observation.thread_groups,
+            "external_agent_sessions": observation.external_agent_sessions,
         }
+
+    async def external_agent_session(
+        self,
+        lifecycle_id: str,
+        session_id: str,
+    ) -> dict[str, Any]:
+        async with self._client_factory() as client:
+            if not await self._is_known(client, lifecycle_id):
+                raise LangGraphLifecycleNotFound(lifecycle_id)
+        value = await asyncio.to_thread(
+            read_external_agent_session,
+            self._data_root,
+            lifecycle_id,
+            session_id,
+        )
+        if value is None:
+            raise LangGraphExternalAgentSessionNotFound(session_id)
+        return value
 
     async def store(self, lifecycle_id: str) -> dict[str, Any]:
         async with self._client_factory() as client:
@@ -746,7 +785,11 @@ class LangGraphLifecycleService:
             threads = await self._threads(client, lifecycle_id)
             observation = await self._observe_lifecycle(client, lifecycle, threads)
             summary = self._summary(observation)
-            snapshot = {**summary, "threads": observation.thread_groups}
+            snapshot = {
+                **summary,
+                "threads": observation.thread_groups,
+                "external_agent_sessions": observation.external_agent_sessions,
+            }
             files["snapshot.json"] = snapshot
             results.append({"path": "snapshot.json", "status": "available"})
             await capture("store.json", lambda: self._store_data(client, lifecycle_id))
