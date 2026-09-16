@@ -7,7 +7,7 @@ Agent Shell 在同一个 Agent Server deployment 中注册两类独立 Graph：
 - Main Agent：由 LangChain `create_agent()` 与显式 middleware assembly 构造的完整 Agent graph，拥有 AgentState、messages、Thread、Run、checkpoint 和 Agent Event Output。
 - Workflow：Start/Command/End control graph，拥有只含 `shared_vars` 的 Workflow State、自己的 Thread/Run/checkpoint 和 Workflow Event Output。
 
-两者都可以设置为 OpenAI-compatible model 入口。Workflow 需要 AI 时，由 Command 通过 `runtime.context.agent_runs` 启动 Main Agent，不把 Agent 嵌入 Canvas。
+两者都可以设置为 OpenAI-compatible model 入口。Workflow 需要 AI 时，由 Command 通过 `runtime.context.agent_runs` 启动 Main Agent，或通过节点绑定的 `runtime.context.external_agent` 调用外部 CLI；Agent 本身不嵌入 Canvas。
 
 ## Workflow
 

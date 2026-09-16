@@ -59,6 +59,7 @@ const managementError = useManagementError()
 const { notify } = useToasts()
 const workflow = ref<Workflow | null>(null)
 const commands = ref<ConfigurationSummary[]>([])
+const externalAgents = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
 // Vue Flow's `Node`/`Edge` are deeply recursive, so `ref<WorkflowCanvasNode[]>([])`
 // makes TypeScript evaluate `UnwrapRef` past its instantiation depth. Letting the
@@ -116,6 +117,7 @@ const graphRevision = computed(() => JSON.stringify({
     position: node.position,
     type: node.data.nodeType,
     commandId: node.data.commandId,
+    externalAgentId: node.data.externalAgentId,
   })),
   edges: edges.value.map((edge) => ({
     id: edge.id,
@@ -366,6 +368,14 @@ function selectCommand(nodeId: string, commandId: string): void {
   ))
 }
 
+function selectExternalAgent(nodeId: string, externalAgentId: string): void {
+  nodes.value = nodes.value.map((node) => (
+    node.id === nodeId
+      ? { ...node, data: { ...node.data, externalAgentId } }
+      : node
+  ))
+}
+
 function clearSelection(): void {
   nodes.value = nodes.value.map((node) => ({ ...node, selected: false }))
   edges.value = edges.value.map((edge) => ({ ...edge, selected: false }))
@@ -601,15 +611,17 @@ async function loadWorkflow(id: string): Promise<void> {
   serverProblems.value = []
   markClean()
   try {
-    const [metadata, graph, options, catalog] = await Promise.all([
+    const [metadata, graph, options, externalAgentSummaries, catalog] = await Promise.all([
       managementApi.getWorkflow(id),
       managementApi.getWorkflowGraph(id),
       managementApi.getConfigurationOptions(),
+      managementApi.listExternalAgentSummaries(),
       managementApi.listWorkflowNodeCatalog(),
     ])
     if (generation !== loadGeneration) return
     workflow.value = metadata
     commands.value = options.components.command ?? []
+    externalAgents.value = externalAgentSummaries.items
     nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
@@ -821,6 +833,7 @@ onUnmounted(() => {
           :edge-type-options="selectedEdgeTypeOptions"
           :input-endpoints="selectedNodeInputEndpoints"
           :commands="commands"
+          :external-agents="externalAgents"
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
           :output-endpoints="selectedNodeOutputEndpoints"
@@ -832,6 +845,7 @@ onUnmounted(() => {
           @select-edge-target-endpoint="selectEdgeTargetEndpoint"
           @select-edge-type="selectEdgeType"
           @update-command="selectCommand"
+          @update-external-agent="selectExternalAgent"
           @update-node-id="updateNodeId"
         />
         <nav class="workflow-tool-rail" :aria-label="t('workflows.editor.rightTools')">

@@ -195,6 +195,8 @@ export const zhCN = {
       removeCommand: '删除 Command 节点',
       command: 'Command 节点',
       commandConfig: 'Command 配置',
+      externalAgentConfig: '外部 Agent',
+      externalAgentNone: '无',
       noCommands: '尚未配置 Command 节点',
       noCommandSelected: '未选择 Command 节点',
       stateContract: 'State contract',

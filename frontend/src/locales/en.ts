@@ -197,6 +197,8 @@ export const en: MessageSchema = {
       removeCommand: 'Remove Command Node node',
       command: 'Command Node',
       commandConfig: 'Command Node configuration',
+      externalAgentConfig: 'External Agent',
+      externalAgentNone: 'None',
       noCommands: 'No Command Node is configured',
       noCommandSelected: 'No Command Node selected',
       stateContract: 'State contract',

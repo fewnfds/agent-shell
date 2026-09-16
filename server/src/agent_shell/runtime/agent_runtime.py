@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from agent_shell.contracts import (
+    ExternalAgentProfile,
     FilesystemBlock,
     McpRequirementBlock,
 )
@@ -50,6 +51,9 @@ from agent_shell.runtime.response_scheduler import (
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.runtime.workflow_data import WorkflowDataService
+from agent_shell.external_agents.commands import ExternalAgentCommands
+from agent_shell.external_agents.runtime import AntigravityRunner
+from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.validation import validate_workflow_executable
 from agent_shell.validation import ValidationReport
@@ -712,6 +716,8 @@ class AgentRuntime:
         files: FileManagerService,
         *,
         blocks: BlockStore | None = None,
+        agent_configs: AgentConfigStore | None = None,
+        external_agent_runner: AntigravityRunner | None = None,
         python_packages_dir: Path | None = None,
         runtime_dir: Path | None = None,
         workflow_data: WorkflowDataService,
@@ -722,12 +728,63 @@ class AgentRuntime:
         self._builder = builder
         self._files = files
         self._blocks = blocks
+        self._agent_configs = agent_configs
+        self._external_agent_runner = external_agent_runner
         self._python_packages_dir = python_packages_dir
         self._runtime_dir = runtime_dir
         self._workflow_data = workflow_data
         self._runtime_diagnostics = runtime_diagnostics
         self._run_config = dict(run_config or {})
         self._graph_store = graph_store
+
+    def _external_agent_bindings(
+        self,
+        bindings: Mapping[str, str],
+        *,
+        lifecycle_id: str,
+    ) -> dict[str, ExternalAgentCommands]:
+        """Resolve each node's preset from the frozen configuration snapshot."""
+
+        if not bindings:
+            return {}
+        runner = self._external_agent_runner
+        if runner is None:
+            raise AgentRuntimeError(
+                "workflow.external_agent_runtime_unavailable",
+                "The External Agent runtime is not configured.",
+                status_code=500,
+            )
+        commands: dict[str, ExternalAgentCommands] = {}
+        for node_id, preset_id in bindings.items():
+            stored = (
+                self._agent_configs.get_item("external_agents", preset_id)
+                if self._agent_configs is not None
+                else None
+            )
+            if stored is None:
+                raise AgentRuntimeError(
+                    "workflow.external_agent_not_found",
+                    f"The External Agent preset {preset_id} is not in this "
+                    "Lifecycle's configuration snapshot.",
+                    status_code=422,
+                )
+            try:
+                profile = ExternalAgentProfile.model_validate(
+                    {key: value for key, value in stored.items() if key != "id"}
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "workflow.external_agent_invalid",
+                    "The selected External Agent preset is invalid.",
+                    status_code=422,
+                ) from exc
+            commands[node_id] = ExternalAgentCommands(
+                runner,
+                profile,
+                preset_id=preset_id,
+                lifecycle_id=lifecycle_id,
+            )
+        return commands
 
     def build_workflow_structure(
         self,
@@ -1138,10 +1195,14 @@ class AgentRuntime:
         messages_sha = client_messages_sha(messages)
 
         command_blocks: dict[str, tuple[str, CommandBlock]] = {}
+        external_agent_bindings: dict[str, str] = {}
         for command_node in command_nodes:
-            command_id = str(
-                CommandNodeConfig.model_validate(command_node.config).command_id
-            )
+            node_config = CommandNodeConfig.model_validate(command_node.config)
+            command_id = str(node_config.command_id)
+            if node_config.external_agent_id is not None:
+                external_agent_bindings[command_node.id] = (
+                    node_config.external_agent_id
+                )
             stored_command = (
                 self._blocks.get_block_internal("command", command_id)
                 if self._blocks is not None
@@ -1260,11 +1321,16 @@ class AgentRuntime:
                 if mcp_runtime is not None
                 else {}
             )
+            external_agents_by_node = self._external_agent_bindings(
+                external_agent_bindings,
+                lifecycle_id=identity.lifecycle_id,
+            )
             context = (
                 server_context.with_runtime_bindings(
                     agent_run_runtime=agent_run_runtime,
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
+                    external_agents_by_node=external_agents_by_node,
                 )
                 if server_context is not None
                 else WorkflowRuntimeContext.for_run(
@@ -1272,6 +1338,7 @@ class AgentRuntime:
                     agent_run_runtime=agent_run_runtime,
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
+                    external_agents_by_node=external_agents_by_node,
                 )
             )
 

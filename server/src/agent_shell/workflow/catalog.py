@@ -16,6 +16,7 @@ class CommandNodeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     command_id: ConfigurationId
+    external_agent_id: ConfigurationId | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,6 +14,7 @@ const props = defineProps<{
   edgeSourceEndpoints: WorkflowNodeHandleSpec[]
   edgeTargetEndpoints: WorkflowNodeHandleSpec[]
   edgeTypeOptions: WorkflowCanvasEdgeType[]
+  externalAgents: ConfigurationSummary[]
   inputEndpoints: WorkflowNodeHandleSpec[]
   commands: ConfigurationSummary[]
   node: WorkflowCanvasNode | null
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   selectEdgeTargetEndpoint: [edgeId: string, endpointId: string]
   selectEdgeType: [edgeId: string, edgeType: WorkflowCanvasEdgeType]
   updateCommand: [nodeId: string, commandId: string]
+  updateExternalAgent: [nodeId: string, externalAgentId: string]
   updateNodeId: [nodeId: string, nextNodeId: string]
 }>()
 
@@ -75,6 +77,15 @@ function hasConfiguration(options: ConfigurationSummary[], id: string): boolean 
 function updateCommand(event: Event): void {
   if (!props.node || props.node.data.nodeType !== 'command') return
   emit('updateCommand', props.node.id, (event.target as HTMLSelectElement).value)
+}
+
+function updateExternalAgent(event: Event): void {
+  if (!props.node || props.node.data.nodeType !== 'command') return
+  emit(
+    'updateExternalAgent',
+    props.node.id,
+    (event.target as HTMLSelectElement).value,
+  )
 }
 
 function commitNodeId(): void {
@@ -152,6 +163,14 @@ function selectEdgeTargetEndpoint(event: Event): void {
               <option v-if="commands.length === 0" value="">{{ $t('workflows.editor.noCommands') }}</option>
               <option v-if="node.data.commandId && !hasConfiguration(commands, node.data.commandId)" disabled :value="node.data.commandId">{{ $t('common.missingConfiguration', { id: node.data.commandId }) }}</option>
               <option v-for="command in commands" :key="command.id" :value="command.id">{{ command.name }}</option>
+            </select>
+          </div>
+          <div class="workflow-inspector-row">
+            <label class="workflow-inspector-label" for="workflow-node-external-agent"><span>{{ $t('workflows.editor.externalAgentConfig') }}</span><span aria-hidden="true">:</span></label>
+            <select id="workflow-node-external-agent" class="form-select form-select-sm workflow-inspector-select" :value="node.data.externalAgentId ?? ''" @change="updateExternalAgent">
+              <option value="">{{ $t('workflows.editor.externalAgentNone') }}</option>
+              <option v-if="node.data.externalAgentId && !hasConfiguration(externalAgents, node.data.externalAgentId)" disabled :value="node.data.externalAgentId">{{ $t('common.missingConfiguration', { id: node.data.externalAgentId }) }}</option>
+              <option v-for="externalAgent in externalAgents" :key="externalAgent.id" :value="externalAgent.id">{{ externalAgent.name }}</option>
             </select>
           </div>
           <button class="workflow-inspector-delete" type="button" @click="emit('removeNode', node.id)"><i class="bi bi-trash" aria-hidden="true" />{{ $t('workflows.editor.removeCommand') }}</button>

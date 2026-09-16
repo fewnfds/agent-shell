@@ -18,6 +18,13 @@ const workflow: Workflow = {
   enabled: true,
 }
 const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Route' }
+const externalAgent = {
+  id: '22222222-2222-4222-8222-222222222222',
+  name: 'Local Antigravity',
+  description: 'Runs the local Antigravity CLI.',
+  provider: 'antigravity-cli' as const,
+  agent_name: 'reviewer',
+}
 const graph: WorkflowGraphDocument = {
   definition: {
     schema_version: 1,
@@ -91,6 +98,12 @@ beforeEach(() => {
     main_agents: [],
     subagents: [],
     workflows: [],
+  })
+  vi.spyOn(managementApi, 'listExternalAgentSummaries').mockResolvedValue({
+    items: [externalAgent],
+    total: 1,
+    repository_id: '00000000-0000-4000-8000-000000000099',
+    repository_revision: 1,
   })
   vi.spyOn(managementApi, 'listWorkflowNodeCatalog').mockResolvedValue(catalog)
   vi.spyOn(managementApi, 'validateWorkflow').mockResolvedValue({ valid: true, stage: 'workflow_publish', issues: [] })

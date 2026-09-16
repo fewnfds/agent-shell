@@ -752,6 +752,7 @@ export interface WorkflowGraphNode {
   type_version: 1
   config: {
     command_id?: string
+    external_agent_id?: string
   }
 }
 

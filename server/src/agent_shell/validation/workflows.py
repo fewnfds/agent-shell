@@ -43,6 +43,8 @@ class WorkflowConfigurationValidator(Protocol):
         expected_type: str,
     ) -> ValidationIssue: ...
 
+    def configuration_entity_type(self, entity_id: str) -> str | None: ...
+
 
 class StoredWorkflowConfiguration(WorkflowDefinition):
     enabled: Annotated[bool, Field(strict=True)]
@@ -166,7 +168,26 @@ def workflow_executable_report(
 
     for node_index, node in enumerate(document.definition.nodes):
         if node.type == "command":
-            reference = CommandNodeConfig.model_validate(node.config).command_id
+            node_config = CommandNodeConfig.model_validate(node.config)
+            reference = node_config.command_id
+            if node_config.external_agent_id is not None and (
+                configuration_validation.configuration_entity_type(
+                    node_config.external_agent_id
+                )
+                != "external_agent"
+            ):
+                referenced_issues.append(
+                    _component_reference_issue(
+                        configuration_validation,
+                        workflow=workflow,
+                        path=(
+                            f"definition.nodes[{node_index}].config"
+                            ".external_agent_id"
+                        ),
+                        reference_id=node_config.external_agent_id,
+                        expected_type="external-agent",
+                    )
+                )
             stored = blocks.get_block_internal("command", reference)
             if stored is not None:
                 report = component_report("command", reference, stored)

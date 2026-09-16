@@ -49,6 +49,9 @@ const commands: ConfigurationSummary[] = [
   { id: 'command-1', name: 'Route request' },
   { id: 'command-2', name: 'Finish request' },
 ]
+const externalAgents: ConfigurationSummary[] = [
+  { id: 'external-agent-1', name: 'Local Antigravity' },
+]
 
 describe('Workflow control panels', () => {
   it('offers Command as the only draggable executable node', async () => {
@@ -72,6 +75,7 @@ describe('Workflow control panels', () => {
         edgeSourceEndpoints: [],
         edgeTargetEndpoints: [],
         edgeTypeOptions: [],
+        externalAgents,
         inputEndpoints: commandCatalog.input_handles,
         commands,
         node,
@@ -83,14 +87,17 @@ describe('Workflow control panels', () => {
       global: { plugins: [i18n()] },
     })
     await wrapper.get('#workflow-node-command').setValue(commands[1]!.id)
+    await wrapper.get('#workflow-node-external-agent').setValue(externalAgents[0]!.id)
     await wrapper.get('#workflow-node-id').setValue('review')
     await wrapper.get('#workflow-node-id').trigger('blur')
     expect(wrapper.emitted('updateCommand')).toEqual([[node.id, commands[1]!.id]])
+    expect(wrapper.emitted('updateExternalAgent')).toEqual([[node.id, externalAgents[0]!.id]])
     expect(wrapper.emitted('updateNodeId')).toEqual([[node.id, 'review']])
   })
 
   it('connects and serializes one normal Edge kind', () => {
     const command = newCommandCanvasNode('router', commands[0]!.id)
+    command.data.externalAgentId = externalAgents[0]!.id
     const end = { id: 'end', type: 'end', position: { x: 400, y: 0 }, data: { nodeType: 'end' } } as WorkflowCanvasNode
     const nodes = [command, end]
     const catalog = [commandCatalog, endCatalog]
@@ -102,6 +109,10 @@ describe('Workflow control panels', () => {
     expect(document.definition.state_contract).toBe('agent-shell.workflow.control.v1')
     expect(document.definition.edges[0]).toEqual({
       id: 'edge-1', source: 'router', source_handle: 'next', target: 'end', target_handle: 'in',
+    })
+    expect(document.definition.nodes.find((node) => node.id === 'router')?.config).toEqual({
+      command_id: commands[0]!.id,
+      external_agent_id: externalAgents[0]!.id,
     })
   })
 

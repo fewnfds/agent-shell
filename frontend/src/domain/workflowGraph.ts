@@ -19,6 +19,7 @@ import type {
 export interface WorkflowCanvasNodeData {
   nodeType: WorkflowNodeType
   commandId?: string
+  externalAgentId?: string
 }
 
 /**
@@ -73,6 +74,7 @@ function canvasNode(
     data: {
       nodeType: node.type,
       commandId: node.config.command_id ?? '',
+      externalAgentId: node.config.external_agent_id ?? '',
     },
   }
 }
@@ -160,7 +162,12 @@ export function workflowCanvasToDocument(
         type: node.data.nodeType,
         type_version: 1,
         config: node.data.nodeType === 'command'
-          ? { command_id: node.data.commandId ?? '' }
+          ? {
+              command_id: node.data.commandId ?? '',
+              ...(node.data.externalAgentId
+                ? { external_agent_id: node.data.externalAgentId }
+                : {}),
+            }
           : {},
       })),
       edges: edges.map((edge) => ({
@@ -190,7 +197,7 @@ export function newCommandCanvasNode(
     type: 'command',
     position: { ...position },
     deletable: true,
-    data: { nodeType: 'command', commandId },
+    data: { nodeType: 'command', commandId, externalAgentId: '' },
   }
 }
 

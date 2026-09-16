@@ -108,4 +108,4 @@ sessions/<session_id>/             meta.json / events.ndjson / stderr.log / resu
 
 管理台【外部 Agent】页面提供预设的新建、编辑、复制与删除。新建预设的第一步是选择 `provider`，字段集由该取值决定；`antigravity-cli` 之外的 provider 在契约层被拒绝，不进入配置。
 
-Main Agent 与 Subagent 都无法引用 External Agent：它们的 `capability_refs`、`tool_refs`、`middleware_refs`、`mcp_refs` 与 `subagents` 只接受其各自声明过的引用类型。Workflow 侧的调用编排见 [Command Node](../wizard-pages/command-config.md)。
+Main Agent 与 Subagent 都无法引用 External Agent：它们的 `capability_refs`、`tool_refs`、`middleware_refs`、`mcp_refs` 与 `subagents` 只接受其各自声明过的引用类型。Workflow 的 Command Node 通过 `external_agent_id` 绑定预设，运行时从 `runtime.context.external_agent` 调用；完整编排见 [Command Node](../wizard-pages/command-config.md)。

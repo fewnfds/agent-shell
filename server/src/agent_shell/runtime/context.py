@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Mapping
 
+from agent_shell.external_agents.commands import ExternalAgentCommands
 from agent_shell.runtime.agent_run_commands import AgentRunCommands, AgentRunRuntime
 from agent_shell.runtime.run_calls import RunCaller
 from agent_shell.runtime.workflow_run_commands import WorkflowRunCommands, WorkflowRunRuntime
@@ -67,7 +68,9 @@ class WorkflowRuntimeContext(WorkflowRunContext):
     agent_runs: AgentRunCommands | None = None
     workflow_runs: WorkflowRunCommands | None = None
     mcp: McpCommands | None = None
+    external_agent: ExternalAgentCommands | None = None
     _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
+    _external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None
 
     def run_context(self) -> WorkflowRunContext:
         return WorkflowRunContext(
@@ -85,6 +88,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         agent_run_runtime: AgentRunRuntime | None = None,
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
+        external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
         context = cls(
             request_id=identity.request_id,
@@ -98,6 +102,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             agent_run_runtime=agent_run_runtime,
             workflow_run_runtime=workflow_run_runtime,
             mcp_commands_by_node=mcp_commands_by_node,
+            external_agents_by_node=external_agents_by_node,
         )
 
     def with_runtime_bindings(
@@ -106,6 +111,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         agent_run_runtime: AgentRunRuntime | None = None,
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
+        external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None,
     ) -> "WorkflowRuntimeContext":
         """Attach execution-only capabilities without exposing them as JSON context."""
 
@@ -136,6 +142,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
                 else None
             ),
             _mcp_commands_by_node=mcp_commands_by_node,
+            _external_agents_by_node=external_agents_by_node,
         )
 
     def for_server_run(self, run_id: str) -> "WorkflowRuntimeContext":
@@ -183,6 +190,11 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             mcp=(
                 self._mcp_commands_by_node.get(workflow_node_id)
                 if self._mcp_commands_by_node is not None
+                else None
+            ),
+            external_agent=(
+                self._external_agents_by_node.get(workflow_node_id)
+                if self._external_agents_by_node is not None
                 else None
             ),
         )

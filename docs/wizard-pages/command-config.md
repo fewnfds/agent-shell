@@ -39,7 +39,7 @@ def create_command():
 
 ## 内置成功示例
 
-内置 catalog 提供四个职责互补的 Command：
+内置 catalog 提供五个职责互补的 Command：
 
 | 模板 | 从哪里取值 | 写入 `update.shared_vars` | `goto` 来源 |
 | --- | --- | --- | --- |
@@ -47,6 +47,7 @@ def create_command():
 | `runtime-context-command` | `runtime.context`、`runtime.execution_info`、`shared_vars.runtime_target_node_id` | 显式 JSON-compatible `command_runtime.context/execution_info` projection | `runtime_target_node_id` |
 | `agent-run-command` | `shared_vars.agent_run` 与 `runtime.context.agent_runs` | `agent_run_result` | `agent_run.target_node_id` |
 | `workflow-run-command` | `shared_vars.workflow_run` 与 `runtime.context.workflow_runs` | `workflow_run_result` | `workflow_run.target_node_id` |
+| `antigravity-agent-command` | `shared_vars.external_agent_run` 或 Lifecycle request 的最后一条 `user` 消息，加上 `runtime.context.external_agent` | `external_agent_result` | 无显式 `goto`；沿当前 Command 的 outgoing Edge 自然继续 |
 
 State routing 的成功输入例如：
 
@@ -137,6 +138,21 @@ async def command(state, runtime):
 每次 start 创建独立 Thread/Run；显式续聊时复用 idle Thread 并创建新 Run。相同 caller Run 中的 `operation_id` 幂等，不能绑定到另一个 target。
 
 跨 Workflow 调用使用 `runtime.context.workflow_runs.start_workflow(...)`，规则相同。child State 不会自动合并进 caller State。
+
+## External Agent
+
+Command Node 的 config 可绑定一个 External Agent 预设：
+
+```json
+{
+  "command_id": "<command-uuid>",
+  "external_agent_id": "<external-agent-uuid>"
+}
+```
+
+绑定后，运行中的 `runtime.context.external_agent` 是该节点对应的 facade；未绑定时为 `None`。facade 提供 `name`、`agent_name` 和 `run(prompt, conversation=None, on_event=None)`。它启动预设描述的外部 CLI，返回包含 `status`、`response`、`conversation_id`、`denied_actions` 等字段的结果。
+
+示例 `antigravity-agent-command` 演示完整调用：优先读取 `shared_vars.external_agent_run.prompt`，没有覆盖值时读取 Lifecycle Store 中本次请求的最后一条 `user` 消息；CLI 事件通过 `get_stream_writer()` 传给 Workflow Event Output。External Agent 的 system prompt 由预设拥有，示例不会把请求中的 `system` / `assistant` 历史压平后注入一次 CLI 提问。
 
 ## MCP
 

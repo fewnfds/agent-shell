@@ -56,7 +56,8 @@ child结果不会自动写入Workflow State。Command明确选择需要的projec
 内置 `state-routing-command`、`runtime-context-command`、`agent-run-command` 和
 `workflow-run-command` 分别给出 State/update/goto、Runtime identity、Agent Run
 五种操作与 Workflow Run 五种操作的完整成功实现。其输入 key 与输出 projection 见
-[Command Node](../../wizard-pages/command-config.md#内置成功示例)，两类 Run facade 的
+[Command Node](../../wizard-pages/command-config.md#内置成功示例)，其中 `antigravity-agent-command`
+演示 External Agent 预设的节点绑定与 CLI 事件出流；两类 Run facade 的
 逐方法签名见[独立 Agent 与 Workflow Run 调用](07-cross-workflow-runs.md#3-runtime-command)。
 
 ## 3. Custom Tool

@@ -14,6 +14,7 @@ from langgraph.store.base import BaseStore
 from langgraph_sdk import get_client
 
 from agent_shell.file_manager import FileManagerService
+from agent_shell.external_agents.runtime import AntigravityRunner
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.provider_http import ProviderHttpClients
@@ -1808,6 +1809,12 @@ class RequestSnapshotRuntime:
         self._agent_server_headers = {"Authorization": f"Bearer {agent_server_token}"}
         self._active_lifecycles: dict[str, LifecycleRunCoordinator] = {}
         self._run_lifecycles: dict[str, LifecycleRunCoordinator] = {}
+        # One runner per process keeps the External Agent conversation guard
+        # shared across every Workflow Run that reaches a CLI preset.
+        self._external_agents = AntigravityRunner(
+            data_root=configuration.data_root,
+            runtime_root=runtime_dir,
+        )
         self._langgraph_lifecycles = LangGraphLifecycleService(
             self.new_agent_server_client,
             workflow_lifecycle_settings,
@@ -1992,6 +1999,8 @@ class RequestSnapshotRuntime:
                 python_packages_dir=python_packages_dir,
                 runtime_dir=self._runtime_dir,
                 blocks=blocks,
+                agent_configs=configs,
+                external_agent_runner=self._external_agents,
                 workflow_data=self._workflow_data,
                 runtime_diagnostics=self._runtime_diagnostics,
                 run_config=run_config,

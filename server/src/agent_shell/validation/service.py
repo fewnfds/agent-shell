@@ -562,6 +562,11 @@ class ConfigurationValidationService:
             actual_type=actual_type,
         )
 
+    def configuration_entity_type(self, entity_id: str) -> str | None:
+        """Return the Repository entity type owning one UUID, if any."""
+
+        return self._repository.configuration_entity_type(entity_id)
+
     def _load_references(
         self,
         references: dict[str, str],

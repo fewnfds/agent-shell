@@ -8,6 +8,7 @@
 
 - Workflow UUID；
 - 每个Command配置UUID；
+- 可选的 External Agent 预设UUID；
 - Command代码中使用的Main Agent/Workflow UUID；
 - 可选Workflow Event Output UUID。
 
@@ -42,7 +43,10 @@ Content-Type: application/json
         "id": "review",
         "type": "command",
         "type_version": 1,
-        "config": {"command_id": "<command-uuid>"}
+        "config": {
+          "command_id": "<command-uuid>",
+          "external_agent_id": "<external-agent-uuid>"
+        }
       },
       {"id": "end", "type": "end", "type_version": 1, "config": {}}
     ],
@@ -82,7 +86,7 @@ layout只供Vue Flow编辑；runtime不读取position或viewport。
 - Start/End ID固定且不可删除；
 - Command ID在Graph内唯一，可编辑；
 - Node type/version必须存在于后端Catalog；
-- Command config只保存`command_id`；
+- Command config保存`command_id`，并可保存一个可选的`external_agent_id`；
 - 所有可执行Command从Start可达；
 - End可以没有incoming Edge；
 - reachable leaf Command可自然结束。
