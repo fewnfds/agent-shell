@@ -731,7 +731,6 @@ def build_api_server_router(
                 "stream must be a boolean.",
                 param="stream",
             )
-        messages = payload.get("messages")
         if server_settings["message_interception_enabled"]:
             intercepted = message_interception.capture(
                 request_id=getattr(request.state, "request_id", ""),
@@ -804,14 +803,14 @@ def build_api_server_router(
             if agent_entry:
                 execution = await lifecycle_coordinator.start_agent(
                     main_agent,
-                    messages,
+                    payload,
                     request_id=getattr(request.state, "request_id", ""),
                     public_model=model,
                 )
             else:
                 execution = await lifecycle_coordinator.start_workflow(
                     workflow,
-                    messages,
+                    payload,
                     request_id=getattr(request.state, "request_id", ""),
                     public_model=model,
                 )

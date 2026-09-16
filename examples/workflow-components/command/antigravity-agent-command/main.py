@@ -40,6 +40,7 @@ from langgraph.types import Command
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
     lifecycle_input_namespace,
+    lifecycle_request_messages,
 )
 
 
@@ -66,7 +67,7 @@ async def _request_prompt(runtime):
         lifecycle_input_namespace(context.lifecycle_id),
         LIFECYCLE_INPUT_KEY,
     )
-    messages = item.value.get("messages") if item is not None else None
+    messages = lifecycle_request_messages(item.value) if item is not None else None
     if not isinstance(messages, list):
         raise RuntimeError("the Lifecycle request messages are unavailable")
     for message in reversed(messages):

@@ -47,7 +47,7 @@ def create_command():
 | `runtime-context-command` | `runtime.context`、`runtime.execution_info`、`shared_vars.runtime_target_node_id` | 显式 JSON-compatible `command_runtime.context/execution_info` projection | `runtime_target_node_id` |
 | `agent-run-command` | `shared_vars.agent_run` 与 `runtime.context.agent_runs` | `agent_run_result` | `agent_run.target_node_id` |
 | `workflow-run-command` | `shared_vars.workflow_run` 与 `runtime.context.workflow_runs` | `workflow_run_result` | `workflow_run.target_node_id` |
-| `antigravity-agent-command` | `shared_vars.external_agent_run` 或 Lifecycle request 的最后一条 `user` 消息，加上 `runtime.context.external_agent` | `external_agent_result` | 无显式 `goto`；沿当前 Command 的 outgoing Edge 自然继续 |
+| `antigravity-agent-command` | `shared_vars.external_agent_run` 或 Lifecycle `input/request` envelope 中 `request.messages` 的最后一条 `user` 消息，加上 `runtime.context.external_agent` | `external_agent_result` | 无显式 `goto`；沿当前 Command 的 outgoing Edge 自然继续 |
 
 State routing 的成功输入例如：
 

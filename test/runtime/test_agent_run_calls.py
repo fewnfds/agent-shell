@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.runtime.request_snapshot import LifecycleRunCoordinator
 from agent_shell.runtime.lifecycle_store import (
+    LIFECYCLE_INPUT_KEY,
     LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
     lifecycle_input_namespace,
@@ -269,6 +270,13 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
             "id": "11111111-1111-4111-8111-111111111111",
             "name": "Researcher",
         }
+        request = {
+            "model": "Researcher",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": False,
+            "temperature": 0.7,
+            "x_trace": {"id": "trace-1"},
+        }
         coordinator, client, _detached = _coordinator(profile)
         coordinator._lifecycle_id = ""
         client.runs.failure = RuntimeError("run creation exploded")
@@ -276,7 +284,7 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
         try:
             await coordinator.start_agent(
                 profile,
-                [{"role": "user", "content": "hello"}],
+                request,
                 request_id="request-1",
             )
         except RuntimeError as exc:
@@ -290,10 +298,13 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
         marker = client.store.items[
             lifecycle_input_namespace(coordinator.lifecycle_id)
         ][LIFECYCLE_START_ERROR_KEY]
+        request_item = client.store.items[
+            lifecycle_input_namespace(coordinator.lifecycle_id)
+        ][LIFECYCLE_INPUT_KEY]
         diagnostics = coordinator._owner.runtime_diagnostics
-        return record, marker, diagnostics, client.store.events
+        return record, marker, request_item, diagnostics, client.store.events
 
-    record, marker, diagnostics, events = asyncio.run(scenario())
+    record, marker, request_item, diagnostics, events = asyncio.run(scenario())
     assert record["lifecycle_id"]
     assert record["request_id"] == "request-1"
     assert record["created_at"].endswith("+00:00")
@@ -308,6 +319,23 @@ def test_request_entry_run_start_failure_is_recorded_and_terminal() -> None:
     assert marker["request_id"] == "request-1"
     assert marker["graph_kind"] == "agent"
     assert marker["subject_name"] == "Researcher"
+    assert request_item == {
+        "schema_version": 1,
+        "request": {
+            "model": "Researcher",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": False,
+            "temperature": 0.7,
+            "x_trace": {"id": "trace-1"},
+        },
+        "metadata": {
+            "lifecycle_id": record["lifecycle_id"],
+            "request_id": "request-1",
+            "graph_kind": "agent",
+            "main_agent_id": "11111111-1111-4111-8111-111111111111",
+            "main_agent_name": "Researcher",
+        },
+    }
     assert len(diagnostics.runtime_errors) == 1
     diagnostic, kwargs = diagnostics.runtime_errors[0]
     assert diagnostic.message == "RuntimeError: run creation exploded"
@@ -337,7 +365,7 @@ def test_start_error_marker_survives_diagnostic_write_failure() -> None:
         try:
             await coordinator.start_agent(
                 profile,
-                [{"role": "user", "content": "hello"}],
+                {"messages": [{"role": "user", "content": "hello"}]},
                 request_id="request-1",
             )
         except RuntimeError as exc:

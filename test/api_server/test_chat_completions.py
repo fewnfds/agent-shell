@@ -975,7 +975,7 @@ def test_root_agent_middleware_injects_frozen_client_messages(
         "class InjectRequest(AgentMiddleware):\n"
         "    async def abefore_agent(self, state, runtime):\n"
         "        item = await runtime.store.aget(lifecycle_input_namespace(runtime.context.lifecycle_id), LIFECYCLE_INPUT_KEY)\n"
-        "        content = item.value['messages'][-1]['content']\n"
+        "        content = item.value['request']['messages'][-1]['content']\n"
             "        return {'messages': Overwrite([HumanMessage(content=content)])}\n"
         "def create_middleware(agent):\n"
         "    return InjectRequest()\n",

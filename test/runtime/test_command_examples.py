@@ -22,6 +22,7 @@ REPOSITORY = Path(__file__).parents[2]
 EXAMPLES = REPOSITORY / "examples" / "workflow-components" / "command"
 EXAMPLE_KEYS = {
     "agent-run-command",
+    "antigravity-agent-command",
     "runtime-context-command",
     "state-routing-command",
     "workflow-run-command",

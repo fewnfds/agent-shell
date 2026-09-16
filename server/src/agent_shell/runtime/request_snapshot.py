@@ -30,7 +30,7 @@ from agent_shell.runtime.errors import (
     decode_server_run_error,
     describe_exception,
 )
-from agent_shell.runtime.input_messages import client_messages_sha, validate_client_messages
+from agent_shell.runtime.input_messages import validate_client_messages
 from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleService
 from agent_shell.runtime.lifecycle_configuration import (
     LIFECYCLE_CONFIGURATION_SCHEMA_VERSION,
@@ -54,9 +54,11 @@ from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
     LifecycleRecord,
+    build_lifecycle_request_envelope,
     lifecycle_configuration_namespace,
     lifecycle_input_namespace,
     lifecycle_record_namespace,
+    lifecycle_request_messages,
 )
 from agent_shell.runtime.workflow_data import WorkflowDataService
 from agent_shell.runtime.workflow_run_calls import (
@@ -547,7 +549,7 @@ class LifecycleRunCoordinator:
     async def start_workflow(
         self,
         workflow: Mapping[str, Any],
-        raw_messages: object,
+        request: Mapping[str, Any],
         **kwargs: Any,
     ) -> RunExecution:
         request_id = str(kwargs.pop("request_id", ""))
@@ -555,7 +557,7 @@ class LifecycleRunCoordinator:
         if kwargs:
             unexpected = ", ".join(sorted(kwargs))
             raise TypeError(f"unexpected request Run arguments: {unexpected}")
-        messages = validate_client_messages(raw_messages)
+        messages = validate_client_messages(request.get("messages"))
         lifecycle_id = str(uuid4())
         self._begin_lifecycle(lifecycle_id)
         binding = self._new_binding(
@@ -583,16 +585,15 @@ class LifecycleRunCoordinator:
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
-                {
-                    "messages": deepcopy(messages),
-                    "messages_sha": client_messages_sha(messages),
-                    "metadata": {
+                build_lifecycle_request_envelope(
+                    request,
+                    {
                         "lifecycle_id": lifecycle_id,
                         "request_id": request_id,
                         "workflow_id": str(workflow["id"]),
                         "workflow_name": str(workflow["name"]),
                     },
-                },
+                ),
                 index=False,
             )
             result = await self._start_bound_run(binding, thread_stream)
@@ -624,7 +625,7 @@ class LifecycleRunCoordinator:
     async def start_agent(
         self,
         main_agent: Mapping[str, Any],
-        raw_messages: object,
+        request: Mapping[str, Any],
         **kwargs: Any,
     ) -> RunExecution:
         """Start one request-entry Main Agent as an official root Run."""
@@ -634,7 +635,7 @@ class LifecycleRunCoordinator:
         if kwargs:
             unexpected = ", ".join(sorted(kwargs))
             raise TypeError(f"unexpected request Run arguments: {unexpected}")
-        messages = validate_client_messages(raw_messages)
+        messages = validate_client_messages(request.get("messages"))
         lifecycle_id = str(uuid4())
         self._begin_lifecycle(lifecycle_id)
         loop = asyncio.get_running_loop()
@@ -667,17 +668,16 @@ class LifecycleRunCoordinator:
             await client.store.put_item(
                 lifecycle_input_namespace(lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
-                {
-                    "messages": deepcopy(messages),
-                    "messages_sha": client_messages_sha(messages),
-                    "metadata": {
+                build_lifecycle_request_envelope(
+                    request,
+                    {
                         "lifecycle_id": lifecycle_id,
                         "request_id": request_id,
                         "graph_kind": "agent",
                         "main_agent_id": str(main_agent["id"]),
                         "main_agent_name": str(main_agent["name"]),
                     },
-                },
+                ),
                 index=False,
             )
             result = await self._start_bound_agent_run(binding, thread_stream)
@@ -798,10 +798,8 @@ class LifecycleRunCoordinator:
                 lifecycle_input_namespace(binding.lifecycle_id),
                 LIFECYCLE_INPUT_KEY,
             )
-            messages = (
-                input_item.value.get("messages")
-                if input_item is not None and isinstance(input_item.value, Mapping)
-                else None
+            messages = lifecycle_request_messages(
+                input_item.value if input_item is not None else None
             )
             if not isinstance(messages, list):
                 raise RuntimeError("the Workflow Lifecycle input is unavailable")

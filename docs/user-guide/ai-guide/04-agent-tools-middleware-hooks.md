@@ -279,7 +279,7 @@ Subagent 把相同形状保存在 `settings.middleware_refs`。LangChain 按以�
 
 ## 9. Agent Additional Prompt
 
-Agent Additional Prompt是内置Custom Middleware template。它在`abefore_agent`中读取current Agent可访问的request或delegated messages，以及显式选择的Store artifact与Filesystem，然后返回该Agent私有的初始`messages`和checkpointed initialization marker。
+Agent Additional Prompt是内置Custom Middleware template。它在`abefore_agent`中读取current Agent可访问的AgentState messages、Lifecycle `input/request` envelope的`request.messages`或delegated messages，以及显式选择的Store artifact与Filesystem，然后返回该Agent私有的初始`messages`和checkpointed initialization marker。
 
 创建入口：
 

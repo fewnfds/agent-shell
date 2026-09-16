@@ -225,7 +225,7 @@ POST /agent-shell/api/blocks/custom-middleware
 }
 ```
 
-AAP可以读取request `messages[]`、有明确namespace的Runtime Store artifact和Agent Filesystem。它使用private checkpointed marker，只在stateful Thread第一次执行时注入；同一Thread后续Run延续AgentState而不重复附加。每份AAP为目标Agent定义材料范围、裁剪、排序和role编排，并保留输入消息的`system`、`user`、`assistant`语义。
+AAP可以读取AgentState request messages、Lifecycle `input/request` envelope的`request.messages`、有明确namespace的Runtime Store artifact和Agent Filesystem。它使用private checkpointed marker，只在stateful Thread第一次执行时注入；同一Thread后续Run延续AgentState而不重复附加。每份AAP为目标Agent定义材料范围、裁剪、排序和role编排，并保留输入消息的`system`、`user`、`assistant`语义。
 
 多个 Middleware 的顺序具有运行意义。LangChain `before_*` hook 正序执行，`after_*` hook 逆序执行，`wrap_*` 按列表嵌套。多个 Middleware 修改 `messages` 时，先明确组合顺序，再保存 `middleware_refs`。
 

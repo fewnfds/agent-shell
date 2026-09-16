@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -12,6 +14,7 @@ LIFECYCLE_CONFIGURATION_KEY = "snapshot"
 LIFECYCLE_INPUT_KEY = "request"
 LIFECYCLE_START_ERROR_KEY = "start-error"
 LIFECYCLE_RECORD_SCHEMA_VERSION = 1
+LIFECYCLE_REQUEST_SCHEMA_VERSION = 1
 
 
 class LifecycleEntrySubject(BaseModel):
@@ -56,6 +59,26 @@ def lifecycle_input_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return _namespace(lifecycle_id, "input")
 
 
+def build_lifecycle_request_envelope(
+    request: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": LIFECYCLE_REQUEST_SCHEMA_VERSION,
+        "request": deepcopy(dict(request)),
+        "metadata": deepcopy(dict(metadata)),
+    }
+
+
+def lifecycle_request_messages(value: object) -> object:
+    if not isinstance(value, Mapping):
+        return None
+    request = value.get("request")
+    if not isinstance(request, Mapping):
+        return None
+    return request.get("messages")
+
+
 def lifecycle_record_namespace(lifecycle_id: str) -> tuple[str, str, str]:
     return _namespace(lifecycle_id, "metadata")
 
@@ -78,12 +101,15 @@ __all__ = [
     "LIFECYCLE_NAMESPACE_ROOT",
     "LIFECYCLE_RECORD_KEY",
     "LIFECYCLE_RECORD_SCHEMA_VERSION",
+    "LIFECYCLE_REQUEST_SCHEMA_VERSION",
     "LIFECYCLE_START_ERROR_KEY",
     "LifecycleEntrySubject",
     "LifecycleRecord",
+    "build_lifecycle_request_envelope",
     "lifecycle_configuration_namespace",
     "lifecycle_filesystem_namespace",
     "lifecycle_input_namespace",
     "lifecycle_record_namespace",
+    "lifecycle_request_messages",
     "lifecycle_runs_namespace",
 ]

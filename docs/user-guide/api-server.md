@@ -28,7 +28,9 @@ Content-Type: application/json
 
 Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
-Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。Workflow入口的规范化`messages[]`保存在本次Lifecycle的Server Store namespace而不进入Workflow State。Agent入口把`messages[]`作为所选Main Agent的官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它。
+Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取只含`shared_vars`的Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。HTTP入口把解析后的完整OpenAI-compatible request object保存在本次Lifecycle的Server Store `input/request` envelope，消息数组位于`request.messages`；Workflow运行时从该数组取得输入，而不把完整请求写入Workflow State。Agent入口把验证后的`request.messages`作为所选Main Agent的官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它，也可显式读取完整`request`。
+
+`model`、`stream`和`messages`分别由HTTP路由、响应模式和运行入口消费；请求中的其他字段只随完整envelope持久化并供显式消费者读取，不会自动改变Agent、Workflow、Provider或采样参数。
 
 Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`、可选`max_concurrency`和`n_jobs_per_worker`位于【系统 / 系统配置 / 限制策略】，使用LangGraph/LangChain官方字段；`max_concurrency`留空时不向运行配置传值。全部Main Agent/Workflow Run都使用持久Thread，checkpoint、State与history由LangGraph Dev官方运行时拥有，durability 使用服务端默认`async`。
 

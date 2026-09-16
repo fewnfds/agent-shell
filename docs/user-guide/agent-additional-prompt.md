@@ -17,7 +17,7 @@ Stateful Main Agent的messages由AgentState和Thread checkpoint拥有。同一Th
 
 ## 输入来源
 
-Main Agent从current AgentState的`messages`读取本次Run input。模板复制并验证这些消息，再按配置决定裁剪、排序和role编排。Lifecycle request snapshot仍可通过`runtime.context.lifecycle_id`从`runtime.store`显式读取，但内置模板不需要用它建立第二份消息来源。
+Main Agent从current AgentState的`messages`读取本次Run input。模板复制并验证这些消息，再按配置决定裁剪、排序和role编排。Lifecycle `input/request` envelope仍可通过`runtime.context.lifecycle_id`从`runtime.store`显式读取；完整请求位于item value的`request`字段，消息数组位于`item.value["request"]["messages"]`。内置模板不需要用它建立第二份消息来源。
 
 Subagent由Deep Agents传入delegated messages，默认直接保留该输入。AAP不读取其他Thread checkpoint，也不从Workflow State寻找Agent conversation。
 

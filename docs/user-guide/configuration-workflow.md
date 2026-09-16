@@ -48,7 +48,7 @@ Subagent由Main Agent按顺序引用并交给显式 Deep Agents `SubAgentMiddlew
 
 ## Agent Additional Prompt
 
-客户端messages作为Main Agent Run input进入AgentState，并作为Lifecycle输入快照保存在Server Store。AAP Custom Middleware在Thread首次运行时整理这份AgentState输入。
+客户端完整请求作为Lifecycle `input/request` envelope保存在Server Store，消息数组位于`request.messages`。Main Agent把验证后的该数组作为Run input进入AgentState；AAP Custom Middleware在Thread首次运行时整理这份AgentState输入，也可显式读取完整请求envelope。
 
 AAP使用checkpointed private initialization marker：一个Agent Thread第一次运行时注入一次；同一Thread后续Run延续既有messages，不重复附加。每次独立执行使用新Thread并各自初始化。
 

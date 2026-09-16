@@ -38,7 +38,7 @@ Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_
 
 Workflow Thread使用只读Vue Flow显示该Lifecycle启动时冻结的原始Workflow画布。Node位置、Control Edge、source/target handle和viewport与当时正式保存的Graph document一致；Node模板、端点和Edge样式与Workflow编辑器共用，以latest Thread State的`next`高亮一个或多个当前节点。active Lifecycle每三秒刷新Lifecycle snapshot、Store和当前Workflow State；终态后保留最终State并停止自动刷新。
 
-右侧数据检查器以可展开字段树显示所选 Thread 的 State 和 Lifecycle namespace 下的 Store item，不把它们转换为第二套字段协议。页面不从 checkpoint history 合成 Agent 信息流，不从事件时间或 namespace 推测 Workflow 执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
+右侧数据检查器以可展开字段树显示所选 Thread 的 State 和 Lifecycle namespace 下的 Store item，不把它们转换为第二套字段协议。Lifecycle `input/request` item 显示`schema_version`、完整`request`和Shell`metadata`；客户端消息数组位于`request.messages`。页面不从 checkpoint history 合成 Agent 信息流，不从事件时间或 namespace 推测 Workflow 执行事实，也不提供 State 修改、Resume、time travel、灾难恢复或自动重新排队。
 
 External Agent Session 以 `data/antigravity/<external_agent_id>/lifecycles/<lifecycle_id>/sessions/<session_id>/` 下的 `meta.json`、`events.ndjson` 和 `result.json` 为事实源。监控读取这些文件，不读取 CLI 私有会话库，也不为它创建官方 Assistant/Thread/Run。删除 Lifecycle 时 `home/` 与 `sessions/` 一并清除，`workspace/` 作为用户产出保留。
 

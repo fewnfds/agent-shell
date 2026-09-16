@@ -550,7 +550,11 @@ def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> No
                 )
             },
             ("workflow-lifecycle", "lifecycle-start-error", "input"): {
-                "request": {"messages": []},
+                "request": {
+                    "schema_version": 1,
+                    "request": {"messages": []},
+                    "metadata": {},
+                },
                 LIFECYCLE_START_ERROR_KEY: {
                     "status": "error",
                     "code": "run_start_failed",

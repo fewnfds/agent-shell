@@ -20,6 +20,7 @@ from agent_shell.api.api_server import ApiServerEventHub
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
+    build_lifecycle_request_envelope,
     lifecycle_input_namespace,
 )
 from support import API_KEY, ScopedAuthTestClient, configure_scope_tokens
@@ -68,7 +69,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     graph_store = InMemoryStore()
 
-    async def direct_test_run(coordinator, workflow, raw_messages, **kwargs):
+    async def direct_test_run(coordinator, workflow, request, **kwargs):
         """Stand in for the external dev server in API unit tests.
 
         The SDK/Agent Server boundary has its own direct tests and isolated
@@ -88,7 +89,15 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         await graph_store.aput(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
-            {"messages": raw_messages},
+            build_lifecycle_request_envelope(
+                request,
+                {
+                    "lifecycle_id": lifecycle_id,
+                    "request_id": str(kwargs.get("request_id", "")),
+                    "workflow_id": str(workflow["id"]),
+                    "workflow_name": str(workflow["name"]),
+                },
+            ),
             index=False,
         )
         runtime = await coordinator._snapshot.new_runtime(
@@ -96,7 +105,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         )
         return await runtime.start_workflow(
             document,
-            raw_messages,
+            request.get("messages"),
             workflow_snapshot=workflow,
             request_id=str(kwargs.get("request_id", "")),
             public_model=str(kwargs.get("public_model", workflow["name"])),
@@ -110,7 +119,7 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         direct_test_run,
     )
 
-    async def direct_test_agent(coordinator, main_agent, raw_messages, **kwargs):
+    async def direct_test_agent(coordinator, main_agent, request, **kwargs):
         """Execute the frozen Main Agent graph locally for API unit tests."""
 
         lifecycle_id = str(uuid4())
@@ -118,13 +127,22 @@ def make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         await graph_store.aput(
             lifecycle_input_namespace(lifecycle_id),
             LIFECYCLE_INPUT_KEY,
-            {"messages": raw_messages},
+            build_lifecycle_request_envelope(
+                request,
+                {
+                    "lifecycle_id": lifecycle_id,
+                    "request_id": str(kwargs.get("request_id", "")),
+                    "graph_kind": "agent",
+                    "main_agent_id": str(main_agent["id"]),
+                    "main_agent_name": str(main_agent["name"]),
+                },
+            ),
             index=False,
         )
         runtime = await coordinator._snapshot.new_runtime(store=graph_store)
         return await runtime.start_main_agent(
             str(main_agent["id"]),
-            raw_messages,
+            request.get("messages"),
             request_id=str(kwargs.get("request_id", "")),
             lifecycle_id=lifecycle_id,
             run_id=str(uuid4()),
