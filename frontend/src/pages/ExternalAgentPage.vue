@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
-import { computed, inject, onMounted } from 'vue'
+import { computed, inject, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ConfigurationCrudActions from '@/components/ConfigurationCrudActions.vue'
 import ConfigurationEditorLayout from '@/components/ConfigurationEditorLayout.vue'
@@ -27,6 +27,7 @@ import type {
   ExternalAgentConversation,
   ExternalAgentEffort,
   ExternalAgentOutputFormat,
+  ExternalAgentRuntimeStatus,
   ExternalAgentToolPermission,
 } from '@/api'
 
@@ -111,6 +112,17 @@ const modelText = computed({
   set: (value: string) => { form.value.model = value },
 })
 
+const runtimeStatus = ref<ExternalAgentRuntimeStatus | null>(null)
+
+async function loadRuntimeStatus(): Promise<void> {
+  if (!service.value) return
+  try {
+    runtimeStatus.value = await service.value.getExternalAgentRuntimeStatus()
+  } catch {
+    runtimeStatus.value = null
+  }
+}
+
 const effortSelection = computed({
   get: () => form.value.effort ?? '',
   set: (value: string) => {
@@ -176,6 +188,7 @@ function parseEnv(value: string): Record<string, string> {
 }
 
 onMounted(() => {
+  void loadRuntimeStatus()
   void initializeWorkspace(async () => {
     const collection = await service.value!.listExternalAgents()
     return collection.items
@@ -201,6 +214,18 @@ onMounted(() => {
     </template>
 
     <template #status>
+      <LteAlert
+        v-if="runtimeStatus"
+        data-testid="external-agent-runtime"
+        :theme="runtimeStatus.available ? 'success' : 'warning'"
+      >
+        <template v-if="runtimeStatus.available">
+          {{ t('agents.external.runtime.ready', { version: runtimeStatus.version }) }}
+        </template>
+        <template v-else>
+          {{ runtimeStatus.detail }} {{ runtimeStatus.guidance }}
+        </template>
+      </LteAlert>
       <LteAlert v-if="feedbackKey" data-testid="page-feedback" theme="danger">
         {{ t(feedbackKey) }}<span v-if="feedbackDetail">{{ t('common.detailSeparator') }}{{ feedbackDetail }}</span>
       </LteAlert>

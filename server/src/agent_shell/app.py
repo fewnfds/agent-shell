@@ -15,6 +15,7 @@ from agent_shell.api.routes import build_router
 from agent_shell.api.configuration_bundles import build_configuration_bundle_router
 from agent_shell.api.configuration_repositories import build_configuration_repository_router
 from agent_shell.api.agent_configs import build_agent_config_router
+from agent_shell.api.external_agents import build_external_agent_router
 from agent_shell.api.python_packages import build_python_package_router
 from agent_shell.api.errors import compat_failure_message, localized_error_detail
 from agent_shell.api.system import build_system_router
@@ -649,6 +650,7 @@ def create_app(
             workflow_store,
         )
     )
+    app.include_router(build_external_agent_router(runtime_root=runtime_dir))
     app.include_router(
         build_workflow_router(
             workflow_store,

@@ -53,6 +53,57 @@ Antigravity CLI 的 `tools` 是**严格白名单**：不写表示不额外限制
 
 每份预设保存为 active Configuration Repository 的 `agents/external/<uuid>.yaml`，与 Main Agent、Subagent 共用全局 UUID4 identity 和名称校验规则，并随 Configuration Bundle 导出与导入。预设的草稿校验通过 `POST /agent-shell/api/validation/draft` 的 `external_agent` target 执行；集合接口为 `/agent-shell/api/external-agents`。
 
+## 运行环境
+
+调用由固定版本的 Antigravity CLI 执行，可执行文件放在：
+
+```text
+runtime/antigravity/1.2.4/agy.exe
+```
+
+准备步骤：
+
+1. 打开官方 release 页 `https://github.com/google-antigravity/antigravity-cli/releases/tag/1.2.4`；
+2. 下载 `agy_cli_windows_x64.zip`，解压得到 `antigravity.exe`；
+3. 重命名为 `agy.exe` 并放到上表路径（该路径相对软件根目录）。
+
+`GET /agent-shell/api/external-agents/runtime/status` 返回是否就绪、期望路径、版本、实际 sha256 与放置指引。探测只读取文件与计算 sha256，不启动模型调用、不消耗订阅额度。管理台【外部 Agent】页面载入时读取该接口：就绪时显示版本，缺失或哈希不符时显示同一份放置指引。哈希与登记值不一致属于显式失败，agent-shell 不自动下载、不自动升级，也不接受其它版本的就地替换。
+
+鉴权来自外部 CLI 自身保存的账号登录态，预设与实例配置都不保存 credential。首次使用需要由本机账号完成一次交互式登录。
+
+## 运行与隔离
+
+每次调用在 `data/antigravity/<external_agent_id>/lifecycles/<lifecycle_id>/` 下准备独立环境：
+
+```text
+home/                              CLI 的 HOME：物化的 agent Markdown、settings.json、会话库、缓存
+workspace/                         子进程 cwd，同时通过 --add-dir 注册为工作区
+sessions/<session_id>/             meta.json / events.ndjson / stderr.log / result.json
+```
+
+`system_prompt` 与 `tool_guidance` 按内容哈希物化为 `<agent_name>-<sha8>.md`，`--agent` 指向本次那一份，因此并发使用不同提示词不会互相覆盖。`home/` 与 `sessions/` 随 Lifecycle 删除；`workspace/` 保存用户产出，不随 Lifecycle 删除。
+
+同一 Lifecycle 内同一个 HOME 的会话选择：
+
+| 本次取值 | 行为 |
+| --- | --- |
+| `new` | 不传会话参数，外部 CLI 新建会话并在结果里返回新的会话 ID |
+| `continue-latest` | 传 `-c`，接续该 HOME 内最近一次会话；同一 HOME 同时只允许一个这类调用 |
+| 具体会话 ID | 传 `--conversation <id>`；返回 ID 与请求 ID 不一致时按"实际新建"如实上报 |
+
+同一会话 ID 的并发调用在起进程前被拒绝（`external_agent_conversation_busy`）。恢复会话时若预设的 system prompt 已改变，调用在起进程前失败（`external_agent_system_prompt_changed`），需要改用新会话。
+
+一次调用有四种终态：
+
+| 终态 | 触发条件 |
+| --- | --- |
+| `success` | 外部 CLI 报告 `SUCCESS` 且没有未放行的动作 |
+| `timeout` | 到达 `print_timeout` 后外部 CLI 返回部分输出，或进程看门狗强制终止 |
+| `denied` | 工具缺少 `permission_allow` 放行规则，headless 自动拒绝 |
+| `failed` | 非零退出码或外部 CLI 报告非 `SUCCESS` 状态 |
+
+四种终态与 `events.ndjson`、`stderr.log`、`result.json` 一起保留在 `sessions/<session_id>/`，供运行监控与排查使用。
+
 ## 页面
 
 管理台【外部 Agent】页面提供预设的新建、编辑、复制与删除。新建预设的第一步是选择 `provider`，字段集由该取值决定；`antigravity-cli` 之外的 provider 在契约层被拒绝，不进入配置。

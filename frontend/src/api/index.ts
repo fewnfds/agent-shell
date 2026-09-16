@@ -26,6 +26,7 @@ import type {
   ConfigurationSummary,
   ExternalAgent,
   ExternalAgentPayload,
+  ExternalAgentRuntimeStatus,
   ExternalAgentSummary,
   LangGraphGraphResponse,
   LangGraphHistoryResponse,
@@ -847,6 +848,10 @@ export const managementApi = {
 
   deleteExternalAgentsMatching(query: string): Promise<{ deleted: number }> {
     return managementRequest('/external-agents/delete', jsonBody({ q: query }))
+  },
+
+  getExternalAgentRuntimeStatus(): Promise<ExternalAgentRuntimeStatus> {
+    return managementRequest('/external-agents/runtime/status')
   },
 
   getApiServer(): Promise<ApiServerSettings> {

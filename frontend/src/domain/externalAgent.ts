@@ -9,6 +9,7 @@ import type {
   ExternalAgentOutputFormat,
   ExternalAgentPayload,
   ExternalAgentProvider,
+  ExternalAgentRuntimeStatus,
   ExternalAgentSummary,
   ExternalAgentTool,
   ExternalAgentToolPermission,
@@ -67,6 +68,8 @@ export interface ExternalAgentAuthoringService {
   copyExternalAgent(id: string, name: string): Promise<ExternalAgent>
   deleteExternalAgent(id: string): Promise<{ ok: boolean }>
   validateDraft(request: DraftValidationRequest): Promise<ValidationReport>
+  /** Probe the pinned CLI executable without spending subscription quota. */
+  getExternalAgentRuntimeStatus(): Promise<ExternalAgentRuntimeStatus>
 }
 
 export const externalAgentAuthoringServiceKey: InjectionKey<ExternalAgentAuthoringService> = Symbol(
@@ -81,6 +84,7 @@ export const managementExternalAgentService: ExternalAgentAuthoringService = {
   copyExternalAgent: (id, name) => managementApi.copyExternalAgent(id, name),
   deleteExternalAgent: (id) => managementApi.deleteExternalAgent(id),
   validateDraft: (request) => managementApi.validateDraft(request),
+  getExternalAgentRuntimeStatus: () => managementApi.getExternalAgentRuntimeStatus(),
 }
 
 function text(value: unknown): string {

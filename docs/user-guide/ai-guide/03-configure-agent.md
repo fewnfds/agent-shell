@@ -381,7 +381,43 @@ Custom Tool、Custom Middleware 和 MCP Requirement 由 Subagent 自己的 order
 
 当前支持 Main Agent 的一层直接 Subagent，不接受嵌套 Subagent tree。
 
-## 11. 本章完成结果
+## 11. External Agent preset
+
+External Agent 是与 Main Agent、Subagent 平级的一类配置实体，保存一个由外部 CLI 承载的 agent 预设。它不进入 LangChain 装配，也不产生官方 Thread/Run。集合接口为 `/agent-shell/api/external-agents`，草稿校验使用 `external_agent` target。
+
+```json
+{
+  "name": "Antigravity Reviewer",
+  "description": "Reviews a diff and returns findings.",
+  "provider": "antigravity-cli",
+  "agent_name": "antigravity-reviewer",
+  "system_prompt": "You review diffs and answer with findings only.",
+  "model": null,
+  "effort": "low",
+  "print_timeout": "5m",
+  "output_format": "stream-json",
+  "conversation": "new",
+  "exclude_default_components": true,
+  "tools": ["view_file", "grep_search"],
+  "tool_guidance": "Read files with absolute paths.",
+  "tool_permission": "request-review",
+  "permission_allow": ["read_file(*)"],
+  "env": {}
+}
+```
+
+运行前先确认外部 CLI 就绪：`GET /agent-shell/api/external-agents/runtime/status` 返回是否就绪、期望路径与放置指引；可执行文件固定在软件根目录的 `runtime/antigravity/1.2.4/agy.exe`，sha256 必须与官方 release 一致。
+
+调用语义：
+
+- 每次调用在 `data/antigravity/<external_agent_id>/lifecycles/<lifecycle_id>/` 下使用独立 HOME，会话库只在该 HOME 内累积；不传会话 ID 时新建，`continue-latest` 接续该 HOME 最近一次会话，指定 ID 时返回 ID 与请求 ID 不一致即表示实际新建；
+- 同一个会话 ID 不要并发调用，并发写会丢历史；运行器在起进程前 fail-fast；
+- `system_prompt` 变化后不能接续旧会话，必须新建；
+- `tools` 是严格白名单，`permission_allow` 是第二层放行，两层都要给，否则 headless 调用会被自动拒绝。
+
+字段完整语义与四种终态见 [External Agent](../../agent-pages/external-agents.md)。
+
+## 12. 本章完成结果
 
 进入 Graph 构建前确认：
 
@@ -395,6 +431,7 @@ Custom Tool、Custom Middleware 和 MCP Requirement 由 Subagent 自己的 order
 - System Prompt 只保存稳定角色和规则；
 - 动态 request、task 和 upstream material 有明确输入入口；
 - Tool、Middleware、MCP 和 Subagent reference 已保存在目标 Agent，Skill 独立包由 CompositeBackend 引用；
+- 目标 Workflow 使用 External Agent 时，`external-agents/runtime/status` 已返回 `available=true`，或已明确列为运行前用户操作；
 - 所有 Configuration reference 使用 API 返回的 UUID。
 
 创建或修改 Custom Tool、Custom Middleware 时继续阅读[编写 Agent Tool、Middleware 与 hook](04-agent-tools-middleware-hooks.md)。随后阅读[构建 Workflow Graph](05-build-workflow-graph.md)。

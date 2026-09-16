@@ -1488,6 +1488,9 @@ export const zhCN = {
         'always-proceed': '从不询问',
         strict: '除只读工具外都要询问',
       },
+      runtime: {
+        ready: 'Antigravity CLI {version} 已就绪。',
+      },
     },
     serviceUnavailable: 'Agent 配置服务暂不可用。',
     actions: {

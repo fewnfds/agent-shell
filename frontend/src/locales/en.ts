@@ -1490,6 +1490,9 @@ export const en: MessageSchema = {
         'always-proceed': 'Never ask',
         strict: 'Ask for every non-read tool',
       },
+      runtime: {
+        ready: 'Antigravity CLI {version} is ready.',
+      },
     },
     serviceUnavailable: 'The Agent authoring service is unavailable.',
     actions: {

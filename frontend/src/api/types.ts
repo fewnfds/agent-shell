@@ -882,6 +882,17 @@ export interface ExternalAgentPayload {
 
 export type ExternalAgent = ExternalAgentPayload & { id: string }
 
+/** Zero-consumption probe of the pinned Antigravity CLI executable. */
+export interface ExternalAgentRuntimeStatus {
+  provider: ExternalAgentProvider
+  available: boolean
+  expected_path: string
+  version: string | null
+  sha256: string | null
+  detail: string
+  guidance: string
+}
+
 // Mirrors the backend `DraftValidationTarget` / `DraftValidationRequest`
 // (server/src/agent_shell/api/validation.py). `type` is an optional string that
 // defaults to "", and `payload` is an untyped JSON object (`dict[str, Any]`).

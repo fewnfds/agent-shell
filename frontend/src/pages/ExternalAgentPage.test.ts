@@ -77,6 +77,15 @@ function service(
       stage: 'draft_validation',
       issues: [],
     })),
+    getExternalAgentRuntimeStatus: vi.fn(async () => ({
+      provider: 'antigravity-cli',
+      available: true,
+      expected_path: 'H:/agent-shell/runtime/antigravity/1.2.4/agy.exe',
+      version: '1.2.4',
+      sha256: '0'.repeat(64),
+      detail: '',
+      guidance: '',
+    })),
   }
   return { ...base, ...overrides }
 }
@@ -188,5 +197,24 @@ describe('ExternalAgentPage', () => {
       permission_allow: ['read_file(*)'],
       env: { AGY_PROBE: '1' },
     })
+  })
+
+  it('shows the pinned CLI placement guidance when the binary is missing', async () => {
+    const api = service({
+      getExternalAgentRuntimeStatus: vi.fn(async () => ({
+        provider: 'antigravity-cli' as const,
+        available: false,
+        expected_path: 'H:/agent-shell/runtime/antigravity/1.2.4/agy.exe',
+        version: '1.2.4',
+        sha256: null,
+        detail: 'The pinned Antigravity CLI executable is missing.',
+        guidance: 'Copy it to that path.',
+      })),
+    })
+    const wrapper = await mountPage(api)
+
+    expect(api.getExternalAgentRuntimeStatus).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="external-agent-runtime"]').text())
+      .toContain('Copy it to that path.')
   })
 })
