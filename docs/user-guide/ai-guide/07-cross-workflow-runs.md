@@ -1,6 +1,6 @@
 # 独立 Agent 与 Workflow Run 调用
 
-本章说明一个 Workflow Command如何启动、查询、等待和取消独立 Main Agent或另一个 Workflow Run，以及 State isolation、断连策略和结果收集。
+本章说明一个 Workflow Command如何启动、查询、等待和取消独立 Main Agent或另一个 Workflow Run，以及如何调用绑定在 Command Node 上的 External Agent、隔离 State、处理断连和收集结果。
 
 Agent Shell 的 Workflow 是人类编辑和持久化的产品定义，运行时编译为 LangGraph Graph。Assistant 是 Graph 加配置后的官方执行入口；Thread 保存该执行上下文的持久化 State；Run 是对 Assistant/Graph 的一次调用。Workflow 没有静态运行角色。
 
@@ -155,7 +155,25 @@ Workflow root State只有`shared_vars`一个正式channel。
 
 Main Agent 与 Workflow 分别保存`on_disconnect=cancel|continue`。每个 Run 创建时冻结目标资源的值；某次用户连接提前断开时，`cancel`只取消这个 active Run，`continue`只让这个 Run 后台继续。该规则不沿 caller → spawned relation 传播，断开后登记的 Run 也使用自己的冻结值。
 
-## 10. 观测与交付检查
+## 10. External Agent Command
+
+External Agent 不是另一种 Main Agent 或 LangGraph Run。Workflow Command Node 通过 `external_agent_id` 绑定一个 External Agent 预设，运行时 `runtime.context.external_agent` 提供该节点的调用 facade：
+
+```python
+result = await runtime.context.external_agent.run(
+    "Review the supplied artifact.",
+    conversation=None,
+    on_event=forward_event,
+)
+```
+
+`run()` 在当前 Lifecycle 中启动一次外部 CLI 子进程。省略 `conversation` 时采用预设保存的 `conversation`（默认 `new`）；显式传 `new` 新建会话，传 `continue-latest` 接续该隔离 HOME 最近一次会话，传入之前结果返回的 `conversation_id` 则接续指定会话。没有显式接续时不要假设会复用历史，`conversation_reused=false` 表示请求的 ID 实际被 CLI 转成了新会话。同一段会话不能由多个进程并发调用。
+
+预设拥有外部 agent 的 system prompt 与 CLI 配置。Command 只提供本次 `prompt` 和可选 conversation，不把请求中的 `system` / `assistant` 历史压平后伪装成一次 CLI 提问。CLI 终态为 `success`、`timeout`、`denied` 或 `failed`；结果同时返回最终 response、实际 `conversation_id`、`usage`、拒绝动作、错误和 Session 证据路径。发出的归一化事件通过 `get_stream_writer()` 进入 Workflow custom stream，再由 Workflow Event Output 投影到公开响应。
+
+External Agent Session 会出现在该 Lifecycle 的运行监控左栏。它使用 Shell 记录的 `data/antigravity/<external_agent_id>/lifecycles/<lifecycle_id>/sessions/<session_id>/` 证据，不显示为官方 Thread/Run，也没有官方 Graph、State 或 Store 视图。当前 Lifecycle 取消不会单独终止尚未暴露句柄的 External Agent 子进程。
+
+## 11. 观测与交付检查
 
 运行监控按`Lifecycle -> Thread -> Run`显示本次请求的全部官方执行。选择Main Agent Thread时显示由官方stream/latest State恢复的连续消息、reasoning、Tool与错误；选择Workflow Thread时显示冻结Graph document的原始Vue Flow位置、handle、Edge和viewport，并高亮当前活动Node。旁侧字段树显示Thread State与Lifecycle Store，监控ZIP包含configuration snapshot、冻结Workflow document和公共API可读取的完整checkpoint history。`caller_run_id`只用于理解调用关系，不形成Parent/Child能力层级。
 

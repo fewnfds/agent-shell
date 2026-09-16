@@ -13,6 +13,7 @@ Repository validation
   -> Model Mapping
   -> MCP Mapping
   -> Python dependency status
+  -> [External Agent] runtime status
   -> API Server
   -> /compat/openai/v1/models
   -> one real invocation
@@ -147,6 +148,18 @@ GET /agent-shell/api/blocks/<type>/<component UUID>/python-package
 
 static validation 不证明 Provider、third-party API、动态 import 或真实业务路径可用。只有一次真实 invocation 能覆盖 runtime path。
 
+### External Agent runtime status
+
+可达 Command Node 绑定了 `external_agent_id` 时，读取：
+
+```text
+GET /agent-shell/api/external-agents/runtime/status
+```
+
+确认 `available=true`、`expected_path` 是当前实例的固定运行路径，且 `version` / `sha256` 与官方 1.2.4 release 匹配。该探测只读取文件并校验哈希，不启动 CLI 会话或消耗订阅额度。`available=false` 时把 `detail` 与 `guidance` 原样交给用户，要求其按 [`External Agent`](../../agent-pages/external-agents.md) 的下载与放置说明提供二进制；不要把系统 `PATH`、任意其他版本或改写过的文件当成可用 runtime。
+
+External Agent 使用外部 CLI 自己的本机登录态，不需要 Model Connection 或实例 credential。首次使用仍需要由服务账号完成一次 CLI 登录；API 不接收、不读取也不复制该 credential。
+
 ## 8. 准备 API Server
 
 先读取当前状态：
@@ -245,6 +258,7 @@ Content-Type: application/json
 - Main Agent：确认AAP或其他输入owner把目标材料交给正确Agent，并得到Agent Event Output；
 - Command Workflow：确认预期State update、目标Node ID、独立Run调用、downstream completion和termination；
 - MCP：确认目标 consumer 只看到或调用其 `mcp_refs` 允许的 Tool；Command 使用 Resource/Prompt 时同时验证对应返回和 State 投影；
+- External Agent：确认绑定的预设、CLI runtime、实际 `conversation_id`、四种终态和 Session 事件按 Command 的预期写入；
 - 跨 Workflow 调用：确认 operation 与官方 Run identity、`check/list/join/cancel`、失败、主动取消以及 result handoff；
 - Workflow Event Output：确认需要公开的 Workflow event 被正确 projection。
 
@@ -258,13 +272,14 @@ Content-Type: application/json
 2. 检查 Model Mapping 与 MCP Mapping；
 3. 检查 MCP secret slot、Tool discovery 和 consumer allowlist；
 4. 检查 Python dependency status；
-5. 检查 Provider endpoint、model capability 和 credential missing state；
-6. 通过 `GET /agent-shell/api/workflow-lifecycles` 找到当前 Lifecycle；
-7. 先读取 OpenAI-compatible response 的 `error.code`、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并在诊断中读取完整异常链、按需下载 traceback 附件；
-8. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
-9. 使用同一个可复现输入重试。
+5. 检查 `external-agents/runtime/status` 的 binary path、version、sha256 与当前绑定的 External Agent 预设；
+6. 检查 Provider endpoint、model capability 和 credential missing state；
+7. 通过 `GET /agent-shell/api/workflow-lifecycles` 找到当前 Lifecycle；
+8. 先读取 OpenAI-compatible response 的 `error.code`、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并在诊断中读取完整异常链、按需下载 traceback 附件；
+9. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
+10. 使用同一个可复现输入重试。
 
-运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error（仅含稳定码与基础分类消息）和日志中心诊断定位。
+运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行，并在左栏额外显示 External Agent Session。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store；External Agent Session 显示预设、实际 conversation、终态、最终 response 和归一化事件。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error（仅含稳定码与基础分类消息）和日志中心诊断定位。
 
 只要一个 Lifecycle 仍显示 active Run，`DELETE /agent-shell/api/workflow-lifecycles/{lifecycle_id}` 就返回 `409 workflow_lifecycle_active`。需要停止它时使用 `POST /agent-shell/api/workflow-lifecycles/{lifecycle_id}/cancel`：它取消该 Lifecycle 的全部 active Run，并结束该 Lifecycle 仍在等待的 OpenAI-compatible 响应，响应以 `completion_cancelled` 收尾。取消只作用于这个 Lifecycle；Run 进入终态后即可删除。
 
@@ -320,6 +335,7 @@ Validation
 - Graph validation: <valid and stage>
 - Dependency status: <ready, not used or pending>
 - MCP Mapping and invocation: <verified, not used or pending>
+- External Agent runtime: <available version/hash, not used or pending>
 - /compat/openai/v1/models: <found, not applicable or not checked>
 - Real invocation: <input summary and observable result>
 
