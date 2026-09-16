@@ -19,6 +19,7 @@ from agent_shell.external_agents.binary import (
 from agent_shell.external_agents.layout import (
     antigravity_agent_root,
     antigravity_lifecycle_layout,
+    remove_antigravity_lifecycle_state,
 )
 from agent_shell.external_agents.materialize import (
     definition_name,
@@ -204,6 +205,43 @@ def test_layout_rejects_non_uuid_identity(tmp_path: Path) -> None:
         antigravity_agent_root(tmp_path, "../../escape")
     with pytest.raises(ValueError):
         antigravity_lifecycle_layout(tmp_path, str(uuid4()), "not-a-uuid")
+
+
+def test_lifecycle_cleanup_spans_presets_and_keeps_workspaces(
+    tmp_path: Path,
+) -> None:
+    lifecycle_id = str(uuid4())
+    other_lifecycle_id = str(uuid4())
+    for agent_id in (str(uuid4()), str(uuid4())):
+        layout = antigravity_lifecycle_layout(tmp_path, agent_id, lifecycle_id)
+        materialize_external_agent(
+            external_agent_profile(),
+            layout,
+            host_environment={},
+        )
+        (layout.workspace / "deliverable.txt").write_text("keep", encoding="utf-8")
+    untouched = antigravity_lifecycle_layout(
+        tmp_path, str(uuid4()), other_lifecycle_id
+    )
+    materialize_external_agent(
+        external_agent_profile(),
+        untouched,
+        host_environment={},
+    )
+
+    remove_antigravity_lifecycle_state(tmp_path, lifecycle_id)
+    remove_antigravity_lifecycle_state(tmp_path, lifecycle_id)
+    remove_antigravity_lifecycle_state(tmp_path, "not-a-uuid")
+    assert untouched.home.is_dir()
+
+    cleaned = list(
+        (tmp_path / "antigravity").glob(f"*/lifecycles/{lifecycle_id}")
+    )
+    assert len(cleaned) == 2
+    for root in cleaned:
+        assert [path.name for path in root.iterdir()] == ["workspace"]
+    kept = list((tmp_path / "antigravity").glob("*/lifecycles/*/workspace/*.txt"))
+    assert len(kept) == 2
 
 
 def test_binary_probe_reports_missing_and_mismatched_executable(

@@ -4,7 +4,9 @@ import asyncio
 from copy import deepcopy
 from io import BytesIO
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 from zipfile import ZipFile
 
 import pytest
@@ -497,6 +499,42 @@ def test_run_start_error_is_a_terminal_lifecycle_without_an_official_run() -> No
     ]
     assert item["start_error"]["message"] == "RuntimeError: run creation exploded"
     assert item["created_at"] == "2026-09-07T15:07:54.600000+00:00"
+
+
+def test_lifecycle_delete_drops_external_agent_state_and_keeps_workspace(
+    tmp_path: Path,
+) -> None:
+    lifecycle_id = str(uuid4())
+    lifecycle_root = (
+        tmp_path / "antigravity" / str(uuid4()) / "lifecycles" / lifecycle_id
+    )
+    (lifecycle_root / "home").mkdir(parents=True)
+    (lifecycle_root / "sessions").mkdir()
+    (lifecycle_root / "workspace").mkdir()
+    (lifecycle_root / "workspace" / "deliverable.txt").write_text(
+        "keep", encoding="utf-8"
+    )
+
+    async def scenario():
+        client = _Client()
+        client.thread_values.clear()
+        client.run_values.clear()
+        client.store_items = {
+            ("workflow-lifecycle", lifecycle_id, "metadata"): {
+                LIFECYCLE_RECORD_KEY: _lifecycle_record(lifecycle_id=lifecycle_id)
+            },
+        }
+        service = LangGraphLifecycleService(lambda: client, None, tmp_path)
+        return await service.delete(lifecycle_id)
+
+    deleted_threads = asyncio.run(scenario())
+
+    assert deleted_threads == 0
+    assert not (lifecycle_root / "home").exists()
+    assert not (lifecycle_root / "sessions").exists()
+    assert (
+        lifecycle_root / "workspace" / "deliverable.txt"
+    ).read_text(encoding="utf-8") == "keep"
 
 
 def test_zero_run_lifecycle_disappears_after_its_store_items_are_deleted() -> None:

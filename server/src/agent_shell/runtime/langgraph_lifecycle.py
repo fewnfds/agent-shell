@@ -4,9 +4,11 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from agent_shell.external_agents.layout import remove_antigravity_lifecycle_state
 from agent_shell.runtime.lifecycle_monitoring_archive import (
     LifecycleMonitoringArchive,
     build_lifecycle_monitoring_archive,
@@ -132,9 +134,11 @@ class LangGraphLifecycleService:
         self,
         client_factory: Callable[[], Any],
         settings: WorkflowLifecycleSettingsStore | None = None,
+        data_root: Path | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._settings = settings
+        self._data_root = data_root
 
     @staticmethod
     async def _configuration_snapshot(
@@ -901,6 +905,14 @@ class LangGraphLifecycleService:
             for thread in observation.threads:
                 await client.threads.delete(str(thread["thread_id"]))
             await self._delete_store_prefix(client, lifecycle_id)
+        if self._data_root is not None:
+            # External agent HOME and evidence follow the same Lifecycle
+            # lifetime; the workspace stays because it holds user output.
+            await asyncio.to_thread(
+                remove_antigravity_lifecycle_state,
+                self._data_root,
+                lifecycle_id,
+            )
         return len(observation.threads)
 
     async def delete_matching(self, query: str) -> dict[str, int]:

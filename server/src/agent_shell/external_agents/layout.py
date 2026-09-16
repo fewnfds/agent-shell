@@ -75,10 +75,6 @@ class AntigravityLifecycleLayout:
     def sessions(self) -> Path:
         return self.root / "sessions"
 
-    @property
-    def run_lock(self) -> Path:
-        return self.root / ".run.lock"
-
     def session(self, session_id: str) -> AntigravitySessionLayout:
         return AntigravitySessionLayout(
             self.sessions / _identity(session_id, label="session id")
@@ -102,9 +98,6 @@ class AntigravityLifecycleLayout:
                 shutil.rmtree(target)
             elif target.exists():
                 target.unlink()
-        lock = self.run_lock.resolve()
-        if lock.parent == root and lock.exists():
-            lock.unlink()
 
 
 def antigravity_agent_root(data_root: Path, external_agent_id: str) -> Path:
@@ -129,6 +122,34 @@ def antigravity_lifecycle_layout(
     )
 
 
+def remove_antigravity_lifecycle_state(
+    data_root: Path,
+    lifecycle_id: str,
+) -> None:
+    """Drop every preset's HOME and evidence for one deleted Lifecycle.
+
+    Workspaces are user output and stay on disk.
+    """
+
+    if not is_configuration_id(lifecycle_id):
+        # Only ids the runner accepted when it created the directory can own
+        # runtime state, so a non-canonical id has nothing to clean up.
+        return
+    identity = lifecycle_id
+    agents_directory = Path(data_root) / AGENT_DIRECTORY
+    if not agents_directory.is_dir():
+        return
+    for agent_directory in sorted(agents_directory.iterdir()):
+        if not agent_directory.is_dir() or not is_configuration_id(
+            agent_directory.name
+        ):
+            continue
+        lifecycle_root = agent_directory / LIFECYCLE_DIRECTORY / identity
+        if not lifecycle_root.is_dir():
+            continue
+        AntigravityLifecycleLayout(lifecycle_root).remove_state()
+
+
 __all__ = [
     "AGENT_DIRECTORY",
     "AntigravityLifecycleLayout",
@@ -136,4 +157,5 @@ __all__ = [
     "antigravity_agent_root",
     "antigravity_lifecycle_layout",
     "new_session_id",
+    "remove_antigravity_lifecycle_state",
 ]

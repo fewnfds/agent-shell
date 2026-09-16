@@ -1811,6 +1811,7 @@ class RequestSnapshotRuntime:
         self._langgraph_lifecycles = LangGraphLifecycleService(
             self.new_agent_server_client,
             workflow_lifecycle_settings,
+            configuration.data_root,
         )
 
     def new_agent_server_client(self):

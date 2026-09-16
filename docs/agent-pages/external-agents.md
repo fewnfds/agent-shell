@@ -81,7 +81,7 @@ workspace/                         子进程 cwd，同时通过 --add-dir 注册
 sessions/<session_id>/             meta.json / events.ndjson / stderr.log / result.json
 ```
 
-`system_prompt` 与 `tool_guidance` 按内容哈希物化为 `<agent_name>-<sha8>.md`，`--agent` 指向本次那一份，因此并发使用不同提示词不会互相覆盖。`home/` 与 `sessions/` 随 Lifecycle 删除；`workspace/` 保存用户产出，不随 Lifecycle 删除。
+`system_prompt` 与 `tool_guidance` 按内容哈希物化为 `<agent_name>-<sha8>.md`，`--agent` 指向本次那一份，因此并发使用不同提示词不会互相覆盖。删除 Lifecycle 时，该 Lifecycle 下所有预设的 `home/` 与 `sessions/` 一并删除；`workspace/` 保存用户产出，予以保留。
 
 同一 Lifecycle 内同一个 HOME 的会话选择：
 
