@@ -13,5 +13,6 @@ class WorkflowDefinition(BaseModel):
     name: ConfigurationName
     description: str = ""
     is_model_entry: bool = False
+    python_schema_id: RequiredReference | None = None
     workflow_event_output_id: RequiredReference | None = None
     on_disconnect: Literal["cancel", "continue"] = "cancel"

@@ -12,7 +12,7 @@ from agent_shell.runtime.request_snapshot import LANGGRAPH_MCP_TOOL_GRAPH_ID
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.mcp_tools import McpToolStore
 
-from .support import make_client
+from .support import create_python_schema, make_client
 
 
 SCHEMA_SOURCE = """
@@ -36,13 +36,20 @@ class Output(BaseModel):
     answer: str
 """
 
+STATE_ONLY_SCHEMA_SOURCE = """
+from pydantic import BaseModel
+
+
+class State(BaseModel):
+    topic: str
+"""
+
 
 def _graph_document() -> dict:
     return {
         "definition": {
             "schema_version": 1,
             "state_contract": "agent-shell.workflow.control.v1",
-            "schema_source": SCHEMA_SOURCE,
             "nodes": [
                 {
                     "id": "start",
@@ -140,6 +147,27 @@ def _create_command(client: TestClient, *, name: str, key: str) -> dict:
     ).json()
 
 
+def _create_mcp_tool(
+    client: TestClient,
+    *,
+    name: str,
+    description: str = "",
+    python_schema_id: str | None = None,
+) -> dict:
+    payload = {
+        "name": name,
+        "description": description,
+    }
+    if python_schema_id is not None:
+        payload["python_schema_id"] = python_schema_id
+    response = client.post(
+        "/agent-shell/api/mcp-tools",
+        json=payload,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def _publish_graph(client: TestClient, mcp_tool_id: str, document: dict) -> None:
     response = client.put(
         f"/agent-shell/api/mcp-tools/{mcp_tool_id}/graph",
@@ -165,16 +193,19 @@ def test_mcp_tool_draft_publish_and_delete(
     monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
 
     with make_client(tmp_path, monkeypatch) as client:
-        created = client.post(
-            "/agent-shell/api/mcp-tools",
-            json={
-                "name": "echo_topic",
-                "description": "Echo a topic.",
-            },
+        python_schema = create_python_schema(
+            client,
+            name="Echo schema",
+            source=SCHEMA_SOURCE,
         )
-        assert created.status_code == 200, created.text
-        mcp_tool = created.json()
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="echo_topic",
+            description="Echo a topic.",
+            python_schema_id=python_schema["id"],
+        )
         assert mcp_tool["enabled"] is False
+        assert mcp_tool["python_schema_id"] == python_schema["id"]
 
         options = client.get("/agent-shell/api/configuration-options")
         assert options.status_code == 200, options.text
@@ -224,15 +255,17 @@ def test_mcp_tool_validation_returns_resource_scoped_issues(
     monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
 
     with make_client(tmp_path, monkeypatch) as client:
-        mcp_tool = client.post(
-            "/agent-shell/api/mcp-tools",
-            json={
-                "name": "bad_schema",
-                "description": "",
-            },
-        ).json()
+        python_schema = create_python_schema(
+            client,
+            name="State-only schema",
+            source=STATE_ONLY_SCHEMA_SOURCE,
+        )
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="bad_schema",
+            python_schema_id=python_schema["id"],
+        )
         document = _graph_document()
-        document["definition"]["schema_source"] = "class State("
         response = client.post(
             f"/agent-shell/api/mcp-tools/{mcp_tool['id']}/validate",
             json=document,
@@ -271,6 +304,25 @@ def test_mcp_tool_update_requires_an_existing_resource(
         assert response.json()["detail"]["code"] == "mcp_tool_not_found"
 
 
+def test_mcp_tool_rejects_a_missing_python_schema_reference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing_id = "00000000-0000-4000-8000-000000000074"
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post(
+            "/agent-shell/api/mcp-tools",
+            json={
+                "name": "missing_schema",
+                "description": "",
+                "python_schema_id": missing_id,
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "python_schema_not_found"
+
+
 def test_application_startup_reconciles_mcp_tool_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -305,14 +357,17 @@ def test_invalid_draft_keeps_published_tool_available(
     monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
 
     with make_client(tmp_path, monkeypatch) as client:
-        created = client.post(
-            "/agent-shell/api/mcp-tools",
-            json={
-                "name": "draft_guard",
-                "description": "Keeps its publication state.",
-            },
+        python_schema = create_python_schema(
+            client,
+            name="Draft guard schema",
+            source=SCHEMA_SOURCE,
         )
-        mcp_tool = created.json()
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="draft_guard",
+            description="Keeps its publication state.",
+            python_schema_id=python_schema["id"],
+        )
         _publish_graph(client, mcp_tool["id"], _graph_document())
         assert client.get(
             f"/agent-shell/api/mcp-tools/{mcp_tool['id']}"
@@ -358,14 +413,17 @@ def test_metadata_update_reports_publication_failure(
     monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
 
     with make_client(tmp_path, monkeypatch) as client:
-        created = client.post(
-            "/agent-shell/api/mcp-tools",
-            json={
-                "name": "rename_guard",
-                "description": "Before rename.",
-            },
+        python_schema = create_python_schema(
+            client,
+            name="Rename guard schema",
+            source=SCHEMA_SOURCE,
         )
-        mcp_tool = created.json()
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="rename_guard",
+            description="Before rename.",
+            python_schema_id=python_schema["id"],
+        )
         _publish_graph(client, mcp_tool["id"], _graph_document())
 
         fail_publication = True
@@ -374,6 +432,7 @@ def test_metadata_update_reports_publication_failure(
             json={
                 "name": "renamed_guard",
                 "description": "After rename.",
+                "python_schema_id": python_schema["id"],
             },
         )
         stored = client.get(
@@ -413,19 +472,22 @@ def test_deleting_referenced_command_demotes_published_mcp_tool(
     )
 
     with make_client(tmp_path, monkeypatch) as client:
+        python_schema = create_python_schema(
+            client,
+            name="Demotion schema",
+            source=SCHEMA_SOURCE,
+        )
         command = _create_command(
             client,
             name="MCP Tool command",
             key="mcp-tool-command",
         )
-        created = client.post(
-            "/agent-shell/api/mcp-tools",
-            json={
-                "name": "demoted_tool",
-                "description": "Depends on one Command.",
-            },
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="demoted_tool",
+            description="Depends on one Command.",
+            python_schema_id=python_schema["id"],
         )
-        mcp_tool = created.json()
         _publish_graph(
             client,
             mcp_tool["id"],
@@ -440,6 +502,57 @@ def test_deleting_referenced_command_demotes_published_mcp_tool(
         ).json()
 
     assert deleted.status_code == 200, deleted.text
+    assert stored["enabled"] is False
+    assert withdrawn == ["withdrawn"]
+
+
+def test_deleting_referenced_python_schema_demotes_mcp_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    withdrawn: list[str] = []
+
+    async def sync(
+        _self: McpToolPublicationService,
+        _mcp_tool_id: str,
+        *,
+        enabled: bool,
+    ) -> None:
+        del enabled
+
+    async def unpublish_disabled(_self: McpToolPublicationService) -> None:
+        withdrawn.append("withdrawn")
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(
+        McpToolPublicationService,
+        "unpublish_disabled",
+        unpublish_disabled,
+    )
+
+    with make_client(tmp_path, monkeypatch) as client:
+        python_schema = create_python_schema(
+            client,
+            name="Referenced MCP schema",
+            source=SCHEMA_SOURCE,
+        )
+        mcp_tool = _create_mcp_tool(
+            client,
+            name="schema_dependent_tool",
+            python_schema_id=python_schema["id"],
+        )
+        _publish_graph(client, mcp_tool["id"], _graph_document())
+
+        deleted = client.delete(
+            "/agent-shell/api/blocks/python-schema/"
+            f"{python_schema['id']}"
+        )
+        stored = client.get(
+            f"/agent-shell/api/mcp-tools/{mcp_tool['id']}"
+        ).json()
+
+    assert deleted.status_code == 200, deleted.text
+    assert stored["python_schema_id"] == python_schema["id"]
     assert stored["enabled"] is False
     assert withdrawn == ["withdrawn"]
 

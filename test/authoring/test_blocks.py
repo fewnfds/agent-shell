@@ -52,6 +52,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
         "summarization",
         "workflow_event_output",
         "command",
+        "python_schema",
     }
     assert [item["type"] for item in catalog["block_types"]] == list(PUBLIC_TYPES)
     assert [item["order"] for item in catalog["block_types"]] == list(range(1, 15))
@@ -61,6 +62,7 @@ def test_health_catalog_and_readiness_are_small_and_current(
     assert [item["type"] for item in catalog["workflow_component_types"]] == [
         "workflow-event-output",
         "command",
+        "python-schema",
     ]
     by_type = {item["type"]: item for item in catalog["block_types"]}
     assert set(by_type["model-requirement"]) == {
@@ -106,6 +108,40 @@ def test_health_catalog_and_readiness_are_small_and_current(
     )
     assert readiness["sections"]["runtime_dependencies"]["status"] == "ready"
     assert readiness["sections"]["runtime_dependencies"]["code"] == "model_streaming"
+
+
+def test_python_schema_component_requires_a_valid_pydantic_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = make_client(tmp_path, monkeypatch)
+
+    for source in ("class State(", "value = 1", "   "):
+        rejected = client.post(
+            "/agent-shell/api/blocks/python-schema",
+            json={"name": "Invalid schema", "source": source},
+        )
+        assert rejected.status_code == 422, rejected.text
+        issues = rejected.json()["detail"]["validation"]["issues"]
+        if source.strip():
+            assert [issue["code"] for issue in issues] == [
+                "python_schema.invalid"
+            ]
+
+    valid = client.post(
+        "/agent-shell/api/blocks/python-schema",
+        json={
+            "name": "Valid schema",
+            "source": (
+                "from pydantic import BaseModel\n\n"
+                "class State(BaseModel):\n"
+                "    topic: str\n"
+            ),
+        },
+    )
+
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["source"].startswith("from pydantic")
 
 
 def test_builtin_event_output_examples_are_loadable(

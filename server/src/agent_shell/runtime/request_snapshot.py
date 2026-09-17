@@ -17,6 +17,10 @@ from agent_shell.file_manager import FileManagerService
 from agent_shell.external_agents.runtime import AntigravityRunner
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.python_packages.validation import PythonPackageValidationService
+from agent_shell.python_schema_component import (
+    PythonSchemaReferenceError,
+    resolve_python_schema_source,
+)
 from agent_shell.provider_http import ProviderHttpClients
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.runtime.agent_builder import AgentBuilder
@@ -318,6 +322,7 @@ class RequestRuntimeSnapshot:
     _workflows: WorkflowStore
     _mcp_tools: McpToolStore
     _agents: AgentConfigStore
+    _blocks: BlockStore
     _runtime_factory: Callable[[BaseStore | None], AgentRuntime]
     _response_stream_policy: ResponseStreamPolicy
     _configuration: dict[str, Any] = field(default_factory=dict)
@@ -337,6 +342,9 @@ class RequestRuntimeSnapshot:
 
     def workflow_document(self, workflow_id: str) -> WorkflowGraphDocumentV1 | None:
         return self._workflows.get_graph(workflow_id)
+
+    def python_schema_source(self, component_id: str | None) -> str | None:
+        return resolve_python_schema_source(self._blocks, component_id)
 
     def mcp_tool_by_id(self, mcp_tool_id: str) -> dict[str, Any] | None:
         return self._mcp_tools.get_item(mcp_tool_id)
@@ -1336,12 +1344,18 @@ class LifecycleRunCoordinator:
         entry_state = dict(initial_state or {})
         try:
             state_schema = compile_workflow_state_schema(
-                document.definition.schema_source
+                self._snapshot.python_schema_source(
+                    workflow.get("python_schema_id")
+                )
             )
-            validate_workflow_state(
-                entry_state,
-                state_schema,
-            )
+        except (WorkflowStateSchemaError, PythonSchemaReferenceError) as exc:
+            raise AgentRuntimeError(
+                "workflow.schema_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
+        try:
+            validate_workflow_state(entry_state, state_schema)
         except WorkflowStateSchemaError as exc:
             raise AgentRuntimeError(
                 "workflow.state_invalid",
@@ -2060,6 +2074,7 @@ class RequestSnapshotRuntime:
             _workflows=workflows,
             _mcp_tools=mcp_tools,
             _agents=configs,
+            _blocks=blocks,
             _runtime_factory=runtime_factory,
             _response_stream_policy=response_stream_policy,
             _configuration=deepcopy(configuration),

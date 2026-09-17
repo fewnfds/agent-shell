@@ -24,6 +24,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "workflow_output": "88888888-8888-4888-8888-888888888888",
         "command": "99999999-9999-4999-8999-999999999999",
         "mcp_tool": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "python_schema": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     }
     config = {
         "components": {
@@ -84,6 +85,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             {
                 "id": ids["workflow"],
                 "name": "Workflow",
+                "python_schema_id": ids["python_schema"],
                 "workflow_event_output_id": ids["workflow_output"],
                 "definition": {
                     "nodes": [
@@ -101,6 +103,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                 "id": ids["mcp_tool"],
                 "name": "mcp_tool",
                 "enabled": True,
+                "python_schema_id": ids["python_schema"],
                 "definition": {
                     "nodes": [
                         {
@@ -167,6 +170,13 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         ),
         (
             "workflow",
+            "python_schema_id",
+            "component",
+            "python-schema",
+            ids["python_schema"],
+        ),
+        (
+            "workflow",
             "workflow_event_output_id",
             "component",
             "workflow-event-output",
@@ -178,6 +188,13 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             "component",
             "command",
             ids["command"],
+        ),
+        (
+            "mcp_tool",
+            "python_schema_id",
+            "component",
+            "python-schema",
+            ids["python_schema"],
         ),
         (
             "mcp_tool",

@@ -33,6 +33,7 @@ def test_snapshot_materializes_runtime_factory_off_event_loop() -> None:
         _workflows=cast(Any, None),
         _mcp_tools=cast(Any, None),
         _agents=cast(Any, None),
+        _blocks=cast(Any, None),
         _runtime_factory=runtime_factory,
         _response_stream_policy=ResponseStreamPolicy(),
     )

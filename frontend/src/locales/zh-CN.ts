@@ -31,6 +31,7 @@ export const zhCN = {
       mcpTools: 'MCP Tool',
       workflowEventOutput: 'Workflow 事件输出',
       command: 'Command 节点',
+      pythonSchema: 'Python Schema',
       modelConnections: '模型连接',
       modelMapping: '模型映射',
       mcpConnections: 'MCP 连接',
@@ -202,7 +203,6 @@ export const zhCN = {
       noCommands: '尚未配置 Command 节点',
       noCommandSelected: '未选择 Command 节点',
       stateContract: 'State contract',
-      schemaSource: 'Python Schema',
       nodeId: 'Node ID',
       nodeIdHint: '全图唯一；以字母开头，只能使用字母、数字、下划线和连字符，最多 64 个字符。',
       nodeIdInvalid: 'Node ID 格式无效。',
@@ -244,6 +244,7 @@ export const zhCN = {
       modelEntry: '作为模型入口',
       filesystem: '共享文件系统',
       eventOutput: 'Workflow 事件输出',
+      pythonSchema: 'Python Schema',
       onDisconnect: '用户断开',
       status: '状态',
     },
@@ -646,6 +647,9 @@ export const zhCN = {
     'command': {
       label: 'Command 节点',
     },
+    'python-schema': {
+      label: 'Python Schema',
+    },
     'main-agent': {
       label: 'Main Agent',
     },
@@ -999,6 +1003,10 @@ export const zhCN = {
       packageTitle: 'Command Python 包',
       package: 'Python 包',
     },
+    pythonSchema: {
+      source: 'Python 源码',
+      placeholder: '定义 Pydantic 的 State、Input 和 Output 模型。',
+    },
   },
   feedback: {
     closeDialog: '关闭对话框',
@@ -1136,6 +1144,7 @@ export const zhCN = {
     deleteFailed: '无法删除 MCP Tool',
     fields: {
       description: '描述',
+      pythonSchema: 'Python Schema',
       nameHint: '名称只能使用字母、数字、点、下划线或连字符，最长 128 个字符。',
     },
     copy: {
@@ -1354,6 +1363,7 @@ export const zhCN = {
     mcpToolNameConflict: '已有同名 MCP Tool。',
     mcpToolNotFound: 'MCP Tool 不存在。',
     mcpToolPublicationFailed: 'MCP Tool 无法发布到 Agent Server。',
+    pythonSchemaNotFound: '所选 Python Schema 组件不存在。',
     workflowInvalid: 'Workflow 配置无效。',
     workflowEventOutputNotFound: '所选 Workflow 事件输出组件不存在。',
     workflowNameConflict: '已有同名 Workflow。',
@@ -1758,6 +1768,9 @@ export const zhCN = {
         nodeTypeUnsupported: 'Workflow 节点类型不受支持。',
         nodeVersionUnsupported: 'Workflow 节点版本不受支持。',
         schemaInvalid: 'Python Schema 必须定义 Pydantic State，并可按需定义 Input/Output。',
+      },
+      pythonSchema: {
+        invalid: 'Python Schema 必须是合法 Python，并定义 Pydantic State。',
       },
       mcpTool: {
         lifecycleDependency: 'MCP Tool 的 Command Node 不能依赖 External Agent 或 Lifecycle 作用域执行。',

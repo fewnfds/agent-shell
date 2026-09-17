@@ -25,6 +25,7 @@ export type BlockType =
 export type WorkflowComponentType =
   | 'workflow-event-output'
   | 'command'
+  | 'python-schema'
 export type ResourceComponentType = 'mcp-requirement'
 export type ManagedComponentType = BlockType | ResourceComponentType | WorkflowComponentType
 
@@ -105,6 +106,7 @@ export interface WorkflowSummary extends ConfigurationSummary {
 export interface McpToolPayload {
   name: string
   description: string
+  python_schema_id: string | null
 }
 
 export interface McpTool extends McpToolPayload {
@@ -584,6 +586,7 @@ export interface WorkflowPayload {
   name: string
   description: string
   is_model_entry: boolean
+  python_schema_id: string | null
   workflow_event_output_id: string | null
   on_disconnect: 'cancel' | 'continue'
 }
@@ -830,7 +833,6 @@ export interface WorkflowGraphDocument {
   definition: {
     schema_version: 1
     state_contract: 'agent-shell.workflow.control.v1'
-    schema_source?: string | null
     nodes: WorkflowGraphNode[]
     edges: WorkflowGraphEdge[]
   }

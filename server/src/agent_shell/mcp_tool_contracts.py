@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from agent_shell.configuration.identity import ConfigurationId
+
 
 MCP_TOOL_NAME_PATTERN = r"^[A-Za-z0-9._-]{1,128}$"
 _MCP_TOOL_NAME = re.compile(MCP_TOOL_NAME_PATTERN)
@@ -31,6 +33,7 @@ class McpToolDefinition(BaseModel):
 
     name: McpToolName
     description: str = ""
+    python_schema_id: ConfigurationId | None = None
 
 
 __all__ = [

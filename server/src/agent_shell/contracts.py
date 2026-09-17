@@ -29,6 +29,7 @@ from agent_shell.command import CommandBlock
 from agent_shell.mcp.contracts import McpReference
 from agent_shell.model_provider_contracts import validate_provider_settings
 from agent_shell.provider_integrations import bundled_provider_ids
+from agent_shell.python_schema_component import PythonSchemaBlock
 from agent_shell.storage.owned_paths import (
     is_reparse_point,
     require_data_root_relative_path,
@@ -1083,6 +1084,7 @@ BLOCK_CATALOG = PUBLIC_CAPABILITY_MANIFESTS
 WORKFLOW_COMPONENT_MODELS = {
     "workflow-event-output": WorkflowEventOutputBlock,
     "command": CommandBlock,
+    "python-schema": PythonSchemaBlock,
 }
 RESOURCE_COMPONENT_MODELS = {
     "mcp-requirement": McpRequirementBlock,

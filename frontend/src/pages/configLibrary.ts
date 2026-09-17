@@ -100,6 +100,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
   if (
     category === 'workflow-event-output'
     || category === 'command'
+    || category === 'python-schema'
   ) {
     return { path: `/workflow-components/${category}`, query: { id } }
   }

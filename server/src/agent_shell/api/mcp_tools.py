@@ -47,9 +47,11 @@ class McpToolBulkDelete(BaseModel):
         return self
 
 
-def _validated(payload: dict) -> dict:
+def _validated(payload: dict, *, blocks: BlockStore) -> dict:
     try:
-        return McpToolDefinition.model_validate(payload).model_dump(mode="json")
+        validated = McpToolDefinition.model_validate(payload).model_dump(
+            mode="json"
+        )
     except ValidationError as exc:
         raise management_error(
             422,
@@ -58,6 +60,18 @@ def _validated(payload: dict) -> dict:
             message="The MCP Tool configuration is invalid.",
             message_args={"count": len(exc.errors())},
         ) from exc
+    python_schema_id = validated["python_schema_id"]
+    if (
+        python_schema_id is not None
+        and blocks.get_block("python-schema", python_schema_id) is None
+    ):
+        raise management_error(
+            422,
+            code="python_schema_not_found",
+            message_key="errors.pythonSchemaNotFound",
+            message="The selected Python Schema Component does not exist.",
+        )
+    return validated
 
 
 async def _publication_call(
@@ -78,13 +92,14 @@ async def _publication_call(
 
 def _save_metadata(
     store: McpToolStore,
+    blocks: BlockStore,
     item_id: str,
     payload: dict,
     *,
     expected_repository_id: str,
 ) -> dict:
     existing = store.get_item(item_id)
-    validated = _validated(payload)
+    validated = _validated(payload, blocks=blocks)
     validated["enabled"] = existing["enabled"] if existing is not None else False
     try:
         store.save_item(
@@ -206,6 +221,7 @@ def build_mcp_tool_router(
     def create_mcp_tool(payload: dict) -> dict:
         return _save_metadata(
             store,
+            blocks,
             store.new_id(),
             payload,
             expected_repository_id=store.repository_id(),
@@ -235,6 +251,7 @@ def build_mcp_tool_router(
                 )
             return _save_metadata(
                 store,
+                blocks,
                 item_id,
                 payload,
                 expected_repository_id=store.repository_id(),
@@ -261,8 +278,9 @@ def build_mcp_tool_router(
         candidate = {
             "name": payload.name,
             "description": source["description"],
+            "python_schema_id": source["python_schema_id"],
         }
-        validated = _validated(candidate)
+        validated = _validated(candidate, blocks=blocks)
         copy_id = store.new_id()
         try:
             copied = store.copy_item(

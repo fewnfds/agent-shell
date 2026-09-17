@@ -90,6 +90,17 @@ def _save(
             message_key="errors.workflowEventOutputNotFound",
             message="The selected event output component does not exist.",
         )
+    python_schema_id = validated["python_schema_id"]
+    if (
+        python_schema_id is not None
+        and blocks.get_block("python-schema", python_schema_id) is None
+    ):
+        raise management_error(
+            422,
+            code="python_schema_not_found",
+            message_key="errors.pythonSchemaNotFound",
+            message="The selected Python Schema Component does not exist.",
+        )
     try:
         store.save_item(
             item_id,

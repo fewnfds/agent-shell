@@ -432,11 +432,13 @@ async def mcp_tool_graph(
                 graph_runtime.build_mcp_tool_structure,
                 document,
                 mcp_tool_id=mcp_tool_id,
+                python_schema_id=mcp_tool.get("python_schema_id"),
             )
         else:
             graph, command_runtime = await graph_runtime.build_mcp_tool_graph(
                 document,
                 mcp_tool_id=mcp_tool_id,
+                python_schema_id=mcp_tool.get("python_schema_id"),
             )
         yield graph
     finally:

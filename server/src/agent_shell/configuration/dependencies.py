@@ -247,6 +247,16 @@ def _workflow_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
     payload = owner.payload
+    python_schema_id = payload.get("python_schema_id")
+    if python_schema_id is not None:
+        yield _reference(
+            owner,
+            path="python_schema_id",
+            target_id=python_schema_id,
+            target_kind="component",
+            target_component_type="python-schema",
+            location=("python_schema_id",),
+        )
     event_output_id = payload.get("workflow_event_output_id")
     if event_output_id is not None:
         yield _reference(
@@ -286,6 +296,16 @@ def _workflow_references(
 def _mcp_tool_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
+    python_schema_id = owner.payload.get("python_schema_id")
+    if python_schema_id is not None:
+        yield _reference(
+            owner,
+            path="python_schema_id",
+            target_id=python_schema_id,
+            target_kind="component",
+            target_component_type="python-schema",
+            location=("python_schema_id",),
+        )
     definition = owner.payload.get("definition", {})
     if not isinstance(definition, dict):
         return

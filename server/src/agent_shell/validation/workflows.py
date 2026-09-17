@@ -4,6 +4,11 @@ from typing import Annotated, Any, Protocol
 
 from pydantic import Field, ValidationError
 
+from agent_shell.graph_schema import GraphSchemaError, compile_graph_schema
+from agent_shell.python_schema_component import (
+    PythonSchemaReferenceError,
+    resolve_python_schema_source,
+)
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.validation.contracts import report_from_validation_error
 from agent_shell.validation.models import ValidationIssue, ValidationReport
@@ -77,6 +82,8 @@ def workflow_executable_report(
     workflow: dict[str, Any],
     blocks: BlockStore,
     configuration_validation: WorkflowConfigurationValidator,
+    python_schema_requires_input: bool = False,
+    python_schema_requires_output: bool = False,
 ) -> ValidationReport:
     commands: dict[str, object] = {}
     referenced_issues: list[ValidationIssue] = []
@@ -98,6 +105,56 @@ def workflow_executable_report(
                     severity=issue.severity,
                 )
             )
+
+    python_schema_id = workflow.get("python_schema_id")
+    if python_schema_id is not None:
+        stored_schema = blocks.get_block_internal(
+            "python-schema",
+            str(python_schema_id),
+        )
+        if stored_schema is None:
+            referenced_issues.append(
+                _component_reference_issue(
+                    configuration_validation,
+                    workflow=workflow,
+                    path="python_schema_id",
+                    reference_id=str(python_schema_id),
+                    expected_type="python-schema",
+                )
+            )
+        else:
+            schema_report = configuration_validation.validate_stored_block(
+                "python-schema",
+                stored_schema,
+                stage=WORKFLOW_EXECUTABLE_STAGE,
+            )
+            project_component_issues("python_schema_id", schema_report)
+            if schema_report.valid:
+                try:
+                    compile_graph_schema(
+                        resolve_python_schema_source(
+                            blocks,
+                            str(python_schema_id),
+                        ),
+                        require_input=python_schema_requires_input,
+                        require_output=python_schema_requires_output,
+                    )
+                except (GraphSchemaError, PythonSchemaReferenceError) as exc:
+                    referenced_issues.append(
+                        ValidationIssue(
+                            code="workflow.schema_invalid",
+                            scope="workflow",
+                            owner_id=str(workflow.get("id", "")),
+                            owner_name=str(workflow.get("name", "")),
+                            owner_type="workflow",
+                            path="python_schema_id",
+                            message=str(exc),
+                            message_key=(
+                                "validation.issue.workflow.schemaInvalid"
+                            ),
+                            message_args={},
+                        )
+                    )
 
     workflow_event_output_id = workflow.get("workflow_event_output_id")
     if workflow_event_output_id is not None:

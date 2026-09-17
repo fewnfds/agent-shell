@@ -14,6 +14,7 @@ from agent_shell.runtime.state import (
     WORKFLOW_STATE_CHANNEL,
     wrap_workflow_state_update,
 )
+from agent_shell.graph_schema import GraphSchemaError
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.catalog import node_catalog_payload
 from agent_shell.workflow.compiler import compile_workflow
@@ -204,26 +205,27 @@ def test_start_can_finish_without_an_executable_node() -> None:
     assert result == {WORKFLOW_STATE_CHANNEL: {"ok": True}}
 
 
-def test_admission_rejects_an_invalid_state_schema() -> None:
+def test_graph_document_rejects_an_embedded_state_schema_source() -> None:
     payload = _document().model_dump(mode="json")
-    payload["definition"]["schema_source"] = "class State("
+    payload["definition"]["schema_source"] = STATE_SOURCE
     report, normalized = admit_workflow_document(payload)
     assert normalized is None
     assert {issue.code for issue in report.issues} == {
-        "workflow.schema_invalid"
+        "contract.unknown_field"
     }
 
-    payload["definition"]["schema_source"] = "value = 1"
-    report, normalized = admit_workflow_document(payload)
-    assert normalized is None
-    assert {issue.code for issue in report.issues} == {
-        "workflow.schema_invalid"
-    }
+
+def test_compiler_rejects_an_invalid_state_schema_source() -> None:
+    for source in ("class State(", "value = 1"):
+        with pytest.raises(GraphSchemaError):
+            compile_workflow(
+                _document(),
+                state_schema_source=source,
+            )
 
 
 def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
     document = _document()
-    document.definition.schema_source = STATE_SOURCE
     seen: list[dict] = []
 
     async def router(state, runtime):
@@ -237,6 +239,7 @@ def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
     graph = compile_workflow(
         document,
         commands={"router": router, "review": review},
+        state_schema_source=STATE_SOURCE,
     )
     result = asyncio.run(
         graph.ainvoke(
@@ -254,7 +257,6 @@ def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
 
 def test_declared_state_schema_fails_the_run_on_an_invalid_command_update() -> None:
     document = _document()
-    document.definition.schema_source = STATE_SOURCE
 
     async def router(state, runtime):
         return Command(update={"count": "many"}, goto="review")
@@ -265,6 +267,7 @@ def test_declared_state_schema_fails_the_run_on_an_invalid_command_update() -> N
     graph = compile_workflow(
         document,
         commands={"router": router, "review": review},
+        state_schema_source=STATE_SOURCE,
     )
     with pytest.raises(AgentRuntimeError) as raised:
         asyncio.run(

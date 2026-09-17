@@ -20,6 +20,7 @@ from agent_shell.contracts import (
     StoredMainAgentProfile,
     SubagentProfile,
 )
+from agent_shell.graph_schema import GraphSchemaError, compile_graph_schema
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
@@ -275,6 +276,27 @@ class ConfigurationValidationService:
                 reference,
                 **arguments,
             )
+        if block_type == "python-schema":
+            source = payload.get("source")
+            try:
+                compile_graph_schema(
+                    source if isinstance(source, str) else None
+                )
+            except GraphSchemaError as exc:
+                return [
+                    ValidationIssue(
+                        code="python_schema.invalid",
+                        scope="block",
+                        owner_id=owner_id,
+                        owner_name=str(payload.get("name", "")),
+                        owner_type="python-schema",
+                        path="source",
+                        message=str(exc),
+                        message_key="validation.issue.pythonSchema.invalid",
+                        message_args={},
+                    )
+                ]
+            return []
         if block_type == "filesystem":
             skill_package_id = payload.get("skill_package_id")
             if skill_package_id is not None and self._blocks.get_block_internal(

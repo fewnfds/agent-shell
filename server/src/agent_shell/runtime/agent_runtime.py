@@ -17,6 +17,10 @@ from agent_shell.contracts import (
 from agent_shell.file_manager import FileManagerService
 from agent_shell.graph_schema import GraphSchema, compile_graph_schema
 from agent_shell.mcp_tools.compiler import compile_mcp_tool_graph
+from agent_shell.python_schema_component import (
+    PythonSchemaReferenceError,
+    resolve_python_schema_source,
+)
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
 from agent_shell.runtime.context import (
     AgentRuntimeContext,
@@ -747,6 +751,21 @@ class AgentRuntime:
         self._run_config = dict(run_config or {})
         self._graph_store = graph_store
 
+    def _python_schema_source(
+        self,
+        component_id: str | None,
+        *,
+        error_code: str,
+    ) -> str | None:
+        try:
+            return resolve_python_schema_source(self._blocks, component_id)
+        except PythonSchemaReferenceError as exc:
+            raise AgentRuntimeError(
+                error_code,
+                str(exc),
+                status_code=422,
+            ) from exc
+
     def _external_agent_bindings(
         self,
         bindings: Mapping[str, str],
@@ -853,12 +872,24 @@ class AgentRuntime:
                 status_code=422,
                 validation_report=executable,
             )
-        return compile_workflow(
-            document,
-            commands=structural_commands,
-            store=self._graph_store,
-            runtime_context=server_context,
+        state_schema_source = self._python_schema_source(
+            workflow_snapshot.get("python_schema_id"),
+            error_code="workflow.schema_invalid",
         )
+        try:
+            return compile_workflow(
+                document,
+                commands=structural_commands,
+                store=self._graph_store,
+                runtime_context=server_context,
+                state_schema_source=state_schema_source,
+            )
+        except GraphSchemaError as exc:
+            raise AgentRuntimeError(
+                "workflow.schema_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
 
     def _mcp_tool_schema(self, source: str | None) -> GraphSchema | None:
         if source is None or not source.strip():
@@ -874,13 +905,19 @@ class AgentRuntime:
         document: WorkflowGraphDocumentV1,
         *,
         mcp_tool_id: str,
+        python_schema_id: str | None = None,
     ) -> Any:
         """Compile one MCP Tool topology and schema without execution resources."""
 
         from agent_shell.command import CommandBlock
         from agent_shell.workflow.catalog import CommandNodeConfig
 
-        schema = self._mcp_tool_schema(document.definition.schema_source)
+        schema = self._mcp_tool_schema(
+            self._python_schema_source(
+                python_schema_id,
+                error_code="mcp_tool.schema_invalid",
+            )
+        )
         structural_commands: dict[str, Any] = {}
         validation_commands: dict[str, CommandBlock] = {}
         for node in document.definition.nodes:
@@ -949,13 +986,19 @@ class AgentRuntime:
         document: WorkflowGraphDocumentV1,
         *,
         mcp_tool_id: str,
+        python_schema_id: str | None = None,
     ) -> tuple[Any, CommandPackageRuntime | None]:
         """Build one executable, Lifecycle-free MCP Tool Graph."""
 
         from agent_shell.command import CommandBlock
         from agent_shell.workflow.catalog import CommandNodeConfig
 
-        schema = self._mcp_tool_schema(document.definition.schema_source)
+        schema = self._mcp_tool_schema(
+            self._python_schema_source(
+                python_schema_id,
+                error_code="mcp_tool.schema_invalid",
+            )
+        )
         command_runtime: CommandPackageRuntime | None = None
         command_blocks: dict[str, tuple[str, CommandBlock]] = {}
         for node in document.definition.nodes:
@@ -1414,15 +1457,22 @@ class AgentRuntime:
             CommandBlock,
             compile_workflow,
         ) = await asyncio.to_thread(_workflow_construction_dependencies)
+        workflow_identity = dict(workflow_snapshot or {})
+        state_schema_source = self._python_schema_source(
+            workflow_identity.get("python_schema_id"),
+            error_code="workflow.schema_invalid",
+        )
         entry_state = deepcopy(dict(initial_state or {}))
         try:
-            state_schema = compile_workflow_state_schema(
-                document.definition.schema_source
-            )
-            validate_workflow_state(
-                entry_state,
-                state_schema,
-            )
+            state_schema = compile_workflow_state_schema(state_schema_source)
+        except WorkflowStateSchemaError as exc:
+            raise AgentRuntimeError(
+                "workflow.schema_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
+        try:
+            validate_workflow_state(entry_state, state_schema)
         except WorkflowStateSchemaError as exc:
             raise AgentRuntimeError(
                 "workflow.state_invalid",
@@ -1490,7 +1540,6 @@ class AgentRuntime:
             )
 
         runtime_diagnostics = getattr(self, "_runtime_diagnostics", None)
-        workflow_identity = dict(workflow_snapshot or {})
         resolved_run_id = run_id or ""
         workflow_id = str(workflow_identity.get("id", ""))
         workflow_name = str(
@@ -1689,6 +1738,7 @@ class AgentRuntime:
                 commands=commands,
                 store=self._graph_store,
                 runtime_context=(context if server_managed else None),
+                state_schema_source=state_schema_source,
             )
         except asyncio.CancelledError:
             await close_package_runtimes()

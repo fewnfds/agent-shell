@@ -9,10 +9,23 @@
 - Workflow UUID；
 - 每个Command配置UUID；
 - 可选的 External Agent 预设UUID；
+- 可选的 Python Schema Component UUID；
 - Command代码中使用的Main Agent/Workflow UUID；
 - 可选Workflow Event Output UUID。
 
 Main Agent目标不进入Graph document。它是Command package或其配置明确使用的运行依赖。
+
+创建可复用的Python Schema Component：
+
+```http
+POST /agent-shell/api/blocks/python-schema
+Content-Type: application/json
+
+{
+  "name": "review-state",
+  "source": "from pydantic import BaseModel, ConfigDict\n\nclass State(BaseModel):\n    model_config = ConfigDict(extra=\"forbid\")\n    selected_target: str\n"
+}
+```
 
 ## 2. 创建Workflow metadata
 
@@ -24,6 +37,7 @@ Content-Type: application/json
   "name": "review-pipeline",
   "description": "Run deterministic preparation and an independent review agent.",
   "is_model_entry": true,
+  "python_schema_id": "<python-schema-uuid>",
   "on_disconnect": "cancel"
 }
 ```
@@ -37,7 +51,6 @@ Content-Type: application/json
   "definition": {
     "schema_version": 1,
     "state_contract": "agent-shell.workflow.control.v1",
-    "schema_source": "from pydantic import BaseModel, ConfigDict\n\nclass State(BaseModel):\n    model_config = ConfigDict(extra=\"forbid\")\n    selected_target: str\n",
     "nodes": [
       {"id": "start", "type": "start", "type_version": 1, "config": {}},
       {
@@ -81,7 +94,7 @@ Content-Type: application/json
 
 layout只供Vue Flow编辑；runtime不读取position或viewport。
 
-`schema_source`可省略或为`null`。省略时不校验Workflow State的键名与类型；声明时内容必须是合法Python，并至少定义Pydantic`State`。入口输入与每个Command的update结果都必须满足该模型。未知字段是否允许由模型的`model_config`决定。
+`python_schema_id`可省略或为`null`。不引用Python Schema时不校验Workflow State的键名与类型；引用时目标Component必须是合法Python，并至少定义Pydantic`State`。入口输入与每个Command的update结果都必须满足该模型。未知字段是否允许由模型的`model_config`决定。Python源码不属于Graph document。
 
 ## 4. Node规则
 
@@ -155,13 +168,26 @@ PUT    /agent-shell/api/mcp-tools/<mcp-tool-id>/graph
 DELETE /agent-shell/api/mcp-tools/<mcp-tool-id>
 ```
 
-创建 metadata 时名称必须是唯一的合法 MCP tool name：
+创建 metadata 时名称必须是唯一的合法 MCP tool name，并在需要 schema 时引用独立 Component：
+
+```http
+POST /agent-shell/api/mcp-tools
+Content-Type: application/json
+
+{
+  "name": "echo_topic",
+  "description": "Echo one topic.",
+  "python_schema_id": "<python-schema-uuid>"
+}
+```
+
+不需要schema时把`python_schema_id`设为`null`。
 
 ```text
 ^[A-Za-z0-9._-]{1,128}$
 ```
 
-Graph document 的 `definition.schema_source` 为可选 Python 源码。MCP Tool 声明 schema 时必须定义 Pydantic `State`、`Input` 和 `Output`；每个 `Input` 字段必须存在于 `State`，每个 `Output` 字段也必须存在于 `State`。没有 schema 时使用开放 mapping State。Command 输入仍是扁平 state，不使用 `messages[]`、`input` 或 `initial_state` 包装。
+MCP Tool metadata 的 `python_schema_id` 可选，指向独立 Python Schema Component。声明 schema 时必须定义 Pydantic `State`、`Input` 和 `Output`；每个 `Input` 字段必须存在于 `State`，每个 `Output` 字段也必须存在于 `State`。没有 schema 时使用开放 mapping State。Command 输入仍是扁平 state，不使用 `messages[]`、`input` 或 `initial_state` 包装。
 
 MCP Tool 不接受 External Agent；正式保存会拒绝任何依赖 Lifecycle 或外部会话的 Command。`/agent-shell/api/mcp-tools/<id>/graph` 只在完整校验通过后设置 `enabled=true` 并刷新官方 Assistant。保存 draft 会把 `enabled` 设为 `false`，并先从 `/mcp tools/list` 隐藏；draft 被 validation 拒绝（422）时不改变已发布状态。已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 

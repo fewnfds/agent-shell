@@ -152,13 +152,11 @@ export function workflowCanvasToDocument(
   nodes: WorkflowCanvasNode[],
   edges: WorkflowCanvasEdge[],
   viewport: ViewportTransform,
-  schemaSource: string | null = null,
 ): WorkflowGraphDocument {
   return {
     definition: {
       schema_version: 1,
       state_contract: 'agent-shell.workflow.control.v1',
-      ...(schemaSource ? { schema_source: schemaSource } : {}),
       nodes: nodes.map((node) => ({
         id: node.id,
         type: node.data.nodeType,

@@ -107,6 +107,15 @@ const commandManifest: WorkflowComponentManifest = {
   editor_key: 'command',
 }
 
+const pythonSchemaManifest: WorkflowComponentManifest = {
+  type: 'python-schema',
+  terminology_key: 'python-schema',
+  label: 'Python Schema',
+  order: 2,
+  icon_key: 'filetype-py',
+  editor_key: 'python_schema',
+}
+
 const commandTemplate = {
   key: 'basic-router',
   format_version: 1 as const,
@@ -355,8 +364,8 @@ describe('ComponentsPage', () => {
   it('uses the Workflow Components section navigation without a duplicate type navigation', async () => {
     api.getCatalog.mockResolvedValueOnce({
       block_types: [skillManifest, modelManifest],
-      workflow_component_types: [commandManifest],
-      editor_defaults: { command: {} },
+      workflow_component_types: [commandManifest, pythonSchemaManifest],
+      editor_defaults: { command: {}, python_schema: {} },
     })
     const router = createRouter({
       history: createMemoryHistory(),
@@ -379,6 +388,7 @@ describe('ComponentsPage', () => {
     expect(wrapper.findAll('[data-testid="section-nav"] button').map((item) => item.text())).toEqual([
       'navigation.sections.workflowEventOutput',
       'navigation.sections.command',
+      'navigation.sections.pythonSchema',
     ])
     expect(wrapper.get('.page-action-dock').findAll('button').map((button) => button.text())).toEqual([
       'common.copy',
@@ -386,6 +396,33 @@ describe('ComponentsPage', () => {
       'common.new',
       'common.save',
     ])
+    wrapper.unmount()
+  })
+
+  it('loads the Python Schema editor from the Workflow component catalog', async () => {
+    api.getCatalog.mockResolvedValueOnce({
+      block_types: [skillManifest, modelManifest],
+      workflow_component_types: [commandManifest, pythonSchemaManifest],
+      editor_defaults: { command: {}, python_schema: {} },
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{
+        path: '/workflow-components/:type',
+        component: ComponentsPage,
+        props: { scope: 'workflow' },
+      }],
+    })
+    await router.push('/workflow-components/python-schema')
+    await router.isReady()
+    const wrapper = mount(ComponentsPage, {
+      props: { scope: 'workflow' },
+      global: { plugins: [router] },
+    })
+    await settleComponentPage(wrapper)
+
+    expect(wrapper.find('[data-editor="python-schema"]').exists()).toBe(true)
+    expect(api.listCommandTemplates).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

@@ -371,6 +371,7 @@ _EDITOR_DEFAULTS = {
     },
     "workflow_event_output": {},
     "command": {},
+    "python_schema": {},
 }
 
 

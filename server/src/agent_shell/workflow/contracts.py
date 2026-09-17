@@ -48,7 +48,6 @@ class WorkflowGraphDefinitionV1(BaseModel):
     state_contract: Literal["agent-shell.workflow.control.v1"] = (
         WORKFLOW_STATE_CONTRACT
     )
-    schema_source: str | None = None
     nodes: list[WorkflowNodeV1] = Field(default_factory=list)
     edges: list[WorkflowEdgeV1] = Field(default_factory=list)
 

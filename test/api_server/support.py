@@ -306,20 +306,38 @@ def publish_main_agent(
     return response.json()
 
 
+def create_python_schema(
+    client: TestClient,
+    *,
+    name: str = "Python schema",
+    source: str,
+) -> dict:
+    response = client.post(
+        "/agent-shell/api/blocks/python-schema",
+        json={"name": name, "source": source},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def create_workflow(
     client: TestClient,
     *,
     name: str | None = None,
     is_model_entry: bool = False,
+    python_schema_id: str | None = None,
 ) -> dict:
     workflow_name = name or "Test Workflow"
+    payload = {
+        "name": workflow_name,
+        "description": "Test Workflow.",
+        "is_model_entry": is_model_entry,
+    }
+    if python_schema_id is not None:
+        payload["python_schema_id"] = python_schema_id
     response = client.post(
         "/agent-shell/api/workflows",
-        json={
-            "name": workflow_name,
-            "description": "Test Workflow.",
-            "is_model_entry": is_model_entry,
-        },
+        json=payload,
     )
     assert response.status_code == 200, response.text
     return response.json()

@@ -28,17 +28,20 @@ const workflow: Workflow = {
   name: 'Research Workflow',
   description: 'Runs the research agent.',
   is_model_entry: true,
+  python_schema_id: null,
   workflow_event_output_id: null,
   on_disconnect: 'cancel',
   enabled: true,
 }
 const eventOutput: SavedBlock = { id: 'event-output-1', name: 'Public events' }
+const pythonSchema: SavedBlock = { id: 'python-schema-1', name: 'Research state' }
 
 function mockComponentLists(workflows: Workflow[] = []) {
   const options = vi.spyOn(managementApi, 'getConfigurationOptions').mockResolvedValue({
     repository_id: '00000000-0000-4000-8000-000000000099',
     repository_revision: 1,
     components: {
+      'python-schema': [pythonSchema],
       'workflow-event-output': [eventOutput],
     },
     main_agents: [],
@@ -101,8 +104,8 @@ describe('WorkflowsPage', () => {
     expect(wrapper.text()).toContain('Copy')
     expect(wrapper.text()).toContain('Delete')
     const assemblyColumns = wrapper.get('[data-testid="workflow-component-assembly-row"]').findAll(':scope > div')
-    expect(assemblyColumns).toHaveLength(3)
-    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-4'))).toBe(true)
+    expect(assemblyColumns).toHaveLength(4)
+    expect(assemblyColumns.every((column) => column.classes().includes('col-lg-3'))).toBe(true)
     expect(assemblyColumns.every((column) => column.find('.card').exists())).toBe(true)
     expect(wrapper.get('#workflow-description').element.tagName).toBe('TEXTAREA')
     expect(wrapper.get('#workflow-model-entry').element.tagName).toBe('SELECT')
@@ -113,6 +116,7 @@ describe('WorkflowsPage', () => {
     await wrapper.get('textarea').setValue('New description')
     await wrapper.get('#workflow-model-entry').setValue(true)
     await wrapper.get('#workflow-event-output').setValue(eventOutput.id)
+    await wrapper.get('#workflow-python-schema').setValue(pythonSchema.id)
     await wrapper.get('#workflow-on-disconnect').setValue('continue')
     await wrapper.findAll('button').find((button) => button.text() === 'Save')!.trigger('click')
     await flushPromises()
@@ -121,6 +125,7 @@ describe('WorkflowsPage', () => {
       name: 'New Workflow',
       description: 'New description',
       is_model_entry: true,
+      python_schema_id: pythonSchema.id,
       workflow_event_output_id: eventOutput.id,
       on_disconnect: 'continue',
     })
@@ -181,6 +186,7 @@ describe('WorkflowsPage', () => {
   it('round-trips disconnect policy and can remove event output', async () => {
     const configured = {
       ...workflow,
+      python_schema_id: pythonSchema.id,
       workflow_event_output_id: eventOutput.id,
       on_disconnect: 'continue' as const,
     }
@@ -195,6 +201,7 @@ describe('WorkflowsPage', () => {
     })
     await flushPromises()
 
+    expect((wrapper.get('#workflow-python-schema').element as HTMLSelectElement).value).toBe(pythonSchema.id)
     expect((wrapper.get('#workflow-event-output').element as HTMLSelectElement).value).toBe(eventOutput.id)
     expect((wrapper.get('#workflow-on-disconnect').element as HTMLSelectElement).value).toBe('continue')
     await wrapper.get('#workflow-event-output').setValue('')
@@ -205,6 +212,7 @@ describe('WorkflowsPage', () => {
       name: workflow.name,
       description: workflow.description,
       is_model_entry: true,
+      python_schema_id: pythonSchema.id,
       workflow_event_output_id: null,
       on_disconnect: 'continue',
     })

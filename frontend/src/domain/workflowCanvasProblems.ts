@@ -52,16 +52,6 @@ export function workflowCanvasProblems(
   return problems
 }
 
-export function workflowStateSchemaProblem(messageKey: string): WorkflowCanvasProblem {
-  return canvasProblem(
-    'workflow.schema_invalid',
-    messageKey,
-    '',
-    'workflow',
-    'definition.schema_source',
-  )
-}
-
 export function workflowServerProblems(issues: ValidationIssue[]): WorkflowCanvasProblem[] {
   return issues.map((issue) => ({
     ...issue,

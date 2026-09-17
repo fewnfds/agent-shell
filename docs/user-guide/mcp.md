@@ -12,7 +12,7 @@ Agent Shell 通过 LangChain 官方 `langchain-mcp-adapters` 把 MCP Server 公�
 
 draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。被 validation 拒绝的 draft 请求不改变已发布状态；已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 
-可选 `schema_source` 是一段 Python 源码，定义 Pydantic `State`、`Input` 和 `Output`：
+在【工作流组件 / Python Schema】创建 Python Schema Component，内容定义 Pydantic `State`、`Input` 和 `Output`，然后在 MCP Tool 的 Python Schema Card 中引用：
 
 ```python
 from pydantic import BaseModel, ConfigDict
@@ -33,7 +33,7 @@ class Output(BaseModel):
     answer: str
 ```
 
-LangGraph直接使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段。没有`schema_source`时使用开放mapping State，参数直接成为扁平键。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
+LangGraph直接使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段。未选择 Python Schema Card 时使用开放mapping State，参数直接成为扁平键。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
 
 ## 配置顺序
 

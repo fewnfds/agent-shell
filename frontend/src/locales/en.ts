@@ -33,6 +33,7 @@ export const en: MessageSchema = {
       mcpTools: 'MCP Tools',
       workflowEventOutput: 'Workflow event output',
       command: 'Command Node',
+      pythonSchema: 'Python Schema',
       modelConnections: 'Model connections',
       modelMapping: 'Model mapping',
       mcpConnections: 'MCP connections',
@@ -204,7 +205,6 @@ export const en: MessageSchema = {
       noCommands: 'No Command Node is configured',
       noCommandSelected: 'No Command Node selected',
       stateContract: 'State contract',
-      schemaSource: 'Python schema',
       nodeId: 'Node ID',
       nodeIdHint: 'Unique in this graph; start with a letter and use only letters, digits, underscores, or hyphens, up to 64 characters.',
       nodeIdInvalid: 'The Node ID format is invalid.',
@@ -246,6 +246,7 @@ export const en: MessageSchema = {
       modelEntry: 'Expose as model entry',
       filesystem: 'Shared filesystem',
       eventOutput: 'Workflow event output',
+      pythonSchema: 'Python Schema',
       onDisconnect: 'User disconnect',
       status: 'Status',
     },
@@ -648,6 +649,9 @@ export const en: MessageSchema = {
     'command': {
       label: 'Command Node',
     },
+    'python-schema': {
+      label: 'Python Schema',
+    },
     'main-agent': {
       label: 'Main Agent',
     },
@@ -1001,6 +1005,10 @@ export const en: MessageSchema = {
       packageTitle: 'Command Node package',
       package: 'Python package',
     },
+    pythonSchema: {
+      source: 'Python source',
+      placeholder: 'Define the Pydantic State, Input, and Output models.',
+    },
   },
   feedback: {
     closeDialog: 'Close dialog',
@@ -1138,6 +1146,7 @@ export const en: MessageSchema = {
     deleteFailed: 'Could not delete MCP Tool',
     fields: {
       description: 'Description',
+      pythonSchema: 'Python Schema',
       nameHint: 'Tool names use letters, digits, dots, underscores, or hyphens; up to 128 characters.',
     },
     copy: {
@@ -1356,6 +1365,7 @@ export const en: MessageSchema = {
     mcpToolNameConflict: 'An MCP Tool with this name already exists.',
     mcpToolNotFound: 'The MCP Tool does not exist.',
     mcpToolPublicationFailed: 'The MCP Tool could not be published to the Agent Server.',
+    pythonSchemaNotFound: 'The selected Python Schema Component does not exist.',
     workflowInvalid: 'The Workflow configuration is invalid.',
     workflowEventOutputNotFound: 'The selected Workflow event output component does not exist.',
     workflowNameConflict: 'A Workflow with this name already exists.',
@@ -1760,6 +1770,9 @@ export const en: MessageSchema = {
         nodeTypeUnsupported: 'The Workflow node type is not supported.',
         nodeVersionUnsupported: 'The Workflow node version is not supported.',
         schemaInvalid: 'The Python schema must define a Pydantic State model and optional Input/Output models.',
+      },
+      pythonSchema: {
+        invalid: 'The Python Schema must be valid Python and define a Pydantic State model.',
       },
       mcpTool: {
         lifecycleDependency: 'MCP Tool Command nodes cannot depend on External Agents or Lifecycle-scoped execution.',

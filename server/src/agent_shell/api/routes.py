@@ -69,6 +69,14 @@ WORKFLOW_COMPONENT_CATALOG = (
         "icon_key": "circle-half",
         "editor_key": "command",
     },
+    {
+        "type": "python-schema",
+        "terminology_key": "python-schema",
+        "label": "Python Schema",
+        "order": 3,
+        "icon_key": "filetype-py",
+        "editor_key": "python_schema",
+    },
 )
 
 RESOURCE_COMPONENT_CATALOG = (

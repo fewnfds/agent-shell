@@ -124,6 +124,7 @@ def compile_workflow(
     commands: Mapping[str, CommandCallable] | None = None,
     store: BaseStore | None = None,
     runtime_context: WorkflowRuntimeContext | None = None,
+    state_schema_source: str | None = None,
 ) -> Any:
     """Compile a Start/Command/End control document to an official StateGraph."""
 
@@ -133,9 +134,7 @@ def compile_workflow(
         raise _compile_error(issue.code, issue.message)
 
     command_configs = commands or {}
-    state_schema = compile_workflow_state_schema(
-        normalized.definition.schema_source
-    )
+    state_schema = compile_workflow_state_schema(state_schema_source)
     topology_issues = validate_workflow_topology(normalized, commands=command_configs)
     if topology_issues:
         issue = topology_issues[0]

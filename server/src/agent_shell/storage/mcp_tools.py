@@ -12,7 +12,13 @@ from agent_shell.workflow.contracts import (
 
 
 class McpToolStore:
-    _PUBLIC_FIELDS = ("id", "name", "description", "enabled")
+    _PUBLIC_FIELDS = (
+        "id",
+        "name",
+        "description",
+        "python_schema_id",
+        "enabled",
+    )
 
     def __init__(
         self,
@@ -28,6 +34,7 @@ class McpToolStore:
             "id": str(record["id"]),
             "name": str(record["name"]),
             "description": str(record.get("description", "")),
+            "python_schema_id": record.get("python_schema_id"),
             "enabled": bool(record.get("enabled", False)),
         }
 

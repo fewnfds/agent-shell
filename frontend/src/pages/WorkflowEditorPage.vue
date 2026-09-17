@@ -81,7 +81,6 @@ const nodes = ref([]) as Ref<WorkflowCanvasNode[]>
 const edges = ref([]) as Ref<WorkflowCanvasEdge[]>
 const flow = ref<VueFlowStore | null>(null)
 const stateContract = ref('agent-shell.workflow.control.v1')
-const schemaSourceText = ref('')
 const savedViewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
 const leftPanel = ref<WorkflowLeftPanel | null>('library')
 const rightPanel = ref<WorkflowRightPanel | null>('inspector')
@@ -131,7 +130,6 @@ const canPublish = computed(() => (
   && !problems.value.some((problem) => problem.blocking)
 ))
 const graphRevision = computed(() => JSON.stringify({
-  schemaSource: schemaSourceText.value,
   nodes: nodes.value.map((node) => ({
     id: node.id,
     position: node.position,
@@ -150,7 +148,7 @@ const graphRevision = computed(() => JSON.stringify({
 }))
 const { markClean } = useUnsavedChanges(
   () => (loaded.value
-    ? { document: currentDocument(), schemaSourceText: schemaSourceText.value }
+    ? currentDocument()
     : null),
   () => ({
     title: t('unsavedChanges.title'),
@@ -475,12 +473,7 @@ function currentDocument(): ReturnType<typeof workflowCanvasToDocument> | null {
     nodes.value,
     edges.value,
     flow.value.getViewport(),
-    schemaSourceText.value,
   )
-}
-
-function updateSchemaSource(value: string): void {
-  schemaSourceText.value = value
 }
 
 function currentDocumentMatches(
@@ -675,7 +668,6 @@ async function loadWorkflow(id: string): Promise<void> {
     externalAgents.value = externalAgentSummaries.items
     nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
-    schemaSourceText.value = graph.definition.schema_source ?? ''
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
     nodes.value = canvas.nodes
     edges.value = canvas.edges
@@ -890,7 +882,6 @@ onUnmounted(() => {
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
           :output-endpoints="selectedNodeOutputEndpoints"
-          :schema-source="schemaSourceText"
           :state-contract="stateContract"
           :workflow-name="workflow?.name ?? ''"
           @remove-edge="removeEdge"
@@ -901,7 +892,6 @@ onUnmounted(() => {
           @update-command="selectCommand"
           @update-external-agent="selectExternalAgent"
           @update-node-id="updateNodeId"
-          @update-schema-source="updateSchemaSource"
         />
         <nav class="workflow-tool-rail" :aria-label="t('workflows.editor.rightTools')">
           <button

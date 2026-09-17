@@ -67,8 +67,8 @@ Command 读用 `state.get("selected_target")`，写用 `Command(update={"selecte
 入口传入的键和 Command 写回的键都保留在同一个 checkpoint 里，同一个键以最后
 一次写回结果为准。
 
-Workflow 提供一个可选的 `schema_source`，内容是一段 Python 源码并至少定义
-Pydantic `State`：
+Workflow 提供一个可选的 `python_schema_id`，指向独立 Python Schema Component。
+该组件源码至少定义 Pydantic `State`：
 
 - 不声明：任何 JSON 键都能读写，不做键名与类型校验；
 - 声明：入口输入和每个 Command 的 update 结果都按它校验；不符合的输入在 Run

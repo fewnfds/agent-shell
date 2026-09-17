@@ -951,22 +951,14 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 "mcp_refs": [],
             },
         ).json()
-        mcp_tool_name = f"{mode}_echo_topic"
-        mcp_tool = _request(
+        mcp_python_schema = _request(
             client,
             "POST",
-            "/agent-shell/api/mcp-tools",
+            "/agent-shell/api/blocks/python-schema",
             headers=management,
             json_body={
-                "name": mcp_tool_name,
-                "description": "Echo one topic through the official MCP endpoint.",
-            },
-        ).json()
-        mcp_document = {
-            "definition": {
-                "schema_version": 1,
-                "state_contract": "agent-shell.workflow.control.v1",
-                "schema_source": (
+                "name": f"{mode}-mcp-schema",
+                "source": (
                     "from pydantic import BaseModel, ConfigDict\n"
                     "\n"
                     "class Input(BaseModel):\n"
@@ -981,6 +973,24 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                     "    topic: str\n"
                     "    answer: str\n"
                 ),
+            },
+        ).json()
+        mcp_tool_name = f"{mode}_echo_topic"
+        mcp_tool = _request(
+            client,
+            "POST",
+            "/agent-shell/api/mcp-tools",
+            headers=management,
+            json_body={
+                "name": mcp_tool_name,
+                "description": "Echo one topic through the official MCP endpoint.",
+                "python_schema_id": mcp_python_schema["id"],
+            },
+        ).json()
+        mcp_document = {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.control.v1",
                 "nodes": [
                     {
                         "id": "start",

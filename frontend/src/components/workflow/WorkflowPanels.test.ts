@@ -82,7 +82,6 @@ describe('Workflow control panels', () => {
         nodeIds: [node.id],
         outputEndpoints: commandCatalog.output_handles,
         stateContract: 'agent-shell.workflow.control.v1',
-        schemaSource: '',
         workflowName: 'Control Workflow',
       },
       global: { plugins: [i18n()] },
@@ -96,7 +95,7 @@ describe('Workflow control panels', () => {
     expect(wrapper.emitted('updateNodeId')).toEqual([[node.id, 'review']])
   })
 
-  it('edits the optional State schema and serializes it into the document', async () => {
+  it('does not expose an embedded State schema editor', () => {
     const wrapper = mount(WorkflowInspector, {
       props: {
         edge: null,
@@ -110,29 +109,11 @@ describe('Workflow control panels', () => {
         nodeIds: [],
         outputEndpoints: [],
         stateContract: 'agent-shell.workflow.control.v1',
-        schemaSource: '',
         workflowName: 'Control Workflow',
       },
       global: { plugins: [i18n()] },
     })
-    const schema = `
-from pydantic import BaseModel
-
-
-class State(BaseModel):
-    topic: str
-`
-    await wrapper.get('#workflow-state-schema').setValue(schema)
-
-    expect(wrapper.emitted('updateSchemaSource')).toEqual([[schema]])
-    const command = newCommandCanvasNode('router', commands[0]!.id)
-    const document = workflowCanvasToDocument(
-      [command],
-      [],
-      { x: 0, y: 0, zoom: 1 },
-      schema,
-    )
-    expect(document.definition.schema_source).toBe(schema)
+    expect(wrapper.find('#workflow-state-schema').exists()).toBe(false)
   })
 
   it('connects and serializes one normal Edge kind', () => {

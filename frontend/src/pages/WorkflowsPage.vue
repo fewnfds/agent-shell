@@ -17,6 +17,7 @@ import { useConfigurationResource } from '@/composables/useConfigurationResource
 const { t } = useI18n()
 const router = useRouter()
 const workflowEventOutputs = ref<ConfigurationSummary[]>([])
+const pythonSchemas = ref<ConfigurationSummary[]>([])
 
 function sortWorkflows<T extends Pick<WorkflowSummary, 'id' | 'name'>>(items: readonly T[]): T[] {
   return [...items].sort((left, right) => (
@@ -33,6 +34,7 @@ function blankWorkflow(): WorkflowResource {
     name: '',
     description: '',
     is_model_entry: false,
+    python_schema_id: null,
     workflow_event_output_id: null,
     on_disconnect: 'cancel',
     enabled: false,
@@ -46,6 +48,7 @@ function normalizeWorkflow(value: unknown): WorkflowResource {
     name: workflow.name ?? '',
     description: workflow.description ?? '',
     is_model_entry: workflow.is_model_entry ?? false,
+    python_schema_id: workflow.python_schema_id ?? null,
     workflow_event_output_id: workflow.workflow_event_output_id ?? null,
     on_disconnect: workflow.on_disconnect ?? 'cancel',
     enabled: workflow.enabled ?? false,
@@ -57,6 +60,7 @@ function toPayload(workflow: WorkflowResource): WorkflowPayload {
     name: workflow.name.trim(),
     description: workflow.description.trim(),
     is_model_entry: workflow.is_model_entry,
+    python_schema_id: workflow.python_schema_id || null,
     workflow_event_output_id: workflow.workflow_event_output_id || null,
     on_disconnect: workflow.on_disconnect,
   }
@@ -152,6 +156,7 @@ async function saveWorkflow(): Promise<void> {
 async function loadWorkspace(): Promise<void> {
   await initializeWorkspace(async () => {
     const options = await managementApi.getConfigurationOptions()
+    pythonSchemas.value = options.components['python-schema'] ?? []
     workflowEventOutputs.value = options.components['workflow-event-output'] ?? []
     return options.workflows
   })
@@ -212,7 +217,27 @@ onMounted(() => { void loadWorkspace() })
         </section>
         <section class="mt-3" :aria-label="t('workflows.metadataTitle')">
           <div class="row g-3" data-testid="workflow-component-assembly-row">
-            <div class="col-lg-4 col-md-6">
+            <div class="col-lg-3 col-md-6">
+              <section class="card h-100">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <label class="card-title mb-0" for="workflow-python-schema">{{ t('workflows.fields.pythonSchema') }}</label>
+                </header>
+                <div class="card-body">
+                  <select id="workflow-python-schema" v-model="form.python_schema_id" class="form-select">
+                    <option :value="null">{{ t('common.none') }}</option>
+                    <option
+                      v-if="form.python_schema_id && !hasConfiguration(pythonSchemas, form.python_schema_id)"
+                      disabled
+                      :value="form.python_schema_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.python_schema_id }) }}
+                    </option>
+                    <option v-for="schema in pythonSchemas" :key="schema.id" :value="schema.id">{{ schema.name }}</option>
+                  </select>
+                </div>
+              </section>
+            </div>
+            <div class="col-lg-3 col-md-6">
               <section class="card h-100">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="workflow-event-output">{{ t('workflows.fields.eventOutput') }}</label>
@@ -232,7 +257,7 @@ onMounted(() => { void loadWorkspace() })
                 </div>
               </section>
             </div>
-            <div class="col-lg-4 col-md-6">
+            <div class="col-lg-3 col-md-6">
               <section class="card h-100">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="workflow-model-entry">{{ t('workflows.fields.modelEntry') }}</label>
@@ -245,7 +270,7 @@ onMounted(() => { void loadWorkspace() })
                 </div>
               </section>
             </div>
-            <div class="col-lg-4 col-md-6">
+            <div class="col-lg-3 col-md-6">
               <section class="card h-100">
                 <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <label class="card-title mb-0" for="workflow-on-disconnect">{{ t('workflows.fields.onDisconnect') }}</label>

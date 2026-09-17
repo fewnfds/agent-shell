@@ -98,6 +98,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   summarization: () => import('@/editors/SummarizationEditor.vue'),
   'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
   command: () => import('@/editors/CommandEditor.vue'),
+  'python-schema': () => import('@/editors/PythonSchemaEditor.vue'),
   'model-connection': () => import('@/editors/ModelEditor.vue'),
   'mcp-connection': () => import('@/editors/McpConnectionEditor.vue'),
 }

@@ -85,6 +85,10 @@ const sectionNavigationGroups: SectionNavigationGroup[] = [
         path: '/workflow-components/command',
         labelKey: 'navigation.sections.command',
       },
+      {
+        path: '/workflow-components/python-schema',
+        labelKey: 'navigation.sections.pythonSchema',
+      },
     ],
   },
 ]

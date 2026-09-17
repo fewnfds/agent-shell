@@ -166,6 +166,7 @@ def test_mcp_tool_graph_inspection_uses_published_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mcp_tool_id = "22222222-2222-4222-8222-222222222222"
+    expected_python_schema_id = "33333333-3333-4333-8333-333333333333"
     document = _start_end_document()
     graph = object()
     calls: list[tuple[str, str]] = []
@@ -176,9 +177,11 @@ def test_mcp_tool_graph_inspection_uses_published_snapshot(
             value,
             *,
             mcp_tool_id: str,
+            python_schema_id: str | None,
         ):
             calls.append(("structure", mcp_tool_id))
             assert value is document
+            assert python_schema_id == expected_python_schema_id
             return graph
 
         async def build_mcp_tool_graph(self, *_args, **_kwargs):
@@ -187,7 +190,11 @@ def test_mcp_tool_graph_inspection_uses_published_snapshot(
     class Snapshot:
         def mcp_tool_by_id(self, value: str):
             assert value == mcp_tool_id
-            return {"id": value, "enabled": True}
+            return {
+                "id": value,
+                "enabled": True,
+                "python_schema_id": expected_python_schema_id,
+            }
 
         def mcp_tool_document(self, value: str):
             assert value == mcp_tool_id

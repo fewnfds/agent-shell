@@ -14,10 +14,6 @@ from agent_shell.workflow.contracts import (
     WorkflowGraphDocumentV1,
     WorkflowNodeV1,
 )
-from agent_shell.workflow.state_schema import (
-    WorkflowStateSchemaError,
-    validate_workflow_state_schema,
-)
 from agent_shell.workflow.topology import validate_workflow_topology
 WORKFLOW_ADMISSION_STAGE = "workflow_draft"
 WORKFLOW_EXECUTABLE_STAGE = "workflow_publish"
@@ -177,19 +173,6 @@ def _admission_issues(
     document: WorkflowGraphDocumentV1,
 ) -> tuple[list[ValidationIssue], WorkflowGraphDocumentV1]:
     issues: list[ValidationIssue] = []
-    schema_source = document.definition.schema_source
-    if schema_source is not None:
-        try:
-            validate_workflow_state_schema(schema_source)
-        except WorkflowStateSchemaError as exc:
-            issues.append(
-                _issue(
-                    code="workflow.schema_invalid",
-                    path="definition.schema_source",
-                    message=str(exc),
-                    message_key="validation.issue.workflow.schemaInvalid",
-                )
-            )
     nodes = _normalize_nodes(document, issues)
     normalized = document.model_copy(
         update={

@@ -9,6 +9,17 @@ from agent_shell.storage.workflows import WorkflowStore
 from .support import *
 
 
+STATE_SOURCE = """
+from pydantic import BaseModel, ConfigDict
+
+
+class State(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: int
+"""
+
+
 def repository_reference_issues(client, *, owner_id: str) -> list[dict]:
     return [
         issue
@@ -794,7 +805,16 @@ def test_workflow_graph_catalog_save_and_reload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client, name="Canvas Workflow")
+        python_schema = create_python_schema(
+            client,
+            name="Canvas State",
+            source=STATE_SOURCE,
+        )
+        workflow = create_workflow(
+            client,
+            name="Canvas Workflow",
+            python_schema_id=python_schema["id"],
+        )
         graph_url = f"/agent-shell/api/workflows/{workflow['id']}/graph"
 
         empty = client.get(graph_url)
@@ -803,15 +823,6 @@ def test_workflow_graph_catalog_save_and_reload(
             "definition": {
                 "schema_version": 1,
                 "state_contract": "agent-shell.workflow.control.v1",
-                "schema_source": """
-from pydantic import BaseModel, ConfigDict
-
-
-class State(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    answer: int
-""",
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
                     {"id": "end", "type": "end", "type_version": 1, "config": {}},
@@ -846,7 +857,7 @@ class State(BaseModel):
 
         assert empty.status_code == 200
         assert empty.json()["definition"]["nodes"] == []
-        assert empty.json()["definition"]["schema_source"] is None
+        assert "schema_source" not in empty.json()["definition"]
     assert [item["type"] for item in catalog.json()] == [
         "start",
         "command",
@@ -856,6 +867,61 @@ class State(BaseModel):
     assert saved.json() == document
     assert metadata.status_code == 200, metadata.text
     assert reloaded.json() == document
+
+
+def test_workflow_rejects_missing_python_schema_references(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing_id = "00000000-0000-4000-8000-000000000073"
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post(
+            "/agent-shell/api/workflows",
+            json={
+                "name": "Missing schema",
+                "description": "",
+                "is_model_entry": False,
+                "python_schema_id": missing_id,
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "python_schema_not_found"
+
+
+def test_deleting_referenced_python_schema_preserves_reference_and_reports_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        python_schema = create_python_schema(
+            client,
+            name="Referenced State",
+            source=STATE_SOURCE,
+        )
+        main_agent = create_main_agent(client)
+        workflow = create_workflow(
+            client,
+            name="Schema Workflow",
+            python_schema_id=python_schema["id"],
+        )
+        save_linear_workflow_graph(client, workflow, main_agent)
+
+        deleted = client.delete(
+            "/agent-shell/api/blocks/python-schema/"
+            f"{python_schema['id']}"
+        )
+        saved = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}"
+        ).json()
+        issues = repository_reference_issues(client, owner_id=workflow["id"])
+
+    assert deleted.status_code == 200, deleted.text
+    assert saved["python_schema_id"] == python_schema["id"]
+    assert saved["enabled"] is False
+    assert len(issues) == 1
+    assert issues[0]["path"] == "python_schema_id"
+    assert issues[0]["message_args"]["reference_id"] == python_schema["id"]
 
 def test_graph_save_rejects_background_action_as_node(
     tmp_path: Path,

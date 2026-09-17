@@ -115,10 +115,13 @@ def mcp_tool_executable_report(
         workflow={
             "id": owner_id,
             "name": owner_name or "mcp-tool",
+            "python_schema_id": mcp_tool.get("python_schema_id"),
             "workflow_event_output_id": None,
         },
         blocks=blocks,
         configuration_validation=configuration_validation,
+        python_schema_requires_input=True,
+        python_schema_requires_output=True,
     )
     issues.extend(
         _mcp_tool_issue(issue, owner_id=owner_id, owner_name=owner_name)
@@ -186,6 +189,7 @@ def validate_stored_mcp_tool(
                 mcp_tool={
                     "id": owner_id,
                     "name": stored.name,
+                    "python_schema_id": stored.python_schema_id,
                 },
                 blocks=blocks,
                 configuration_validation=configuration_validation,

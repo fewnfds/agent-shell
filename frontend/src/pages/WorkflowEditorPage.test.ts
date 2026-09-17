@@ -13,6 +13,7 @@ const workflow: Workflow = {
   name: 'Control Workflow',
   description: 'Runs deterministic control steps.',
   is_model_entry: true,
+  python_schema_id: null,
   workflow_event_output_id: null,
   on_disconnect: 'cancel',
   enabled: true,

@@ -147,6 +147,7 @@ def test_editor_defaults_are_derived_from_current_authoring_contracts() -> None:
     )
     assert agent_event_output == {}
     assert defaults["workflow_event_output"] == {}
+    assert defaults["python_schema"] == {}
     reference = {
         "folder": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     }

@@ -15,6 +15,7 @@ import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
 import { commandAdapter } from './blocks/command'
+import { pythonSchemaAdapter } from './blocks/pythonSchema'
 
 export type {
   CustomMiddlewareCatalogItem,
@@ -88,6 +89,10 @@ export type {
   CommandDefaults,
   CommandDraft,
 } from './blocks/command'
+export type {
+  PythonSchemaDraft,
+  PythonSchemaPayload,
+} from './blocks/pythonSchema'
 
 export {
   customMiddlewareAdapter,
@@ -107,6 +112,7 @@ export {
   todoListAdapter,
   workflowEventOutputAdapter,
   commandAdapter,
+  pythonSchemaAdapter,
 }
 
 export const blockTypes = [
@@ -131,6 +137,7 @@ export const managedComponentTypes = [
   'mcp-requirement',
   'workflow-event-output',
   'command',
+  'python-schema',
 ] as const
 
 export const blockAdapters = {
@@ -151,4 +158,5 @@ export const blockAdapters = {
   'mcp-requirement': mcpRequirementAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'command': commandAdapter,
+  'python-schema': pythonSchemaAdapter,
 } as const

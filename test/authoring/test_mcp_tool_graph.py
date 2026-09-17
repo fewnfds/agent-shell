@@ -41,7 +41,6 @@ def _document() -> WorkflowGraphDocumentV1:
             "definition": {
                 "schema_version": 1,
                 "state_contract": "agent-shell.workflow.control.v1",
-                "schema_source": SCHEMA_SOURCE,
                 "nodes": [
                     {
                         "id": "start",
@@ -158,14 +157,6 @@ def test_mcp_tool_rejects_invalid_state_and_input() -> None:
 
 
 def test_mcp_tool_without_schema_keeps_open_mapping_state() -> None:
-    document = _document().model_copy(
-        update={
-            "definition": _document().definition.model_copy(
-                update={"schema_source": None}
-            )
-        }
-    )
-
     async def add_value(state, runtime):
         return Command(
             update={"answer": state["topic"].upper()},
@@ -173,7 +164,7 @@ def test_mcp_tool_without_schema_keeps_open_mapping_state() -> None:
         )
 
     graph = compile_mcp_tool_graph(
-        document,
+        _document(),
         mcp_tool_id=TOOL_ID,
         commands={"echo": add_value},
     )

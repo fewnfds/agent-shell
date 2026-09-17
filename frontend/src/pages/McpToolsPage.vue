@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import {
   managementApi,
   type McpTool,
+  type ConfigurationSummary,
   type McpToolPayload,
   type McpToolSummary,
   type ValidationReport,
@@ -22,6 +23,7 @@ import { useConfigurationValidation } from '@/composables/useConfigurationValida
 
 const { t } = useI18n()
 const router = useRouter()
+const pythonSchemas = ref<ConfigurationSummary[]>([])
 
 function sortMcpTools<T extends Pick<McpToolSummary, 'id' | 'name'>>(
   items: readonly T[],
@@ -39,6 +41,7 @@ function blankMcpTool(): McpToolResource {
     id: '',
     name: '',
     description: '',
+    python_schema_id: null,
     enabled: false,
   }
 }
@@ -49,6 +52,7 @@ function normalizeMcpTool(value: unknown): McpToolResource {
     id: item.id ?? '',
     name: item.name ?? '',
     description: item.description ?? '',
+    python_schema_id: item.python_schema_id ?? null,
     enabled: item.enabled ?? false,
   }
 }
@@ -57,6 +61,7 @@ function toPayload(item: McpToolResource): McpToolPayload {
   return {
     name: item.name.trim(),
     description: item.description.trim(),
+    python_schema_id: item.python_schema_id || null,
   }
 }
 
@@ -146,6 +151,7 @@ async function saveMcpTool(): Promise<void> {
 async function loadWorkspace(): Promise<void> {
   await initializeWorkspace(async () => {
     const options = await managementApi.getConfigurationOptions()
+    pythonSchemas.value = options.components['python-schema'] ?? []
     return options.mcp_tools
   })
 }
@@ -157,6 +163,10 @@ function newMcpTool(): void {
 
 function updateName(value: string): void {
   form.value.name = value
+}
+
+function hasConfiguration(options: ConfigurationSummary[], id: string | null): boolean {
+  return Boolean(id && options.some((item) => item.id === id))
 }
 
 function editGraph(): void {
@@ -207,21 +217,53 @@ onMounted(() => { void loadWorkspace() })
         />
         <div class="form-text">{{ t('mcpTools.fields.nameHint') }}</div>
         <section class="mt-3">
-          <section class="card h-100">
-            <header class="card-header">
-              <label class="card-title mb-0" for="mcp-tool-description">
-                {{ t('mcpTools.fields.description') }}
-              </label>
-            </header>
-            <div class="card-body">
-              <textarea
-                id="mcp-tool-description"
-                v-model="form.description"
-                class="form-control"
-                rows="4"
-              />
+          <div class="row g-3">
+            <div class="col-lg-8">
+              <section class="card h-100">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="mcp-tool-description">
+                    {{ t('mcpTools.fields.description') }}
+                  </label>
+                </header>
+                <div class="card-body">
+                  <textarea
+                    id="mcp-tool-description"
+                    v-model="form.description"
+                    class="form-control"
+                    rows="4"
+                  />
+                </div>
+              </section>
             </div>
-          </section>
+            <div class="col-lg-4">
+              <section class="card h-100">
+                <header class="card-header">
+                  <label class="card-title mb-0" for="mcp-tool-python-schema">
+                    {{ t('mcpTools.fields.pythonSchema') }}
+                  </label>
+                </header>
+                <div class="card-body">
+                  <select
+                    id="mcp-tool-python-schema"
+                    v-model="form.python_schema_id"
+                    class="form-select"
+                  >
+                    <option :value="null">{{ t('common.none') }}</option>
+                    <option
+                      v-if="form.python_schema_id && !hasConfiguration(pythonSchemas, form.python_schema_id)"
+                      disabled
+                      :value="form.python_schema_id"
+                    >
+                      {{ t('common.missingConfiguration', { id: form.python_schema_id }) }}
+                    </option>
+                    <option v-for="schema in pythonSchemas" :key="schema.id" :value="schema.id">
+                      {{ schema.name }}
+                    </option>
+                  </select>
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
       </template>
       <template #aside>

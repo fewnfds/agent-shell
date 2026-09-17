@@ -21,7 +21,6 @@ const props = withDefaults(defineProps<{
   nodeIds: string[]
   outputEndpoints: WorkflowNodeHandleSpec[]
   stateContract: string
-  schemaSource: string
   showExternalAgent?: boolean
   workflowName: string
 }>(), {
@@ -37,7 +36,6 @@ const emit = defineEmits<{
   updateCommand: [nodeId: string, commandId: string]
   updateExternalAgent: [nodeId: string, externalAgentId: string]
   updateNodeId: [nodeId: string, nextNodeId: string]
-  updateSchemaSource: [value: string]
 }>()
 
 const { t } = useI18n()
@@ -134,9 +132,6 @@ function selectEdgeTargetEndpoint(event: Event): void {
   }
 }
 
-function updateSchemaSource(event: Event): void {
-  emit('updateSchemaSource', (event.target as HTMLTextAreaElement).value)
-}
 </script>
 
 <template>
@@ -195,20 +190,6 @@ function updateSchemaSource(event: Event): void {
       <template v-else>
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.fields.name') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ workflowName }}</span></div>
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.editor.stateContract') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ stateContract }}</span></div>
-        <div class="workflow-inspector-row">
-          <label class="workflow-inspector-label" for="workflow-state-schema"><span>{{ $t('workflows.editor.schemaSource') }}</span><span aria-hidden="true">:</span></label>
-          <div class="workflow-inspector-control">
-            <textarea
-              id="workflow-state-schema"
-              class="form-control form-control-sm font-monospace"
-              name="schema-source"
-              rows="12"
-              spellcheck="false"
-              :value="schemaSource"
-              @change="updateSchemaSource"
-            />
-          </div>
-        </div>
       </template>
     </div>
   </section>
