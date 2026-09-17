@@ -13,6 +13,7 @@ from agent_shell.command import (
     CommandStateSchemaError,
     run_command,
 )
+from agent_shell.graph_schema import compile_graph_schema
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import (
     WORKFLOW_STATE_CHANNEL,
@@ -140,15 +141,18 @@ def test_command_accepts_updates_that_satisfy_the_declared_state_schema() -> Non
             state=wrap_workflow_state_update({"count": 2}),
             runtime=_runtime(),
             target_map={},
-            state_schema={
-                "type": "object",
-                "properties": {
-                    "count": {"type": "integer"},
-                    "topic": {"type": "string"},
-                },
-                "required": ["count", "topic"],
-                "additionalProperties": False,
-            },
+            state_schema=compile_graph_schema(
+                """
+from pydantic import BaseModel, ConfigDict
+
+
+class State(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int
+    topic: str
+"""
+            ),
         )
     )
     assert result.update == {WORKFLOW_STATE_CHANNEL: {"topic": "topic-2"}}
@@ -165,10 +169,16 @@ def test_command_rejects_updates_that_break_the_declared_state_schema() -> None:
                 state=wrap_workflow_state_update({"count": 1}),
                 runtime=_runtime(),
                 target_map={},
-                state_schema={
-                    "type": "object",
-                    "properties": {"count": {"type": "integer"}},
-                    "additionalProperties": False,
-                },
+                state_schema=compile_graph_schema(
+                    """
+from pydantic import BaseModel, ConfigDict
+
+
+class State(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int
+"""
+                ),
             )
         )

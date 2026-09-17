@@ -166,6 +166,7 @@ export function service(overrides: Partial<AgentAuthoringService> = {}): AgentAu
         'filesystem-tools': [{ id: '00000000-0000-0000-0000-000000000002', name: 'filesystem-tools block' }],
       },
       main_agents: [mainAgent],
+      mcp_tools: [],
       subagents: [subagent],
       workflows: [],
     })),

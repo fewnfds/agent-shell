@@ -39,6 +39,7 @@ from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.storage.mcp_tools import McpToolStore
 from agent_shell.validation.models import validation_failure_detail
 from agent_shell.python_packages.authoring import (
     PythonPackageAuthoringError,
@@ -109,6 +110,7 @@ def build_router(
     secret_resolver: ProviderSecretResolver,
     provider_http_clients: ProviderHttpClients,
     workflow_store: WorkflowStore,
+    mcp_tool_store: McpToolStore,
     python_package_authoring: PythonPackageAuthoringService,
     skill_package_authoring: SkillPackageAuthoringService,
     component_mutations: ComponentMutationService,
@@ -164,6 +166,7 @@ def build_router(
                 "external_agents"
             ),
             "workflows": workflow_store.list_item_summaries(),
+            "mcp_tools": mcp_tool_store.list_item_summaries(),
         }
 
     def authoring_error(exc: PythonPackageAuthoringError) -> HTTPException:

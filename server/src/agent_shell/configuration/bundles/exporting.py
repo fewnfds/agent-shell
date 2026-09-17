@@ -131,6 +131,7 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
         "components": {},
         "external_agents": [],
         "main_agents": [],
+        "mcp_tools": [],
         "subagents": [],
         "workflows": [],
     }
@@ -144,6 +145,8 @@ def snapshot_config(entities: tuple[ConfigurationEntity, ...]) -> dict[str, Any]
             config["subagents"].append(record)
         elif entity.kind == "external_agent":
             config["external_agents"].append(record)
+        elif entity.kind == "mcp_tool":
+            config["mcp_tools"].append(record)
         else:
             config["workflows"].append(record)
     return config

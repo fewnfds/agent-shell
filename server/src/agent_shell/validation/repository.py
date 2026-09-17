@@ -19,6 +19,7 @@ from agent_shell.validation.references import (
     configuration_reference_issue,
 )
 from agent_shell.validation.service import ConfigurationValidationService
+from agent_shell.validation.mcp_tools import validate_stored_mcp_tool
 from agent_shell.validation.workflows import validate_stored_workflow
 from agent_shell.configuration.identity import name_collision_key
 
@@ -189,6 +190,17 @@ class RepositoryValidationService:
                     owner_type="workflow",
                 )
                 for issue in workflow_issues
+            )
+        for mcp_tool in config.get("mcp_tools", []):
+            issues.extend(
+                self._semantic_issues(
+                    validate_stored_mcp_tool(
+                        mcp_tool,
+                        blocks=self._blocks,
+                        configuration_validation=self._configuration_validation,
+                        stage=stage,
+                    )
+                )
             )
         agent_model_names = {
             name_collision_key(str(agent.get("name", "")))

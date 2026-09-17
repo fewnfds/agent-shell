@@ -27,6 +27,8 @@ Management API 使用 `/agent-shell/api/*`，负责发现、创建、修改、�
 
 OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `enabled=true` 且 `is_model_entry=true` 的 Main Agent/Workflow。其他请求入口也复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
+官方 `/mcp` 是独立的无状态工具入口，只公开已发布的 MCP Tool。`tools/call.arguments` 直接进入该 MCP Tool 的 Graph State，不创建 Lifecycle，也不复用 Model Shell request。
+
 一次外部请求按以下路径运行：
 
 ```text
@@ -40,7 +42,7 @@ OpenAI-compatible request (request.messages[])
   -> 返回 OpenAI-compatible response
 ```
 
-客户端完整 OpenAI-compatible request 保存在Lifecycle Store的`input/request` envelope，`request.messages`是标准多轮`system`、`user`、`assistant`消息。Agent入口把验证后的该数组作为对应Main Agent root graph的官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口从`request.messages`取得输入，Workflow State保存扁平变量表。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
+客户端完整 OpenAI-compatible request 保存在Lifecycle Store的`input/request` envelope，`request.messages`是标准多轮`system`、`user`、`assistant`消息。Agent入口把验证后的该数组作为对应Main Agent root graph的官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口保存同一份request参考，但control Graph从独立的`initial_state`启动并拥有扁平变量表，不自动把`request.messages`写入Workflow State。需要原始请求的Command通过`runtime.store`和`runtime.context.lifecycle_id`显式读取。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
 
 需要在Thread第一次执行时整理Agent输入时，为该Agent装配Agent Additional Prompt（AAP）或其他明确的Custom Middleware。AAP从current AgentState messages或显式Store/Filesystem来源选择材料，并用private checkpoint marker保证同一stateful Thread只初始化一次。
 

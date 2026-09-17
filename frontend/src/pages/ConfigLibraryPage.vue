@@ -101,6 +101,7 @@ const categoryItems = computed<SectionNavItem[]>(() => [
   { id: 'model-connection', label: t('capabilities.model-connection.label') },
   { id: 'mcp-connection', label: t('capabilities.mcp-connection.label') },
   { id: 'workflow', label: t('capabilities.workflow.label') },
+  { id: 'mcp-tool', label: t('capabilities.mcp-tool.label') },
 ])
 
 const currentCategory = computed<LibraryCategoryId | null>(() => (
@@ -146,6 +147,10 @@ async function listCategory(
     const result = await api.value.listWorkflowSummaries(query)
     return { rows: result.items, total: result.total }
   }
+  if (category === 'mcp-tool') {
+    const result = await api.value.listMcpToolSummaries(query)
+    return { rows: result.items, total: result.total }
+  }
   if (category === 'model-connection') {
     const items = (await api.value.listModelConnections()).filter((item) => (
       matchesSearchText(request.query, [item.name, item.id])
@@ -177,6 +182,7 @@ async function getCategoryItem(
   if (category === 'workflow') {
     return api.value.getWorkflow(id)
   }
+  if (category === 'mcp-tool') return api.value.getMcpTool(id)
   if (category === 'model-connection') return api.value.getModelConnection(id)
   if (category === 'mcp-connection') return api.value.getMcpConnection(id)
   return api.value.getBlock(category, id)
@@ -251,6 +257,8 @@ async function copyCurrentItem(): Promise<void> {
       await api.value.copySubagent(source.id, copyName.value)
     } else if (category === 'workflow') {
       await api.value.copyWorkflow(source.id, copyName.value)
+    } else if (category === 'mcp-tool') {
+      await api.value.copyMcpTool(source.id, copyName.value)
     } else if (category === 'model-connection') {
       await api.value.copyModelConnection(source.id, copyName.value)
     } else if (category === 'mcp-connection') {
@@ -380,6 +388,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         if (category === 'main-agent') await api.value.deleteMainAgent(item.id)
         else if (category === 'subagent-profile') await api.value.deleteSubagent(item.id)
         else if (category === 'workflow') await api.value.deleteWorkflow(item.id)
+        else if (category === 'mcp-tool') await api.value.deleteMcpTool(item.id)
         else if (category === 'model-connection') await api.value.deleteModelConnection(item.id)
         else if (category === 'mcp-connection') await api.value.deleteMcpConnection(item.id)
         else await api.value.deleteBlock(category, item.id)
@@ -416,6 +425,8 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         result = await api.value.deleteSubagentsMatching(query)
       } else if (category === 'workflow') {
         result = await api.value.deleteWorkflowsMatching(query)
+      } else if (category === 'mcp-tool') {
+        result = await api.value.deleteMcpToolsMatching(query)
       } else {
         result = await api.value.deleteBlocksMatching(category, query)
       }

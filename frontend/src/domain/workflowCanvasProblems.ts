@@ -54,11 +54,11 @@ export function workflowCanvasProblems(
 
 export function workflowStateSchemaProblem(messageKey: string): WorkflowCanvasProblem {
   return canvasProblem(
-    'workflow.state_schema_invalid',
+    'workflow.schema_invalid',
     messageKey,
     '',
     'workflow',
-    'definition.state_schema',
+    'definition.schema_source',
   )
 }
 

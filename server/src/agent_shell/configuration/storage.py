@@ -12,6 +12,7 @@ from agent_shell.configuration.identity import (
     normalize_configuration_name,
     require_configuration_id,
 )
+from agent_shell.mcp_tool_contracts import validate_mcp_tool_name
 
 
 _COMPONENT_TYPE = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -44,7 +45,13 @@ def validate_configuration_snapshot(
         ):
             raise ValueError("component type keys must be normalized path segments")
         _record_list(records, label=f"components.{component_type}")
-    for key in ("external_agents", "main_agents", "subagents", "workflows"):
+    for key in (
+        "external_agents",
+        "main_agents",
+        "mcp_tools",
+        "subagents",
+        "workflows",
+    ):
         _record_list(config.get(key), label=key)
 
     seen_ids: dict[str, str] = {}
@@ -81,12 +88,21 @@ def validate_configuration_snapshot(
             raise ValueError(
                 f"{entity.kind} {entity_id} must use a normalized {identity_field}"
             )
+        if entity.kind == "mcp_tool":
+            try:
+                validate_mcp_tool_name(raw_name)
+            except ValueError as exc:
+                raise ValueError(
+                    f"mcp_tool {entity_id} has an invalid tool name: {exc}"
+                ) from exc
         scope = (
             entity.kind,
             entity.component_type if entity.kind == "component" else "",
         )
         collision_key = (
-            raw_name if entity.kind == "workflow" else name_collision_key(raw_name)
+            raw_name
+            if entity.kind in {"workflow", "mcp_tool"}
+            else name_collision_key(raw_name)
         )
         scoped_names = seen_names.setdefault(scope, {})
         previous_name_id = scoped_names.get(collision_key)

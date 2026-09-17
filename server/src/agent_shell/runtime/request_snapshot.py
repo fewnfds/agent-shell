@@ -79,16 +79,19 @@ from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
 from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.storage.mcp_tools import McpToolStore
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.workflow import WorkflowGraphDocumentV1
 from agent_shell.workflow.state_schema import (
     WorkflowStateSchemaError,
+    compile_workflow_state_schema,
     validate_workflow_state,
 )
 
 
 LANGGRAPH_WORKFLOW_GRAPH_ID = "agent-shell-workflow"
 LANGGRAPH_AGENT_GRAPH_ID = "agent-shell-agent"
+LANGGRAPH_MCP_TOOL_GRAPH_ID = "agent-shell-mcp-tool"
 
 
 async def _ensure_assistant(
@@ -313,6 +316,7 @@ class RequestRuntimeSnapshot:
     """Immutable configuration catalog and runtime materialization inputs."""
 
     _workflows: WorkflowStore
+    _mcp_tools: McpToolStore
     _agents: AgentConfigStore
     _runtime_factory: Callable[[BaseStore | None], AgentRuntime]
     _response_stream_policy: ResponseStreamPolicy
@@ -333,6 +337,15 @@ class RequestRuntimeSnapshot:
 
     def workflow_document(self, workflow_id: str) -> WorkflowGraphDocumentV1 | None:
         return self._workflows.get_graph(workflow_id)
+
+    def mcp_tool_by_id(self, mcp_tool_id: str) -> dict[str, Any] | None:
+        return self._mcp_tools.get_item(mcp_tool_id)
+
+    def mcp_tool_document(
+        self,
+        mcp_tool_id: str,
+    ) -> WorkflowGraphDocumentV1 | None:
+        return self._mcp_tools.get_graph(mcp_tool_id)
 
     async def new_runtime(self, *, store: BaseStore) -> AgentRuntime:
         return await asyncio.to_thread(self._runtime_factory, store)
@@ -1322,9 +1335,12 @@ class LifecycleRunCoordinator:
             raise RuntimeError("the captured Workflow no longer exists")
         entry_state = dict(initial_state or {})
         try:
+            state_schema = compile_workflow_state_schema(
+                document.definition.schema_source
+            )
             validate_workflow_state(
                 entry_state,
-                document.definition.state_schema,
+                state_schema,
             )
         except WorkflowStateSchemaError as exc:
             raise AgentRuntimeError(
@@ -1974,6 +1990,12 @@ class RequestSnapshotRuntime:
             if isinstance(workflow, dict)
             and workflow.get("enabled") is True
         ]
+        repository_config["mcp_tools"] = [
+            mcp_tool
+            for mcp_tool in repository_config.get("mcp_tools", [])
+            if isinstance(mcp_tool, dict)
+            and mcp_tool.get("enabled") is True
+        ]
         return repository_config
 
     def _materialize_snapshot(
@@ -1992,6 +2014,7 @@ class RequestSnapshotRuntime:
         blocks = BlockStore(repository)
         configs = AgentConfigStore(repository)
         workflows = WorkflowStore(repository)
+        mcp_tools = McpToolStore(repository)
         secrets = ProviderSecretResolver(repository, model_resources)
         python_package_validation = PythonPackageValidationService(
             packages_dir=python_packages_dir,
@@ -2035,6 +2058,7 @@ class RequestSnapshotRuntime:
 
         return RequestRuntimeSnapshot(
             _workflows=workflows,
+            _mcp_tools=mcp_tools,
             _agents=configs,
             _runtime_factory=runtime_factory,
             _response_stream_policy=response_stream_policy,

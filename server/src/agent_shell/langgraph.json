@@ -4,7 +4,8 @@
   ],
   "graphs": {
     "agent-shell-workflow": "agent_shell.langgraph_dev:workflow_graph",
-    "agent-shell-agent": "agent_shell.langgraph_dev:agent_graph"
+    "agent-shell-agent": "agent_shell.langgraph_dev:agent_graph",
+    "agent-shell-mcp-tool": "agent_shell.langgraph_dev:mcp_tool_graph"
   },
   "checkpointer": {
     "path": "agent_shell.langgraph_persistence.generate_checkpointer"

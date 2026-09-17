@@ -15,8 +15,13 @@ from agent_shell.contracts import (
     McpRequirementBlock,
 )
 from agent_shell.file_manager import FileManagerService
+from agent_shell.graph_schema import GraphSchema, compile_graph_schema
+from agent_shell.mcp_tools.compiler import compile_mcp_tool_graph
 from agent_shell.runtime.agent_builder import AgentBuilder, BuiltAgent
-from agent_shell.runtime.context import AgentRuntimeContext, WorkflowRuntimeContext
+from agent_shell.runtime.context import (
+    AgentRuntimeContext,
+    WorkflowRuntimeContext,
+)
 from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
 from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
 from agent_shell.command_packages import CommandPackageRuntime
@@ -57,6 +62,7 @@ from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.state_schema import (
     WorkflowStateSchemaError,
+    compile_workflow_state_schema,
     validate_workflow_state,
 )
 from agent_shell.workflow.validation import validate_workflow_executable
@@ -854,6 +860,226 @@ class AgentRuntime:
             runtime_context=server_context,
         )
 
+    def _mcp_tool_schema(self, source: str | None) -> GraphSchema | None:
+        if source is None or not source.strip():
+            return None
+        return compile_graph_schema(
+            source,
+            require_input=True,
+            require_output=True,
+        )
+
+    def build_mcp_tool_structure(
+        self,
+        document: WorkflowGraphDocumentV1,
+        *,
+        mcp_tool_id: str,
+    ) -> Any:
+        """Compile one MCP Tool topology and schema without execution resources."""
+
+        from agent_shell.command import CommandBlock
+        from agent_shell.workflow.catalog import CommandNodeConfig
+
+        schema = self._mcp_tool_schema(document.definition.schema_source)
+        structural_commands: dict[str, Any] = {}
+        validation_commands: dict[str, CommandBlock] = {}
+        for node in document.definition.nodes:
+            if node.type != "command":
+                continue
+            node_config = CommandNodeConfig.model_validate(node.config)
+            if node_config.external_agent_id is not None:
+                raise AgentRuntimeError(
+                    "mcp_tool.lifecycle_dependency",
+                    "MCP Tool Command nodes cannot reference External Agents.",
+                    status_code=422,
+                )
+            stored = (
+                self._blocks.get_block_internal(
+                    "command",
+                    str(node_config.command_id),
+                )
+                if self._blocks is not None
+                else None
+            )
+            if stored is None:
+                continue
+            try:
+                validation_commands[node.id] = CommandBlock.model_validate(
+                    {key: value for key, value in stored.items() if key != "id"}
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "mcp_tool.command_invalid",
+                    "The selected MCP Tool Command configuration is invalid.",
+                    status_code=422,
+                ) from exc
+
+            async def unavailable_command(
+                *_args: Any,
+                **_kwargs: Any,
+            ) -> Any:
+                raise RuntimeError(
+                    "structural MCP Tool graphs cannot execute Command nodes"
+                )
+
+            structural_commands[node.id] = unavailable_command
+
+        executable = validate_workflow_executable(
+            document,
+            commands=validation_commands,
+        )
+        if not executable.valid:
+            issue = executable.issues[0]
+            raise AgentRuntimeError(
+                issue.code,
+                issue.message,
+                status_code=422,
+                validation_report=executable,
+            )
+        return compile_mcp_tool_graph(
+            document,
+            mcp_tool_id=mcp_tool_id,
+            commands=structural_commands,
+            schema=schema,
+            store=self._graph_store,
+        )
+
+    async def build_mcp_tool_graph(
+        self,
+        document: WorkflowGraphDocumentV1,
+        *,
+        mcp_tool_id: str,
+    ) -> tuple[Any, CommandPackageRuntime | None]:
+        """Build one executable, Lifecycle-free MCP Tool Graph."""
+
+        from agent_shell.command import CommandBlock
+        from agent_shell.workflow.catalog import CommandNodeConfig
+
+        schema = self._mcp_tool_schema(document.definition.schema_source)
+        command_runtime: CommandPackageRuntime | None = None
+        command_blocks: dict[str, tuple[str, CommandBlock]] = {}
+        for node in document.definition.nodes:
+            if node.type != "command":
+                continue
+            node_config = CommandNodeConfig.model_validate(node.config)
+            if node_config.external_agent_id is not None:
+                raise AgentRuntimeError(
+                    "mcp_tool.lifecycle_dependency",
+                    "MCP Tool Command nodes cannot reference External Agents.",
+                    status_code=422,
+                )
+            command_id = str(node_config.command_id)
+            stored = (
+                self._blocks.get_block_internal("command", command_id)
+                if self._blocks is not None
+                else None
+            )
+            if stored is None:
+                raise AgentRuntimeError(
+                    "mcp_tool.command_not_found",
+                    "A selected MCP Tool Command does not exist.",
+                    status_code=422,
+                )
+            try:
+                command_blocks[node.id] = (
+                    command_id,
+                    CommandBlock.model_validate(
+                        {
+                            key: value
+                            for key, value in stored.items()
+                            if key != "id"
+                        }
+                    ),
+                )
+            except Exception as exc:
+                raise AgentRuntimeError(
+                    "mcp_tool.command_invalid",
+                    "The selected MCP Tool Command configuration is invalid.",
+                    status_code=422,
+                ) from exc
+
+        executable = validate_workflow_executable(
+            document,
+            commands={
+                node_id: block
+                for node_id, (_command_id, block) in command_blocks.items()
+            },
+        )
+        if not executable.valid:
+            issue = executable.issues[0]
+            raise AgentRuntimeError(
+                issue.code,
+                issue.message,
+                status_code=422,
+                validation_report=executable,
+            )
+
+        try:
+            command_mcp_references = {
+                node_id: self._resolved_command_mcp_references(
+                    command_id,
+                    block,
+                )
+                for node_id, (command_id, block) in command_blocks.items()
+            }
+            all_mcp_references = tuple(
+                reference
+                for references in command_mcp_references.values()
+                for reference in references
+            )
+            mcp_runtime = await self._builder.discover_mcp(all_mcp_references)
+            self._builder.bind_mcp_runtime(mcp_runtime)
+            mcp_commands_by_node = (
+                {
+                    node_id: mcp_runtime.commands_for(references)
+                    for node_id, references in command_mcp_references.items()
+                    if references
+                }
+                if mcp_runtime is not None
+                else {}
+            )
+            commands: dict[str, Any] = {}
+            if command_blocks:
+                if self._python_packages_dir is None or self._runtime_dir is None:
+                    raise AgentRuntimeError(
+                        "mcp_tool.python_package_runtime_unavailable",
+                        "The Python package runtime is not configured.",
+                        status_code=500,
+                    )
+                command_runtime = CommandPackageRuntime(
+                    request_id="",
+                    packages_dir=self._python_packages_dir,
+                    runtime_root=self._runtime_dir,
+                )
+
+                def materialize_commands() -> dict[str, Any]:
+                    assert command_runtime is not None
+                    return {
+                        node_id: command_runtime.command_for(
+                            node_id,
+                            command_id,
+                            block.model_dump(mode="python")["python_package"],
+                        )
+                        for node_id, (command_id, block) in command_blocks.items()
+                    }
+
+                commands = await asyncio.to_thread(materialize_commands)
+
+            graph = await asyncio.to_thread(
+                compile_mcp_tool_graph,
+                document,
+                mcp_tool_id=mcp_tool_id,
+                commands=commands,
+                schema=schema,
+                mcp_commands_by_node=mcp_commands_by_node,
+                store=self._graph_store,
+            )
+            return graph, command_runtime
+        except BaseException:
+            if command_runtime is not None:
+                await command_runtime.close()
+            raise
+
     async def build_resolved_agent(
         self,
         assembly: StaticAssembly,
@@ -1190,9 +1416,12 @@ class AgentRuntime:
         ) = await asyncio.to_thread(_workflow_construction_dependencies)
         entry_state = deepcopy(dict(initial_state or {}))
         try:
+            state_schema = compile_workflow_state_schema(
+                document.definition.schema_source
+            )
             validate_workflow_state(
                 entry_state,
-                document.definition.state_schema,
+                state_schema,
             )
         except WorkflowStateSchemaError as exc:
             raise AgentRuntimeError(

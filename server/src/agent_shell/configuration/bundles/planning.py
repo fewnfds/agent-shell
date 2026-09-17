@@ -258,6 +258,14 @@ class BundleImportPlanner:
                         source_id=entity.id,
                     )
                 )
+            if entity.kind == "mcp_tool":
+                warnings.append(
+                    bundle_issue(
+                        "mcp_tool_imported_disabled",
+                        "Imported MCP Tools are disabled until explicitly validated and published.",
+                        source_id=entity.id,
+                    )
+                )
         for plan in package_plans:
             warnings.append(
                 bundle_issue(

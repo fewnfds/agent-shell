@@ -133,6 +133,98 @@ def test_agent_factory_uses_configurable_identity_from_run_start() -> None:
     assert assistant_id != main_agent_id
 
 
+def test_mcp_tool_factory_uses_configurable_identity() -> None:
+    mcp_tool_id = "22222222-2222-4222-8222-222222222222"
+    resolved_id, configurable = langgraph_dev._mcp_tool_factory_inputs(
+        {
+            "configurable": {
+                "mcp_tool_id": mcp_tool_id,
+                "configurable_value": "kept",
+            }
+        }
+    )
+
+    assert resolved_id == mcp_tool_id
+    assert configurable == {
+        "mcp_tool_id": mcp_tool_id,
+        "configurable_value": "kept",
+    }
+
+
+def test_official_assistant_search_exposes_only_published_mcp_tools() -> None:
+    filter_value = asyncio.run(
+        langgraph_dev.filter_mcp_tool_assistants(None, {})  # type: ignore[arg-type]
+    )
+
+    assert filter_value == {
+        "owner": "agent-shell",
+        "agent_shell_mcp_tool": True,
+    }
+
+
+def test_mcp_tool_graph_inspection_uses_published_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp_tool_id = "22222222-2222-4222-8222-222222222222"
+    document = _start_end_document()
+    graph = object()
+    calls: list[tuple[str, str]] = []
+
+    class GraphRuntime:
+        def build_mcp_tool_structure(
+            self,
+            value,
+            *,
+            mcp_tool_id: str,
+        ):
+            calls.append(("structure", mcp_tool_id))
+            assert value is document
+            return graph
+
+        async def build_mcp_tool_graph(self, *_args, **_kwargs):
+            raise AssertionError("inspection must not build execution resources")
+
+    class Snapshot:
+        def mcp_tool_by_id(self, value: str):
+            assert value == mcp_tool_id
+            return {"id": value, "enabled": True}
+
+        def mcp_tool_document(self, value: str):
+            assert value == mcp_tool_id
+            return document
+
+        async def new_runtime(self, *, store):
+            assert store is runtime.store
+            return GraphRuntime()
+
+    class RuntimeOwner:
+        async def capture(self):
+            calls.append(("capture", ""))
+            return Snapshot()
+
+    monkeypatch.setattr(
+        langgraph_dev,
+        "app",
+        SimpleNamespace(
+            state=SimpleNamespace(agent_runtime=RuntimeOwner()),
+        ),
+    )
+    runtime = SimpleNamespace(store=object(), execution_runtime=None)
+
+    async def inspect() -> None:
+        async with langgraph_dev.mcp_tool_graph(
+            {"configurable": {"mcp_tool_id": mcp_tool_id}},
+            runtime,
+        ) as inspected:
+            assert inspected is graph
+
+    asyncio.run(inspect())
+    assert calls == [
+        ("capture", ""),
+        ("structure", mcp_tool_id),
+    ]
+
+
 def test_agent_graph_inspection_does_not_create_lifecycle_filesystem_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

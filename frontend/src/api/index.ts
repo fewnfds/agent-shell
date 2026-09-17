@@ -68,6 +68,9 @@ import type {
   McpImportPreview,
   McpImportValueSources,
   McpRequirementBinding,
+  McpTool,
+  McpToolPayload,
+  McpToolSummary,
   PythonPackageInspection,
   MainAgent,
   MainAgentPayload,
@@ -389,6 +392,84 @@ export const managementApi = {
     return managementRequest('/workflows/delete', jsonBody({
       q: query,
     }))
+  },
+
+  listMcpToolSummaries(
+    request?: { q?: string, offset?: number, limit?: number },
+  ): Promise<ConfigurationCollection<McpToolSummary>> {
+    return managementRequest(`/mcp-tools${buildQuery({
+      view: 'summary',
+      q: request?.q,
+      offset: request?.offset,
+      limit: request?.limit,
+    })}`)
+  },
+
+  getMcpTool(id: string): Promise<McpTool> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}`)
+  },
+
+  createMcpTool(payload: McpToolPayload): Promise<McpTool> {
+    return managementRequest('/mcp-tools', jsonBody(payload))
+  },
+
+  copyMcpTool(id: string, name: string): Promise<McpTool> {
+    return managementRequest(
+      `/mcp-tools/${encodeURIComponent(id)}/copy`,
+      jsonBody({ name }),
+    )
+  },
+
+  updateMcpTool(id: string, payload: McpToolPayload): Promise<McpTool> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  deleteMcpTool(id: string): Promise<{ ok: boolean }> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  deleteMcpTools(ids: string[]): Promise<{ deleted: number }> {
+    return managementRequest('/mcp-tools/delete', jsonBody({ ids }))
+  },
+
+  deleteMcpToolsMatching(query: string): Promise<{ deleted: number }> {
+    return managementRequest('/mcp-tools/delete', jsonBody({ q: query }))
+  },
+
+  getMcpToolGraph(id: string): Promise<WorkflowGraphDocument> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}/graph`)
+  },
+
+  saveMcpToolDraft(
+    id: string,
+    document: WorkflowGraphDocument,
+  ): Promise<WorkflowGraphDocument> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(document),
+    })
+  },
+
+  publishMcpTool(
+    id: string,
+    document: WorkflowGraphDocument,
+  ): Promise<WorkflowGraphDocument> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}/graph`, {
+      method: 'PUT',
+      body: JSON.stringify(document),
+    })
+  },
+
+  validateMcpTool(
+    id: string,
+    document: WorkflowGraphDocument,
+  ): Promise<ValidationReport> {
+    return managementRequest(`/mcp-tools/${encodeURIComponent(id)}/validate`, jsonBody(document))
   },
 
   listWorkflowLifecycles(

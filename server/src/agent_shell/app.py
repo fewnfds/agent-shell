@@ -31,6 +31,7 @@ from agent_shell.api.provider_integrations import build_provider_integrations_ro
 from agent_shell.api.system_settings import build_system_settings_router
 from agent_shell.api.model_connections import build_model_connection_router
 from agent_shell.api.mcp_connections import build_mcp_connection_router
+from agent_shell.api.mcp_tools import build_mcp_tool_router
 from agent_shell.api.validation import build_validation_router
 from agent_shell.api.workflows import build_workflow_router
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
@@ -76,6 +77,8 @@ from agent_shell.storage.workflow_lifecycle_settings import (
 from agent_shell.storage.system_log_settings import MIB_BYTES, SystemLogSettingsStore
 from agent_shell.storage.validation_settings import ConfigurationValidationSettingsStore
 from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.storage.mcp_tools import McpToolStore
+from agent_shell.mcp_tools.publication import McpToolPublicationService
 from agent_shell.storage.environment import InstanceEnvironmentStore
 from agent_shell.storage.model_connections import ModelResourceStore
 from agent_shell.storage.mcp_connections import McpResourceStore
@@ -173,6 +176,8 @@ def create_app(
     block_store = BlockStore(configuration, event_logger)
     config_store = AgentConfigStore(configuration, event_logger)
     workflow_store = WorkflowStore(configuration, event_logger)
+    mcp_tool_store = McpToolStore(configuration, event_logger)
+    mcp_tool_publication = McpToolPublicationService(mcp_tool_store)
     python_package_validation = PythonPackageValidationService(
         packages_dir=lambda: configuration.python_packages_root,
         runtime_root=runtime_dir,
@@ -571,6 +576,7 @@ def create_app(
     app.state.startup_storage_permissions = startup_permission_statuses
     app.state.security_events = event_logger
     app.state.agent_runtime = agent_runtime
+    app.state.mcp_tool_store = mcp_tool_store
     app.state.runtime_diagnostics = runtime_diagnostics
     app.state.runtime_diagnostic_store = runtime_diagnostic_store
     app.state.runtime_diagnostic_details = runtime_diagnostic_details
@@ -624,6 +630,7 @@ def create_app(
             secret_resolver,
             provider_http_clients,
             workflow_store,
+            mcp_tool_store,
             python_package_authoring,
             skill_package_authoring,
             component_mutations,
@@ -657,6 +664,14 @@ def create_app(
             block_store,
             configuration_validation,
             config_store,
+        )
+    )
+    app.include_router(
+        build_mcp_tool_router(
+            mcp_tool_store,
+            block_store,
+            configuration_validation,
+            mcp_tool_publication,
         )
     )
     app.include_router(

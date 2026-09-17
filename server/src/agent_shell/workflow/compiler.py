@@ -19,6 +19,7 @@ from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_erro
 from agent_shell.runtime.state import WorkflowState
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
+from agent_shell.workflow.state_schema import compile_workflow_state_schema
 from agent_shell.workflow.topology import validate_workflow_topology
 from agent_shell.workflow.validation import admit_workflow_document
 
@@ -69,7 +70,7 @@ def _make_command_node(
     command: CommandCallable,
     target_map: Mapping[str, str],
     runtime_context: WorkflowRuntimeContext | None = None,
-    state_schema: Mapping[str, Any] | None = None,
+    state_schema: Any | None = None,
 ):
     async def call_command(
         state: WorkflowState,
@@ -132,6 +133,9 @@ def compile_workflow(
         raise _compile_error(issue.code, issue.message)
 
     command_configs = commands or {}
+    state_schema = compile_workflow_state_schema(
+        normalized.definition.schema_source
+    )
     topology_issues = validate_workflow_topology(normalized, commands=command_configs)
     if topology_issues:
         issue = topology_issues[0]
@@ -178,7 +182,7 @@ def compile_workflow(
                 command=command,
                 target_map=target_map,
                 runtime_context=runtime_context,
-                state_schema=normalized.definition.state_schema,
+                state_schema=state_schema,
             ),
             destinations=tuple(dict.fromkeys(target_map.values())),
         )

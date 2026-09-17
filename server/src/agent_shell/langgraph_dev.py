@@ -22,6 +22,7 @@ from agent_shell.runtime.context import (
 )
 from agent_shell.runtime.request_snapshot import (
     LANGGRAPH_AGENT_GRAPH_ID,
+    LANGGRAPH_MCP_TOOL_GRAPH_ID,
     LANGGRAPH_WORKFLOW_GRAPH_ID,
 )
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
@@ -159,6 +160,20 @@ async def authorize_single_owner_thread_read(
     return {"owner": "agent-shell"}
 
 
+@auth.on.assistants.search
+async def filter_mcp_tool_assistants(
+    ctx: Auth.types.AuthContext,
+    value: Auth.types.on.assistants.search.value,
+) -> dict[str, Any]:
+    """Expose only published MCP Tool Assistants through official /mcp."""
+
+    del ctx, value
+    return {
+        "owner": "agent-shell",
+        "agent_shell_mcp_tool": True,
+    }
+
+
 @auth.on.store
 async def authorize_single_owner_store(
     ctx: Auth.types.AuthContext,
@@ -187,6 +202,16 @@ def _agent_factory_inputs(config: RunnableConfig) -> tuple[str, dict[str, Any]]:
     if not isinstance(main_agent_id, str) or not main_agent_id:
         raise ValueError("Main Agent Assistant main_agent_id is missing")
     return main_agent_id, dict(configurable)
+
+
+def _mcp_tool_factory_inputs(config: RunnableConfig) -> tuple[str, dict[str, Any]]:
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        raise ValueError("MCP Tool Assistant configurable values are missing")
+    mcp_tool_id = configurable.get("mcp_tool_id")
+    if not isinstance(mcp_tool_id, str) or not mcp_tool_id:
+        raise ValueError("MCP Tool Assistant mcp_tool_id is missing")
+    return mcp_tool_id, dict(configurable)
 
 
 def _execution_context(
@@ -382,13 +407,52 @@ async def workflow_graph(
         await execution.close_resources()
 
 
+@asynccontextmanager
+async def mcp_tool_graph(
+    config: RunnableConfig,
+    runtime: ServerRuntime,
+) -> AsyncIterator[Any]:
+    """Build one independent, stateless MCP Tool Graph."""
+
+    application = _require_app()
+    mcp_tool_id, _configurable = _mcp_tool_factory_inputs(config)
+    snapshot = await application.state.agent_runtime.capture()
+    mcp_tool = snapshot.mcp_tool_by_id(mcp_tool_id)
+    document = snapshot.mcp_tool_document(mcp_tool_id)
+    if mcp_tool is None or not mcp_tool.get("enabled") or document is None:
+        raise ValueError(
+            f"MCP Tool {mcp_tool_id} is not in the published configuration snapshot"
+        )
+
+    graph_runtime = await snapshot.new_runtime(store=runtime.store)
+    command_runtime = None
+    try:
+        if runtime.execution_runtime is None:
+            graph = await asyncio.to_thread(
+                graph_runtime.build_mcp_tool_structure,
+                document,
+                mcp_tool_id=mcp_tool_id,
+            )
+        else:
+            graph, command_runtime = await graph_runtime.build_mcp_tool_graph(
+                document,
+                mcp_tool_id=mcp_tool_id,
+            )
+        yield graph
+    finally:
+        if command_runtime is not None:
+            await command_runtime.close()
+
+
 __all__ = [
     "AGENT_GRAPH_ID",
     "GRAPH_ID",
+    "LANGGRAPH_MCP_TOOL_GRAPH_ID",
     "agent_graph",
     "app",
     "auth",
     "configure_runtime",
+    "mcp_tool_graph",
     "stream_transformers",
     "workflow_graph",
 ]

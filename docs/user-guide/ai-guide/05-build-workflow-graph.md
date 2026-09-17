@@ -37,10 +37,7 @@ Content-Type: application/json
   "definition": {
     "schema_version": 1,
     "state_contract": "agent-shell.workflow.control.v1",
-    "state_schema": {
-      "type": "object",
-      "properties": {"selected_target": {"type": "string"}}
-    },
+    "schema_source": "from pydantic import BaseModel, ConfigDict\n\nclass State(BaseModel):\n    model_config = ConfigDict(extra=\"forbid\")\n    selected_target: str\n",
     "nodes": [
       {"id": "start", "type": "start", "type_version": 1, "config": {}},
       {
@@ -84,7 +81,7 @@ Content-Type: application/json
 
 layout只供Vue Flow编辑；runtime不读取position或viewport。
 
-`state_schema`可省略或为`null`。省略时不校验Workflow State的键名与类型；声明时入口输入与每个Command的update结果都必须满足它。根节点必须声明`"type": "object"`。
+`schema_source`可省略或为`null`。省略时不校验Workflow State的键名与类型；声明时内容必须是合法Python，并至少定义Pydantic`State`。入口输入与每个Command的update结果都必须满足该模型。未知字段是否允许由模型的`model_config`决定。
 
 ## 4. Node规则
 
@@ -144,3 +141,34 @@ PUT /agent-shell/api/workflows/<workflow-id>/graph
 - child Run使用稳定operation ID；
 - loop有业务退出条件；
 - Workflow Event Output只投影Workflow自己的event。
+
+## 8. MCP Tool
+
+MCP Tool 与 Workflow 是并列资源，API 路径为：
+
+```text
+POST   /agent-shell/api/mcp-tools
+GET    /agent-shell/api/mcp-tools/<mcp-tool-id>
+PUT    /agent-shell/api/mcp-tools/<mcp-tool-id>/draft
+POST   /agent-shell/api/mcp-tools/<mcp-tool-id>/validate
+PUT    /agent-shell/api/mcp-tools/<mcp-tool-id>/graph
+DELETE /agent-shell/api/mcp-tools/<mcp-tool-id>
+```
+
+创建 metadata 时名称必须是唯一的合法 MCP tool name：
+
+```text
+^[A-Za-z0-9._-]{1,128}$
+```
+
+Graph document 的 `definition.schema_source` 为可选 Python 源码。MCP Tool 声明 schema 时必须定义 Pydantic `State`、`Input` 和 `Output`；每个 `Input` 字段必须存在于 `State`，每个 `Output` 字段也必须存在于 `State`。没有 schema 时使用开放 mapping State。Command 输入仍是扁平 state，不使用 `messages[]`、`input` 或 `initial_state` 包装。
+
+MCP Tool 不接受 External Agent；正式保存会拒绝任何依赖 Lifecycle 或外部会话的 Command。`/agent-shell/api/mcp-tools/<id>/graph` 只在完整校验通过后设置 `enabled=true` 并刷新官方 Assistant。保存 draft 会把 `enabled` 设为 `false`，并先从 `/mcp tools/list` 隐藏。
+
+验收时使用带管理凭据的官方 `/mcp` JSON-RPC：
+
+1. `initialize`；
+2. `tools/list`，确认 name、description 和 Pydantic 自动生成的 `inputSchema`；
+3. `tools/call`，确认 arguments 直接进入 Graph State，结果是最终 Graph value；不要期望 Workflow Event Output；
+4. 连续调用两次，确认第二次没有继承第一次 State；
+5. 保存 draft 或删除后，确认该 tool 不再出现在 `tools/list`。

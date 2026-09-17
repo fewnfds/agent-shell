@@ -13,10 +13,10 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
-  type JsonValue,
   ManagementApiError,
   managementApi,
   type ConfigurationSummary,
+  type McpTool,
   type Workflow,
   type WorkflowNodeCatalogItem,
   type WorkflowNodeType,
@@ -47,19 +47,29 @@ import {
 import {
   workflowCanvasProblems,
   workflowServerProblems,
-  workflowStateSchemaProblem,
   type WorkflowCanvasProblem,
 } from '@/domain/workflowCanvasProblems'
 
 type WorkflowLeftPanel = 'library' | 'tracker' | 'problems'
 type WorkflowRightPanel = 'inspector'
+type EditorResourceKind = 'workflow' | 'mcp-tool'
+type EditorResource = Pick<
+  Workflow & McpTool,
+  'id' | 'name' | 'description' | 'enabled'
+>
+
+const props = withDefaults(defineProps<{
+  resourceKind?: EditorResourceKind
+}>(), {
+  resourceKind: 'workflow',
+})
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const managementError = useManagementError()
 const { notify } = useToasts()
-const workflow = ref<Workflow | null>(null)
+const workflow = ref<EditorResource | null>(null)
 const commands = ref<ConfigurationSummary[]>([])
 const externalAgents = ref<ConfigurationSummary[]>([])
 const nodeCatalog = ref<WorkflowNodeCatalogItem[]>([])
@@ -71,7 +81,7 @@ const nodes = ref([]) as Ref<WorkflowCanvasNode[]>
 const edges = ref([]) as Ref<WorkflowCanvasEdge[]>
 const flow = ref<VueFlowStore | null>(null)
 const stateContract = ref('agent-shell.workflow.control.v1')
-const stateSchemaText = ref('')
+const schemaSourceText = ref('')
 const savedViewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
 const leftPanel = ref<WorkflowLeftPanel | null>('library')
 const rightPanel = ref<WorkflowRightPanel | null>('inspector')
@@ -86,7 +96,13 @@ let validationTimer: ReturnType<typeof setTimeout> | undefined
 let validationGeneration = 0
 let loadGeneration = 0
 const workflowId = computed(() => String(route.params.id ?? ''))
-const workflowListPath = computed(() => '/workflows')
+const isMcpTool = computed(() => props.resourceKind === 'mcp-tool')
+const workflowListPath = computed(() => (
+  isMcpTool.value ? '/workflows/mcp-tools' : '/workflows'
+))
+const editorTitle = computed(() => (
+  isMcpTool.value ? t('mcpTools.editor.title') : t('workflows.editor.title')
+))
 const commandCatalogItem = computed(() => (
   nodeCatalog.value.find((item) => item.type === 'command') ?? null
 ))
@@ -95,33 +111,7 @@ const canAddCommand = computed(() => (
   && commands.value.length > 0
   && commandCatalogItem.value !== null
 ))
-const stateSchemaDraft = computed<{
-  value: Record<string, JsonValue> | null
-  errorKey: string
-}>(() => {
-  const text = stateSchemaText.value.trim()
-  if (!text) return { value: null, errorKey: '' }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  }
-  catch {
-    return { value: null, errorKey: 'workflows.editor.stateSchemaInvalidJson' }
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { value: null, errorKey: 'workflows.editor.stateSchemaInvalidDocument' }
-  }
-  return { value: parsed as Record<string, JsonValue>, errorKey: '' }
-})
-const stateSchemaError = computed(() => (
-  stateSchemaDraft.value.errorKey ? t(stateSchemaDraft.value.errorKey) : ''
-))
-const canvasProblems = computed(() => [
-  ...workflowCanvasProblems(nodes.value, edges.value),
-  ...(stateSchemaDraft.value.errorKey
-    ? [workflowStateSchemaProblem(stateSchemaDraft.value.errorKey)]
-    : []),
-])
+const canvasProblems = computed(() => workflowCanvasProblems(nodes.value, edges.value))
 const problems = computed(() => [
   ...canvasProblems.value,
   ...serverProblems.value.filter((serverProblem) => !canvasProblems.value.some((canvasProblem) => (
@@ -132,18 +122,16 @@ const problems = computed(() => [
 const canSaveDraft = computed(() => (
   loaded.value
   && !saving.value
-  && !stateSchemaDraft.value.errorKey
 ))
 const canPublish = computed(() => (
   loaded.value
   && !saving.value
   && !validating.value
   && validationReady.value
-  && !stateSchemaDraft.value.errorKey
   && !problems.value.some((problem) => problem.blocking)
 ))
 const graphRevision = computed(() => JSON.stringify({
-  stateSchema: stateSchemaText.value,
+  schemaSource: schemaSourceText.value,
   nodes: nodes.value.map((node) => ({
     id: node.id,
     position: node.position,
@@ -162,7 +150,7 @@ const graphRevision = computed(() => JSON.stringify({
 }))
 const { markClean } = useUnsavedChanges(
   () => (loaded.value
-    ? { document: currentDocument(), stateSchemaText: stateSchemaText.value }
+    ? { document: currentDocument(), schemaSourceText: schemaSourceText.value }
     : null),
   () => ({
     title: t('unsavedChanges.title'),
@@ -487,12 +475,12 @@ function currentDocument(): ReturnType<typeof workflowCanvasToDocument> | null {
     nodes.value,
     edges.value,
     flow.value.getViewport(),
-    stateSchemaDraft.value.value,
+    schemaSourceText.value,
   )
 }
 
-function updateStateSchema(value: string): void {
-  stateSchemaText.value = value
+function updateSchemaSource(value: string): void {
+  schemaSourceText.value = value
 }
 
 function currentDocumentMatches(
@@ -523,7 +511,9 @@ function scheduleValidation(delay = 350): void {
       return
     }
     try {
-      const report = await managementApi.validateWorkflow(targetWorkflowId, document)
+      const report = isMcpTool.value
+        ? await managementApi.validateMcpTool(targetWorkflowId, document)
+        : await managementApi.validateWorkflow(targetWorkflowId, document)
       if (generation === validationGeneration && pageGeneration === loadGeneration) {
         serverProblems.value = workflowServerProblems(report.issues)
         validationReady.value = true
@@ -554,7 +544,9 @@ async function adoptWorkflowMetadata(
 ): Promise<boolean> {
   if (generation !== loadGeneration) return false
   try {
-    const metadata = await managementApi.getWorkflow(targetWorkflowId)
+    const metadata = isMcpTool.value
+      ? await managementApi.getMcpTool(targetWorkflowId)
+      : await managementApi.getWorkflow(targetWorkflowId)
     if (generation !== loadGeneration || targetWorkflowId !== workflowId.value) return false
     workflow.value = metadata
   } catch {
@@ -572,7 +564,11 @@ async function saveDraft(): Promise<void> {
   if (!document) return
   saving.value = true
   try {
-    await managementApi.saveWorkflowDraft(targetWorkflowId, document)
+    if (isMcpTool.value) {
+      await managementApi.saveMcpToolDraft(targetWorkflowId, document)
+    } else {
+      await managementApi.saveWorkflowDraft(targetWorkflowId, document)
+    }
     if (!(await adoptWorkflowMetadata(targetWorkflowId, generation, false))) return
     if (currentDocumentMatches(document)) markClean()
     notify({ tone: 'success', title: t('workflows.editor.draftSaved') })
@@ -606,7 +602,11 @@ async function publish(): Promise<void> {
   if (!document) return
   saving.value = true
   try {
-    await managementApi.publishWorkflow(targetWorkflowId, document)
+    if (isMcpTool.value) {
+      await managementApi.publishMcpTool(targetWorkflowId, document)
+    } else {
+      await managementApi.publishWorkflow(targetWorkflowId, document)
+    }
     if (!(await adoptWorkflowMetadata(targetWorkflowId, generation, true))) return
     if (currentDocumentMatches(document)) {
       serverProblems.value = []
@@ -654,11 +654,19 @@ async function loadWorkflow(id: string): Promise<void> {
   serverProblems.value = []
   markClean()
   try {
+    const metadataPromise = isMcpTool.value
+      ? managementApi.getMcpTool(id)
+      : managementApi.getWorkflow(id)
+    const graphPromise = isMcpTool.value
+      ? managementApi.getMcpToolGraph(id)
+      : managementApi.getWorkflowGraph(id)
     const [metadata, graph, options, externalAgentSummaries, catalog] = await Promise.all([
-      managementApi.getWorkflow(id),
-      managementApi.getWorkflowGraph(id),
+      metadataPromise,
+      graphPromise,
       managementApi.getConfigurationOptions(),
-      managementApi.listExternalAgentSummaries(),
+      isMcpTool.value
+        ? Promise.resolve({ items: [] as ConfigurationSummary[] })
+        : managementApi.listExternalAgentSummaries(),
       managementApi.listWorkflowNodeCatalog(),
     ])
     if (generation !== loadGeneration) return
@@ -667,9 +675,7 @@ async function loadWorkflow(id: string): Promise<void> {
     externalAgents.value = externalAgentSummaries.items
     nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
-    stateSchemaText.value = graph.definition.state_schema
-      ? JSON.stringify(graph.definition.state_schema, null, 2)
-      : ''
+    schemaSourceText.value = graph.definition.schema_source ?? ''
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
     nodes.value = canvas.nodes
     edges.value = canvas.edges
@@ -714,7 +720,7 @@ onUnmounted(() => {
       <button :aria-label="t('workflows.editor.back')" :title="t('workflows.editor.back')" type="button" @click="router.push(workflowListPath)">
         <i class="bi bi-chevron-left" aria-hidden="true" />
       </button>
-      <h1>{{ workflow?.name ?? t('workflows.editor.title') }}</h1>
+      <h1>{{ workflow?.name ?? editorTitle }}</h1>
       <div class="d-flex align-items-center gap-1">
         <span class="d-inline-flex align-items-center gap-1 small text-body-secondary">
           <i :class="workflow?.enabled ? 'bi bi-check-circle' : 'bi bi-file-earmark'" aria-hidden="true" />
@@ -880,11 +886,11 @@ onUnmounted(() => {
           :input-endpoints="selectedNodeInputEndpoints"
           :commands="commands"
           :external-agents="externalAgents"
+          :show-external-agent="!isMcpTool"
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
           :output-endpoints="selectedNodeOutputEndpoints"
-          :state-schema="stateSchemaText"
-          :state-schema-error="stateSchemaError"
+          :schema-source="schemaSourceText"
           :state-contract="stateContract"
           :workflow-name="workflow?.name ?? ''"
           @remove-edge="removeEdge"
@@ -895,7 +901,7 @@ onUnmounted(() => {
           @update-command="selectCommand"
           @update-external-agent="selectExternalAgent"
           @update-node-id="updateNodeId"
-          @update-state-schema="updateStateSchema"
+          @update-schema-source="updateSchemaSource"
         />
         <nav class="workflow-tool-rail" :aria-label="t('workflows.editor.rightTools')">
           <button

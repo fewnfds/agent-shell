@@ -22,6 +22,16 @@ from agent_shell.workflow.validation import validate_workflow_executable
 
 
 COMMAND_ID = "11111111-1111-4111-8111-111111111111"
+STATE_SOURCE = """
+from pydantic import BaseModel, ConfigDict
+
+
+class State(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int
+    selected: str = ""
+"""
 
 
 def _document(*, edges: list[dict] | None = None) -> WorkflowGraphDocumentV1:
@@ -196,35 +206,24 @@ def test_start_can_finish_without_an_executable_node() -> None:
 
 def test_admission_rejects_an_invalid_state_schema() -> None:
     payload = _document().model_dump(mode="json")
-    payload["definition"]["state_schema"] = {
-        "type": "object",
-        "properties": {"topic": {"type": 7}},
-    }
+    payload["definition"]["schema_source"] = "class State("
     report, normalized = admit_workflow_document(payload)
     assert normalized is None
     assert {issue.code for issue in report.issues} == {
-        "workflow.state_schema_invalid"
+        "workflow.schema_invalid"
     }
 
-    payload["definition"]["state_schema"] = {"properties": {}}
+    payload["definition"]["schema_source"] = "value = 1"
     report, normalized = admit_workflow_document(payload)
     assert normalized is None
     assert {issue.code for issue in report.issues} == {
-        "workflow.state_schema_invalid"
+        "workflow.schema_invalid"
     }
 
 
 def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
     document = _document()
-    document.definition.state_schema = {
-        "type": "object",
-        "properties": {
-            "count": {"type": "integer"},
-            "selected": {"type": "string"},
-        },
-        "required": ["count"],
-        "additionalProperties": False,
-    }
+    document.definition.schema_source = STATE_SOURCE
     seen: list[dict] = []
 
     async def router(state, runtime):
@@ -255,11 +254,7 @@ def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
 
 def test_declared_state_schema_fails_the_run_on_an_invalid_command_update() -> None:
     document = _document()
-    document.definition.state_schema = {
-        "type": "object",
-        "properties": {"count": {"type": "integer"}},
-        "additionalProperties": False,
-    }
+    document.definition.schema_source = STATE_SOURCE
 
     async def router(state, runtime):
         return Command(update={"count": "many"}, goto="review")

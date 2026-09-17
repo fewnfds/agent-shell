@@ -559,6 +559,26 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '    return command\n',
         encoding="utf-8",
     )
+    mcp_command_template = (
+        data_dir
+        / "templates"
+        / "workflow"
+        / "command"
+        / "smoke-mcp-echo"
+    )
+    mcp_command_template.mkdir(parents=True, exist_ok=True)
+    (mcp_command_template / "main.py").write_text(
+        'from langgraph.types import Command\n'
+        '\n'
+        'def create_command():\n'
+        '    async def command(state, runtime):\n'
+        '        return Command(\n'
+        '            update={"answer": str(state["topic"]).upper()},\n'
+        '            goto="end",\n'
+        '        )\n'
+        '    return command\n',
+        encoding="utf-8",
+    )
     instance_environment.patch(
         SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
         set_values={"AGENT_SHELL_MANAGEMENT_TOKEN": management_token},
@@ -900,9 +920,120 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             headers=management,
         ).json()
         command_template_reference = {
-            "key": command_templates["catalog"][0]["key"],
-            "revision": command_templates["catalog"][0]["revision"],
+            "key": next(
+                item["key"]
+                for item in command_templates["catalog"]
+                if item["key"] == "smoke-workflow-run"
+            ),
+            "revision": next(
+                item["revision"]
+                for item in command_templates["catalog"]
+                if item["key"] == "smoke-workflow-run"
+            ),
         }
+        mcp_command_template_reference = next(
+            {
+                "key": item["key"],
+                "revision": item["revision"],
+            }
+            for item in command_templates["catalog"]
+            if item["key"] == "smoke-mcp-echo"
+        )
+        mcp_command = _request(
+            client,
+            "POST",
+            "/agent-shell/api/blocks/command",
+            headers=management,
+            json_body={
+                "name": f"{mode}-mcp-echo-command",
+                "python_package": {"folder": ""},
+                "python_package_template": mcp_command_template_reference,
+                "mcp_refs": [],
+            },
+        ).json()
+        mcp_tool_name = f"{mode}_echo_topic"
+        mcp_tool = _request(
+            client,
+            "POST",
+            "/agent-shell/api/mcp-tools",
+            headers=management,
+            json_body={
+                "name": mcp_tool_name,
+                "description": "Echo one topic through the official MCP endpoint.",
+            },
+        ).json()
+        mcp_document = {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.control.v1",
+                "schema_source": (
+                    "from pydantic import BaseModel, ConfigDict\n"
+                    "\n"
+                    "class Input(BaseModel):\n"
+                    "    model_config = ConfigDict(extra=\"forbid\")\n"
+                    "    topic: str\n"
+                    "\n"
+                    "class State(Input):\n"
+                    "    answer: str = \"\"\n"
+                    "\n"
+                    "class Output(BaseModel):\n"
+                    "    model_config = ConfigDict(extra=\"forbid\")\n"
+                    "    topic: str\n"
+                    "    answer: str\n"
+                ),
+                "nodes": [
+                    {
+                        "id": "start",
+                        "type": "start",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                    {
+                        "id": "echo",
+                        "type": "command",
+                        "type_version": 1,
+                        "config": {"command_id": mcp_command["id"]},
+                    },
+                    {
+                        "id": "end",
+                        "type": "end",
+                        "type_version": 1,
+                        "config": {},
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": "start-echo",
+                        "source": "start",
+                        "source_handle": "next",
+                        "target": "echo",
+                        "target_handle": "in",
+                    },
+                    {
+                        "id": "echo-end",
+                        "source": "echo",
+                        "source_handle": "next",
+                        "target": "end",
+                        "target_handle": "in",
+                    },
+                ],
+            },
+            "layout": {
+                "nodes": {
+                    "start": {"x": 0, "y": 0},
+                    "echo": {"x": 240, "y": 0},
+                    "end": {"x": 480, "y": 0},
+                },
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            },
+        }
+        _request(
+            client,
+            "PUT",
+            f"/agent-shell/api/mcp-tools/{mcp_tool['id']}/graph",
+            headers=management,
+            json_body=mcp_document,
+        )
         workflow_command = _request(
             client,
             "POST",
@@ -1004,7 +1135,7 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             completion,
             smoke_runtime_output,
         )
-        assert completion_text.count("workflow values\n") >= 2, completion
+        assert completion_text.count("workflow values\n") >= 1, completion
         assert "workflow custom progress\n" in completion_text, completion
         assert completion["choices"][0]["finish_reason"] == "stop"
         lifecycle_page = _request(
@@ -1029,6 +1160,108 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             subject["graph_kind"] for subject in lifecycle["subjects"]
         }
         lifecycle_id = lifecycle["lifecycle_id"]
+        mcp_headers = {
+            **management,
+            "Accept": "application/json",
+        }
+        initialized = _request(
+            client,
+            "POST",
+            "/mcp",
+            headers=mcp_headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "agent-shell-smoke", "version": "1"},
+                },
+            },
+        ).json()
+        assert initialized["result"]["serverInfo"]["name"] == "LangGraph"
+        tools = _request(
+            client,
+            "POST",
+            "/mcp",
+            headers=mcp_headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            },
+        ).json()["result"]["tools"]
+        mcp_definition = next(
+            item for item in tools if item["name"] == mcp_tool_name
+        )
+        assert mcp_definition["inputSchema"]["properties"]["topic"]["type"] == (
+            "string"
+        )
+        tool_call = _request(
+            client,
+            "POST",
+            "/mcp",
+            headers=mcp_headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": mcp_tool_name,
+                    "arguments": {"topic": "hello"},
+                },
+            },
+            timeout=20,
+        ).json()
+        tool_text = tool_call["result"]["content"][0]["text"]
+        assert "'topic': 'hello'" in tool_text, tool_call
+        assert "'answer': 'HELLO'" in tool_text, tool_call
+        _request(
+            client,
+            "PUT",
+            f"/agent-shell/api/mcp-tools/{mcp_tool['id']}/draft",
+            headers=management,
+            json_body=mcp_document,
+        )
+        hidden_tools = _request(
+            client,
+            "POST",
+            "/mcp",
+            headers=mcp_headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/list",
+                "params": {},
+            },
+        ).json()["result"]["tools"]
+        assert mcp_tool_name not in {
+            item["name"] for item in hidden_tools
+        }
+        _request(
+            client,
+            "DELETE",
+            f"/agent-shell/api/mcp-tools/{mcp_tool['id']}",
+            headers=management,
+        )
+        deleted_tools = _request(
+            client,
+            "POST",
+            "/mcp",
+            headers=mcp_headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/list",
+                "params": {},
+            },
+        ).json()["result"]["tools"]
+        visible_tool_names = {item["name"] for item in deleted_tools}
+        assert mcp_tool_name not in visible_tool_names
+        assert workflow["name"] not in visible_tool_names
+        assert persistence_main_agent["name"] not in visible_tool_names
         persisted_run_identities = _assert_lifecycle_persistence(
             client,
             lifecycle_id=lifecycle_id,

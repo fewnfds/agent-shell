@@ -10,6 +10,7 @@ ConfigurationEntityKind = Literal[
     "component",
     "external_agent",
     "main_agent",
+    "mcp_tool",
     "subagent",
     "workflow",
 ]
@@ -83,6 +84,13 @@ def iter_configuration_entities(
         yield ConfigurationEntity(
             id=str(record.get("id", "")),
             kind="workflow",
+            name=str(record.get("name", "")),
+            payload=record,
+        )
+    for record in _records(config.get("mcp_tools", [])):
+        yield ConfigurationEntity(
+            id=str(record.get("id", "")),
+            kind="mcp_tool",
             name=str(record.get("name", "")),
             payload=record,
         )
@@ -275,6 +283,26 @@ def _workflow_references(
         )
 
 
+def _mcp_tool_references(
+    owner: ConfigurationEntity,
+) -> Iterator[ConfigurationReference]:
+    definition = owner.payload.get("definition", {})
+    if not isinstance(definition, dict):
+        return
+    for index, node in enumerate(_records(definition.get("nodes", []))):
+        config = node.get("config", {})
+        if not isinstance(config, dict) or node.get("type") != "command":
+            continue
+        yield _reference(
+            owner,
+            path=f"definition.nodes[{index}].config.command_id",
+            target_id=config.get("command_id"),
+            target_kind="component",
+            target_component_type="command",
+            location=("definition", "nodes", index, "config", "command_id"),
+        )
+
+
 def iter_configuration_references(
     owner: ConfigurationEntity,
 ) -> Iterator[ConfigurationReference]:
@@ -286,6 +314,8 @@ def iter_configuration_references(
         yield from _subagent_references(owner)
     elif owner.kind == "workflow":
         yield from _workflow_references(owner)
+    elif owner.kind == "mcp_tool":
+        yield from _mcp_tool_references(owner)
 
 
 def rewrite_configuration_references(

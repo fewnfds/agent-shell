@@ -9,7 +9,6 @@ import {
 } from '@vue-flow/core'
 
 import type {
-  JsonValue,
   WorkflowGraphDocument,
   WorkflowGraphNode,
   WorkflowNodeHandleSpec,
@@ -153,13 +152,13 @@ export function workflowCanvasToDocument(
   nodes: WorkflowCanvasNode[],
   edges: WorkflowCanvasEdge[],
   viewport: ViewportTransform,
-  stateSchema: Record<string, JsonValue> | null = null,
+  schemaSource: string | null = null,
 ): WorkflowGraphDocument {
   return {
     definition: {
       schema_version: 1,
       state_contract: 'agent-shell.workflow.control.v1',
-      ...(stateSchema ? { state_schema: stateSchema } : {}),
+      ...(schemaSource ? { schema_source: schemaSource } : {}),
       nodes: nodes.map((node) => ({
         id: node.id,
         type: node.data.nodeType,

@@ -28,7 +28,7 @@ Content-Type: application/json
 
 Agent Shell 校验 OpenAI-compatible 消息结构、内容来源、MIME 与 Base64 格式，不设置项目级请求体、消息条数、content block 数量或解码媒体字节上限。实际能力仍受 Provider、内存、磁盘和网络影响。
 
-Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取扁平Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。HTTP入口把解析后的完整OpenAI-compatible request object保存在本次Lifecycle的Server Store `input/request` envelope，消息数组位于`request.messages`；Workflow运行时从该数组取得输入，而不把完整请求写入Workflow State。Agent入口把验证后的`request.messages`作为所选Main Agent的官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它，也可显式读取完整`request`。
+Workflow可执行Node class为Start、Command和End，只有一种Control Edge。canvas Start/End直接映射LangGraph官方`START/END`；Start Edge映射`StateGraph.add_edge()`，Command outgoing Edge只声明允许的dynamic destination。Command脚本读取扁平Workflow State和Runtime Context，直接返回官方`Command(update, goto)`。HTTP入口把解析后的完整OpenAI-compatible request object保存在本次Lifecycle的Server Store `input/request` envelope，消息数组位于`request.messages`；Workflow control Graph从独立的`initial_state`启动，不自动把`request.messages`或完整请求写入Workflow State。需要原始请求的Command通过`runtime.store`和`runtime.context.lifecycle_id`显式读取。Agent入口把验证后的`request.messages`作为所选Main Agent的官方Run input写入AgentState，装配的`before_agent`/`abefore_agent`Middleware可在自己的State边界内整理它，也可显式读取完整`request`。
 
 `model`、`stream`和`messages`分别由HTTP路由、响应模式和运行入口消费；请求中的其他字段只随完整envelope持久化并供显式消费者读取，不会自动改变Agent、Workflow、Provider或采样参数。
 

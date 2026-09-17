@@ -40,6 +40,9 @@ def _append_imported_records(config: dict, prepared: PreparedImport) -> None:
             config.setdefault("subagents", []).append(record)
         elif entity.kind == "external_agent":
             config.setdefault("external_agents", []).append(record)
+        elif entity.kind == "mcp_tool":
+            record["enabled"] = False
+            config.setdefault("mcp_tools", []).append(record)
         else:
             record["enabled"] = False
             config.setdefault("workflows", []).append(record)
@@ -59,6 +62,7 @@ def _remove_imported_records(config: dict, target_ids: set[str]) -> None:
     for key in (
         "external_agents",
         "main_agents",
+        "mcp_tools",
         "subagents",
         "workflows",
     ):

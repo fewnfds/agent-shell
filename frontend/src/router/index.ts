@@ -8,6 +8,7 @@ const EventFeedPage = () => import('@/pages/EventFeedPage.vue')
 const ExternalAgentPage = () => import('@/pages/ExternalAgentPage.vue')
 const FileManagerPage = () => import('@/pages/FileManagerPage.vue')
 const MainAgentPage = () => import('@/pages/MainAgentPage.vue')
+const McpToolsPage = () => import('@/pages/McpToolsPage.vue')
 const MessageInterceptionPage = () => import('@/pages/MessageInterceptionPage.vue')
 const SystemSettingsPage = () => import('@/pages/SystemSettingsPage.vue')
 const SubagentPage = () => import('@/pages/SubagentPage.vue')
@@ -24,6 +25,11 @@ export const router = createRouter({
   routes: [
     { path: '/', component: ApiServerSettingsPage, meta: { titleKey: 'apiServer.homeTitle' } },
     { path: '/workflows', component: WorkflowsPage, meta: { titleKey: 'workflows.title' } },
+    {
+      path: '/workflows/mcp-tools',
+      component: McpToolsPage,
+      meta: { titleKey: 'mcpTools.title' },
+    },
     { path: '/models', redirect: '/models/connections' },
     { path: '/mcp', redirect: '/mcp/connections' },
     {
@@ -49,6 +55,12 @@ export const router = createRouter({
       path: '/system/workflow-lifecycles/:lifecycleId/monitoring',
       component: RuntimeMonitoringPage,
       meta: { titleKey: 'runtimeMonitoring.title' },
+    },
+    {
+      path: '/workflows/mcp-tools/:id/editor',
+      component: WorkflowEditorPage,
+      props: { resourceKind: 'mcp-tool' },
+      meta: { layout: 'workflow', titleKey: 'mcpTools.editor.title' },
     },
     {
       path: '/workflows/:id/editor',

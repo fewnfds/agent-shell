@@ -9,7 +9,7 @@ import type {
   WorkflowCanvasNode,
 } from '@/domain/workflowGraph'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   edge: WorkflowCanvasEdge | null
   edgeSourceEndpoints: WorkflowNodeHandleSpec[]
   edgeTargetEndpoints: WorkflowNodeHandleSpec[]
@@ -21,10 +21,12 @@ const props = defineProps<{
   nodeIds: string[]
   outputEndpoints: WorkflowNodeHandleSpec[]
   stateContract: string
-  stateSchema: string
-  stateSchemaError: string
+  schemaSource: string
+  showExternalAgent?: boolean
   workflowName: string
-}>()
+}>(), {
+  showExternalAgent: true,
+})
 
 const emit = defineEmits<{
   removeEdge: [edgeId: string]
@@ -35,7 +37,7 @@ const emit = defineEmits<{
   updateCommand: [nodeId: string, commandId: string]
   updateExternalAgent: [nodeId: string, externalAgentId: string]
   updateNodeId: [nodeId: string, nextNodeId: string]
-  updateStateSchema: [value: string]
+  updateSchemaSource: [value: string]
 }>()
 
 const { t } = useI18n()
@@ -132,8 +134,8 @@ function selectEdgeTargetEndpoint(event: Event): void {
   }
 }
 
-function updateStateSchema(event: Event): void {
-  emit('updateStateSchema', (event.target as HTMLTextAreaElement).value)
+function updateSchemaSource(event: Event): void {
+  emit('updateSchemaSource', (event.target as HTMLTextAreaElement).value)
 }
 </script>
 
@@ -172,7 +174,7 @@ function updateStateSchema(event: Event): void {
               <option v-for="command in commands" :key="command.id" :value="command.id">{{ command.name }}</option>
             </select>
           </div>
-          <div class="workflow-inspector-row">
+          <div v-if="showExternalAgent !== false" class="workflow-inspector-row">
             <label class="workflow-inspector-label" for="workflow-node-external-agent"><span>{{ $t('workflows.editor.externalAgentConfig') }}</span><span aria-hidden="true">:</span></label>
             <select id="workflow-node-external-agent" class="form-select form-select-sm workflow-inspector-select" :value="node.data.externalAgentId ?? ''" @change="updateExternalAgent">
               <option value="">{{ $t('workflows.editor.externalAgentNone') }}</option>
@@ -194,20 +196,17 @@ function updateStateSchema(event: Event): void {
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.fields.name') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ workflowName }}</span></div>
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.editor.stateContract') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ stateContract }}</span></div>
         <div class="workflow-inspector-row">
-          <label class="workflow-inspector-label" for="workflow-state-schema"><span>{{ $t('workflows.editor.stateSchema') }}</span><span aria-hidden="true">:</span></label>
+          <label class="workflow-inspector-label" for="workflow-state-schema"><span>{{ $t('workflows.editor.schemaSource') }}</span><span aria-hidden="true">:</span></label>
           <div class="workflow-inspector-control">
             <textarea
               id="workflow-state-schema"
-              :aria-describedby="stateSchemaError ? 'workflow-state-schema-error' : undefined"
-              :aria-invalid="Boolean(stateSchemaError)"
               class="form-control form-control-sm font-monospace"
-              name="state-schema"
-              rows="6"
+              name="schema-source"
+              rows="12"
               spellcheck="false"
-              :value="stateSchema"
-              @change="updateStateSchema"
+              :value="schemaSource"
+              @change="updateSchemaSource"
             />
-            <div v-if="stateSchemaError" id="workflow-state-schema-error" class="invalid-feedback d-block">{{ stateSchemaError }}</div>
           </div>
         </div>
       </template>

@@ -72,6 +72,7 @@ def _default_config() -> dict[str, Any]:
         "components": {},
         "external_agents": [],
         "main_agents": [],
+        "mcp_tools": [],
         "subagents": [],
         "workflows": [],
     }
@@ -178,7 +179,7 @@ class FileConfigRepository:
 
     _COMPONENT_DIR = "components"
     _RECORD_SECTIONS = frozenset(
-        {"external_agents", "main_agents", "subagents", "workflows"}
+        {"external_agents", "main_agents", "mcp_tools", "subagents", "workflows"}
     )
 
     def __init__(
@@ -241,6 +242,10 @@ class FileConfigRepository:
     @property
     def workflows_root(self) -> Path:
         return self.config_root / "workflows"
+
+    @property
+    def mcp_tools_root(self) -> Path:
+        return self.config_root / "mcp_tools"
 
     @property
     def python_packages_root(self) -> Path:
@@ -337,6 +342,17 @@ class FileConfigRepository:
                 config["workflows"].append(
                     {**deepcopy(payload), "id": item_id}
                 )
+        if self.mcp_tools_root.exists():
+            for path in sorted(self.mcp_tools_root.glob("*.yaml")):
+                document = _read_yaml(path, {})
+                item_id, payload = _configuration_document(
+                    path,
+                    document,
+                    kind="mcp_tool",
+                )
+                config["mcp_tools"].append(
+                    {**deepcopy(payload), "id": item_id}
+                )
         return config
 
     @staticmethod
@@ -345,6 +361,7 @@ class FileConfigRepository:
         config.setdefault("components", {})
         config.setdefault("external_agents", [])
         config.setdefault("main_agents", [])
+        config.setdefault("mcp_tools", [])
         config.setdefault("subagents", [])
         config.setdefault("workflows", [])
         components = config["components"]
@@ -453,6 +470,8 @@ class FileConfigRepository:
                 config["subagents"].append(record)
             elif entity.kind == "external_agent":
                 config["external_agents"].append(record)
+            elif entity.kind == "mcp_tool":
+                config["mcp_tools"].append(record)
             else:
                 config["workflows"].append(record)
         return config
@@ -565,7 +584,7 @@ class FileConfigRepository:
                 )
                 target_id = target_ids[entity.id]
                 payload["id"] = target_id
-                if entity.kind in {"main_agent", "workflow"}:
+                if entity.kind in {"main_agent", "mcp_tool", "workflow"}:
                     payload["enabled"] = False
                 if entity.kind == "component":
                     if entity.component_type in PACKAGE_COMPONENT_SPECS:
@@ -691,6 +710,7 @@ class FileConfigRepository:
             for directory_name in (
                 "components",
                 "agents",
+                "mcp_tools",
                 "workflows",
                 PYTHON_PACKAGES_DIRECTORY,
                 SKILL_PACKAGES_DIRECTORY,
@@ -746,7 +766,7 @@ class FileConfigRepository:
             for item in records
             if isinstance(item, dict) and item.get("id")
         }
-        for key in ("main_agents", "subagents", "workflows"):
+        for key in ("main_agents", "mcp_tools", "subagents", "workflows"):
             ids.update(
                 str(item.get("id"))
                 for item in config.get(key, [])
@@ -1066,10 +1086,12 @@ class FileConfigRepository:
                 expected.add(path)
                 write_text_atomic(path, _dump_yaml(document))
         self._write_agents(config, expected)
+        self._write_mcp_tools(config, expected)
         self._write_workflows(config, expected)
         for directory in (
             self.components_root,
             self.agents_root,
+            self.mcp_tools_root,
             self.workflows_root,
         ):
             if not directory.exists():
@@ -1105,6 +1127,28 @@ class FileConfigRepository:
             expected.add(path)
             payload = {k: deepcopy(v) for k, v in record.items() if k != "id"}
             write_text_atomic(path, _dump_yaml({"kind": "workflow", "schema_version": CONFIG_VERSION, "id": record["id"], "payload": payload}))
+
+    def _write_mcp_tools(
+        self, config: dict[str, Any], expected: set[Path]
+    ) -> None:
+        self.mcp_tools_root.mkdir(parents=True, exist_ok=True)
+        for record in config.get("mcp_tools", []):
+            if not isinstance(record, dict) or not record.get("id"):
+                continue
+            path = self.mcp_tools_root / f"{record['id']}.yaml"
+            expected.add(path)
+            payload = {k: deepcopy(v) for k, v in record.items() if k != "id"}
+            write_text_atomic(
+                path,
+                _dump_yaml(
+                    {
+                        "kind": "mcp_tool",
+                        "schema_version": CONFIG_VERSION,
+                        "id": record["id"],
+                        "payload": payload,
+                    }
+                ),
+            )
 
     @staticmethod
     def _serialize_record(record: dict, block_type: str) -> dict:

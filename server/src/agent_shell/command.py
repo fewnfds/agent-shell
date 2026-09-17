@@ -10,6 +10,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_shell.configuration.identity import ConfigurationName
+from agent_shell.graph_schema import GraphSchema
 from agent_shell.mcp.contracts import McpReference
 from agent_shell.python_packages.contracts import PythonPackageReference
 from agent_shell.runtime.context import WorkflowRuntimeContext
@@ -62,7 +63,7 @@ def _detached(value: Any) -> Any:
     return deepcopy(value)
 
 
-def _normalize_goto(
+def normalize_command_goto(
     goto: Any,
     target_map: Mapping[str, str],
 ) -> str | list[str] | tuple[()]:
@@ -98,7 +99,7 @@ async def run_command(
     state: Mapping[str, Any],
     runtime: Runtime[WorkflowRuntimeContext],
     target_map: Mapping[str, str],
-    state_schema: Mapping[str, Any] | None = None,
+    state_schema: GraphSchema | None = None,
 ) -> Command[Any]:
     """Run and validate the official Command returned by an extension."""
 
@@ -141,7 +142,7 @@ async def run_command(
             validate_workflow_state({**flat_state, **update}, state_schema)
         except WorkflowStateSchemaError as exc:
             raise CommandStateSchemaError(str(exc)) from exc
-        goto = _normalize_goto(result.goto, target_map)
+        goto = normalize_command_goto(result.goto, target_map)
         return Command(update=validated_update or None, goto=goto)
     except CommandStateSchemaError:
         raise
@@ -154,5 +155,6 @@ __all__ = [
     "CommandCallable",
     "CommandError",
     "CommandStateSchemaError",
+    "normalize_command_goto",
     "run_command",
 ]

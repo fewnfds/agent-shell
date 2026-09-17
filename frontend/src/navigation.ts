@@ -34,6 +34,13 @@ interface SectionNavigationGroup {
 
 const sectionNavigationGroups: SectionNavigationGroup[] = [
   {
+    prefix: '/workflows',
+    items: [
+      { path: '/workflows', labelKey: 'navigation.sections.workflows' },
+      { path: '/workflows/mcp-tools', labelKey: 'navigation.sections.mcpTools' },
+    ],
+  },
+  {
     prefix: '/mcp',
     items: [
       { path: '/mcp/connections', labelKey: 'navigation.sections.mcpConnections' },

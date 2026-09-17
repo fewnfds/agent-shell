@@ -177,17 +177,17 @@ def _admission_issues(
     document: WorkflowGraphDocumentV1,
 ) -> tuple[list[ValidationIssue], WorkflowGraphDocumentV1]:
     issues: list[ValidationIssue] = []
-    state_schema = document.definition.state_schema
-    if state_schema is not None:
+    schema_source = document.definition.schema_source
+    if schema_source is not None:
         try:
-            validate_workflow_state_schema(state_schema)
+            validate_workflow_state_schema(schema_source)
         except WorkflowStateSchemaError as exc:
             issues.append(
                 _issue(
-                    code="workflow.state_schema_invalid",
-                    path="definition.state_schema",
+                    code="workflow.schema_invalid",
+                    path="definition.schema_source",
                     message=str(exc),
-                    message_key="validation.issue.workflow.stateSchemaInvalid",
+                    message_key="validation.issue.workflow.schemaInvalid",
                 )
             )
     nodes = _normalize_nodes(document, issues)

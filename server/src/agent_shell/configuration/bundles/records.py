@@ -151,7 +151,11 @@ def _scope(entity: ConfigurationEntity) -> tuple[str, str]:
 
 
 def _entity_name_key(entity: ConfigurationEntity, value: str) -> str:
-    return value if entity.kind == "workflow" else name_collision_key(value)
+    return (
+        value
+        if entity.kind in {"workflow", "mcp_tool"}
+        else name_collision_key(value)
+    )
 
 
 def _next_name(entity: ConfigurationEntity, used: set[str]) -> str:
@@ -277,7 +281,7 @@ def transform_bundle_records(
                 rewritten["python_package"]["folder"] = identities.names[source.id]
             if source.component_type == "skill":
                 rewritten["skill_package"]["folder"] = identities.names[source.id]
-        if source.kind in {"main_agent", "workflow"}:
+        if source.kind in {"main_agent", "mcp_tool", "workflow"}:
             rewritten["enabled"] = False
         transformed.append(
             ConfigurationEntity(

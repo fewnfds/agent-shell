@@ -199,9 +199,43 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             ),
         )
 
+
+@dataclass(frozen=True, slots=True)
+class McpToolRuntimeContext:
+    """Execution dependencies visible to one independent MCP Tool Graph."""
+
+    mcp_tool_id: str = ""
+    run_id: str = ""
+    mcp_tool_node_id: str = ""
+    node_invocation_id: str = ""
+    mcp: McpCommands | None = None
+    _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
+
+    def for_run(self, run_id: str) -> "McpToolRuntimeContext":
+        return replace(self, run_id=run_id)
+
+    def for_mcp_tool_node(
+        self,
+        *,
+        node_id: str,
+        invocation_id: str,
+    ) -> "McpToolRuntimeContext":
+        return replace(
+            self,
+            mcp_tool_node_id=node_id,
+            node_invocation_id=invocation_id,
+            mcp=(
+                self._mcp_commands_by_node.get(node_id)
+                if self._mcp_commands_by_node is not None
+                else None
+            ),
+        )
+
+
 __all__ = [
     "AgentRunContext",
     "AgentRuntimeContext",
+    "McpToolRuntimeContext",
     "WorkflowRunContext",
     "WorkflowRuntimeContext",
 ]

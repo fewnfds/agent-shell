@@ -4,6 +4,37 @@ Agent Shell 通过 LangChain 官方 `langchain-mcp-adapters` 把 MCP Server 公�
 
 当前支持 Managed Local stdio 与 Streamable HTTP。Managed Local 连接声明 npm 或 PyPI 软件包、精确版本、可选 entrypoint、按顺序保存的 args、可选绝对 cwd 和任意 env；Streamable HTTP 配置 HTTP(S) URL 和任意 Header。当前不提供宿主任意 executable、Git/Docker 安装源、legacy SSE、WebSocket、OAuth、elicitation、自定义 transport 或共享 stateful session pool。
 
+## MCP Tool：对外发布独立工具
+
+这里的 MCP Tool 不是“从外部 Server 引入 Tool”，而是 Agent Shell 自己通过 LangGraph 官方 `/mcp` 暴露给其他 MCP Client 的工具。它与 MCP Connection 是相反方向，也不属于 Model Shell：每次 `tools/call` 创建独立 Graph Run，不创建 Lifecycle，不复用上一次调用的 State，也没有续聊或 Thread 概念。
+
+在【工作流】页面选择 MCP Tool，新建名称与说明并保存 Graph。Graph 仍由 Start、Command、End 和 Control Edge 组成，但 MCP Tool Command 不能绑定 External Agent，也不能依赖 Lifecycle 专属运行上下文。名称只允许 ASCII 字母、数字、`.`、`_`、`-`，并直接作为 `/mcp` tool name。
+
+draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。
+
+可选 `schema_source` 是一段 Python 源码，定义 Pydantic `State`、`Input` 和 `Output`：
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic: str
+
+
+class State(Input):
+    answer: str = ""
+
+
+class Output(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic: str
+    answer: str
+```
+
+LangGraph直接使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段。没有`schema_source`时使用开放mapping State，参数直接成为扁平键。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
+
 ## 配置顺序
 
 1. 在【代理组件 / MCP 要求】创建 Repository-owned `MCP Requirement`，填写说明和稳定 `namespace`。namespace 只允许字母、数字和下划线，且以字母或下划线开头；同一 Configuration Repository 内必须唯一。

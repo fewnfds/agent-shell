@@ -99,7 +99,7 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 5. 输入与 State isolation
 
-`start_workflow()`的`initial_state`参数就是目标Run的初始扁平State键值表。输入在创建时深拷贝，不与caller State保持可变引用；目标Workflow声明了`state_schema`时，这份初始State必须先通过校验，否则`start_workflow()`直接失败。
+`start_workflow()`的`initial_state`参数就是目标Run的初始扁平State键值表。输入在创建时深拷贝，不与caller State保持可变引用；目标Workflow声明了Pydantic`State`时，这份初始State必须先通过校验，否则`start_workflow()`直接失败。
 
 被调用 Run 拥有独立：
 
@@ -112,7 +112,7 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 6. 保存控制状态
 
-Workflow root State是扁平变量表：入口传入的键和Command写回的键都保留在同一个checkpoint里。声明了`state_schema`时，入口输入与每个Command的update结果都按该JSON Schema校验；未声明时任何JSON键都能读写，不做键名与类型校验。
+Workflow root State是扁平变量表：入口传入的键和Command写回的键都保留在同一个checkpoint里。声明了Pydantic`State`时，入口输入与每个Command的update结果都按该模型校验；未声明时任何JSON键都能读写，不做键名与类型校验。
 
 后续 Node 需要继续操作某个 Run 时，只把必要的 `run_id` 和业务控制信息写回 caller 的 State：
 

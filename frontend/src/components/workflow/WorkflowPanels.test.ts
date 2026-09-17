@@ -82,8 +82,7 @@ describe('Workflow control panels', () => {
         nodeIds: [node.id],
         outputEndpoints: commandCatalog.output_handles,
         stateContract: 'agent-shell.workflow.control.v1',
-        stateSchema: '',
-        stateSchemaError: '',
+        schemaSource: '',
         workflowName: 'Control Workflow',
       },
       global: { plugins: [i18n()] },
@@ -111,27 +110,29 @@ describe('Workflow control panels', () => {
         nodeIds: [],
         outputEndpoints: [],
         stateContract: 'agent-shell.workflow.control.v1',
-        stateSchema: '',
-        stateSchemaError: '',
+        schemaSource: '',
         workflowName: 'Control Workflow',
       },
       global: { plugins: [i18n()] },
     })
-    const schema = '{\n  "type": "object",\n  "properties": { "topic": { "type": "string" } }\n}'
+    const schema = `
+from pydantic import BaseModel
+
+
+class State(BaseModel):
+    topic: str
+`
     await wrapper.get('#workflow-state-schema').setValue(schema)
 
-    expect(wrapper.emitted('updateStateSchema')).toEqual([[schema]])
+    expect(wrapper.emitted('updateSchemaSource')).toEqual([[schema]])
     const command = newCommandCanvasNode('router', commands[0]!.id)
     const document = workflowCanvasToDocument(
       [command],
       [],
       { x: 0, y: 0, zoom: 1 },
-      JSON.parse(schema),
+      schema,
     )
-    expect(document.definition.state_schema).toEqual({
-      type: 'object',
-      properties: { topic: { type: 'string' } },
-    })
+    expect(document.definition.schema_source).toBe(schema)
   })
 
   it('connects and serializes one normal Edge kind', () => {

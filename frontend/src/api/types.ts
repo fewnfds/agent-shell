@@ -102,6 +102,21 @@ export interface WorkflowSummary extends ConfigurationSummary {
   enabled: boolean
 }
 
+export interface McpToolPayload {
+  name: string
+  description: string
+}
+
+export interface McpTool extends McpToolPayload {
+  id: string
+  enabled: boolean
+}
+
+export interface McpToolSummary extends ConfigurationSummary {
+  description: string
+  enabled: boolean
+}
+
 export interface ConfigurationCollection<T> {
   items: T[]
   total: number
@@ -114,6 +129,7 @@ export interface ConfigurationOptions {
   repository_revision: number
   components: Partial<Record<ManagedComponentType, ConfigurationSummary[]>>
   main_agents: MainAgentSummary[]
+  mcp_tools: McpToolSummary[]
   subagents: SubagentSummary[]
   workflows: WorkflowSummary[]
 }
@@ -402,7 +418,12 @@ export interface ConfigurationRepositoryActivation extends ConfigurationReposito
   validation: ValidationReport
 }
 
-export type ConfigurationEntityKind = 'component' | 'main_agent' | 'subagent' | 'workflow'
+export type ConfigurationEntityKind =
+  | 'component'
+  | 'main_agent'
+  | 'mcp_tool'
+  | 'subagent'
+  | 'workflow'
 
 export interface ConfigurationBundleRoot {
   kind: ConfigurationEntityKind
@@ -809,7 +830,7 @@ export interface WorkflowGraphDocument {
   definition: {
     schema_version: 1
     state_contract: 'agent-shell.workflow.control.v1'
-    state_schema?: Record<string, JsonValue> | null
+    schema_source?: string | null
     nodes: WorkflowGraphNode[]
     edges: WorkflowGraphEdge[]
   }

@@ -803,12 +803,15 @@ def test_workflow_graph_catalog_save_and_reload(
             "definition": {
                 "schema_version": 1,
                 "state_contract": "agent-shell.workflow.control.v1",
-                "state_schema": {
-                    "type": "object",
-                    "properties": {"answer": {"type": "integer"}},
-                    "required": ["answer"],
-                    "additionalProperties": False,
-                },
+                "schema_source": """
+from pydantic import BaseModel, ConfigDict
+
+
+class State(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: int
+""",
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
                     {"id": "end", "type": "end", "type_version": 1, "config": {}},
@@ -843,7 +846,7 @@ def test_workflow_graph_catalog_save_and_reload(
 
         assert empty.status_code == 200
         assert empty.json()["definition"]["nodes"] == []
-        assert empty.json()["definition"]["state_schema"] is None
+        assert empty.json()["definition"]["schema_source"] is None
     assert [item["type"] for item in catalog.json()] == [
         "start",
         "command",

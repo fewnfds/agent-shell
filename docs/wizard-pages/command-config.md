@@ -104,7 +104,7 @@ Workflow Run 示例的 `start` 读取 `workflow_id`、`operation_id` 与可选
 
 `goto` 中的每个 Node ID 必须由当前 Command 的一条 outgoing Edge 声明。Canvas End ID 会由 compiler 映射为 LangGraph `END`。省略 `goto` 时当前 path 自然结束。
 
-Workflow 声明了 `state_schema` 时，当前 State 与 `update` 合并后的结果必须满足该 JSON Schema；不满足时本次 Run 以 `workflow.state_invalid` 失败，Command 的脚本异常与它分开报告为 `workflow.command_failed`。
+Workflow 声明了 Pydantic `State` 时，当前 State 与 `update` 合并后的结果必须满足该模型；不满足时本次 Run 以 `workflow.state_invalid` 失败，Command 的脚本异常与它分开报告为 `workflow.command_failed`。
 
 当前不接受 `Send`、`resume` 或跨 graph routing。脚本不读取 Edge ID、handle 或 layout，也不返回自造 Branch/Dispatch 对象。
 
