@@ -139,6 +139,7 @@ const messages = {
     model: { label: 'Model' },
     'main-agent': { label: 'Main Agent' },
     'subagent-profile': { label: 'Subagent' },
+    'external-agent': { label: 'External Agent' },
     workflow: { label: 'Workflow' },
   },
   validation: {
@@ -229,6 +230,7 @@ function createApi() {
   })
   const listMainAgentSummaries = vi.fn(async () => collection([]))
   const listSubagentSummaries = vi.fn(async () => collection([]))
+  const listExternalAgentSummaries = vi.fn(async () => collection([]))
   const listWorkflowSummaries = vi.fn(async () => collection([]))
   const modelConnection: ModelConnection = {
     id: '33333333-3333-4333-8333-333333333333',
@@ -279,18 +281,21 @@ function createApi() {
     listBlockSummaries,
     listMainAgentSummaries,
     listSubagentSummaries,
+    listExternalAgentSummaries,
     listWorkflowSummaries,
     listModelConnections,
     listMcpConnections,
     getBlock: vi.fn(async (_type, id) => stored.find((item) => item.id === id) ?? block),
     getMainAgent: vi.fn(async () => ({ id: 'main-id', name: 'Main Agent' } as never)),
     getSubagent: vi.fn(async () => ({ id: 'subagent-id', component_name: 'Subagent' } as never)),
+    getExternalAgent: vi.fn(async () => ({ id: 'external-id', name: 'External Agent' } as never)),
     getWorkflow: vi.fn(async () => ({ id: 'workflow-id', name: 'Workflow' } as never)),
     getModelConnection: vi.fn(async () => modelConnection),
     getMcpConnection: vi.fn(async () => mcpConnection),
     copyBlock,
     copyMainAgent: vi.fn(),
     copySubagent: vi.fn(),
+    copyExternalAgent: vi.fn(),
     copyWorkflow: vi.fn(),
     copyModelConnection: vi.fn(),
     copyMcpConnection: vi.fn(),
@@ -303,6 +308,7 @@ function createApi() {
     }),
     deleteMainAgent: vi.fn(),
     deleteSubagent: vi.fn(),
+    deleteExternalAgent: vi.fn(),
     deleteWorkflow: vi.fn(),
     deleteModelConnection: vi.fn(),
     deleteMcpConnection: vi.fn(),
@@ -310,6 +316,8 @@ function createApi() {
     deleteMainAgentsMatching: vi.fn(),
     deleteSubagents: vi.fn(),
     deleteSubagentsMatching: vi.fn(),
+    deleteExternalAgents: vi.fn(),
+    deleteExternalAgentsMatching: vi.fn(),
     deleteWorkflows: vi.fn(),
     deleteWorkflowsMatching: vi.fn(),
     exportConfigurationBundle: vi.fn(async () => ({
@@ -598,8 +606,39 @@ describe('ConfigLibraryPage', () => {
     expect(wrapper
       .get('[data-testid="library-agent-group"] [data-testid="section-nav"]')
       .findAll('button')
-      .map((item) => item.text())).toEqual(['Main Agent', 'Subagent'])
+      .map((item) => item.text())).toEqual(['Main Agent', 'Subagent', 'External Agent'])
     expect(wrapper.get('[data-testid="data-table-row"]').text()).not.toContain('block-uuid')
+  })
+
+  it('lists External Agents with the common copy, download, and delete actions', async () => {
+    const api = createApi()
+    const externalAgent = {
+      id: 'external-agent-uuid',
+      name: 'Antigravity Reviewer',
+      description: 'Reviews diffs.',
+      provider: 'antigravity-cli' as const,
+      agent_name: 'antigravity-reviewer',
+    }
+    vi.mocked(api.service.listExternalAgentSummaries).mockResolvedValue({
+      items: [externalAgent],
+      total: 1,
+      repository_id: 'repository-id',
+      repository_revision: 1,
+    })
+    const { wrapper, router } = await mountPage(api.service, '/library/external-agent')
+
+    expect(api.service.listExternalAgentSummaries).toHaveBeenCalledWith({
+      q: undefined, offset: 0, limit: 20,
+    })
+    expect(wrapper.text()).toContain('Antigravity Reviewer')
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Copy')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Download')).toBe(true)
+
+    await buttonByText(wrapper, 'Edit').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/agents/external')
+    expect(router.currentRoute.value.query.id).toBe('external-agent-uuid')
   })
 
   it('keeps the latest repository validation when an earlier request finishes late', async () => {

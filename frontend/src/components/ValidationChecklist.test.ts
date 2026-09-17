@@ -164,6 +164,38 @@ describe('ValidationChecklist', () => {
     expect(card.text()).not.toMatch(/[\u300c\u300d\u201c\u201d\u00b7\u2192]/)
   })
 
+  it('labels a missing External Agent reference with its localized type', () => {
+    const wrapper = mountChecklist({
+      status: 'invalid',
+      error: '',
+      report: {
+        valid: false,
+        stage: 'repository_load',
+        issues: [{
+          code: 'configuration.reference_not_found',
+          scope: 'workflow',
+          owner_id: 'workflow-id',
+          owner_name: 'Bound Workflow',
+          owner_type: 'workflow',
+          path: 'definition.nodes[1].config.external_agent_id',
+          message: 'concrete backend detail',
+          message_key: 'validation.issue.configuration.referenceNotFound',
+          message_args: {
+            expected_type: 'external_agent',
+            reference_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          },
+        }],
+      },
+    })
+
+    const card = wrapper.get('[data-testid="validation-issue"]')
+    // The type labels must resolve through `validation.referenceType`, not
+    // fall back to the raw `external_agent` discriminator.
+    expect(card.text()).toContain('引用的External Agent配置')
+    expect(card.get('[data-testid="validation-resolution"]').text())
+      .toBe('重新选择一份External Agent配置，或删除这条引用。')
+  })
+
   it('renders field-level Subagent reference errors with specific reasons and fixes', () => {
     const cases = [
       {

@@ -111,7 +111,7 @@ Model Connection 与 MCP Connection 不属于 Configuration Repository，也不�
 
 ## 4. 正确读取 collection
 
-Component、Main Agent、Subagent 和 Workflow collection 支持两种表示：
+Component、Main Agent、Subagent、External Agent 和 Workflow collection 支持两种表示：
 
 - 不提交 `view`、`q`、`offset`、`limit` 时，response 是完整对象数组，不会隐式分页；
 - 只要显式提交上述任一 collection 参数，response 就使用 `items`、`total`、`repository_id`、`repository_revision` envelope。

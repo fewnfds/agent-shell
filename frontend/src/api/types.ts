@@ -422,6 +422,7 @@ export interface ConfigurationRepositoryActivation extends ConfigurationReposito
 
 export type ConfigurationEntityKind =
   | 'component'
+  | 'external_agent'
   | 'main_agent'
   | 'mcp_tool'
   | 'subagent'

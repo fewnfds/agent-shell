@@ -143,6 +143,10 @@ async function listCategory(
     const result = await api.value.listSubagentSummaries(query)
     return { rows: result.items, total: result.total }
   }
+  if (category === 'external-agent') {
+    const result = await api.value.listExternalAgentSummaries(query)
+    return { rows: result.items, total: result.total }
+  }
   if (category === 'workflow') {
     const result = await api.value.listWorkflowSummaries(query)
     return { rows: result.items, total: result.total }
@@ -179,6 +183,7 @@ async function getCategoryItem(
 ): Promise<LibraryDetailItem> {
   if (category === 'main-agent') return api.value.getMainAgent(id)
   if (category === 'subagent-profile') return api.value.getSubagent(id)
+  if (category === 'external-agent') return api.value.getExternalAgent(id)
   if (category === 'workflow') {
     return api.value.getWorkflow(id)
   }
@@ -255,6 +260,8 @@ async function copyCurrentItem(): Promise<void> {
       await api.value.copyMainAgent(source.id, copyName.value)
     } else if (category === 'subagent-profile') {
       await api.value.copySubagent(source.id, copyName.value)
+    } else if (category === 'external-agent') {
+      await api.value.copyExternalAgent(source.id, copyName.value)
     } else if (category === 'workflow') {
       await api.value.copyWorkflow(source.id, copyName.value)
     } else if (category === 'mcp-tool') {
@@ -387,6 +394,7 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         if (!category) return
         if (category === 'main-agent') await api.value.deleteMainAgent(item.id)
         else if (category === 'subagent-profile') await api.value.deleteSubagent(item.id)
+        else if (category === 'external-agent') await api.value.deleteExternalAgent(item.id)
         else if (category === 'workflow') await api.value.deleteWorkflow(item.id)
         else if (category === 'mcp-tool') await api.value.deleteMcpTool(item.id)
         else if (category === 'model-connection') await api.value.deleteModelConnection(item.id)
@@ -423,6 +431,8 @@ const libraryTableConfig: DataTableConfig<LibraryItem> = {
         result = await api.value.deleteMainAgentsMatching(query)
       } else if (category === 'subagent-profile') {
         result = await api.value.deleteSubagentsMatching(query)
+      } else if (category === 'external-agent') {
+        result = await api.value.deleteExternalAgentsMatching(query)
       } else if (category === 'workflow') {
         result = await api.value.deleteWorkflowsMatching(query)
       } else if (category === 'mcp-tool') {

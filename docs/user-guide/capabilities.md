@@ -21,6 +21,7 @@
 | MCP Requirement | 可迁移的 MCP 依赖说明与稳定 namespace；实例 Connection 由 MCP Mapping 绑定 | 通过有序 `mcp_refs` 装配 | Subagent 独立有序引用 |
 | Workflow Event Output | 用文件化 Python 扩展把 Workflow-owned v3 事件投影为响应字符串 | Workflow 可选绑定 | 不属于 Agent capability |
 | Command | 读取 Workflow State/Context并直接返回官方`Command(update, goto)`；可通过Run facade启动独立Agent/Workflow | canvas Node引用 | 不属于Agent capability |
+| Python Schema | 用文件化 Python 定义 Pydantic `State`；MCP Tool 引用时还定义 `Input`/`Output` | Workflow 与 MCP Tool metadata 的 `python_schema_id` | 不属于 Agent capability |
 
 组件编辑页从服务端 catalog 取得字段、默认值和资源发现结果。草稿校验与保存校验都以后端 contract 为准；记录使用 UUID 引用，重命名不会断开引用。
 
@@ -41,6 +42,8 @@ Filesystem Backend 与 Filesystem Tools 都可以不选。选择 Tools 时必须
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 
 Main Agent 是通过 LangChain `create_agent()` 构造的独立 root graph，messages 和 private state 由其 Thread checkpoint 拥有。Workflow 通过 Command 的`runtime.context.agent_runs`创建独立 Main Agent Thread/Run 并显式读取结果。synchronous Subagent 由显式 Deep Agents `SubAgentMiddleware`在 current Agent loop 内调度。
+
+Python Schema 是独立可复用的 Workflow 组件，只保存 `name` 与 `source`。保存时后端加载源码并要求至少定义 Pydantic `State`；Workflow 引用后，入口输入与每个 Command 的 `update` 结果都按该模型校验。MCP Tool 引用同一组件时必须额外定义 `Input` 与 `Output`，且两者的字段都必须存在于 `State`。Graph document 不保存 Python 源码。字段与运行效果见 [Python Schema](../wizard-pages/python-schema-config.md)。
 
 Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选绑定一份配置；配置独占扩展中的同步 `output(event, origin)` 读取 LangGraph v3 原始 ProtocolEvent 与 Shell origin，返回类型为字符串。它只控制 Workflow-owned non-Agent 事件的 OpenAI 响应投影，不改变 checkpoint、Debug、最终 State 或 Agent 自己的 Agent Event Output。字段和 Python 对象类型见[Workflow Event Output](../wizard-pages/workflow-event-output-config.md)。
 

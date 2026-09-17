@@ -7,6 +7,8 @@ import type {
   ConfigurationBundleResolutions,
   ConfigurationBundleRoot,
   ConfigurationSummary,
+  ExternalAgent,
+  ExternalAgentSummary,
   MainAgent,
   MainAgentSummary,
   McpTool,
@@ -22,9 +24,9 @@ import type {
   WorkflowSummary,
 } from '@/api'
 
-export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'workflow' | 'mcp-tool' | 'model-connection' | 'mcp-connection'
-export type LibraryItem = ConfigurationSummary | MainAgentSummary | McpConnection | McpToolSummary | ModelConnection | SubagentSummary | WorkflowSummary
-export type LibraryDetailItem = SavedBlock | MainAgent | McpConnection | McpTool | ModelConnection | Subagent | Workflow
+export type LibraryCategoryId = ManagedComponentType | 'main-agent' | 'subagent-profile' | 'external-agent' | 'workflow' | 'mcp-tool' | 'model-connection' | 'mcp-connection'
+export type LibraryItem = ConfigurationSummary | ExternalAgentSummary | MainAgentSummary | McpConnection | McpToolSummary | ModelConnection | SubagentSummary | WorkflowSummary
+export type LibraryDetailItem = SavedBlock | ExternalAgent | MainAgent | McpConnection | McpTool | ModelConnection | Subagent | Workflow
 type BundleCategoryId = Exclude<LibraryCategoryId, 'model-connection' | 'mcp-connection'>
 type SummaryRequest = { q?: string, offset?: number, limit?: number }
 
@@ -34,6 +36,7 @@ export interface ConfigLibraryApi {
   listBlockSummaries(type: ManagedComponentType, request?: SummaryRequest): Promise<ConfigurationCollection<ConfigurationSummary>>
   listMainAgentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<MainAgentSummary>>
   listSubagentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<SubagentSummary>>
+  listExternalAgentSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<ExternalAgentSummary>>
   listWorkflowSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<WorkflowSummary>>
   listMcpToolSummaries(request?: SummaryRequest): Promise<ConfigurationCollection<McpToolSummary>>
   listModelConnections(): Promise<ModelConnection[]>
@@ -41,6 +44,7 @@ export interface ConfigLibraryApi {
   getBlock(type: ManagedComponentType, id: string): Promise<SavedBlock>
   getMainAgent(id: string): Promise<MainAgent>
   getSubagent(id: string): Promise<Subagent>
+  getExternalAgent(id: string): Promise<ExternalAgent>
   getWorkflow(id: string): Promise<Workflow>
   getMcpTool(id: string): Promise<McpTool>
   getModelConnection(id: string): Promise<ModelConnection>
@@ -48,6 +52,7 @@ export interface ConfigLibraryApi {
   copyBlock(type: ManagedComponentType, id: string, name: string): Promise<SavedBlock>
   copyMainAgent(id: string, name: string): Promise<MainAgent>
   copySubagent(id: string, componentName: string): Promise<Subagent>
+  copyExternalAgent(id: string, name: string): Promise<ExternalAgent>
   copyWorkflow(id: string, name: string): Promise<Workflow>
   copyMcpTool(id: string, name: string): Promise<McpTool>
   copyModelConnection(id: string, name: string): Promise<ModelConnection>
@@ -56,6 +61,7 @@ export interface ConfigLibraryApi {
   deleteUnsupportedBlock(id: string): Promise<{ ok: boolean }>
   deleteMainAgent(id: string): Promise<{ ok: boolean }>
   deleteSubagent(id: string): Promise<{ ok: boolean }>
+  deleteExternalAgent(id: string): Promise<{ ok: boolean }>
   deleteWorkflow(id: string): Promise<{ ok: boolean }>
   deleteMcpTool(id: string): Promise<{ ok: boolean }>
   deleteModelConnection(id: string): Promise<{ ok: boolean }>
@@ -66,6 +72,8 @@ export interface ConfigLibraryApi {
   deleteMainAgentsMatching(query: string): Promise<{ deleted: number }>
   deleteSubagents(ids: string[]): Promise<{ deleted: number }>
   deleteSubagentsMatching(query: string): Promise<{ deleted: number }>
+  deleteExternalAgents(ids: string[]): Promise<{ deleted: number }>
+  deleteExternalAgentsMatching(query: string): Promise<{ deleted: number }>
   deleteWorkflows(ids: string[]): Promise<{ deleted: number }>
   deleteWorkflowsMatching(query: string): Promise<{ deleted: number }>
   deleteMcpTools(ids: string[]): Promise<{ deleted: number }>
@@ -78,6 +86,7 @@ export interface ConfigLibraryApi {
 export const agentLibraryCategories = [
   'main-agent',
   'subagent-profile',
+  'external-agent',
 ] as const
 
 export const workflowLibraryCategories = ['workflow', 'mcp-tool'] as const
@@ -93,6 +102,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
 } {
   if (category === 'main-agent') return { path: '/agents/main', query: { id } }
   if (category === 'subagent-profile') return { path: '/agents/subagents', query: { id } }
+  if (category === 'external-agent') return { path: '/agents/external', query: { id } }
   if (category === 'workflow') return { path: '/workflows', query: { id } }
   if (category === 'mcp-tool') return { path: '/workflows/mcp-tools', query: { id } }
   if (category === 'model-connection') return { path: '/models/connections', query: { id } }
@@ -110,6 +120,7 @@ export function editLocation(category: LibraryCategoryId, id: string): {
 export function bundleRoot(category: BundleCategoryId, id: string): ConfigurationBundleRoot {
   if (category === 'main-agent') return { kind: 'main_agent', source_id: id }
   if (category === 'subagent-profile') return { kind: 'subagent', source_id: id }
+  if (category === 'external-agent') return { kind: 'external_agent', source_id: id }
   if (category === 'workflow') return { kind: 'workflow', source_id: id }
   if (category === 'mcp-tool') return { kind: 'mcp_tool', source_id: id }
   return { kind: 'component', type: category, source_id: id }

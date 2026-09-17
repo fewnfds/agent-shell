@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import json
+import zipfile
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -148,6 +151,82 @@ def bound_workflow_document(
         },
         "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
     }
+
+
+def test_deleting_a_bound_external_agent_demotes_the_published_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_command_template(tmp_path)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        command = create_command_block(client)
+        preset = client.post(
+            "/agent-shell/api/external-agents",
+            json=external_agent_payload(),
+        ).json()
+        workflow = create_workflow(client, name="Bound Workflow")
+        published = client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
+            json=bound_workflow_document(command["id"], preset["id"]),
+        )
+        assert published.status_code == 200, published.text
+        deleted = client.delete(
+            f"/agent-shell/api/external-agents/{preset['id']}"
+        )
+        stored = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}"
+        ).json()
+        graph = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph"
+        ).json()
+        issues = client.get(
+            "/agent-shell/api/validation/repository"
+        ).json()["issues"]
+
+    assert deleted.status_code == 200, deleted.text
+    assert stored["enabled"] is False
+    assert graph["definition"]["nodes"][1]["config"]["external_agent_id"] == (
+        preset["id"]
+    )
+    assert any(
+        issue["code"] == "configuration.reference_not_found"
+        and issue["path"] == "definition.nodes[1].config.external_agent_id"
+        and issue["owner_id"] == workflow["id"]
+        for issue in issues
+    )
+
+
+def test_workflow_bundle_closes_over_its_bound_external_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_command_template(tmp_path)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        command = create_command_block(client)
+        preset = client.post(
+            "/agent-shell/api/external-agents",
+            json=external_agent_payload(),
+        ).json()
+        workflow = create_workflow(client, name="Bound Workflow")
+        client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
+            json=bound_workflow_document(command["id"], preset["id"]),
+        )
+        exported = client.post(
+            "/agent-shell/api/configuration-bundles/export",
+            json={"kind": "workflow", "source_id": workflow["id"]},
+        )
+
+    assert exported.status_code == 200, exported.text
+    manifest = json.loads(
+        zipfile.ZipFile(io.BytesIO(exported.content))
+        .read("manifest.json")
+    )
+    kinds = {(record["kind"], record.get("type")) for record in manifest["records"]}
+    assert ("external_agent", None) in kinds
+    assert ("component", "command") in kinds
 
 
 def test_command_node_reaches_its_bound_external_agent(

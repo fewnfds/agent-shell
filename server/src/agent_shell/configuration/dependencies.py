@@ -274,23 +274,33 @@ def _workflow_references(
         config = node.get("config", {})
         if not isinstance(config, dict):
             continue
-        node_type = node.get("type")
-        if node_type == "command":
-            field, target_kind, component_type = (
-                "command_id",
-                "component",
-                "command",
-            )
-        else:
+        if node.get("type") != "command":
             continue
         yield _reference(
             owner,
-            path=f"definition.nodes[{index}].config.{field}",
-            target_id=config.get(field),
-            target_kind=target_kind,
-            target_component_type=component_type,
-            location=("definition", "nodes", index, "config", field),
+            path=f"definition.nodes[{index}].config.command_id",
+            target_id=config.get("command_id"),
+            target_kind="component",
+            target_component_type="command",
+            location=("definition", "nodes", index, "config", "command_id"),
         )
+        external_agent_id = config.get("external_agent_id")
+        if external_agent_id is not None:
+            yield _reference(
+                owner,
+                path=(
+                    f"definition.nodes[{index}].config.external_agent_id"
+                ),
+                target_id=external_agent_id,
+                target_kind="external_agent",
+                location=(
+                    "definition",
+                    "nodes",
+                    index,
+                    "config",
+                    "external_agent_id",
+                ),
+            )
 
 
 def _mcp_tool_references(

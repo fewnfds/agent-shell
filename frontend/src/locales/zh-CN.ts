@@ -25,7 +25,7 @@ export const zhCN = {
       eventFeed: '日志中心',
       mainAgent: 'Main Agent',
       subagents: 'Subagent',
-      externalAgents: '外部 Agent',
+      externalAgents: 'External Agent',
       workflowLifecycles: '运行监控',
       workflows: '工作流',
       mcpTools: 'MCP Tool',
@@ -198,7 +198,7 @@ export const zhCN = {
       removeCommand: '删除 Command 节点',
       command: 'Command 节点',
       commandConfig: 'Command 配置',
-      externalAgentConfig: '外部 Agent',
+      externalAgentConfig: 'External Agent',
       externalAgentNone: '无',
       noCommands: '尚未配置 Command 节点',
       noCommandSelected: '未选择 Command 节点',
@@ -655,6 +655,9 @@ export const zhCN = {
     },
     'subagent-profile': {
       label: 'Subagent',
+    },
+    'external-agent': {
+      label: 'External Agent',
     },
     workflow: { label: 'Workflow' },
     'mcp-tool': { label: 'MCP Tool' },
@@ -1431,7 +1434,7 @@ export const zhCN = {
     configurationNameRequired: '配置名称不能为空。',
     mainAgentNotFound: 'Main Agent 配置不存在。',
     subagentNotFound: 'Subagent 实体不存在。',
-    externalAgentNotFound: '外部 Agent 预设不存在。',
+    externalAgentNotFound: 'External Agent 预设不存在。',
     externalAgentSessionNotFound: '该 External Agent 会话不存在于此 Lifecycle。',
     configurationNameConflict: '已经存在同名配置。',
     modelNameConflict: '已有 Main Agent 或已启用 Workflow 使用该模型名称。',
@@ -1666,6 +1669,7 @@ export const zhCN = {
     referenceType: {
       main_agent: 'Main Agent',
       subagent: 'Subagent',
+      external_agent: 'External Agent',
       workflow: 'Workflow',
     },
     location: {

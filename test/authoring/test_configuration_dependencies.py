@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from agent_shell.configuration.dependencies import (
+    ConfigurationEntity,
     iter_configuration_entities,
     iter_configuration_references,
+    rewrite_configuration_references,
 )
+from agent_shell.configuration.publication import demote_dependent_publications
 from agent_shell.configuration.bundles.contracts import FilesystemBindingResolution
 from agent_shell.configuration.bundles.filesystem import (
     apply_filesystem_bindings,
@@ -25,6 +28,7 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
         "command": "99999999-9999-4999-8999-999999999999",
         "mcp_tool": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         "python_schema": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "external_agent": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     }
     config = {
         "components": {
@@ -55,6 +59,9 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                 ],
                 "subagents": [{"subagent_id": ids["subagent"]}],
             },
+        ],
+        "external_agents": [
+            {"id": ids["external_agent"], "name": "External preset"},
         ],
         "subagents": [
             {
@@ -92,7 +99,10 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
                         {
                             "id": "command",
                             "type": "command",
-                            "config": {"command_id": ids["command"]},
+                            "config": {
+                                "command_id": ids["command"],
+                                "external_agent_id": ids["external_agent"],
+                            },
                         },
                     ]
                 },
@@ -190,6 +200,13 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             ids["command"],
         ),
         (
+            "workflow",
+            "definition.nodes[0].config.external_agent_id",
+            "external_agent",
+            "",
+            ids["external_agent"],
+        ),
+        (
             "mcp_tool",
             "python_schema_id",
             "component",
@@ -203,6 +220,84 @@ def test_configuration_dependency_owner_enumerates_declared_references() -> None
             "command",
             ids["command"],
         ),
+    }
+
+
+def test_deleting_a_bound_external_agent_demotes_its_published_workflow() -> None:
+    external_agent_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    command_id = "99999999-9999-4999-8999-999999999999"
+    config = {
+        "components": {"command": [{"id": command_id, "name": "Route"}]},
+        "external_agents": [{"id": external_agent_id, "name": "Preset"}],
+        "main_agents": [],
+        "subagents": [],
+        "mcp_tools": [],
+        "workflows": [
+            {
+                "id": "77777777-7777-4777-8777-777777777777",
+                "name": "Bound Workflow",
+                "enabled": True,
+                "definition": {
+                    "nodes": [
+                        {
+                            "id": "command",
+                            "type": "command",
+                            "config": {
+                                "command_id": command_id,
+                                "external_agent_id": external_agent_id,
+                            },
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+
+    demoted = demote_dependent_publications(config, {external_agent_id})
+
+    assert [(item.kind, item.entity_id) for item in demoted] == [
+        ("workflow", "77777777-7777-4777-8777-777777777777")
+    ]
+    assert config["workflows"][0]["enabled"] is False
+
+
+def test_rewriting_a_bound_external_agent_rewrites_the_command_node() -> None:
+    payload = {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Bound Workflow",
+        "definition": {
+            "nodes": [
+                {
+                    "id": "command",
+                    "type": "command",
+                    "config": {
+                        "command_id": "99999999-9999-4999-8999-999999999999",
+                        "external_agent_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                    },
+                }
+            ]
+        },
+    }
+    owner = ConfigurationEntity(
+        id=payload["id"],
+        kind="workflow",
+        name="Bound Workflow",
+        payload=payload,
+    )
+
+    rewritten = rewrite_configuration_references(
+        owner,
+        {
+            "99999999-9999-4999-8999-999999999999":
+                "11111111-1111-4111-8111-111111111111",
+            "dddddddd-dddd-4ddd-8ddd-dddddddddddd":
+                "22222222-2222-4222-8222-222222222222",
+        },
+    )
+
+    assert rewritten["definition"]["nodes"][0]["config"] == {
+        "command_id": "11111111-1111-4111-8111-111111111111",
+        "external_agent_id": "22222222-2222-4222-8222-222222222222",
     }
 
 

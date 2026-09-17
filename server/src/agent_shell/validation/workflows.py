@@ -242,7 +242,7 @@ def workflow_executable_report(
                             ".external_agent_id"
                         ),
                         reference_id=node_config.external_agent_id,
-                        expected_type="external-agent",
+                        expected_type="external_agent",
                     )
                 )
             stored = blocks.get_block_internal("command", reference)

@@ -658,6 +658,9 @@ export const en: MessageSchema = {
     'subagent-profile': {
       label: 'Subagent',
     },
+    'external-agent': {
+      label: 'External Agent',
+    },
     workflow: { label: 'Workflow' },
     'mcp-tool': { label: 'MCP Tool' },
   },
@@ -1668,6 +1671,7 @@ export const en: MessageSchema = {
     referenceType: {
       main_agent: 'Main Agent',
       subagent: 'Subagent',
+      external_agent: 'External Agent',
       workflow: 'Workflow',
     },
     location: {

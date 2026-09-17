@@ -1,6 +1,6 @@
 # 组件说明
 
-本目录是配置编辑页的字段索引：15 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 2 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
+本目录是配置编辑页的字段索引：14 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 3 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
 
 | 所属 / 顺序 | 页面 | 类型 |
 | --- | --- | --- |
@@ -21,13 +21,14 @@
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |
 | Workflow | [Workflow Event Output](workflow-event-output-config.md) | `workflow-event-output` |
 | Workflow | [Command Node](command-config.md) | `command` |
+| Workflow | [Python Schema](python-schema-config.md) | `python-schema` |
 
-Agent / 1..15 是 Agent capability 的固定 catalog order，Resource 与 Workflow 行不参与该 order。`agent_selectable=false` 的 Skill Component 不出现在 Main Agent 或 Subagent 的 capability picker；`mcp-requirement` 通过独立 ordered `mcp_refs` 装配，不进入 capability picker。
+Agent / 1..14 是 Agent capability 的固定 catalog order，Resource 与 Workflow 行不参与该 order。`agent_selectable=false` 的 Skill Component 不出现在 Main Agent 或 Subagent 的 capability picker；`mcp-requirement` 通过独立 ordered `mcp_refs` 装配，不进入 capability picker。
 
 模型要求和 Agent Event Output 是 Main Agent 必选组件；Filesystem Backend与Filesystem Tools可选。Subagent必须继承或替换模型要求且不可关闭，可分别继承、替换或关闭Filesystem两项；Agent Event Output仅属于顶层Main Agent，Subagent事件复用所属Main Agent的输出组件，不单独覆写。模型连接在实例“模型”页面维护并通过模型映射绑定。
 
 Filesystem Backend 在 CompositeBackend 与 LocalShellBackend 中二选一。CompositeBackend 的来源各自保存权限，并可引用一个 Skill 独立包；LocalShellBackend 只保存一个真实工作区。Skill Component 只制作独立包，不由 Agent 直接选择。Subagent 分别继承、替换或关闭 Backend 与 Tools；Skill 包引用随 CompositeBackend 一起生效。Workflow 不拥有 Filesystem。
 
-其余 Agent capability 按需通过 `capability_refs` 引用；Custom Tool、Custom Middleware 与 MCP Requirement 分别使用独立有序的 `tool_refs`、`middleware_refs` 与 `mcp_refs`，不参与 capability 的 inherit/replace/disabled。Command 也拥有自己的 ordered `mcp_refs`。Workflow Event Output 通过 Workflow metadata 的 `workflow_event_output_id` 绑定。Command Node 由 canvas Node 的 `command_id` 引用，并可选择一个 `external_agent_id` 作为该节点的 External Agent 绑定。
+其余 Agent capability 按需通过 `capability_refs` 引用；Custom Tool、Custom Middleware 与 MCP Requirement 分别使用独立有序的 `tool_refs`、`middleware_refs` 与 `mcp_refs`，不参与 capability 的 inherit/replace/disabled。Command 也拥有自己的 ordered `mcp_refs`。Workflow Event Output 与 Python Schema 分别通过 Workflow metadata 的 `workflow_event_output_id` 和 `python_schema_id` 绑定；MCP Tool 也通过自己的 `python_schema_id` 引用同一份 Python Schema 组件。Command Node 由 canvas Node 的 `command_id` 引用，并可选择一个 `external_agent_id` 作为该节点的 External Agent 绑定。
 
-Component、Main Agent、Subagent 与 Workflow 共用全局 UUID4 identity，跨类型不得复用；名称按各自作用域校验，正式 Main Agent/Workflow选择作为模型入口时成为公开model ID。组件编辑页提供草稿校验、新建、保存、复制和删除；Model/MCP Connection 分别在【模型】与【MCP】页面独立维护并通过各自映射绑定，配置库提供通用列表与 Repository 操作。
+Component、Main Agent、Subagent、External Agent 与 Workflow 共用全局 UUID4 identity，跨类型不得复用；名称按各自作用域校验，正式 Main Agent/Workflow选择作为模型入口时成为公开model ID。组件编辑页提供草稿校验、新建、保存、复制和删除；Model/MCP Connection 分别在【模型】与【MCP】页面独立维护并通过各自映射绑定，配置库提供通用列表与 Repository 操作。
