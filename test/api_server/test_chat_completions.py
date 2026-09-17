@@ -514,6 +514,17 @@ def test_models_and_chat_require_published_model_entry(
         assert response.json()["error"]["code"] == "model_not_found"
 
 
+def test_unknown_compat_path_belongs_to_the_compat_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.get("/compat/openai/v1/unknown")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+
+
 def test_system_graph_limits_reach_the_graph_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

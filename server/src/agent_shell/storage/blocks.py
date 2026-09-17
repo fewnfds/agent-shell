@@ -5,6 +5,7 @@ from copy import deepcopy
 from agent_shell.configuration.identity import name_collision_key
 from agent_shell.security_events import SecurityEventLogger, emit_configuration_events
 from agent_shell.configuration.publication import (
+    PUBLICATION_EVENT_ENTITIES,
     PublicationDemotion,
     demote_dependent_publications,
 )
@@ -195,9 +196,7 @@ class BlockStore:
             emit_configuration_events(
                 self._events,
                 action="updated",
-                entity={"main_agent": "main-agent", "workflow": "workflow"}[
-                    item.kind
-                ],
+                entity=PUBLICATION_EVENT_ENTITIES[item.kind],
                 entity_id=item.entity_id,
             )
         return len(removed)

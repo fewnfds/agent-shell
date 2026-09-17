@@ -10,7 +10,7 @@ Agent Shell 通过 LangChain 官方 `langchain-mcp-adapters` 把 MCP Server 公�
 
 在【工作流】页面选择 MCP Tool，新建名称与说明并保存 Graph。Graph 仍由 Start、Command、End 和 Control Edge 组成，但 MCP Tool Command 不能绑定 External Agent，也不能依赖 Lifecycle 专属运行上下文。名称只允许 ASCII 字母、数字、`.`、`_`、`-`，并直接作为 `/mcp` tool name。
 
-draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。
+draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。被 validation 拒绝的 draft 请求不改变已发布状态；已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 
 可选 `schema_source` 是一段 Python 源码，定义 Pydantic `State`、`Input` 和 `Output`：
 

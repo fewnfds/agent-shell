@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Literal
+from collections.abc import Coroutine
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -56,6 +57,22 @@ def _validated(payload: dict) -> dict:
             message_key="errors.mcpToolInvalid",
             message="The MCP Tool configuration is invalid.",
             message_args={"count": len(exc.errors())},
+        ) from exc
+
+
+async def _publication_call(
+    operation: Coroutine[Any, Any, None],
+    *,
+    message: str,
+) -> None:
+    try:
+        await operation
+    except Exception as exc:
+        raise management_error(
+            502,
+            code="mcp_tool_publication_failed",
+            message_key="errors.mcpToolPublicationFailed",
+            message=message,
         ) from exc
 
 
@@ -225,7 +242,10 @@ def build_mcp_tool_router(
 
         result = await asyncio.to_thread(update_metadata)
         if result["enabled"]:
-            await publication.publish(item_id)
+            await _publication_call(
+                publication.publish(item_id),
+                message="The MCP Tool Assistant could not be published.",
+            )
         return result
 
     @router.post("/mcp-tools/{item_id}/copy")
@@ -297,7 +317,10 @@ def build_mcp_tool_router(
 
         ids = await asyncio.to_thread(selected_ids)
         for item_id in ids:
-            await publication.delete(item_id)
+            await _publication_call(
+                publication.delete(item_id),
+                message="The MCP Tool Assistant could not be withdrawn.",
+            )
         return {
             "deleted": await asyncio.to_thread(
                 store.delete_items,
@@ -320,8 +343,9 @@ def build_mcp_tool_router(
 
     @router.put("/mcp-tools/{item_id}/draft")
     async def update_mcp_tool_draft(item_id: str, payload: dict) -> dict:
-        def save_draft() -> dict:
-            if store.get_item(item_id) is None:
+        def parse_draft() -> WorkflowGraphDocumentV1:
+            mcp_tool = store.get_item(item_id)
+            if mcp_tool is None:
                 raise management_error(
                     404,
                     code="mcp_tool_not_found",
@@ -329,18 +353,28 @@ def build_mcp_tool_router(
                     message="The MCP Tool does not exist.",
                 )
             try:
-                document = WorkflowGraphDocumentV1.model_validate(payload)
+                return WorkflowGraphDocumentV1.model_validate(payload)
             except ValidationError as exc:
                 report = report_from_validation_error(
                     exc,
                     stage=WORKFLOW_ADMISSION_STAGE,
-                    scope="workflow",
-                    owner_type="graph",
+                    scope="mcp_tool",
+                    owner_id=str(mcp_tool["id"]),
+                    owner_name=str(mcp_tool["name"]),
+                    owner_type="mcp_tool",
                 )
                 raise HTTPException(
                     status_code=422,
                     detail=validation_failure_detail(report),
                 ) from exc
+
+        document = await asyncio.to_thread(parse_draft)
+        await _publication_call(
+            publication.unpublish(item_id),
+            message="The MCP Tool Assistant could not be withdrawn.",
+        )
+
+        def save_draft() -> dict:
             if not store.save_graph_and_enabled(
                 item_id,
                 document,
@@ -355,7 +389,6 @@ def build_mcp_tool_router(
                 )
             return document.model_dump(mode="json")
 
-        await publication.unpublish(item_id)
         return await asyncio.to_thread(save_draft)
 
     @router.post("/mcp-tools/{item_id}/validate")
@@ -420,7 +453,10 @@ def build_mcp_tool_router(
                 )
 
         await asyncio.to_thread(require_item)
-        await publication.delete(item_id)
+        await _publication_call(
+            publication.delete(item_id),
+            message="The MCP Tool Assistant could not be withdrawn.",
+        )
         deleted = await asyncio.to_thread(
             store.delete_item,
             item_id,

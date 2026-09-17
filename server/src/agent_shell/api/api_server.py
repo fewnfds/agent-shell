@@ -904,6 +904,20 @@ def build_api_server_router(
             )
         )
 
+    @compat_router.api_route(
+        "/{unmatched_path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    def unmatched_compat_endpoint(request: Request) -> JSONResponse:
+        """Answer unknown OpenAI-compatible paths inside this API owner."""
+
+        return _openai_error(
+            404,
+            "not_found",
+            "The requested endpoint does not exist.",
+            request_id=str(getattr(request.state, "request_id", "")),
+        )
+
     router.include_router(management_router)
     router.include_router(compat_router)
     return router

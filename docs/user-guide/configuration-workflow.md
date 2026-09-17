@@ -27,7 +27,7 @@ Workflow State是一张扁平变量表，入口传入的键和Command写回的�
 
 【工作流】页面下同时管理 Workflow 与 MCP Tool。MCP Tool 拥有独立名称、说明、Graph document 和启用状态；名称直接成为官方 `/mcp` 的 tool name，只允许 ASCII 字母、数字、点、下划线和连字符。
 
-发布前先保存 draft。draft 会停止对外可见，但保存 Graph；正式保存会执行完整 validation，并只在成功后创建或刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 与 Workflow 不会出现。删除 MCP Tool 后对应工具也不再可见。
+发布前先保存 draft。draft 会停止对外可见，但保存 Graph；正式保存会执行完整 validation，并只在成功后创建或刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 与 Workflow 不会出现。删除 MCP Tool 后对应工具也不再可见。draft 请求被 validation 拒绝时不改变已发布状态，工具继续可见并保持原 Graph。已发布 MCP Tool 引用的 Command 被删除时，该 MCP Tool 自动回到未发布状态并从 `/mcp` 消失；服务重启后按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 
 MCP Tool 的可选 `schema_source` 至少定义 `State`、`Input`、`Output` 三个 Pydantic 模型：
 

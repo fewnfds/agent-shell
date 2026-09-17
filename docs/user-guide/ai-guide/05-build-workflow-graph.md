@@ -163,7 +163,7 @@ DELETE /agent-shell/api/mcp-tools/<mcp-tool-id>
 
 Graph document 的 `definition.schema_source` 为可选 Python 源码。MCP Tool 声明 schema 时必须定义 Pydantic `State`、`Input` 和 `Output`；每个 `Input` 字段必须存在于 `State`，每个 `Output` 字段也必须存在于 `State`。没有 schema 时使用开放 mapping State。Command 输入仍是扁平 state，不使用 `messages[]`、`input` 或 `initial_state` 包装。
 
-MCP Tool 不接受 External Agent；正式保存会拒绝任何依赖 Lifecycle 或外部会话的 Command。`/agent-shell/api/mcp-tools/<id>/graph` 只在完整校验通过后设置 `enabled=true` 并刷新官方 Assistant。保存 draft 会把 `enabled` 设为 `false`，并先从 `/mcp tools/list` 隐藏。
+MCP Tool 不接受 External Agent；正式保存会拒绝任何依赖 Lifecycle 或外部会话的 Command。`/agent-shell/api/mcp-tools/<id>/graph` 只在完整校验通过后设置 `enabled=true` 并刷新官方 Assistant。保存 draft 会把 `enabled` 设为 `false`，并先从 `/mcp tools/list` 隐藏；draft 被 validation 拒绝（422）时不改变已发布状态。已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 
 验收时使用带管理凭据的官方 `/mcp` JSON-RPC：
 

@@ -359,6 +359,14 @@ def create_app(
                 )
 
             await asyncio.to_thread(record_startup)
+            try:
+                await mcp_tool_publication.reconcile()
+            except Exception as exc:
+                await runtime_diagnostics.aobservation_error(
+                    exc,
+                    code="mcp_tool_publication_reconcile_failed",
+                    component="graph_runtime",
+                )
             yield
         finally:
             try:
@@ -634,6 +642,7 @@ def create_app(
             python_package_authoring,
             skill_package_authoring,
             component_mutations,
+            mcp_tool_publication,
         )
     )
     app.include_router(

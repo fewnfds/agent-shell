@@ -40,6 +40,7 @@ from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.storage.mcp_tools import McpToolStore
+from agent_shell.mcp_tools.publication import McpToolPublicationService
 from agent_shell.validation.models import validation_failure_detail
 from agent_shell.python_packages.authoring import (
     PythonPackageAuthoringError,
@@ -114,6 +115,7 @@ def build_router(
     python_package_authoring: PythonPackageAuthoringService,
     skill_package_authoring: SkillPackageAuthoringService,
     component_mutations: ComponentMutationService,
+    mcp_tool_publication: McpToolPublicationService,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -212,6 +214,20 @@ def build_router(
             raise authoring_error(exc) from exc
         except SkillPackageAuthoringError as exc:
             raise skill_authoring_error(exc) from exc
+
+    async def synchronize_mcp_tool_publication() -> None:
+        try:
+            await mcp_tool_publication.unpublish_disabled()
+        except Exception as exc:
+            raise management_error(
+                502,
+                code="mcp_tool_publication_failed",
+                message_key="errors.mcpToolPublicationFailed",
+                message=(
+                    "The published MCP Tool Assistants could not be "
+                    "synchronized."
+                ),
+            ) from exc
 
     def project_block(
         block_type: str,
@@ -496,33 +512,37 @@ def build_router(
         return {"ok": True}
 
     @router.post("/blocks/{block_type}/delete")
-    def delete_blocks(
+    async def delete_blocks(
         block_type: str,
         payload: ConfigurationBulkDelete,
     ) -> dict[str, int]:
-        check_type(block_type)
-        ids = (
-            list(dict.fromkeys(payload.ids))
-            if payload.ids is not None
-            else [
-                str(item["id"])
-                for item in block_store.list_block_summaries(block_type)
-                if matches_configuration_query(
-                    item, payload.q or "", ("name", "id")
-                )
-            ]
-        )
-        for block_id in ids:
-            if block_store.get_block(block_type, block_id) is None:
-                raise management_error(
-                    404,
-                    code="block_not_found",
-                    message_key="errors.blockNotFound",
-                    message="A component configuration does not exist.",
-                )
-        deleted = perform_component_mutation(
-            lambda: component_mutations.delete_many(block_type, ids)
-        )
+        def remove_blocks() -> int:
+            check_type(block_type)
+            ids = (
+                list(dict.fromkeys(payload.ids))
+                if payload.ids is not None
+                else [
+                    str(item["id"])
+                    for item in block_store.list_block_summaries(block_type)
+                    if matches_configuration_query(
+                        item, payload.q or "", ("name", "id")
+                    )
+                ]
+            )
+            for block_id in ids:
+                if block_store.get_block(block_type, block_id) is None:
+                    raise management_error(
+                        404,
+                        code="block_not_found",
+                        message_key="errors.blockNotFound",
+                        message="A component configuration does not exist.",
+                    )
+            return perform_component_mutation(
+                lambda: component_mutations.delete_many(block_type, ids)
+            )
+
+        deleted = await asyncio.to_thread(remove_blocks)
+        await synchronize_mcp_tool_publication()
         return {"deleted": deleted}
 
     @router.get("/blocks/{block_type}/{block_id}")
@@ -625,11 +645,16 @@ def build_router(
         )
 
     @router.delete("/blocks/{block_type}/{block_id}")
-    def delete_block(block_type: str, block_id: str) -> dict[str, bool]:
+    async def delete_block(
+        block_type: str,
+        block_id: str,
+    ) -> dict[str, bool]:
         check_type(block_type)
-        perform_component_mutation(
-            lambda: component_mutations.delete(block_type, block_id)
+        await asyncio.to_thread(
+            perform_component_mutation,
+            lambda: component_mutations.delete(block_type, block_id),
         )
+        await synchronize_mcp_tool_publication()
         return {"ok": True}
 
     return router

@@ -10,7 +10,14 @@ from agent_shell.configuration.dependencies import (
 )
 
 
-PublicationKind = Literal["main_agent", "workflow"]
+PublicationKind = Literal["main_agent", "mcp_tool", "workflow"]
+
+
+PUBLICATION_EVENT_ENTITIES: dict[PublicationKind, str] = {
+    "main_agent": "main-agent",
+    "mcp_tool": "mcp_tool",
+    "workflow": "workflow",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +55,7 @@ def demote_dependent_publications(
         if (
             entity.id in affected
             and entity.id not in removed_ids
-            and entity.kind in {"main_agent", "workflow"}
+            and entity.kind in PUBLICATION_EVENT_ENTITIES
             and entity.payload.get("enabled") is True
         ):
             entity.payload["enabled"] = False
@@ -61,4 +68,8 @@ def demote_dependent_publications(
     return tuple(sorted(demoted, key=lambda item: (item.kind, item.entity_id)))
 
 
-__all__ = ["PublicationDemotion", "demote_dependent_publications"]
+__all__ = [
+    "PUBLICATION_EVENT_ENTITIES",
+    "PublicationDemotion",
+    "demote_dependent_publications",
+]
