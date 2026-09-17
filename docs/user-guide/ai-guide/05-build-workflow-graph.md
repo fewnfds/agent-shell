@@ -37,6 +37,10 @@ Content-Type: application/json
   "definition": {
     "schema_version": 1,
     "state_contract": "agent-shell.workflow.control.v1",
+    "state_schema": {
+      "type": "object",
+      "properties": {"selected_target": {"type": "string"}}
+    },
     "nodes": [
       {"id": "start", "type": "start", "type_version": 1, "config": {}},
       {
@@ -79,6 +83,8 @@ Content-Type: application/json
 ```
 
 layout只供Vue Flow编辑；runtime不读取position或viewport。
+
+`state_schema`可省略或为`null`。省略时不校验Workflow State的键名与类型；声明时入口输入与每个Command的update结果都必须满足它。根节点必须声明`"type": "object"`。
 
 ## 4. Node规则
 

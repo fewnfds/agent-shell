@@ -22,13 +22,11 @@ def create_command():
         result = await facade.run("ping from command")
         return Command(
             update={
-                "shared_vars": {
-                    "external_agent": {
-                        "name": facade.name,
-                        "agent_name": facade.agent_name,
-                        "status": result.status,
-                        "response": result.response,
-                    }
+                "external_agent": {
+                    "name": facade.name,
+                    "agent_name": facade.agent_name,
+                    "status": result.status,
+                    "response": result.response,
                 }
             }
         )

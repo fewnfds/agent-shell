@@ -15,6 +15,10 @@ from agent_shell.command_packages import CommandPackageRuntime
 from agent_shell.python_packages.authoring import PythonPackageAuthoringService
 from agent_shell.runtime.agent_run_calls import AgentRunHandle, AgentRunSnapshot
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.state import (
+    WORKFLOW_STATE_CHANNEL,
+    wrap_workflow_state_update,
+)
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle, WorkflowRunSnapshot
 
 
@@ -114,8 +118,8 @@ def test_state_routing_example_reads_updates_and_routes_by_canvas_node_id() -> N
     result = asyncio.run(
         run_command(
             _command("state-routing-command"),
-            state={
-                "shared_vars": {
+            state=wrap_workflow_state_update(
+                {
                     "items": [
                         {"id": "one", "requires_review": True},
                         {"id": "two", "requires_review": False},
@@ -124,7 +128,7 @@ def test_state_routing_example_reads_updates_and_routes_by_canvas_node_id() -> N
                     "complete_target_node_id": "publish",
                     "preserved": True,
                 }
-            },
+            ),
             runtime=Runtime(context=WorkflowRuntimeContext()),
             target_map={"manual-review": "manual-review", "publish": "publish"},
         )
@@ -132,7 +136,7 @@ def test_state_routing_example_reads_updates_and_routes_by_canvas_node_id() -> N
 
     assert result.goto == "manual-review"
     assert result.update == {
-        "shared_vars": {
+        WORKFLOW_STATE_CHANNEL: {
             "item_count": 2,
             "review_item_count": 1,
             "selected_target_node_id": "manual-review",
@@ -164,14 +168,16 @@ def test_runtime_context_example_projects_shell_and_langgraph_identity() -> None
     result = asyncio.run(
         run_command(
             _command("runtime-context-command"),
-            state={"shared_vars": {"runtime_target_node_id": "continue"}},
+            state=wrap_workflow_state_update(
+                {"runtime_target_node_id": "continue"}
+            ),
             runtime=Runtime(context=context, execution_info=execution_info),
             target_map={"continue": "continue"},
         )
     )
 
     assert result.goto == "continue"
-    projection = result.update["shared_vars"]["command_runtime"]
+    projection = result.update[WORKFLOW_STATE_CHANNEL]["command_runtime"]
     assert projection["context"] == {
         "request_id": "request-1",
         "lifecycle_id": "lifecycle-1",
@@ -256,7 +262,7 @@ def test_agent_run_example_has_a_successful_action(action: str) -> None:
     result = asyncio.run(
         run_command(
             _command("agent-run-command"),
-            state={"shared_vars": {"agent_run": request}},
+            state=wrap_workflow_state_update({"agent_run": request}),
             runtime=Runtime(context=SimpleNamespace(agent_runs=facade)),
             target_map={"after-agent": "after-agent"},
         )
@@ -276,7 +282,7 @@ def test_agent_run_example_has_a_successful_action(action: str) -> None:
     else:
         assert facade.calls[0][1] == ("thread-1", "run-1")
         assert facade.calls[0][2] == {}
-    projected = result.update["shared_vars"]["agent_run_result"]
+    projected = result.update[WORKFLOW_STATE_CHANNEL]["agent_run_result"]
     assert projected["action"] == action
     assert projected["run"]["run_id"] == (
         "run-start" if action == "start" else "run-1"
@@ -332,7 +338,7 @@ class _WorkflowRuns:
                     "join": "success",
                     "cancel": "interrupted",
                 }[action],
-                output={"shared_vars": {"action": action}},
+                output={WORKFLOW_STATE_CHANNEL: {"action": action}},
             )
         ]
 
@@ -345,7 +351,7 @@ def test_workflow_run_example_has_a_successful_action(action: str) -> None:
         "target_node_id": "after-workflow",
         "workflow_id": "workflow-1",
         "operation_id": "workflow-operation",
-        "input_shared_vars": {"topic": "weather"},
+        "input_state": {"topic": "weather"},
         "run_ids": ["run-1"],
         "statuses": ["pending", "running"],
     }
@@ -353,7 +359,7 @@ def test_workflow_run_example_has_a_successful_action(action: str) -> None:
     result = asyncio.run(
         run_command(
             _command("workflow-run-command"),
-            state={"shared_vars": {"workflow_run": request}},
+            state=wrap_workflow_state_update({"workflow_run": request}),
             runtime=Runtime(context=SimpleNamespace(workflow_runs=facade)),
             target_map={"after-workflow": "after-workflow"},
         )
@@ -365,7 +371,7 @@ def test_workflow_run_example_has_a_successful_action(action: str) -> None:
         assert facade.calls[0][1] == ("workflow-1",)
         assert facade.calls[0][2] == {
             "operation_id": "workflow-operation",
-            "shared_vars": {"topic": "weather"},
+            "initial_state": {"topic": "weather"},
         }
     elif action == "list":
         assert facade.calls[0][1] == ()
@@ -375,7 +381,7 @@ def test_workflow_run_example_has_a_successful_action(action: str) -> None:
     else:
         assert facade.calls[0][1] == (["run-1"],)
         assert facade.calls[0][2] == {}
-    projected = result.update["shared_vars"]["workflow_run_result"]
+    projected = result.update[WORKFLOW_STATE_CHANNEL]["workflow_run_result"]
     assert projected["action"] == action
     assert projected["runs"][0]["run_id"] == (
         "run-start" if action == "start" else "run-1"
@@ -383,5 +389,5 @@ def test_workflow_run_example_has_a_successful_action(action: str) -> None:
     if action != "start":
         assert projected["runs"][0]["workflow_name"] == "Research workflow"
         assert projected["runs"][0]["output"] == {
-            "shared_vars": {"action": action}
+            WORKFLOW_STATE_CHANNEL: {"action": action}
         }

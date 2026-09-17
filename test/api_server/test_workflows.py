@@ -356,10 +356,10 @@ def test_repository_validation_includes_disabled_workflow_references(
         wrong_type_id = capability_reference_id(main_agent, "model-requirement")
         workflow = create_workflow(client, name="Reference integrity draft")
         document = {
-            "definition": {
-                "schema_version": 1,
-                "state_contract": "agent-shell.workflow.control.v1",
-                "nodes": [
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.control.v1",
+                    "nodes": [
                     {
                         "id": "missing",
                         "type": "command",
@@ -803,6 +803,12 @@ def test_workflow_graph_catalog_save_and_reload(
             "definition": {
                 "schema_version": 1,
                 "state_contract": "agent-shell.workflow.control.v1",
+                "state_schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "integer"}},
+                    "required": ["answer"],
+                    "additionalProperties": False,
+                },
                 "nodes": [
                     {"id": "start", "type": "start", "type_version": 1, "config": {}},
                     {"id": "end", "type": "end", "type_version": 1, "config": {}},
@@ -835,8 +841,9 @@ def test_workflow_graph_catalog_save_and_reload(
         )
         reloaded = client.get(graph_url)
 
-    assert empty.status_code == 200
-    assert empty.json()["definition"]["nodes"] == []
+        assert empty.status_code == 200
+        assert empty.json()["definition"]["nodes"] == []
+        assert empty.json()["definition"]["state_schema"] is None
     assert [item["type"] for item in catalog.json()] == [
         "start",
         "command",

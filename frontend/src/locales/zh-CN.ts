@@ -200,6 +200,9 @@ export const zhCN = {
       noCommands: '尚未配置 Command 节点',
       noCommandSelected: '未选择 Command 节点',
       stateContract: 'State contract',
+      stateSchema: 'State schema',
+      stateSchemaInvalidJson: 'State schema 必须是合法的 JSON。',
+      stateSchemaInvalidDocument: 'State schema 必须是一个 JSON 对象。',
       nodeId: 'Node ID',
       nodeIdHint: '全图唯一；以字母开头，只能使用字母、数字、下划线和连字符，最多 64 个字符。',
       nodeIdInvalid: 'Node ID 格式无效。',
@@ -1722,6 +1725,7 @@ export const zhCN = {
         nodeIdDuplicate: 'Workflow 节点 ID 必须唯一。',
         nodeTypeUnsupported: 'Workflow 节点类型不受支持。',
         nodeVersionUnsupported: 'Workflow 节点版本不受支持。',
+        stateSchemaInvalid: 'Workflow 的 state_schema 必须是一个声明了 "type": "object" 的合法 JSON Schema。',
       },
       contract: {
         unknownField: '{field} 字段不属于当前配置结构，可能已被删除或名称有误。',

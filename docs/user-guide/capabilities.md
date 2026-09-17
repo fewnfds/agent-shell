@@ -46,7 +46,7 @@ Workflow Event Output 也是 Workflow-owned 组件。Workflow 通过 UUID 可选
 
 响应流调度是 System Settings 的全局配置。每个新 Lifecycle 冻结当时的静默让位秒数、单批软大小和最小发送间隔；Workflow 与 Main Agent 共享同一套 Run-level 规则，配置不属于 Component 或 Workflow metadata。
 
-Command组件保存一个`workflow-node/command`Python扩展引用和普通config。扩展通过同步`create_command()`工厂物化`async command(state, runtime)`；callable直接返回官方`langgraph.types.Command`。画布outgoing Control Edge声明允许的目标Node ID，脚本以`goto`选择目标并以`update`修改`shared_vars`。需要Agent或另一个Workflow时，脚本调用Runtime Context中的Run facade。
+Command组件保存一个`workflow-node/command`Python扩展引用和普通config。扩展通过同步`create_command()`工厂物化`async command(state, runtime)`；callable直接返回官方`langgraph.types.Command`。画布outgoing Control Edge声明允许的目标Node ID，脚本以`goto`选择目标并以`update`写回扁平State变量。需要Agent或另一个Workflow时，脚本调用Runtime Context中的Run facade。
 完整 package 和返回契约见[Command Node](../wizard-pages/command-config.md)。
 
 这些自定义 Python 都运行在服务进程的受信任边界内，没有 sandbox。Custom Tool、Custom Middleware、Command Node、Agent Event Output 和 Workflow Event Output 是五类配置独占的 Python 扩展，并在扩展目录可选的 `requirements.txt` 声明外部包；模板和示例本身不运行也不参与依赖。五类目录与通用依赖边界见[文件化 Python 扩展](middleware-packages.md)，各组件的 factory contract 见对应组件页。

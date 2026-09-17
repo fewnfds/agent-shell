@@ -18,10 +18,10 @@ from langgraph.types import Command
 
 def create_command():
     async def command(state, runtime):
-        current = state.get("shared_vars", {})
+        current = state
         target = "done" if current.get("ready") else "retry"
         return Command(
-            update={"shared_vars": {"last_target": target}},
+            update={"last_target": target},
             goto=target,
         )
 
@@ -33,7 +33,7 @@ def create_command():
 - `create_command()`是同步无参factory；
 - 返回callable固定为`async command(state, runtime)`；
 - callable返回官方`langgraph.types.Command`；
-- `update`只能包含`shared_vars`mapping；
+- `update`是扁平键值mapping，直接合并进Workflow变量表；
 - `goto`是current Command outgoing Edge声明的目标Node ID；
 - 不使用`Send`、`resume`或跨graph routing；
 - 不读取Canvas Edge ID、handle或layout。

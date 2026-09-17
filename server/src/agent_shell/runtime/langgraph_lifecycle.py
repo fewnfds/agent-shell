@@ -34,6 +34,7 @@ from agent_shell.runtime.run_calls import (
     official_status,
     search_lifecycle_run_relations,
 )
+from agent_shell.runtime.state import flatten_workflow_state
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
@@ -708,6 +709,10 @@ class LangGraphLifecycleService:
             relation = await self._require_relation(client, lifecycle_id, run_id)
             try:
                 state = await client.threads.get_state(relation.thread_id)
+                if relation.graph_kind == "workflow" and isinstance(state, Mapping):
+                    values = state.get("values")
+                    if isinstance(values, Mapping):
+                        state = {**state, "values": flatten_workflow_state(values)}
                 error = None
             except Exception as exc:
                 state = None

@@ -21,16 +21,16 @@ _RESULT_FIELDS = (
 def _required_text(request, key):
     value = request.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"shared_vars.workflow_run.{key} must be a non-empty string")
+        raise ValueError(f"state.workflow_run.{key} must be a non-empty string")
     return value.strip()
 
 
 def _run_ids(request):
     values = request.get("run_ids")
     if not isinstance(values, list) or not values:
-        raise ValueError("shared_vars.workflow_run.run_ids must be a non-empty list")
+        raise ValueError("state.workflow_run.run_ids must be a non-empty list")
     if any(not isinstance(value, str) or not value.strip() for value in values):
-        raise ValueError("each shared_vars.workflow_run.run_ids entry must be a string")
+        raise ValueError("each state.workflow_run.run_ids entry must be a string")
     return [value.strip() for value in values]
 
 
@@ -44,16 +44,13 @@ def _project(result):
 
 def create_command():
     async def command(state, runtime):
-        shared_vars = state.get("shared_vars", {})
-        request = (
-            shared_vars.get("workflow_run") if isinstance(shared_vars, dict) else None
-        )
+        request = state.get("workflow_run")
         if not isinstance(request, dict):
-            raise ValueError("shared_vars.workflow_run must be an object")
+            raise ValueError("state.workflow_run must be an object")
         target = _required_text(request, "target_node_id")
         action = _required_text(request, "action")
         if action not in _ACTIONS:
-            raise ValueError("shared_vars.workflow_run.action is unsupported")
+            raise ValueError("state.workflow_run.action is unsupported")
 
         facade = getattr(runtime.context, "workflow_runs", None)
         if facade is None:
@@ -62,16 +59,16 @@ def create_command():
         if action == "start":
             workflow_id = _required_text(request, "workflow_id")
             operation_id = _required_text(request, "operation_id")
-            child_shared_vars = request.get("input_shared_vars", {})
-            if not isinstance(child_shared_vars, dict):
+            child_initial_state = request.get("input_state", {})
+            if not isinstance(child_initial_state, dict):
                 raise ValueError(
-                    "shared_vars.workflow_run.input_shared_vars must be an object"
+                    "state.workflow_run.input_state must be an object"
                 )
             results = [
                 await facade.start_workflow(
                     workflow_id,
                     operation_id=operation_id,
-                    shared_vars=child_shared_vars,
+                    initial_state=child_initial_state,
                 )
             ]
         elif action == "list":
@@ -82,7 +79,7 @@ def create_command():
                     for status in statuses
                 ):
                     raise ValueError(
-                        "shared_vars.workflow_run.statuses contains an unsupported status"
+                        "state.workflow_run.statuses contains an unsupported status"
                     )
                 status_filter = frozenset(statuses)
             else:
@@ -93,11 +90,9 @@ def create_command():
 
         return Command(
             update={
-                "shared_vars": {
-                    "workflow_run_result": {
-                        "action": action,
-                        "runs": [_project(result) for result in results],
-                    }
+                "workflow_run_result": {
+                    "action": action,
+                    "runs": [_project(result) for result in results],
                 }
             },
             goto=target,

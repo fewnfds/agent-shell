@@ -5,23 +5,35 @@ import pytest
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import (
     AgentShellState,
+    WORKFLOW_STATE_CHANNEL,
     WorkflowState,
-    merge_shared_vars,
+    flatten_workflow_state,
+    merge_workflow_state,
+    wrap_workflow_state_update,
     validate_workflow_state_update,
 )
 
 
-def test_workflow_state_has_one_control_channel_with_a_patch_reducer() -> None:
-    assert WorkflowState.__annotations__.keys() == {"shared_vars"}
-    assert merge_shared_vars({"left": 1}, {"right": 2}) == {
+def test_workflow_state_exposes_one_flat_store_channel() -> None:
+    assert WorkflowState.__annotations__.keys() == {WORKFLOW_STATE_CHANNEL}
+    assert merge_workflow_state({"left": 1}, {"right": 2}) == {
         "left": 1,
         "right": 2,
     }
     assert validate_workflow_state_update(
-        {"shared_vars": {"enabled": True}}
-    ) == {"shared_vars": {"enabled": True}}
+        {WORKFLOW_STATE_CHANNEL: {"enabled": True}}
+    ) == {WORKFLOW_STATE_CHANNEL: {"enabled": True}}
     with pytest.raises(Exception):
-        validate_workflow_state_update({"shared_vars": []})
+        validate_workflow_state_update({WORKFLOW_STATE_CHANNEL: []})
+
+
+def test_workflow_state_wrap_and_flatten_round_trip() -> None:
+    flat = {"topic": "x", "count": 3}
+    channel = wrap_workflow_state_update(flat)
+    assert channel == {WORKFLOW_STATE_CHANNEL: flat}
+    assert flatten_workflow_state(channel) == flat
+    assert flatten_workflow_state({}) == {}
+    assert flatten_workflow_state({WORKFLOW_STATE_CHANNEL: []}) == {}
 
 
 def test_agent_state_has_no_workflow_bridge_channels() -> None:

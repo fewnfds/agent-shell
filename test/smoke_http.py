@@ -504,7 +504,10 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '        return "workflow custom progress\\n"\n'
         '    if method != "values":\n'
         '        return ""\n'
-        '    if not isinstance(data, dict) or "shared_vars" not in data:\n'
+        '    if not isinstance(data, dict):\n'
+        '        return ""\n'
+        '    values = data.get("state")\n'
+        '    if not isinstance(values, dict) or "spawned_run_id" not in values:\n'
         '        return ""\n'
         '    return "workflow values\\n"\n'
         'def run_output(event, origin):\n'
@@ -546,13 +549,13 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         '        )\n'
         '        joined = await workflow_runs.join([workflow_handle.run_id])\n'
         '        joined_agent = await agent_runs.join(agent_handle.thread_id, agent_handle.run_id)\n'
-        '        return Command(goto="end", update={"shared_vars": {\n'
+        '        return Command(goto="end", update={\n'
         '            "spawned_run_id": workflow_handle.run_id,\n'
         '            "spawned_status": joined[0].status,\n'
         '            "spawned_output": joined[0].output,\n'
         '            "spawned_agent_run_id": agent_handle.run_id,\n'
         '            "spawned_agent_status": joined_agent.status,\n'
-        '        }})\n'
+        '        })\n'
         '    return command\n',
         encoding="utf-8",
     )

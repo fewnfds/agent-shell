@@ -62,7 +62,7 @@ class _Runs:
 
     async def join(self, _thread_id: str, run_id: str):
         self.statuses[run_id] = "success"
-        return {"shared_vars": {"joined": run_id}}
+        return {"state": {"joined": run_id}}
 
     async def cancel(self, _thread_id: str, run_id: str, *, wait=False):
         del wait
@@ -92,7 +92,7 @@ class _Threads:
         return values[offset : offset + limit]
 
     async def get_state(self, thread_id: str):
-        return {"values": {"shared_vars": {"thread_id": thread_id}}}
+        return {"values": {"state": {"thread_id": thread_id}}}
 
 
 class _Store:
@@ -169,13 +169,11 @@ def test_run_commands_treat_every_lifecycle_run_as_an_equal_target() -> None:
             caller=caller,
         )
         assert [item.status for item in checked] == ["running", "error", "not_found"]
-        assert checked[1].output == {
-            "shared_vars": {"thread_id": "thread-run-error"}
-        }
+        assert checked[1].output == {"thread_id": "thread-run-error"}
 
         joined = await coordinator.join_workflow_runs(["run-join"], caller=caller)
         assert joined[0].status == "success"
-        assert joined[0].output == {"shared_vars": {"joined": "run-join"}}
+        assert joined[0].output == {"joined": "run-join"}
 
         cancelled = await coordinator.cancel_workflow_runs(
             ["run-active"],

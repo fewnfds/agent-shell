@@ -8,7 +8,12 @@ from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from agent_shell.command import CommandCallable, CommandError, run_command
+from agent_shell.command import (
+    CommandCallable,
+    CommandError,
+    CommandStateSchemaError,
+    run_command,
+)
 from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
 from agent_shell.runtime.state import WorkflowState
@@ -64,6 +69,7 @@ def _make_command_node(
     command: CommandCallable,
     target_map: Mapping[str, str],
     runtime_context: WorkflowRuntimeContext | None = None,
+    state_schema: Mapping[str, Any] | None = None,
 ):
     async def call_command(
         state: WorkflowState,
@@ -83,7 +89,19 @@ def _make_command_node(
                 state=state,
                 runtime=node_runtime,
                 target_map=target_map,
+                state_schema=state_schema,
             )
+        except CommandStateSchemaError as exc:
+            error = AgentRuntimeError(
+                "workflow.state_invalid",
+                str(exc),
+                status_code=422,
+            )
+            if runtime_context is not None:
+                raise RuntimeError(
+                    encode_server_run_error(error, detail_exception=exc)
+                ) from exc
+            raise error from exc
         except CommandError as exc:
             error = AgentRuntimeError(
                 "workflow.command_failed",
@@ -160,6 +178,7 @@ def compile_workflow(
                 command=command,
                 target_map=target_map,
                 runtime_context=runtime_context,
+                state_schema=normalized.definition.state_schema,
             ),
             destinations=tuple(dict.fromkeys(target_map.values())),
         )

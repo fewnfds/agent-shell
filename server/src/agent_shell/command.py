@@ -44,6 +44,10 @@ class CommandError(RuntimeError):
     """Safe wrapper for user-authored Command failures."""
 
 
+class CommandStateSchemaError(CommandError):
+    """A Command update violates the Workflow State schema this config declares."""
+
+
 def _detached(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _detached(item) for key, item in value.items()}
@@ -94,14 +98,24 @@ async def run_command(
     state: Mapping[str, Any],
     runtime: Runtime[WorkflowRuntimeContext],
     target_map: Mapping[str, str],
+    state_schema: Mapping[str, Any] | None = None,
 ) -> Command[Any]:
     """Run and validate the official Command returned by an extension."""
 
-    from agent_shell.runtime.state import WorkflowState, validate_workflow_state_update
+    from agent_shell.runtime.state import (
+        flatten_workflow_state,
+        validate_workflow_state_update,
+        wrap_workflow_state_update,
+    )
+    from agent_shell.workflow.state_schema import (
+        WorkflowStateSchemaError,
+        validate_workflow_state,
+    )
 
     try:
+        flat_state = flatten_workflow_state(state)
         result = await command(
-            state=_detached(state),
+            state=_detached(flat_state),
             runtime=runtime,
         )
         if not isinstance(result, Command):
@@ -118,15 +132,19 @@ async def run_command(
             update = _detached(raw_update)
         else:
             raise TypeError("command update must be a Workflow State mapping")
-        unsupported = sorted(set(update) - frozenset(WorkflowState.__annotations__))
-        if unsupported:
-            raise ValueError(
-                "command returned unsupported Workflow State fields: "
-                + ", ".join(unsupported)
-            )
-        validated_update = validate_workflow_state_update(update)
+        validated_update = (
+            validate_workflow_state_update(wrap_workflow_state_update(update))
+            if update
+            else {}
+        )
+        try:
+            validate_workflow_state({**flat_state, **update}, state_schema)
+        except WorkflowStateSchemaError as exc:
+            raise CommandStateSchemaError(str(exc)) from exc
         goto = _normalize_goto(result.goto, target_map)
         return Command(update=validated_update or None, goto=goto)
+    except CommandStateSchemaError:
+        raise
     except Exception as exc:
         raise CommandError("command failed") from exc
 
@@ -135,5 +153,6 @@ __all__ = [
     "CommandBlock",
     "CommandCallable",
     "CommandError",
+    "CommandStateSchemaError",
     "run_command",
 ]

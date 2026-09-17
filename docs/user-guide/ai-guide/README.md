@@ -40,7 +40,7 @@ OpenAI-compatible request (request.messages[])
   -> 返回 OpenAI-compatible response
 ```
 
-客户端完整 OpenAI-compatible request 保存在Lifecycle Store的`input/request` envelope，`request.messages`是标准多轮`system`、`user`、`assistant`消息。Agent入口把验证后的该数组作为对应Main Agent root graph的官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口从`request.messages`取得输入，Workflow State只保存`shared_vars`。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
+客户端完整 OpenAI-compatible request 保存在Lifecycle Store的`input/request` envelope，`request.messages`是标准多轮`system`、`user`、`assistant`消息。Agent入口把验证后的该数组作为对应Main Agent root graph的官方Run input写入AgentState；同一stateful Thread上的后续Run延续该State。Workflow入口从`request.messages`取得输入，Workflow State保存扁平变量表。跨Thread共享的业务材料使用有明确namespace、writer和reader的Store artifact或Filesystem reference。
 
 需要在Thread第一次执行时整理Agent输入时，为该Agent装配Agent Additional Prompt（AAP）或其他明确的Custom Middleware。AAP从current AgentState messages或显式Store/Filesystem来源选择材料，并用private checkpoint marker保证同一stateful Thread只初始化一次。
 

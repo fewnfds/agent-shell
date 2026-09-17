@@ -29,11 +29,13 @@ EXPECTED_EXAMPLES = {
     },
     "workflow-event-output": {
         "all-events",
+        "antigravity-events",
         "default",
         "lifecycle-progress",
     },
     "command": {
         "agent-run-command",
+        "antigravity-agent-command",
         "runtime-context-command",
         "state-routing-command",
         "workflow-run-command",
@@ -117,7 +119,7 @@ def test_all_builtin_examples_compile_and_belong_to_their_adapter_catalog(
             assert item["folder"] == key
             assert isinstance(item["python_requirements"], list)
 
-    assert total == 12
+    assert total == 14
 
 
 def test_event_output_examples_materialize_and_render_supported_events(
@@ -234,6 +236,22 @@ def test_event_output_examples_materialize_and_render_supported_events(
             segment_end=segment_end,
             run_output=run_output,
         )
+        if key == "antigravity-events":
+            # This example projects External Agent CLI event kinds only, so a
+            # generic custom event must stay silent while a CLI text delta
+            # reaches the Workflow stream verbatim.
+            assert projector.render(custom, workflow_origin) == ""
+            assert projector.render(
+                _event(
+                    "custom",
+                    {"kind": "text_delta", "payload": {"text": "hello"}},
+                ),
+                workflow_origin,
+            ) == "hello"
+            assert projector.render_run(run_event, workflow_origin) == (
+                "Workflow running\n"
+            )
+            continue
         rendered = projector.render(custom, workflow_origin)
         assert isinstance(rendered, str) and "Workflow" in rendered
         rendered_run = projector.render_run(run_event, workflow_origin)

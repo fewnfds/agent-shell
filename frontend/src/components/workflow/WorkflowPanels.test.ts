@@ -82,6 +82,8 @@ describe('Workflow control panels', () => {
         nodeIds: [node.id],
         outputEndpoints: commandCatalog.output_handles,
         stateContract: 'agent-shell.workflow.control.v1',
+        stateSchema: '',
+        stateSchemaError: '',
         workflowName: 'Control Workflow',
       },
       global: { plugins: [i18n()] },
@@ -93,6 +95,43 @@ describe('Workflow control panels', () => {
     expect(wrapper.emitted('updateCommand')).toEqual([[node.id, commands[1]!.id]])
     expect(wrapper.emitted('updateExternalAgent')).toEqual([[node.id, externalAgents[0]!.id]])
     expect(wrapper.emitted('updateNodeId')).toEqual([[node.id, 'review']])
+  })
+
+  it('edits the optional State schema and serializes it into the document', async () => {
+    const wrapper = mount(WorkflowInspector, {
+      props: {
+        edge: null,
+        edgeSourceEndpoints: [],
+        edgeTargetEndpoints: [],
+        edgeTypeOptions: [],
+        externalAgents,
+        inputEndpoints: [],
+        commands,
+        node: null,
+        nodeIds: [],
+        outputEndpoints: [],
+        stateContract: 'agent-shell.workflow.control.v1',
+        stateSchema: '',
+        stateSchemaError: '',
+        workflowName: 'Control Workflow',
+      },
+      global: { plugins: [i18n()] },
+    })
+    const schema = '{\n  "type": "object",\n  "properties": { "topic": { "type": "string" } }\n}'
+    await wrapper.get('#workflow-state-schema').setValue(schema)
+
+    expect(wrapper.emitted('updateStateSchema')).toEqual([[schema]])
+    const command = newCommandCanvasNode('router', commands[0]!.id)
+    const document = workflowCanvasToDocument(
+      [command],
+      [],
+      { x: 0, y: 0, zoom: 1 },
+      JSON.parse(schema),
+    )
+    expect(document.definition.state_schema).toEqual({
+      type: 'object',
+      properties: { topic: { type: 'string' } },
+    })
   })
 
   it('connects and serializes one normal Edge kind', () => {

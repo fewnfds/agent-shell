@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 
 import pytest
 from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import Command, Send
 
-from agent_shell.command import CommandError, run_command
+from agent_shell.command import (
+    CommandError,
+    CommandStateSchemaError,
+    run_command,
+)
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.state import (
+    WORKFLOW_STATE_CHANNEL,
+    wrap_workflow_state_update,
+)
 
 
 def _runtime() -> Runtime[WorkflowRuntimeContext]:
@@ -19,15 +28,15 @@ def test_command_returns_official_update_and_declared_goto() -> None:
     seen = {}
 
     async def command(state, runtime):
-        seen["state"] = state
+        seen["state"] = deepcopy(state)
         seen["runtime"] = runtime
-        state["shared_vars"]["ignored_mutation"] = True
+        state["ignored_mutation"] = True
         return Command(
-            update={"shared_vars": {"reviewed": True}},
+            update={"reviewed": True},
             goto="review",
         )
 
-    original = {"shared_vars": {"risk": 90}}
+    original = wrap_workflow_state_update({"risk": 90})
     result = asyncio.run(
         run_command(
             command,
@@ -37,9 +46,10 @@ def test_command_returns_official_update_and_declared_goto() -> None:
         )
     )
 
-    assert original == {"shared_vars": {"risk": 90}}
-    assert seen["state"] is not original
-    assert result.update == {"shared_vars": {"reviewed": True}}
+    assert original == {WORKFLOW_STATE_CHANNEL: {"risk": 90}}
+    assert seen["state"] is not original[WORKFLOW_STATE_CHANNEL]
+    assert seen["state"] == {"risk": 90}
+    assert result.update == {WORKFLOW_STATE_CHANNEL: {"reviewed": True}}
     assert result.goto == "review"
 
 
@@ -54,7 +64,7 @@ def test_command_maps_canvas_end_node_and_accepts_official_end() -> None:
         result = asyncio.run(
             run_command(
                 command,
-                state={"shared_vars": {}},
+                state=wrap_workflow_state_update({}),
                 runtime=_runtime(),
                 target_map={"finish": END},
             )
@@ -70,7 +80,6 @@ def test_command_maps_canvas_end_node_and_accepts_official_end() -> None:
         Command(goto=Send("next", {})),
         Command(resume="resume"),
         Command(graph=Command.PARENT, goto="next"),
-        Command(update={"messages": []}, goto="next"),
     ],
 )
 def test_command_rejects_non_control_contracts(result) -> None:
@@ -81,7 +90,7 @@ def test_command_rejects_non_control_contracts(result) -> None:
         asyncio.run(
             run_command(
                 command,
-                state={"shared_vars": {}},
+                state=wrap_workflow_state_update({}),
                 runtime=_runtime(),
                 target_map={"next": "next"},
             )
@@ -90,15 +99,76 @@ def test_command_rejects_non_control_contracts(result) -> None:
 
 def test_command_allows_an_empty_goto_to_end_the_current_path() -> None:
     async def command(state, runtime):
-        return Command(update={"shared_vars": {"done": True}})
+        return Command(update={"done": True})
 
     result = asyncio.run(
         run_command(
             command,
-            state={"shared_vars": {}},
+            state=wrap_workflow_state_update({}),
             runtime=_runtime(),
             target_map={},
         )
     )
     assert result.goto == ()
-    assert result.update == {"shared_vars": {"done": True}}
+    assert result.update == {WORKFLOW_STATE_CHANNEL: {"done": True}}
+
+
+def test_command_without_an_update_publishes_no_state_patch() -> None:
+    async def command(state, runtime):
+        return Command()
+
+    result = asyncio.run(
+        run_command(
+            command,
+            state=wrap_workflow_state_update({"kept": True}),
+            runtime=_runtime(),
+            target_map={},
+        )
+    )
+
+    assert result.goto == ()
+    assert result.update is None
+
+
+def test_command_accepts_updates_that_satisfy_the_declared_state_schema() -> None:
+    async def command(state, runtime):
+        return Command(update={"topic": f"topic-{state['count']}"})
+
+    result = asyncio.run(
+        run_command(
+            command,
+            state=wrap_workflow_state_update({"count": 2}),
+            runtime=_runtime(),
+            target_map={},
+            state_schema={
+                "type": "object",
+                "properties": {
+                    "count": {"type": "integer"},
+                    "topic": {"type": "string"},
+                },
+                "required": ["count", "topic"],
+                "additionalProperties": False,
+            },
+        )
+    )
+    assert result.update == {WORKFLOW_STATE_CHANNEL: {"topic": "topic-2"}}
+
+
+def test_command_rejects_updates_that_break_the_declared_state_schema() -> None:
+    async def command(state, runtime):
+        return Command(update={"count": "many"})
+
+    with pytest.raises(CommandStateSchemaError):
+        asyncio.run(
+            run_command(
+                command,
+                state=wrap_workflow_state_update({"count": 1}),
+                runtime=_runtime(),
+                target_map={},
+                state_schema={
+                    "type": "object",
+                    "properties": {"count": {"type": "integer"}},
+                    "additionalProperties": False,
+                },
+            )
+        )

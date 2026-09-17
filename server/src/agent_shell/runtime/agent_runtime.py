@@ -55,6 +55,10 @@ from agent_shell.external_agents.commands import ExternalAgentCommands
 from agent_shell.external_agents.runtime import AntigravityRunner
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
+from agent_shell.workflow.state_schema import (
+    WorkflowStateSchemaError,
+    validate_workflow_state,
+)
 from agent_shell.workflow.validation import validate_workflow_executable
 from agent_shell.validation import ValidationReport
 from agent_shell.validation.assembly import ResolvedMcpReference, StaticAssembly
@@ -1171,7 +1175,7 @@ class AgentRuntime:
         assistant_id: str = "",
         caller_run_id: str = "",
         operation_id: str = "",
-        initial_shared_vars: Mapping[str, Any] | None = None,
+        initial_state: Mapping[str, Any] | None = None,
         agent_run_runtime: Any | None = None,
         workflow_run_runtime: Any | None = None,
         public_output: bool = True,
@@ -1184,6 +1188,18 @@ class AgentRuntime:
             CommandBlock,
             compile_workflow,
         ) = await asyncio.to_thread(_workflow_construction_dependencies)
+        entry_state = deepcopy(dict(initial_state or {}))
+        try:
+            validate_workflow_state(
+                entry_state,
+                document.definition.state_schema,
+            )
+        except WorkflowStateSchemaError as exc:
+            raise AgentRuntimeError(
+                "workflow.state_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
 
         command_nodes = [
             node for node in document.definition.nodes if node.type == "command"
@@ -1464,11 +1480,14 @@ class AgentRuntime:
                 )
             raise
 
+        from agent_shell.runtime.state import (
+            WORKFLOW_STATE_CHANNEL,
+            wrap_workflow_state_update,
+        )
+
         return self._workflow_execution(
             graph=graph,
-            input_state={
-                "shared_vars": deepcopy(dict(initial_shared_vars or {})),
-            },
+            input_state=wrap_workflow_state_update(entry_state),
             request_id=request_id,
             public_model=public_model,
             workflow_event_output=workflow_event_output,

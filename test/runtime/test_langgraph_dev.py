@@ -394,7 +394,7 @@ def test_workflow_run_start_uses_stream_command_and_configurable_identity() -> N
     )
 
     assert calls == [{
-        "input": {"shared_vars": {}},
+        "input": {"state": {}},
         "config": {
             "recursion_limit": 10,
             "configurable": {
@@ -582,9 +582,9 @@ def test_server_node_binds_run_id_from_execution_info() -> None:
             *,
             operation_id,
             caller,
-            shared_vars,
+            initial_state,
         ):
-            del operation_id, shared_vars
+            del operation_id, initial_state
             self.caller = caller
             return WorkflowRunHandle(
                 operation_id="operation-1",
@@ -637,6 +637,6 @@ def test_server_graph_preserves_the_control_input_state() -> None:
         runtime_context=WorkflowRuntimeContext(workflow_id="workflow-1"),
     )
 
-    result = graph.invoke({"shared_vars": {"request": "ready"}})
+    result = graph.invoke({"state": {"request": "ready"}})
 
-    assert result == {"shared_vars": {"request": "ready"}}
+    assert result == {"state": {"request": "ready"}}

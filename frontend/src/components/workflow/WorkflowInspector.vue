@@ -21,6 +21,8 @@ const props = defineProps<{
   nodeIds: string[]
   outputEndpoints: WorkflowNodeHandleSpec[]
   stateContract: string
+  stateSchema: string
+  stateSchemaError: string
   workflowName: string
 }>()
 
@@ -33,6 +35,7 @@ const emit = defineEmits<{
   updateCommand: [nodeId: string, commandId: string]
   updateExternalAgent: [nodeId: string, externalAgentId: string]
   updateNodeId: [nodeId: string, nextNodeId: string]
+  updateStateSchema: [value: string]
 }>()
 
 const { t } = useI18n()
@@ -128,6 +131,10 @@ function selectEdgeTargetEndpoint(event: Event): void {
     emit('selectEdgeTargetEndpoint', props.edge.id, (event.target as HTMLSelectElement).value)
   }
 }
+
+function updateStateSchema(event: Event): void {
+  emit('updateStateSchema', (event.target as HTMLTextAreaElement).value)
+}
 </script>
 
 <template>
@@ -186,6 +193,23 @@ function selectEdgeTargetEndpoint(event: Event): void {
       <template v-else>
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.fields.name') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ workflowName }}</span></div>
         <div class="workflow-inspector-row"><span class="workflow-inspector-label"><span>{{ $t('workflows.editor.stateContract') }}</span><span aria-hidden="true">:</span></span><span class="workflow-inspector-value">{{ stateContract }}</span></div>
+        <div class="workflow-inspector-row">
+          <label class="workflow-inspector-label" for="workflow-state-schema"><span>{{ $t('workflows.editor.stateSchema') }}</span><span aria-hidden="true">:</span></label>
+          <div class="workflow-inspector-control">
+            <textarea
+              id="workflow-state-schema"
+              :aria-describedby="stateSchemaError ? 'workflow-state-schema-error' : undefined"
+              :aria-invalid="Boolean(stateSchemaError)"
+              class="form-control form-control-sm font-monospace"
+              name="state-schema"
+              rows="6"
+              spellcheck="false"
+              :value="stateSchema"
+              @change="updateStateSchema"
+            />
+            <div v-if="stateSchemaError" id="workflow-state-schema-error" class="invalid-feedback d-block">{{ stateSchemaError }}</div>
+          </div>
+        </div>
       </template>
     </div>
   </section>

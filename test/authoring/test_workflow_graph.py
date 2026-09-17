@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from langgraph.graph import END, START
 from langgraph.types import Command
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
+from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.run_identity import WorkflowRunIdentity
+from agent_shell.runtime.state import (
+    WORKFLOW_STATE_CHANNEL,
+    wrap_workflow_state_update,
+)
 from agent_shell.workflow import admit_workflow_document
 from agent_shell.workflow.catalog import node_catalog_payload
 from agent_shell.workflow.compiler import compile_workflow
@@ -114,7 +121,7 @@ def test_compiler_uses_start_edge_and_command_destinations_without_static_comman
     async def router(state, runtime):
         calls.append(runtime.context.workflow_node_id)
         return Command(
-            update={"shared_vars": {"selected": "review"}},
+            update={"selected": "review"},
             goto="review",
         )
 
@@ -127,11 +134,11 @@ def test_compiler_uses_start_edge_and_command_destinations_without_static_comman
         commands={"router": router, "review": review},
     )
     result = asyncio.run(
-        graph.ainvoke({"shared_vars": {}}, context=_context())
+        graph.ainvoke(wrap_workflow_state_update({}), context=_context())
     )
 
     assert calls == ["router", "review"]
-    assert result["shared_vars"] == {"selected": "review"}
+    assert result[WORKFLOW_STATE_CHANNEL] == {"selected": "review"}
     assert graph.builder.edges == {(START, "router")}
 
 
@@ -148,15 +155,17 @@ def test_command_loop_is_checkpointable_super_step_control() -> None:
     ]
 
     async def router(state, runtime):
-        count = state.get("shared_vars", {}).get("count", 0) + 1
+        count = state.get("count", 0) + 1
         return Command(
-            update={"shared_vars": {"count": count}},
+            update={"count": count},
             goto="router" if count < 3 else END,
         )
 
     graph = compile_workflow(document, commands={"router": router})
-    result = asyncio.run(graph.ainvoke({"shared_vars": {}}, context=_context()))
-    assert result["shared_vars"] == {"count": 3}
+    result = asyncio.run(
+        graph.ainvoke(wrap_workflow_state_update({}), context=_context())
+    )
+    assert result[WORKFLOW_STATE_CHANNEL] == {"count": 3}
 
 
 def test_start_can_finish_without_an_executable_node() -> None:
@@ -177,5 +186,98 @@ def test_start_can_finish_without_an_executable_node() -> None:
         }
     )
     assert validate_workflow_executable(document).valid
-    result = asyncio.run(compile_workflow(document).ainvoke({"shared_vars": {"ok": True}}))
-    assert result == {"shared_vars": {"ok": True}}
+    result = asyncio.run(
+        compile_workflow(document).ainvoke(
+            wrap_workflow_state_update({"ok": True})
+        )
+    )
+    assert result == {WORKFLOW_STATE_CHANNEL: {"ok": True}}
+
+
+def test_admission_rejects_an_invalid_state_schema() -> None:
+    payload = _document().model_dump(mode="json")
+    payload["definition"]["state_schema"] = {
+        "type": "object",
+        "properties": {"topic": {"type": 7}},
+    }
+    report, normalized = admit_workflow_document(payload)
+    assert normalized is None
+    assert {issue.code for issue in report.issues} == {
+        "workflow.state_schema_invalid"
+    }
+
+    payload["definition"]["state_schema"] = {"properties": {}}
+    report, normalized = admit_workflow_document(payload)
+    assert normalized is None
+    assert {issue.code for issue in report.issues} == {
+        "workflow.state_schema_invalid"
+    }
+
+
+def test_declared_state_schema_keeps_declared_keys_across_super_steps() -> None:
+    document = _document()
+    document.definition.state_schema = {
+        "type": "object",
+        "properties": {
+            "count": {"type": "integer"},
+            "selected": {"type": "string"},
+        },
+        "required": ["count"],
+        "additionalProperties": False,
+    }
+    seen: list[dict] = []
+
+    async def router(state, runtime):
+        seen.append(dict(state))
+        return Command(update={"selected": "review"}, goto="review")
+
+    async def review(state, runtime):
+        seen.append(dict(state))
+        return Command(goto=END)
+
+    graph = compile_workflow(
+        document,
+        commands={"router": router, "review": review},
+    )
+    result = asyncio.run(
+        graph.ainvoke(
+            wrap_workflow_state_update({"count": 1}),
+            context=_context(),
+        )
+    )
+
+    assert seen == [{"count": 1}, {"count": 1, "selected": "review"}]
+    assert result[WORKFLOW_STATE_CHANNEL] == {
+        "count": 1,
+        "selected": "review",
+    }
+
+
+def test_declared_state_schema_fails_the_run_on_an_invalid_command_update() -> None:
+    document = _document()
+    document.definition.state_schema = {
+        "type": "object",
+        "properties": {"count": {"type": "integer"}},
+        "additionalProperties": False,
+    }
+
+    async def router(state, runtime):
+        return Command(update={"count": "many"}, goto="review")
+
+    async def review(state, runtime):
+        raise AssertionError("the invalid update must stop the run")
+
+    graph = compile_workflow(
+        document,
+        commands={"router": router, "review": review},
+    )
+    with pytest.raises(AgentRuntimeError) as raised:
+        asyncio.run(
+            graph.ainvoke(
+                wrap_workflow_state_update({"count": 1}),
+                context=_context(),
+            )
+        )
+
+    assert raised.value.code == "workflow.state_invalid"
+    assert raised.value.status_code == 422

@@ -21,6 +21,7 @@ class _CommandRuntime:
     def __init__(self) -> None:
         self.calls: list[tuple[str, RunCaller]] = []
         self.starts: list[tuple[str, str, RunCaller]] = []
+        self.initial_states: list[object] = []
         self.agent_starts: list[tuple[str, object, str, RunCaller]] = []
 
     async def list_workflow_runs(self, *, caller, statuses=None):
@@ -43,6 +44,7 @@ class _CommandRuntime:
         self.starts.append(
             (target_workflow_id, kwargs["operation_id"], kwargs["caller"])
         )
+        self.initial_states.append(kwargs["initial_state"])
         return object()
 
     async def start_agent_run(self, main_agent_id, input, **kwargs):
@@ -93,13 +95,13 @@ def test_commands_receive_the_official_runtime_commands() -> None:
 
         await run_command(
             command,
-            state={"shared_vars": {}},
+            state={"state": {}},
             runtime=official_runtime,
             target_map={},
         )
         await run_command(
             checking_command,
-            state={"shared_vars": {}},
+            state={"state": {}},
             runtime=official_runtime,
             target_map={},
         )
@@ -124,26 +126,27 @@ def test_command_can_start_workflow_run_and_end_without_a_target() -> None:
             await runtime.context.workflow_runs.start_workflow(
                 "workflow-1",
                 operation_id="publish-review",
-                shared_vars={"task_id": "task-1"},
+                initial_state={"task_id": "task-1"},
             )
             await runtime.context.agent_runs.start(
                 "agent-1",
                 [{"role": "user", "content": "review"}],
                 operation_id="agent-review",
             )
-            return Command(update={"shared_vars": {"published": True}})
+            return Command(update={"published": True})
 
         result = await run_command(
             command,
-            state={"shared_vars": {}},
+            state={"state": {}},
             runtime=official_runtime,
             target_map={},
         )
 
         assert result.goto == ()
-        assert result.update == {"shared_vars": {"published": True}}
+        assert result.update == {"state": {"published": True}}
         assert service.starts[0][:2] == ("workflow-1", "publish-review")
         assert service.starts[0][2].run_id == "run-1"
+        assert service.initial_states == [{"task_id": "task-1"}]
         assert service.agent_starts[0][:3] == (
             "agent-1",
             [{"role": "user", "content": "review"}],

@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | 模型推理、Tool loop、对话连续性 | Main Agent | Agent Thread checkpoint |
 | Main Agent内部同步委派 | Deep Agents Subagent | 同一agent loop |
-| 确定性计算、路由、外部API编排 | Workflow Command | Workflow `shared_vars` |
+| 确定性计算、路由、外部API编排 | Workflow Command | Workflow 扁平变量表 |
 | 独立AI工作 | `runtime.context.agent_runs` | child Agent Thread |
 | 独立控制流程 | `runtime.context.workflow_runs` | child Workflow Thread |
 | 跨Thread共享artifact | 显式Store/Filesystem reference | 对应artifact owner |
@@ -39,7 +39,7 @@ Start Edge静态激活第一个Node。Command读取当前super-step State snapsh
 
 ```python
 Command(
-    update={"shared_vars": {...}},
+    update={...},
     goto="<target-node-id>",
 )
 ```
@@ -52,22 +52,36 @@ End映射官方`END`。Command省略goto时该path自然结束。
 
 ## 4. Workflow State
 
-现行State只有：
+State 是一张扁平的变量表，键名由你自己决定：
 
 ```json
 {
-  "shared_vars": {}
+  "selected_target": "publish",
+  "item_count": 2
 }
 ```
 
-`shared_vars`适合：
+Command 读用 `state.get("selected_target")`，写用 `Command(update={"selected_target": ...})`。
+没有额外嵌套层。
+
+入口传入的键和 Command 写回的键都保留在同一个 checkpoint 里，同一个键以最后
+一次写回结果为准。
+
+Workflow 提供一个可选的 `state_schema`（JSON Schema，根节点必须声明
+`"type": "object"`）：
+
+- 不声明：任何 JSON 键都能读写，不做键名与类型校验；
+- 声明：入口输入和每个 Command 的 update 结果都按它校验；不符合的输入在 Run
+  启动前失败，不符合的 update 让 Run 以 `workflow.state_invalid` 失败。
+
+适合放进 State 的内容：
 
 - route choice；
 - child Run ID和operation ID；
 - 少量结构化业务结果；
 - loop计数和完成标志。
 
-不适合：
+不适合放进 State 的内容见下一节。
 
 - Agent消息历史；
 - 原始event/token日志；
@@ -115,7 +129,7 @@ START -> decide
 
 1. 一个Command依次调用多个`agent_runs.start`并保存handles；
 2. 后续Command执行其他确定性工作或`join`；
-3. aggregation Command读取明确结果并更新`shared_vars`；
+3. aggregation Command读取明确结果并写回 State；
 4. 通过goto进入下一个控制阶段。
 
 Graph中的并行Node和独立Server Run不是同一层概念。需要独立Thread/Run identity时使用Run facade。
@@ -126,7 +140,7 @@ Graph中的并行Node和独立Server Run不是同一层概念。需要独立Thre
 
 - 入口类型是Agent还是Workflow；Agent入口对应哪个Main Agent；
 - 每个Command的输入、update和允许goto目标；
-- `shared_vars`每个key的writer与reader；
+- State 每个key的writer与reader；
 - 每个child Run的target、operation ID和等待策略；
 - 大型artifact的namespace/path与consumer；
 - 每个循环退出条件；

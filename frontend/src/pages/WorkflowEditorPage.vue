@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
+  type JsonValue,
   ManagementApiError,
   managementApi,
   type ConfigurationSummary,
@@ -46,6 +47,7 @@ import {
 import {
   workflowCanvasProblems,
   workflowServerProblems,
+  workflowStateSchemaProblem,
   type WorkflowCanvasProblem,
 } from '@/domain/workflowCanvasProblems'
 
@@ -69,6 +71,7 @@ const nodes = ref([]) as Ref<WorkflowCanvasNode[]>
 const edges = ref([]) as Ref<WorkflowCanvasEdge[]>
 const flow = ref<VueFlowStore | null>(null)
 const stateContract = ref('agent-shell.workflow.control.v1')
+const stateSchemaText = ref('')
 const savedViewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
 const leftPanel = ref<WorkflowLeftPanel | null>('library')
 const rightPanel = ref<WorkflowRightPanel | null>('inspector')
@@ -92,7 +95,33 @@ const canAddCommand = computed(() => (
   && commands.value.length > 0
   && commandCatalogItem.value !== null
 ))
-const canvasProblems = computed(() => workflowCanvasProblems(nodes.value, edges.value))
+const stateSchemaDraft = computed<{
+  value: Record<string, JsonValue> | null
+  errorKey: string
+}>(() => {
+  const text = stateSchemaText.value.trim()
+  if (!text) return { value: null, errorKey: '' }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  }
+  catch {
+    return { value: null, errorKey: 'workflows.editor.stateSchemaInvalidJson' }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { value: null, errorKey: 'workflows.editor.stateSchemaInvalidDocument' }
+  }
+  return { value: parsed as Record<string, JsonValue>, errorKey: '' }
+})
+const stateSchemaError = computed(() => (
+  stateSchemaDraft.value.errorKey ? t(stateSchemaDraft.value.errorKey) : ''
+))
+const canvasProblems = computed(() => [
+  ...workflowCanvasProblems(nodes.value, edges.value),
+  ...(stateSchemaDraft.value.errorKey
+    ? [workflowStateSchemaProblem(stateSchemaDraft.value.errorKey)]
+    : []),
+])
 const problems = computed(() => [
   ...canvasProblems.value,
   ...serverProblems.value.filter((serverProblem) => !canvasProblems.value.some((canvasProblem) => (
@@ -103,15 +132,18 @@ const problems = computed(() => [
 const canSaveDraft = computed(() => (
   loaded.value
   && !saving.value
+  && !stateSchemaDraft.value.errorKey
 ))
 const canPublish = computed(() => (
   loaded.value
   && !saving.value
   && !validating.value
   && validationReady.value
+  && !stateSchemaDraft.value.errorKey
   && !problems.value.some((problem) => problem.blocking)
 ))
 const graphRevision = computed(() => JSON.stringify({
+  stateSchema: stateSchemaText.value,
   nodes: nodes.value.map((node) => ({
     id: node.id,
     position: node.position,
@@ -129,7 +161,9 @@ const graphRevision = computed(() => JSON.stringify({
   })),
 }))
 const { markClean } = useUnsavedChanges(
-  () => loaded.value ? currentDocument() : null,
+  () => (loaded.value
+    ? { document: currentDocument(), stateSchemaText: stateSchemaText.value }
+    : null),
   () => ({
     title: t('unsavedChanges.title'),
     description: t('unsavedChanges.description'),
@@ -449,7 +483,16 @@ async function initializeFlow(instance: VueFlowStore): Promise<void> {
 
 function currentDocument(): ReturnType<typeof workflowCanvasToDocument> | null {
   if (!flow.value) return null
-  return workflowCanvasToDocument(nodes.value, edges.value, flow.value.getViewport())
+  return workflowCanvasToDocument(
+    nodes.value,
+    edges.value,
+    flow.value.getViewport(),
+    stateSchemaDraft.value.value,
+  )
+}
+
+function updateStateSchema(value: string): void {
+  stateSchemaText.value = value
 }
 
 function currentDocumentMatches(
@@ -624,6 +667,9 @@ async function loadWorkflow(id: string): Promise<void> {
     externalAgents.value = externalAgentSummaries.items
     nodeCatalog.value = catalog
     stateContract.value = graph.definition.state_contract
+    stateSchemaText.value = graph.definition.state_schema
+      ? JSON.stringify(graph.definition.state_schema, null, 2)
+      : ''
     const canvas = workflowDocumentToCanvas(graph, nodeCatalog.value)
     nodes.value = canvas.nodes
     edges.value = canvas.edges
@@ -837,6 +883,8 @@ onUnmounted(() => {
           :node="selectedNode"
           :node-ids="nodes.map((node) => node.id)"
           :output-endpoints="selectedNodeOutputEndpoints"
+          :state-schema="stateSchemaText"
+          :state-schema-error="stateSchemaError"
           :state-contract="stateContract"
           :workflow-name="workflow?.name ?? ''"
           @remove-edge="removeEdge"
@@ -847,6 +895,7 @@ onUnmounted(() => {
           @update-command="selectCommand"
           @update-external-agent="selectExternalAgent"
           @update-node-id="updateNodeId"
+          @update-state-schema="updateStateSchema"
         />
         <nav class="workflow-tool-rail" :aria-label="t('workflows.editor.rightTools')">
           <button

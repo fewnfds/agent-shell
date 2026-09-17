@@ -20,7 +20,7 @@ _RESULT_FIELDS = (
 def _required_text(request, key):
     value = request.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"shared_vars.agent_run.{key} must be a non-empty string")
+        raise ValueError(f"state.agent_run.{key} must be a non-empty string")
     return value.strip()
 
 
@@ -34,14 +34,13 @@ def _project(result):
 
 def create_command():
     async def command(state, runtime):
-        shared_vars = state.get("shared_vars", {})
-        request = shared_vars.get("agent_run") if isinstance(shared_vars, dict) else None
+        request = state.get("agent_run")
         if not isinstance(request, dict):
-            raise ValueError("shared_vars.agent_run must be an object")
+            raise ValueError("state.agent_run must be an object")
         target = _required_text(request, "target_node_id")
         action = _required_text(request, "action")
         if action not in _ACTIONS:
-            raise ValueError("shared_vars.agent_run.action is unsupported")
+            raise ValueError("state.agent_run.action is unsupported")
 
         facade = getattr(runtime.context, "agent_runs", None)
         if facade is None:
@@ -51,13 +50,13 @@ def create_command():
             main_agent_id = _required_text(request, "main_agent_id")
             operation_id = _required_text(request, "operation_id")
             if "input" not in request:
-                raise ValueError("shared_vars.agent_run.input is required")
+                raise ValueError("state.agent_run.input is required")
             thread_id = request.get("thread_id")
             if thread_id is not None and (
                 not isinstance(thread_id, str) or not thread_id.strip()
             ):
                 raise ValueError(
-                    "shared_vars.agent_run.thread_id must be a non-empty string when set"
+                    "state.agent_run.thread_id must be a non-empty string when set"
                 )
             result = await facade.start(
                 main_agent_id,
@@ -72,11 +71,9 @@ def create_command():
 
         return Command(
             update={
-                "shared_vars": {
-                    "agent_run_result": {
-                        "action": action,
-                        "run": _project(result),
-                    }
+                "agent_run_result": {
+                    "action": action,
+                    "run": _project(result),
                 }
             },
             goto=target,

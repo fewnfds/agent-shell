@@ -5,7 +5,7 @@
 Agent Shell 在同一个 Agent Server deployment 中注册两类独立 Graph：
 
 - Main Agent：由 LangChain `create_agent()` 与显式 middleware assembly 构造的完整 Agent graph，拥有 AgentState、messages、Thread、Run、checkpoint 和 Agent Event Output。
-- Workflow：Start/Command/End control graph，拥有只含 `shared_vars` 的 Workflow State、自己的 Thread/Run/checkpoint 和 Workflow Event Output。
+- Workflow：Start/Command/End control graph，拥有扁平变量的 Workflow State、自己的 Thread/Run/checkpoint 和 Workflow Event Output。
 
 两者都可以设置为 OpenAI-compatible model 入口。Workflow 需要 AI 时，由 Command 通过 `runtime.context.agent_runs` 启动 Main Agent，或通过节点绑定的 `runtime.context.external_agent` 调用外部 CLI；Agent 本身不嵌入 Canvas。
 
@@ -20,7 +20,7 @@ Workflow metadata 保存 name、description、`is_model_entry`、`on_disconnect`
 
 Command 的 outgoing Edge 声明允许的目标 Node ID。运行时由脚本返回 `goto="<node-id>"` 选择目标；compiler不会为Command再注册static Edge。Start outgoing Edge才编译为`add_edge(START, target)`。
 
-Workflow State只有`shared_vars`。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
+Workflow State是一张扁平变量表，入口传入的键和Command写回的键都保留在同一个checkpoint里。Command读写`state.get(...)`并返回`update={...}`。Graph document的可选`state_schema`用JSON Schema声明这张表的形状：声明后入口输入与每个Command的update结果都按它校验，不合法时以`workflow.state_invalid`失败；不声明则不做校验。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
 
 完整Graph与Command契约见[Workflow Graph Canvas Contract](../../.docs/architecture/workflow-graph-canvas-contract.md)和[Command Node](../wizard-pages/command-config.md)。
 

@@ -142,6 +142,7 @@ def test_builtin_event_output_examples_are_loadable(
             "workflow-event-output",
             {
                 "内置示例-all-events",
+                "内置示例-antigravity-events",
                 "内置示例-default",
                 "内置示例-lifecycle-progress",
             },

@@ -202,6 +202,9 @@ export const en: MessageSchema = {
       noCommands: 'No Command Node is configured',
       noCommandSelected: 'No Command Node selected',
       stateContract: 'State contract',
+      stateSchema: 'State schema',
+      stateSchemaInvalidJson: 'The State schema must be valid JSON.',
+      stateSchemaInvalidDocument: 'The State schema must be a JSON object.',
       nodeId: 'Node ID',
       nodeIdHint: 'Unique in this graph; start with a letter and use only letters, digits, underscores, or hyphens, up to 64 characters.',
       nodeIdInvalid: 'The Node ID format is invalid.',
@@ -1724,6 +1727,7 @@ export const en: MessageSchema = {
         nodeIdDuplicate: 'Workflow node IDs must be unique.',
         nodeTypeUnsupported: 'The Workflow node type is not supported.',
         nodeVersionUnsupported: 'The Workflow node version is not supported.',
+        stateSchemaInvalid: 'The Workflow state_schema must be a valid JSON Schema that declares "type": "object".',
       },
       contract: {
         unknownField: 'The {field} field is not part of the current configuration structure. It may have been removed or misspelled.',

@@ -103,7 +103,7 @@ async def command(state, runtime):
     if result.status == "error":
         raise RuntimeError(str(result.content))
     return Command(
-        update={"shared_vars": {"browser_result": result.content}},
+        update={"browser_result": result.content},
         goto="finish",
     )
 ```

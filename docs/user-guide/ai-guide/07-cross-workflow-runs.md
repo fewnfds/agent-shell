@@ -49,7 +49,7 @@ Workflow Run facade为：
 handle = await runtime.context.workflow_runs.start_workflow(
     "<enabled Workflow UUID>",
     operation_id="research:market:2026-09-04",
-    shared_vars={"topic": "market"},
+    initial_state={"topic": "market"},
 )
 
 snapshots = await runtime.context.workflow_runs.check([handle.run_id])
@@ -65,7 +65,7 @@ Agent Run handle包含 `operation_id/main_agent_id/assistant_id/thread_id/run_id
 Workflow各命令的作用：
 
 - `start_workflow()` 创建或复用当前 operation 对应的官方 Assistant/Thread/Run，并立即返回 handle；
-- `check()` 通过公共 Run API 读取指定 Run；终态 Run 同时返回官方 Thread 的 current State values；
+- `check()` 通过公共 Run API 读取指定 Run；终态 Run 同时返回该 Workflow Run 的扁平 State；
 - `list()` 列出 current caller 直接启动的 Run，可按官方状态筛选；
 - `join()` 通过公共 Run join API 等待指定 Run 到达终态，并返回输出；
 - `cancel()` 通过公共 Run cancel API 主动取消并等待到官方终态。
@@ -99,7 +99,7 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 5. 输入与 State isolation
 
-`start_workflow()`接受initial `shared_vars`。输入在创建时深拷贝，不与caller State保持可变引用。
+`start_workflow()`的`initial_state`参数就是目标Run的初始扁平State键值表。输入在创建时深拷贝，不与caller State保持可变引用；目标Workflow声明了`state_schema`时，这份初始State必须先通过校验，否则`start_workflow()`直接失败。
 
 被调用 Run 拥有独立：
 
@@ -112,17 +112,15 @@ operation ID 应来自业务 identity，例如 `research:<topic-id>` 或 `map:<i
 
 ## 6. 保存控制状态
 
-Workflow root State只有`shared_vars`一个正式channel。
+Workflow root State是扁平变量表：入口传入的键和Command写回的键都保留在同一个checkpoint里。声明了`state_schema`时，入口输入与每个Command的update结果都按该JSON Schema校验；未声明时任何JSON键都能读写，不做键名与类型校验。
 
-后续 Node 需要继续操作某个 Run 时，只把必要的 `run_id` 和业务控制信息写入 caller 拥有的 `shared_vars`：
+后续 Node 需要继续操作某个 Run 时，只把必要的 `run_id` 和业务控制信息写回 caller 的 State：
 
 ```json
 {
-  "shared_vars": {
-    "research_call": {
-      "run_id": "<official Run ID>",
-      "phase": "waiting"
-    }
+  "research_call": {
+    "run_id": "<official Run ID>",
+    "phase": "waiting"
   }
 }
 ```

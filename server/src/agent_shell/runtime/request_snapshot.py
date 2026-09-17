@@ -61,6 +61,10 @@ from agent_shell.runtime.lifecycle_store import (
     lifecycle_request_messages,
 )
 from agent_shell.runtime.workflow_data import WorkflowDataService
+from agent_shell.runtime.state import (
+    flatten_workflow_state,
+    wrap_workflow_state_update,
+)
 from agent_shell.runtime.workflow_run_calls import (
     WorkflowRunHandle,
     WorkflowRunSnapshot,
@@ -77,6 +81,10 @@ from agent_shell.storage.workflow_lifecycle_settings import (
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.validation.service import ConfigurationValidationService
 from agent_shell.workflow import WorkflowGraphDocumentV1
+from agent_shell.workflow.state_schema import (
+    WorkflowStateSchemaError,
+    validate_workflow_state,
+)
 
 
 LANGGRAPH_WORKFLOW_GRAPH_ID = "agent-shell-workflow"
@@ -261,7 +269,7 @@ class _RunBinding:
     thread_id: str = ""
     assistant_id: str = ""
     run_id: str = ""
-    initial_shared_vars: Mapping[str, Any] = field(default_factory=dict)
+    initial_state: Mapping[str, Any] = field(default_factory=dict)
     response_consumer: bool = False
     run_id_ready: asyncio.Future[str] | None = None
     execution_ready: asyncio.Future[RunExecution] | None = None
@@ -824,7 +832,7 @@ class LifecycleRunCoordinator:
                 assistant_id=binding.assistant_id,
                 caller_run_id=binding.caller_run_id,
                 operation_id=binding.operation_id,
-                initial_shared_vars=binding.initial_shared_vars,
+                initial_state=binding.initial_state,
                 agent_run_runtime=self,
                 workflow_run_runtime=self,
                 public_output=True,
@@ -858,7 +866,7 @@ class LifecycleRunCoordinator:
         *,
         operation_id: str,
         caller: RunCaller,
-        shared_vars: Mapping[str, Any],
+        initial_state: Mapping[str, Any],
     ) -> WorkflowRunHandle:
         normalized_operation_id = operation_id.strip()
         if not normalized_operation_id:
@@ -903,7 +911,7 @@ class LifecycleRunCoordinator:
             public_model=str(target["name"]),
             caller_run_id=caller.run_id,
             operation_id=normalized_operation_id,
-            initial_shared_vars=deepcopy(dict(shared_vars)),
+            initial_state=deepcopy(dict(initial_state)),
         )
         if binding.key in self._bindings:
             raise AgentRuntimeError(
@@ -1179,7 +1187,11 @@ class LifecycleRunCoordinator:
                     self._snapshot_value(
                         relation,
                         official_status(run),
-                        output=output if isinstance(output, dict) else {},
+                        output=(
+                            flatten_workflow_state(output)
+                            if isinstance(output, Mapping)
+                            else {}
+                        ),
                     )
                 )
         return snapshots
@@ -1302,12 +1314,24 @@ class LifecycleRunCoordinator:
         public_model: str,
         caller_run_id: str = "",
         operation_id: str = "",
-        initial_shared_vars: Mapping[str, Any] | None = None,
+        initial_state: Mapping[str, Any] | None = None,
         response_consumer: bool = False,
     ) -> _RunBinding:
         document = self._snapshot.workflow_document(str(workflow["id"]))
         if document is None:
             raise RuntimeError("the captured Workflow no longer exists")
+        entry_state = dict(initial_state or {})
+        try:
+            validate_workflow_state(
+                entry_state,
+                document.definition.state_schema,
+            )
+        except WorkflowStateSchemaError as exc:
+            raise AgentRuntimeError(
+                "workflow.state_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
         loop = asyncio.get_running_loop()
         return _RunBinding(
             workflow=workflow,
@@ -1317,7 +1341,7 @@ class LifecycleRunCoordinator:
             public_model=public_model,
             caller_run_id=caller_run_id,
             operation_id=operation_id,
-            initial_shared_vars=initial_shared_vars or {},
+            initial_state=entry_state,
             response_consumer=response_consumer,
             run_id_ready=loop.create_future(),
             execution_ready=loop.create_future(),
@@ -1456,9 +1480,9 @@ class LifecycleRunCoordinator:
 
     async def _start_bound_run(self, binding: _RunBinding, stream: Any) -> Mapping[str, Any]:
         return await stream.run.start(
-            input={
-                "shared_vars": deepcopy(dict(binding.initial_shared_vars)),
-            },
+            input=wrap_workflow_state_update(
+                deepcopy(dict(binding.initial_state))
+            ),
             config=self._run_start_config(
                 workflow_id=str(binding.workflow["id"]),
                 request_id=binding.request_id,
@@ -1639,7 +1663,11 @@ class LifecycleRunCoordinator:
         if status not in ACTIVE_RUN_STATUSES:
             state = await client.threads.get_state(relation.thread_id)
             values = state.get("values") if isinstance(state, Mapping) else None
-            output = values if isinstance(values, dict) else {}
+            output = (
+                flatten_workflow_state(values)
+                if isinstance(values, Mapping)
+                else {}
+            )
         return self._snapshot_value(relation, status, output=output)
 
     @staticmethod

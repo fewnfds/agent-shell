@@ -809,6 +809,7 @@ export interface WorkflowGraphDocument {
   definition: {
     schema_version: 1
     state_contract: 'agent-shell.workflow.control.v1'
+    state_schema?: Record<string, JsonValue> | null
     nodes: WorkflowGraphNode[]
     edges: WorkflowGraphEdge[]
   }

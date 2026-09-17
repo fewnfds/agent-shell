@@ -94,10 +94,10 @@ def create_command():
     threshold = 80
 
     async def command(state, runtime):
-        risk = state.get("shared_vars", {}).get("risk", 0)
+        risk = state.get("risk", 0)
         target = "review" if risk >= threshold else "continue"
         return Command(
-            update={"shared_vars": {"selected_target": target}},
+            update={"selected_target": target},
             goto=target,
         )
 

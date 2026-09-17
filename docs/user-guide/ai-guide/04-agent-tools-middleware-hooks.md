@@ -219,7 +219,7 @@ def create_middleware(
     return InvocationIdentityMiddleware(agent=agent, package_id=package_id)
 ```
 
-`PrivateStateAttr`使该字段属于Agent自己的State schema，并从模型可见State中隐藏。Workflow的`shared_vars`属于另一个root Graph，Agent Middleware不写入该channel。多个Middleware需要同名State key时，应由一个明确owner定义reducer或使用各自唯一key。
+`PrivateStateAttr`使该字段属于Agent自己的State schema，并从模型可见State中隐藏。Workflow的变量表属于另一个root Graph，Agent Middleware不写入该channel。多个Middleware需要同名State key时，应由一个明确owner定义reducer或使用各自唯一key。
 
 ## 7. Middleware hook
 

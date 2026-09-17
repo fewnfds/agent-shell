@@ -285,8 +285,8 @@ class _Client:
             ],
         }
         self.states = {
-            "thread-entry": {"values": {"shared_vars": {"answer": 42}}},
-            "thread-peer": {"values": {"shared_vars": {"peer": True}}},
+            "thread-entry": {"values": {"state": {"answer": 42}}},
+            "thread-peer": {"values": {"state": {"peer": True}}},
         }
         self.histories = {
             "thread-entry": [{"checkpoint_id": "checkpoint-entry"}],
@@ -437,7 +437,7 @@ def test_lifecycle_aggregates_equal_runs_and_forwards_public_debug_apis() -> Non
         {"id": "command-1", "name": "Frozen Command"}
     ]
     assert client.assistants.graph_reads == ["assistant-peer"]
-    assert state["state"]["values"]["shared_vars"] == {"answer": 42}
+    assert state["state"]["values"] == {"answer": 42}
     assert history["history"] == [{"checkpoint_id": "checkpoint-peer"}]
     assert filtered["total"] == 1
     agent_subjects = [
