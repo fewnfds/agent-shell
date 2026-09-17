@@ -543,6 +543,44 @@ def test_mcp_tool_publication_reconcile_aligns_official_assistants(
     assert (orphan_id, False) in hidden
 
 
+def test_mcp_tool_publication_reconcile_can_hide_orphans_from_empty_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = McpToolStore(FileConfigRepository(tmp_path / "data"))
+    orphan_id = "44444444-4444-4444-8444-444444444444"
+    server = _FakeAgentServer(
+        [
+            {
+                "assistant_id": orphan_id,
+                "name": "orphan_tool",
+                "description": "",
+                "metadata": {
+                    "owner": "agent-shell",
+                    "graph_kind": "mcp_tool",
+                    "mcp_tool_id": orphan_id,
+                    "agent_shell_mcp_tool": True,
+                },
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        "agent_shell.mcp_tools.publication.get_client",
+        lambda url=None: server,
+    )
+
+    asyncio.run(
+        McpToolPublicationService(store).reconcile(include_empty=True)
+    )
+
+    hidden = [
+        (assistant_id, kwargs["metadata"]["agent_shell_mcp_tool"])
+        for assistant_id, kwargs in server.assistants.updated
+        if "metadata" in kwargs
+    ]
+    assert hidden == [(orphan_id, False)]
+
+
 def test_mcp_tool_publication_withdraws_disabled_tools(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

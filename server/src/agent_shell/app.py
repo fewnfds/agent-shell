@@ -627,6 +627,7 @@ def create_app(
             configuration,
             configuration_repository_management,
             repository_validation,
+            mcp_tool_publication,
         )
     )
     app.include_router(

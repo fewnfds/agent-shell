@@ -70,11 +70,11 @@ class McpToolPublicationService:
             assistants.extend(page)
             offset += len(page)
 
-    async def reconcile(self) -> None:
+    async def reconcile(self, *, include_empty: bool = False) -> None:
         """Align official MCP Tool Assistants with stored publication flags."""
 
         items = await asyncio.to_thread(self._store.list_items)
-        if not items:
+        if not items and not include_empty:
             return
         tracked_ids = {str(item["id"]) for item in items}
         for item in items:

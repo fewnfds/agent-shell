@@ -14,8 +14,23 @@ from agent_shell.storage.file_config import (
     FileConfigRepository,
 )
 from agent_shell.storage.workflows import WorkflowStore
+from agent_shell.mcp_tools.publication import McpToolPublicationService
 
 from .support import *
+
+
+@pytest.fixture(autouse=True)
+def stub_mcp_tool_publication_reconcile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def reconcile(
+        _self: McpToolPublicationService,
+        *,
+        include_empty: bool = False,
+    ) -> None:
+        del include_empty
+
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
 
 
 def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot(
@@ -252,6 +267,38 @@ def test_repository_names_follow_windows_directory_rules_and_allow_unicode(
                 json={"name": invalid_name},
             )
             assert rejected.status_code == 422, rejected.text
+
+
+def test_repository_activation_reconciles_empty_publication_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reconciliations: list[bool] = []
+
+    async def reconcile(
+        _self: McpToolPublicationService,
+        *,
+        include_empty: bool = False,
+    ) -> None:
+        reconciliations.append(include_empty)
+
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        reconciliations.clear()
+        created = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "Empty publication target"},
+        )
+        assert created.status_code == 200, created.text
+
+        activated = client.post(
+            "/agent-shell/api/configuration-repositories/"
+            f"{created.json()['id']}/activate"
+        )
+
+    assert activated.status_code == 200, activated.text
+    assert reconciliations == [True]
 
 
 def test_repository_listing_ignores_only_internal_work_directories(

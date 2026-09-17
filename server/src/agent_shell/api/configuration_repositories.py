@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,11 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from agent_shell.http_surface import management_api_router
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.errors import management_error
+from agent_shell.mcp_tools.publication import McpToolPublicationService
 from agent_shell.configuration.repository_management import (
     ConfigurationRepositoryManagementService,
 )
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.file_config import ActiveRepositoryDeleteError
+from agent_shell.validation.models import ValidationReport
 from agent_shell.validation.repository import RepositoryValidationService
 
 
@@ -31,6 +35,7 @@ def build_configuration_repository_router(
     repository: FileConfigRepository,
     management: ConfigurationRepositoryManagementService,
     validation: RepositoryValidationService,
+    mcp_tool_publication: McpToolPublicationService,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -54,17 +59,32 @@ def build_configuration_repository_router(
             ) from exc
 
     @router.post("/configuration-repositories/{repository_id}/activate")
-    def activate_repository(repository_id: str) -> dict[str, object]:
+    async def activate_repository(repository_id: str) -> dict[str, object]:
+        def activate() -> tuple[dict[str, object], ValidationReport]:
+            try:
+                active = repository.switch_repository(repository_id)
+            except ValueError as exc:
+                raise management_error(
+                    422,
+                    code="configuration_repository_invalid",
+                    message_key="errors.configurationRepositoryInvalid",
+                    message=str(exc),
+                ) from exc
+            return active, validation.validate_repository()
+
+        active, report = await asyncio.to_thread(activate)
         try:
-            active = repository.switch_repository(repository_id)
-        except ValueError as exc:
+            await mcp_tool_publication.reconcile(include_empty=True)
+        except Exception as exc:
             raise management_error(
-                422,
-                code="configuration_repository_invalid",
-                message_key="errors.configurationRepositoryInvalid",
-                message=str(exc),
+                502,
+                code="mcp_tool_publication_failed",
+                message_key="errors.mcpToolPublicationFailed",
+                message=(
+                    "The published MCP Tool Assistants could not be "
+                    "synchronized."
+                ),
             ) from exc
-        report = validation.validate_repository()
         return {
             **active,
             "restart_required": management.active_repository_restart_required(),
