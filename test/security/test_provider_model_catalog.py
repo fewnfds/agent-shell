@@ -234,3 +234,156 @@ def test_model_catalog_rejects_malformed_provider_payload_with_complete_payload(
     assert response.json()["detail"]["code"] == "invalid_model_catalog_response"
     if "provider-private" in str(provider_payload):
         assert "provider-private" in response.text
+
+
+def test_model_catalog_reads_the_gemini_developer_api_with_its_own_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = make_client(tmp_path, monkeypatch)
+    observed: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed.append(
+            (
+                str(request.url),
+                request.headers.get("x-goog-api-key", ""),
+                request.headers.get("Authorization", ""),
+            )
+        )
+        if request.url.params.get("pageToken") is None:
+            return httpx.Response(
+                200,
+                request=request,
+                json={
+                    "models": [
+                        {"name": "models/gemini-2.5-flash", "displayName": "private"},
+                        {"name": "models/gemini-2.5-pro"},
+                    ],
+                    "nextPageToken": "page-2",
+                },
+            )
+        return httpx.Response(
+            200,
+            request=request,
+            json={"models": [{"name": "models/gemini-3-pro-preview"}]},
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
+        lambda **kwargs: httpx.MockTransport(handler),
+    )
+    response = client.post(
+        "/agent-shell/api/fetch-models",
+        json={
+            "provider": "google_genai",
+            "base_url": "https://generativelanguage.example",
+            "credential": LOCAL_SECRET,
+            "block_id": "",
+            "api_version": "v1",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3-pro-preview",
+    ]
+    assert observed == [
+        ("https://generativelanguage.example/v1/models", LOCAL_SECRET, ""),
+        (
+            "https://generativelanguage.example/v1/models?pageToken=page-2",
+            LOCAL_SECRET,
+            "",
+        ),
+    ]
+    assert LOCAL_SECRET not in response.text
+    assert "private" not in response.text
+
+
+def test_model_catalog_uses_the_default_gemini_developer_api_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = make_client(tmp_path, monkeypatch)
+    observed: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed.append(str(request.url))
+        return httpx.Response(200, request=request, json={"models": []})
+
+    monkeypatch.setattr(
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
+        lambda **kwargs: httpx.MockTransport(handler),
+    )
+    response = client.post(
+        "/agent-shell/api/fetch-models",
+        json={
+            "provider": "google_genai",
+            "base_url": "https://generativelanguage.example",
+            "credential": LOCAL_SECRET,
+            "block_id": "",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+    assert observed == ["https://generativelanguage.example/v1beta/models"]
+
+
+@pytest.mark.parametrize(
+    "api_version",
+    ["v1beta/models", "/v1beta", ""],
+)
+def test_model_catalog_rejects_unsafe_gemini_api_versions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    api_version: str,
+) -> None:
+    client, _ = make_client(tmp_path, monkeypatch)
+
+    response = client.post(
+        "/agent-shell/api/fetch-models",
+        json={
+            "provider": "google_genai",
+            "base_url": "https://generativelanguage.example",
+            "credential": LOCAL_SECRET,
+            "block_id": "",
+            "api_version": api_version,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_model_catalog_request"
+
+
+def test_model_catalog_rejects_a_malformed_gemini_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = make_client(tmp_path, monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={"models": [{"name": ""}, {"displayName": "private"}]},
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.provider_curl.ProviderAsyncCurlTransport",
+        lambda **kwargs: httpx.MockTransport(handler),
+    )
+    response = client.post(
+        "/agent-shell/api/fetch-models",
+        json={
+            "provider": "google_genai",
+            "base_url": "https://generativelanguage.example",
+            "credential": LOCAL_SECRET,
+            "block_id": "",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "invalid_model_catalog_response"

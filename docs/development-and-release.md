@@ -56,7 +56,7 @@ git pull --ff-only
 | runtime/CI uv | `0.12.2` |
 | Deep Agents | `0.7.13` |
 | FastAPI / Uvicorn | `0.141.1` / `0.52.1` |
-| LangChain adapters | DeepSeek `1.1.0`；OpenAI `1.6.1`（Deep Agents 另传递 Anthropic `1.7.1` 与 Google GenAI `4.4.0`） |
+| LangChain adapters | DeepSeek `1.1.0`；Google GenAI `4.4.0`；OpenAI `1.6.1`（Deep Agents 另传递 Anthropic `1.7.1`） |
 | LangChain core/graph | `langchain 1.4.0`；`langchain-core 1.6.2`；`langgraph 1.2.11`；LangSmith `0.12.2` |
 | LangGraph Dev | CLI `0.4.31`；API `0.14.0`；in-memory runtime `0.34.0`；SDK `0.4.4` |
 | 前端 LangChain | `@langchain/core 1.2.9`；`@langchain/vue 1.0.35`；LangGraph SDK `1.10.2` |

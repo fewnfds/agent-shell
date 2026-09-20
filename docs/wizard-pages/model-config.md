@@ -4,9 +4,11 @@
 
 Model Connection 是实例私有资源（instance-level Model Connection），在【模型 -> 模型连接】创建和维护；【配置库 / 全局 / 模型连接】复用同一个列表，编辑页仍位于【模型 / 模型连接】。它保存 LangChain Provider、`base_url`、具体 `model`、`provider_settings`、`model_settings`、`tool_choice`、`response_format` 以及 write-only `credential`。连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，凭据值只位于 `data/config/agent-shell.env`；API response 的 `credential.status` 为 `masked`（已有可用值）、`missing`（保存了引用但环境值缺失）或 `none`（该连接不使用凭据）。
 
-本版本内置 Provider 为 OpenAI 和 DeepSeek：OpenAI 支持 OpenAI-compatible（Chat Completions）与 OpenAI Responses API 两种连接类型，DeepSeek 使用 OpenAI-compatible。实际可用性取决于 Provider integration、模型和上游端点。
+本版本内置 Provider 为 OpenAI、DeepSeek 和 Google GenAI：OpenAI 支持 OpenAI-compatible（Chat Completions）与 OpenAI Responses API 两种连接类型，DeepSeek 使用 OpenAI-compatible，Google GenAI 使用 Gemini Developer API 的 API Key 模式。实际可用性取决于 Provider integration、模型和上游端点。
 
-【系统 -> 系统配置 -> Provider Network】保存进程级 Provider 出站网络设置。`httpx` 是标准线路，`curl_cffi` 是保留 Chrome TLS/HTTP fingerprint 的浏览器兼容线路；curl-cffi 依赖始终安装，选择只决定请求经过哪条线路，也不会在失败后自动重放。完整共享 transport 接入全部内置 Provider 与模型目录。全局 Header 是 `system.yaml` 中的普通配置，`model_settings.extra_headers` 同名值在请求级覆盖它；API Key 仍只写入 Model Connection credential。
+Google GenAI 连接的 `provider` 是 `google_genai`，适配 `ChatGoogleGenerativeAI`。credential 是必需的 API Key，构造时固定 `vertexai=false`，因此只走 Gemini Developer API；Vertex AI 的 JSON 凭证、`project` 和 `location` 不属于 Model Connection 字段。`base_url` 不含版本段，`provider_settings.api_version` 提供版本路径段，留空时 integration 使用 `v1beta`，模型列表读取使用同一路径。其余 `provider_settings` 为 `temperature`、`max_output_tokens`、`top_p`、`top_k`、`stop`、`presence_penalty`、`frequency_penalty`、`seed`、`timeout`、`max_retries`、`streaming` 和 `reasoning_effort`，默认全部留空以保留 integration 与模型的自身默认值。
+
+【系统 -> 系统配置 -> Provider Network】保存进程级 Provider 出站网络设置。`httpx` 是标准线路，`curl_cffi` 是保留 Chrome TLS/HTTP fingerprint 的浏览器兼容线路；curl-cffi 依赖始终安装，选择只决定请求经过哪条线路，也不会在失败后自动重放。完整共享 transport 用于 OpenAI、DeepSeek 连接与模型目录；Google GenAI 由 `langchain-google-genai` 建立自己的 HTTP client，不接收共享 transport。全局 Header 是 `system.yaml` 中的普通配置，`model_settings.extra_headers` 同名值在请求级覆盖它；API Key 仍只写入 Model Connection credential。
 
 模型连接不属于 Configuration Repository，不进入配置 Bundle，也不提供下载。接口为：
 

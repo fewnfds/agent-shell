@@ -876,6 +876,7 @@ async function fetchModels(request: {
   baseUrl: string
   credential: string
   blockId: string
+  apiVersion: string
 }): Promise<void> {
   modelCatalogSequence += 1
   const sequence = modelCatalogSequence
@@ -888,6 +889,7 @@ async function fetchModels(request: {
       request.baseUrl,
       request.credential || null,
       request.blockId,
+      request.apiVersion || null,
     )
     if (!modelCatalogRequestIsCurrent(sequence, resourceGeneration, request)) return
     models.value = result
@@ -904,7 +906,13 @@ async function fetchModels(request: {
 function modelCatalogRequestIsCurrent(
   sequence: number,
   resourceGeneration: number,
-  request: { provider: string, baseUrl: string, credential: string, blockId: string },
+  request: {
+    provider: string
+    baseUrl: string
+    credential: string
+    blockId: string
+    apiVersion: string
+  },
 ): boolean {
   if (
     sequence !== modelCatalogSequence
@@ -924,6 +932,7 @@ function updateDraft(value: BlockDraftBase): void {
       || previous.provider !== current.provider
       || previous.base_url !== current.base_url
       || previous.credential_secret !== current.credential_secret
+      || previous.provider_settings.api_version !== current.provider_settings.api_version
     ) {
       modelCatalogSequence += 1
       loadingModels.value = false

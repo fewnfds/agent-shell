@@ -738,6 +738,7 @@ describe('ComponentsPage', () => {
       'https://api.openai.com/v1',
       null,
       id,
+      null,
     )
     expect(wrapper.text()).toContain('deepseek-chat')
 

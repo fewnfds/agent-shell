@@ -104,6 +104,7 @@ describe('block adapters', () => {
     expect(modelAdapter.blank().provider_settings).toEqual(samplingDefaults)
     expect(providerDefaultSettings('openai')).toEqual(samplingDefaults)
     expect(providerDefaultSettings('deepseek')).toEqual(samplingDefaults)
+    expect(providerDefaultSettings('google_genai')).toEqual({})
   })
 
   it('keeps the configuration extension reference and template selection mechanical', () => {

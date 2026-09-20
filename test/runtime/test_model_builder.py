@@ -69,6 +69,85 @@ def test_model_builder_uses_the_selected_openai_connection_type(
 
     assert model.use_responses_api is True
 
+
+def test_model_builder_uses_the_api_key_gemini_developer_api_connection(
+    provider_http_clients,
+) -> None:
+    model = _build_chat_model(
+        {
+            "provider": "google_genai",
+            "model": "gemini-2.5-flash",
+            "base_url": "https://gateway.example.invalid/gemini",
+            "provider_settings": {
+                "api_version": "v1",
+                "temperature": 0.3,
+                "top_k": 32,
+                "stop": ["END"],
+                "reasoning_effort": "low",
+            },
+        },
+        "provider-secret",
+        provider_http_clients,
+    )
+
+    assert type(model).__name__ == "ChatGoogleGenerativeAI"
+    assert model.vertexai is False
+    assert model.base_url == "https://gateway.example.invalid/gemini"
+    assert model.api_version == "v1"
+    assert model.google_api_key.get_secret_value() == "provider-secret"
+    assert model.temperature == 0.3
+    assert model.top_k == 32
+    assert model.stop == ["END"]
+    assert model.reasoning_effort == "low"
+
+
+def test_model_builder_keeps_the_gemini_adapter_off_the_shared_transport(
+    monkeypatch,
+    provider_http_clients,
+) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        agent_builder,
+        "init_chat_model",
+        lambda **kwargs: captured.update(kwargs) or kwargs,
+    )
+
+    _build_chat_model(
+        {
+            "provider": "google_genai",
+            "model": "gemini-2.5-flash",
+            "base_url": "https://gateway.example.invalid",
+            "provider_settings": {},
+        },
+        "provider-secret",
+        provider_http_clients,
+    )
+
+    assert captured["vertexai"] is False
+    assert captured["api_key"].get_secret_value() == "provider-secret"
+    assert "http_client" not in captured
+    assert "http_async_client" not in captured
+    assert "default_headers" not in captured
+
+
+def test_model_builder_requires_an_api_key_for_the_gemini_developer_api(
+    provider_http_clients,
+) -> None:
+    with pytest.raises(AgentRuntimeError) as excinfo:
+        _build_chat_model(
+            {
+                "provider": "google_genai",
+                "model": "gemini-2.5-flash",
+                "base_url": "https://gateway.example.invalid",
+                "provider_settings": {},
+            },
+            None,
+            provider_http_clients,
+        )
+
+    assert excinfo.value.code == "model_configuration_invalid"
+
+
 def test_deepseek_provider_adapter_preserves_streamed_reasoning_blocks(
     provider_http_clients,
 ) -> None:
@@ -214,6 +293,13 @@ def test_provider_setting_contracts_use_current_official_constructor_names() -> 
         module = importlib.import_module(integration.module)
         model_type = getattr(module, integration.class_name)
         constructor_fields = inspect.signature(model_type).parameters
+        accepted_fields = set(constructor_fields)
+        for name, field in model_type.model_fields.items():
+            # Pydantic exposes aliases in the generated constructor signature and
+            # accepts the declared field name as well.
+            accepted_fields.add(name)
+            if isinstance(field.alias, str):
+                accepted_fields.add(field.alias)
         contract_fields = _SETTINGS_BY_PROVIDER[integration.provider].model_fields
 
-        assert contract_fields.keys() <= constructor_fields.keys(), integration.provider
+        assert contract_fields.keys() <= accepted_fields, integration.provider

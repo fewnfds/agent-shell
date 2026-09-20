@@ -19,6 +19,7 @@ def test_catalog_exposes_release_managed_provider_integrations(
     assert set(providers) == {
         "openai",
         "deepseek",
+        "google_genai",
     }
     assert all(item["installed"] for item in providers.values())
     assert all(item["version"] for item in providers.values())
@@ -33,3 +34,6 @@ def test_bundled_provider_set_is_owned_by_the_release() -> None:
     assert integrations["deepseek"].package == "langchain-deepseek"
     assert integrations["deepseek"].module == "langchain_deepseek"
     assert integrations["deepseek"].class_name == "ChatDeepSeek"
+    assert integrations["google_genai"].package == "langchain-google-genai"
+    assert integrations["google_genai"].module == "langchain_google_genai"
+    assert integrations["google_genai"].class_name == "ChatGoogleGenerativeAI"

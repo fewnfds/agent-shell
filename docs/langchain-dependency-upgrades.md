@@ -10,7 +10,8 @@
 | LangChain / Python Core | `1.4.0` / `1.6.2` | Main Agent root 使用 `create_agent()`；保持当前 major；`langchain.mcp` 是尚未启用的 beta 能力，现有 MCP 继续由 adapters 提供 |
 | OpenAI | `1.6.1` | 升级时复核 model profile、content block 和错误边界 |
 | DeepSeek | `1.1.0` | 保持当前 major，并与 OpenAI-compatible 路径一起回归 |
-| Deep Agents 传递依赖 | Anthropic `1.7.1`；Google GenAI `4.4.0` | 由 Deep Agents `0.7.13` 传递引入，项目不直接维护 |
+| Google GenAI | `4.4.0` | Gemini Developer API（API Key）适配；升级时复核 `vertexai=False` 强制、API Key 要求、`base_url`/`api_version` 组合和 `reasoning_effort` 参数面 |
+| Deep Agents 传递依赖 | Anthropic `1.7.1` | 由 Deep Agents `0.7.13` 传递引入，项目不直接维护 |
 | MCP adapters | `0.3.2` | 当前使用 `MultiServerMCPClient`；新的 beta `langchain.mcp` 属于独立功能迁移 |
 | LangGraph / SQLite checkpoint | `1.2.11` / `3.1.1` | LangGraph 保持 `<1.3.0`，Checkpoint-SQLite 保持 `<4.0` |
 | LangGraph Agent Server | API `0.14.0`；runtime `0.34.0`；CLI `0.4.31`；SDK `0.4.4` | API/runtime 按官方协同发布线升级；当前未启用 LangSmith API-key auth、encryption、BYOC logging 或 `cancel_on_disconnect` |

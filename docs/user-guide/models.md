@@ -8,9 +8,11 @@
 
 模型连接保存 `provider`、`base_url`（服务地址）、`model`、`credential`、`provider_settings`、`model_settings`、`tool_choice` 和 `response_format`，按当前 `ModelConnectionBlock` 校验；`provider` 限本版本内置 Provider，`base_url` 必须是 http/https 且不含 query、fragment 或 userinfo。凭据实际值只保存于实例 env，列表和编辑响应不会回显明文。它是系统私有资源，不进入 Configuration Repository，也不会被配置 Bundle 或整仓库下载导出。
 
-本版本内置 Provider 为 OpenAI 和 DeepSeek：OpenAI 支持 OpenAI-compatible（Chat Completions）与 OpenAI Responses API 两种连接类型，DeepSeek 使用 OpenAI-compatible。实际可用性取决于 Provider integration、模型和上游端点。
+本版本内置 Provider 为 OpenAI、DeepSeek 和 Google GenAI：OpenAI 支持 OpenAI-compatible（Chat Completions）与 OpenAI Responses API 两种连接类型，DeepSeek 使用 OpenAI-compatible，Google GenAI 使用 Gemini Developer API 的 API Key 模式。实际可用性取决于 Provider integration、模型和上游端点。
 
-Provider 出站网络由【系统 / 系统配置 / Provider Network】统一管理。标准 HTTPX 与 curl-cffi 浏览器兼容线路可以切换；`curl-cffi` 始终随软件安装，选择 HTTPX 表示 Provider 请求不经过它。系统不会在两条线路之间自动失败重试。HTTP version、TLS、自定义 CA、显式 proxy 与普通默认 Header 的完整共享 transport 用于全部内置 Provider 与模型目录读取。
+Google GenAI 连接的 `provider` 是 `google_genai`，由 `langchain-google-genai` 的 `ChatGoogleGenerativeAI` 适配。它只使用 Model Connection credential 中的 API Key，并作为 `x-goog-api-key` 发送；Vertex AI 的 JSON 凭证、`project` 和 `location` 不进入该连接。`base_url` 指向 Gemini Developer API 或同协议网关，不含版本段；`provider_settings.api_version` 提供版本路径段，留空时 integration 使用 `v1beta`，模型列表读取使用同一路径。其余 `provider_settings` 为 `temperature`、`max_output_tokens`、`top_p`、`top_k`、`stop`、`presence_penalty`、`frequency_penalty`、`seed`、`timeout`、`max_retries`、`streaming` 和 `reasoning_effort`，留空表示保持 integration 与所选模型的默认值。
+
+Provider 出站网络由【系统 / 系统配置 / Provider Network】统一管理。标准 HTTPX 与 curl-cffi 浏览器兼容线路可以切换；`curl-cffi` 始终随软件安装，选择 HTTPX 表示 Provider 请求不经过它。系统不会在两条线路之间自动失败重试。HTTP version、TLS、自定义 CA、显式 proxy 与普通默认 Header 的完整共享 transport 用于 OpenAI、DeepSeek 连接与模型目录读取；Google GenAI 连接由 `langchain-google-genai` 建立自己的 HTTP client，不经过 Provider Network 的线路、TLS、CA 与 proxy 设置。
 
 全局 Header 是 `system.yaml` 中可读取的普通配置，适合 `x-opencode-session` 等非 credential 参数。API Key 仍使用 Model Connection credential。模型连接的 `model_settings.extra_headers` 继续作为请求级设置，并按 Header 名称大小写不敏感地覆盖全局同名值。默认 `User-Agent` 为 `Agent-Shell/<version>`；需要自定义 Agent Shell 的 HTTP client identity 时，在全局 Header 中添加 `User-Agent`。
 

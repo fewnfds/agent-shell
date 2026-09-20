@@ -24,7 +24,13 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: ModelDraft]
-  'fetch-models': [request: { provider: string, baseUrl: string, credential: string, blockId: string }]
+  'fetch-models': [request: {
+    provider: string
+    baseUrl: string
+    credential: string
+    blockId: string
+    apiVersion: string
+  }]
 }>()
 
 const { t } = useI18n()
@@ -79,9 +85,25 @@ const deepSeekFields: ProviderParameterField[] = [
   { key: 'logprobs', kind: 'boolean' },
   { key: 'top_logprobs', kind: 'number' },
 ]
+const googleGenAIFields: ProviderParameterField[] = [
+  { key: 'api_version', kind: 'text' },
+  { key: 'temperature', kind: 'number' },
+  { key: 'max_output_tokens', kind: 'number' },
+  { key: 'top_p', kind: 'number' },
+  { key: 'top_k', kind: 'number' },
+  { key: 'stop', kind: 'string-list' },
+  { key: 'presence_penalty', kind: 'number' },
+  { key: 'frequency_penalty', kind: 'number' },
+  { key: 'seed', kind: 'number' },
+  { key: 'timeout', kind: 'number' },
+  { key: 'max_retries', kind: 'number' },
+  { key: 'streaming', kind: 'boolean' },
+  { key: 'reasoning_effort', kind: 'enum', options: ['minimal', 'low', 'medium', 'high'] },
+]
 const providerParameterFields: Record<string, ProviderParameterField[]> = {
   openai: openAIFields,
   deepseek: deepSeekFields,
+  google_genai: googleGenAIFields,
 }
 const parameterFields = computed(() => providerParameterFields[selectedProviderId.value] ?? [])
 
@@ -91,7 +113,13 @@ function fetchModels(): void {
     baseUrl: draft.base_url,
     credential: draft.credential_secret,
     blockId: draft.id,
+    apiVersion: apiVersionSetting(),
   })
+}
+
+function apiVersionSetting(): string {
+  const value = draft.provider_settings.api_version
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function selectModel(model: string): void {

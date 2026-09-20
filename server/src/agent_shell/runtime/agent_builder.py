@@ -78,6 +78,7 @@ from agent_shell.tool_packages import ToolPackageRuntime
 
 
 _OPENAI_COMPATIBLE_PROVIDERS = frozenset({"deepseek", "openai"})
+_GOOGLE_GENAI_PROVIDER = "google_genai"
 
 
 def _build_chat_model(
@@ -86,6 +87,12 @@ def _build_chat_model(
     provider_http_clients: ProviderHttpClients,
 ):
     provider = str(block["provider"])
+    if provider == _GOOGLE_GENAI_PROVIDER and not credential:
+        raise AgentRuntimeError(
+            "model_configuration_invalid",
+            "The Gemini Developer API requires an API key credential.",
+            status_code=422,
+        )
     try:
         kwargs: dict[str, object] = {
             "base_url": block["base_url"],
@@ -109,6 +116,10 @@ def _build_chat_model(
         if provider == "openai":
             # Chat Completions is the explicit default for arbitrary gateway URLs.
             kwargs.setdefault("use_responses_api", False)
+        if provider == _GOOGLE_GENAI_PROVIDER:
+            # This connection is the API key Gemini Developer API. Vertex AI
+            # project/location credentials stay outside the Model Connection.
+            kwargs["vertexai"] = False
         return init_chat_model(
             model=str(block["model"]),
             model_provider=provider,

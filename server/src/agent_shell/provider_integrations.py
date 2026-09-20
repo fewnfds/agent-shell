@@ -20,6 +20,12 @@ _BUNDLED_PROVIDER_INTEGRATIONS = (
         class_name="ChatDeepSeek",
     ),
     ProviderIntegration(
+        provider="google_genai",
+        package="langchain-google-genai",
+        module="langchain_google_genai",
+        class_name="ChatGoogleGenerativeAI",
+    ),
+    ProviderIntegration(
         provider="openai",
         package="langchain-openai",
         module="langchain_openai",

@@ -126,12 +126,14 @@ export const managementApi = {
     baseUrl: string,
     credential: string | null,
     blockId = '',
+    apiVersion: string | null = null,
   ): Promise<string[]> {
     return managementRequest('/fetch-models', jsonBody({
       provider,
       base_url: baseUrl,
       credential,
       block_id: blockId,
+      api_version: apiVersion,
     }))
   },
 

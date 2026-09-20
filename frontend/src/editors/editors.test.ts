@@ -361,7 +361,7 @@ describe('dedicated block editors', () => {
     const model = mountEditor(ModelEditor, { modelValue: modelAdapter.blank() })
     await model.get('[data-testid="model-fetch-group"]').trigger('submit')
     expect(model.emitted('fetch-models')?.[0]).toEqual([{
-      provider: 'openai', baseUrl: '', credential: '', blockId: '',
+      provider: 'openai', baseUrl: '', credential: '', blockId: '', apiVersion: '',
     }])
 
     const tools = mountEditor(CustomToolEditor, { modelValue: customToolAdapter.blank() })
@@ -508,6 +508,14 @@ describe('dedicated block editors', () => {
           version: '1.4.1',
           documentation_url: 'https://docs.langchain.com/providers',
         },
+        {
+          provider: 'google_genai',
+          package: 'langchain-google-genai',
+          class_name: 'ChatGoogleGenerativeAI',
+          installed: true,
+          version: '4.4.0',
+          documentation_url: 'https://docs.langchain.com/providers',
+        },
       ],
     })
     const select = editor.get('[data-testid="model-provider-input"]')
@@ -516,11 +524,13 @@ describe('dedicated block editors', () => {
       '',
       'openai',
       'deepseek',
+      'google_genai',
     ])
     expect(select.findAll('option').map((option) => option.text())).toEqual([
       'editors.model.providerPlaceholder',
       'langchain-openai',
       'langchain-deepseek',
+      'langchain-google-genai',
     ])
 
     await select.setValue('deepseek')
@@ -545,6 +555,30 @@ describe('dedicated block editors', () => {
         frequency_penalty: 0,
       },
     })
+
+    await select.setValue('google_genai')
+    expect(editor.get('[data-provider-setting="api_version"]').exists()).toBe(true)
+    expect(editor.get('[data-provider-setting="top_k"]').exists()).toBe(true)
+    expect(editor.get('[data-provider-setting="reasoning_effort"] option[value="high"]').exists()).toBe(true)
+    expect(editor.find('[data-provider-setting="max_completion_tokens"]').exists()).toBe(false)
+    expect(editor.find('[data-provider-setting="use_responses_api"]').exists()).toBe(false)
+  })
+
+  it('queries the model catalog with the Gemini connection api version', async () => {
+    const draft = modelAdapter.blank()
+    draft.provider = 'google_genai'
+    const editor = mountEditor(ModelEditor, { modelValue: draft })
+
+    await editor.get('[data-provider-setting="api_version"]').setValue('v1')
+    await editor.get('[data-testid="model-fetch-group"]').trigger('submit')
+
+    expect(editor.emitted('fetch-models')?.[0]).toEqual([{
+      provider: 'google_genai',
+      baseUrl: '',
+      credential: '',
+      blockId: '',
+      apiVersion: 'v1',
+    }])
   })
 
   it('switches all summarization threshold units without carrying incompatible values', async () => {

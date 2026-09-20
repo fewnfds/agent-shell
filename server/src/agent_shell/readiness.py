@@ -10,6 +10,7 @@ from agent_shell.storage.permissions import PermissionStatus
 _DEPENDENCIES = {
     "langchain": "langchain",
     "deepseek_provider": "langchain_deepseek",
+    "google_genai_provider": "langchain_google_genai",
     "openai_provider": "langchain_openai",
     "deepagents": "deepagents",
 }

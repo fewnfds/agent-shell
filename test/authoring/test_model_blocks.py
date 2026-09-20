@@ -62,14 +62,42 @@ def test_model_provider_is_required_and_limited_to_release_bundle(
 
 
 @pytest.mark.parametrize(
-    ("provider", "provider_settings", "credential"),
+    ("provider", "provider_settings", "credential", "expected_defaults"),
     [
         (
             "openai",
             {"max_completion_tokens": 512, "use_responses_api": True},
             "secret",
+            {
+                "temperature": 1,
+                "top_p": 1,
+                "presence_penalty": 0,
+                "frequency_penalty": 0,
+            },
         ),
-        ("deepseek", {"max_tokens": 512, "reasoning_effort": "high"}, "secret"),
+        (
+            "deepseek",
+            {"max_tokens": 512, "reasoning_effort": "high"},
+            "secret",
+            {
+                "temperature": 1,
+                "top_p": 1,
+                "presence_penalty": 0,
+                "frequency_penalty": 0,
+            },
+        ),
+        (
+            "google_genai",
+            {
+                "api_version": "v1",
+                "max_output_tokens": 512,
+                "top_k": 32,
+                "stop": ["END"],
+                "reasoning_effort": "low",
+            },
+            "secret",
+            {},
+        ),
     ],
 )
 def test_model_provider_settings_use_each_official_constructor_contract(
@@ -78,6 +106,7 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     provider: str,
     provider_settings: dict,
     credential: str | None,
+    expected_defaults: dict,
 ) -> None:
     client = make_client(tmp_path, monkeypatch)
     payload = model_payload(f"{provider} native settings")
@@ -90,12 +119,6 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     response = client.post("/agent-shell/api/model-connections", json=payload)
 
     assert response.status_code == 200, response.text
-    expected_defaults = {
-        "temperature": 1,
-        "top_p": 1,
-        "presence_penalty": 0,
-        "frequency_penalty": 0,
-    }
     assert response.json()["provider_settings"] == {
         **expected_defaults,
         **provider_settings,
@@ -106,7 +129,11 @@ def test_model_provider_settings_use_each_official_constructor_contract(
     ("provider", "provider_settings", "credential"),
     [
         ("openai", {"max_tokens": 512}, "secret"),
+        ("openai", {"max_output_tokens": 512}, "secret"),
         ("deepseek", {"max_completion_tokens": 512}, "secret"),
+        ("deepseek", {"api_version": "v1"}, "secret"),
+        ("google_genai", {"max_tokens": 512}, "secret"),
+        ("google_genai", {"vertexai": False}, "secret"),
     ],
 )
 def test_model_provider_settings_reject_cross_provider_parameters(
@@ -127,6 +154,30 @@ def test_model_provider_settings_reject_cross_provider_parameters(
     response = client.post("/agent-shell/api/model-connections", json=payload)
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "provider_settings",
+    [
+        {"api_version": "v1beta/models"},
+        {"api_version": ""},
+        {"reasoning_effort": "extreme"},
+        {"top_k": 0},
+    ],
+)
+def test_google_genai_settings_reject_impossible_values_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_settings: dict,
+) -> None:
+    client = make_client(tmp_path, monkeypatch)
+    payload = model_payload("Invalid Google GenAI settings")
+    payload.update(provider="google_genai", provider_settings=provider_settings)
+
+    response = client.post("/agent-shell/api/model-connections", json=payload)
+
+    assert response.status_code == 422, response.text
+    assert client.get("/agent-shell/api/model-connections").json() == []
 
 
 def test_model_parameters_reject_non_finite_numbers_before_storage(
