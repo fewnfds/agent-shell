@@ -32,6 +32,7 @@ Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_
 - 页面进入时从 latest Thread State hydration 已经 checkpoint 的消息；
 - Thread 仍 active 时，`useStream.messages` 按官方 message delta 实时增长 reasoning 与 assistant text，Tool、interrupt 和 error 也沿官方 stream 更新；
 - State snapshot 提供 hydration 和最终权威 State，不承担 token 流的重建；
+- 每个 AI 响应建立一段模型请求；Tool result 保留在产生该 Tool call 的 AI 回复下，下一段从后续 Human/System 输入或下一条 AI 响应开始，无文本的连续 Tool call 循环也会分开；隔断显示请求序号和该次响应可用的官方消息 ID；
 - reasoning 与 assistant text 在 Run 结束前使用流式 Markdown 渲染，root Run 结束后同一消息转为 final；Tool 调用与结果在同一条记录中更新；
 - Markdown 跟随管理台当前解析后的 light/dark mode；代码块、行内代码、引用、列表等格式使用 `markstream-vue` 自身对应主题变量；
 - 页面只观察，不提供输入、停止、approve 或 State 写入操作；离开页面只断开观察，不取消 Run。

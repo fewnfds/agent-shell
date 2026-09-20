@@ -339,6 +339,7 @@ export const en: MessageSchema = {
     },
     agent: {
       title: 'Agent stream',
+      request: 'Request {count}',
       reasoning: 'Reasoning',
       tool: 'Tool',
       input: 'Input',

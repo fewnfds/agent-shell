@@ -159,6 +159,121 @@ describe('AgentThreadView', () => {
     expect(themeScope.classes()).not.toContain('dark')
   })
 
+  it('separates every model request and keeps Tool results with their AI response', () => {
+    useStreamMock.mockReturnValue({
+      values: ref({ messages: [] }),
+      messages: ref([
+        new HumanMessage({ id: 'human-1', content: 'First request' }),
+        new AIMessage({
+          id: 'ai-1',
+          content: [
+            { type: 'reasoning', reasoning: 'first cot', id: 'reasoning-1' },
+            {
+              type: 'tool_call',
+              id: 'call-1a',
+              name: 'search',
+              args: { query: 'one' },
+            },
+            {
+              type: 'tool_call',
+              id: 'call-1b',
+              name: 'fetch',
+              args: { url: 'https://example.com/one' },
+            },
+          ],
+          tool_calls: [
+            { id: 'call-1a', name: 'search', args: { query: 'one' } },
+            { id: 'call-1b', name: 'fetch', args: { url: 'https://example.com/one' } },
+          ],
+        }),
+        new ToolMessage({
+          id: 'tool-1a',
+          tool_call_id: 'call-1a',
+          content: 'first search result',
+        }),
+        new ToolMessage({
+          id: 'tool-1b',
+          tool_call_id: 'call-1b',
+          content: 'first fetch result',
+        }),
+        new AIMessage({
+          id: 'ai-2',
+          content: [
+            {
+              type: 'tool_call',
+              id: 'call-2',
+              name: 'search',
+              args: { query: 'two' },
+            },
+          ],
+          tool_calls: [{ id: 'call-2', name: 'search', args: { query: 'two' } }],
+        }),
+        new ToolMessage({
+          id: 'tool-2',
+          tool_call_id: 'call-2',
+          content: 'second search result',
+        }),
+        new AIMessage({
+          id: 'ai-3',
+          content: [
+            { type: 'reasoning', reasoning: 'third cot', id: 'reasoning-3' },
+            { type: 'text', text: 'Summary', id: 'text-3' },
+            {
+              type: 'tool_call',
+              id: 'call-3',
+              name: 'search',
+              args: { query: 'three' },
+            },
+          ],
+          tool_calls: [{ id: 'call-3', name: 'search', args: { query: 'three' } }],
+        }),
+        new ToolMessage({
+          id: 'tool-3',
+          tool_call_id: 'call-3',
+          content: 'third search result',
+        }),
+      ]),
+      toolCalls: ref([]),
+      interrupts: ref([]),
+      error: ref(undefined),
+      isThreadLoading: ref(false),
+      isLoading: computed(() => false),
+    })
+
+    const { wrapper } = mountAgentThreadView()
+    const aiMessages = wrapper.findAll('.agent-message--ai')
+
+    expect(wrapper.findAll('.agent-request-divider').map((divider) => divider.text()))
+      .toEqual([
+        'Request 1 · ai-1',
+        'Request 2 · ai-2',
+        'Request 3 · ai-3',
+      ])
+    expect(
+      wrapper
+        .findAll('.agent-request-divider, .agent-message--ai')
+        .map((element) => (
+          element.classes().includes('agent-request-divider') ? 'request' : 'ai'
+        )),
+    ).toEqual([
+      'request',
+      'ai',
+      'request',
+      'ai',
+      'request',
+      'ai',
+    ])
+    expect(aiMessages).toHaveLength(3)
+    expect(aiMessages[0]?.findAll('.tool-activity')).toHaveLength(2)
+    expect(aiMessages[0]?.text()).toContain('first search result')
+    expect(aiMessages[0]?.text()).toContain('first fetch result')
+    expect(aiMessages[1]?.findAll('.tool-activity')).toHaveLength(1)
+    expect(aiMessages[1]?.text()).toContain('second search result')
+    expect(aiMessages[2]?.findAll('.tool-activity')).toHaveLength(1)
+    expect(aiMessages[2]?.text()).toContain('Summary')
+    expect(aiMessages[2]?.text()).toContain('third search result')
+  })
+
   it('renders the concrete Agent Server error instead of its transport envelope', () => {
     useStreamMock.mockReturnValue({
       values: ref({ messages: [] }),

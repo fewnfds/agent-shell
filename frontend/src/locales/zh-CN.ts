@@ -337,6 +337,7 @@ export const zhCN = {
     },
     agent: {
       title: 'Agent 信息流',
+      request: '请求 {count}',
       reasoning: 'Reasoning',
       tool: 'Tool',
       input: 'Input',

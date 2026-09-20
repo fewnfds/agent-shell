@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 
 import { managementAuthorizedFetch } from '@/api'
 
+import { monitoringShortId } from './presentation'
 import StructuredValueTree from './StructuredValueTree.vue'
 import ToolActivityRow from './ToolActivityRow.vue'
 
@@ -58,12 +59,51 @@ const declaredToolCallIds = computed(() => new Set(
   stream.messages.value.flatMap((message) => toolCalls(message).map((call) => call.id ?? '')),
 ))
 
+const requestStarts = computed(() => {
+  const starts = new Set<string>()
+  let seenAi = false
+  let startedAfterAi = false
+  stream.messages.value.forEach((message, index) => {
+    const start = index === 0
+      || (seenAi && !startedAfterAi && message.type !== 'tool')
+    if (start) {
+      starts.add(messageKey(message, index))
+      startedAfterAi = false
+    }
+    if (message.type === 'ai') {
+      seenAi = true
+      startedAfterAi = false
+    }
+    else if (start) {
+      startedAfterAi = true
+    }
+  })
+  return starts
+})
+
 function messageType(message: BaseMessage): string {
   return message.type
 }
 
 function messageKey(message: BaseMessage, index: number): string {
   return message.id ?? `${message.type}-${index}`
+}
+
+function startsRequest(message: BaseMessage, index: number): boolean {
+  return requestStarts.value.has(messageKey(message, index))
+}
+
+function requestNumber(messages: BaseMessage[], index: number): number {
+  return 1 + messages
+    .slice(0, index)
+    .filter((message) => message.type === 'ai')
+    .length
+}
+
+function requestMessageId(messages: BaseMessage[], index: number): string {
+  return messages
+    .slice(index)
+    .find((message) => message.type === 'ai')?.id ?? ''
 }
 
 function messageBlocks(message: BaseMessage): MessageBlock[] {
@@ -181,6 +221,23 @@ watch([stream.messages, stream.toolCalls, stream.interrupts], async () => {
       </div>
 
       <template v-for="(message, index) in streamedMessages" :key="messageKey(message, index)">
+        <div
+          v-if="startsRequest(message, index)"
+          class="agent-request-divider"
+          role="separator"
+        >
+          <span>{{ t('runtimeMonitoring.agent.request', {
+            count: requestNumber(streamedMessages, index),
+          }) }}</span>
+          <span
+            v-if="requestMessageId(streamedMessages, index)"
+            class="agent-request-id"
+            :title="requestMessageId(streamedMessages, index)"
+          >
+            · {{ monitoringShortId(requestMessageId(streamedMessages, index)) }}
+          </span>
+        </div>
+
         <article v-if="messageType(message) === 'human'" class="agent-message agent-message--human">
           <MarkdownRender mode="chat" :content="message.text" :final="true" />
         </article>
@@ -287,6 +344,37 @@ watch([stream.messages, stream.toolCalls, stream.interrupts], async () => {
   width: min(100%, 58rem);
   margin-block: 0 1.25rem;
   overflow-wrap: anywhere;
+}
+
+.agent-request-divider {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  width: min(100%, 58rem);
+  margin-block: 1.25rem .75rem;
+  color: var(--bs-secondary-color);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.agent-request-divider:first-child {
+  margin-block-start: 0;
+}
+
+.agent-request-divider::before,
+.agent-request-divider::after {
+  flex: 1 1 auto;
+  border-block-start: 1px solid var(--bs-border-color);
+  content: '';
+}
+
+.agent-request-id {
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-family: var(--bs-font-monospace);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-message--human {
