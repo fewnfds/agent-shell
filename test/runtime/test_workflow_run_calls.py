@@ -247,7 +247,7 @@ def test_official_run_stream_restores_source_error_and_projects_readable_event()
     assert error.message == "ProviderGatewayError: gateway rejected request body"
     assert error.status_code == 502
     assert error.source_exception_type == "ProviderGatewayError"
-    assert "ProviderGatewayError: gateway rejected request body" in error.remote_traceback
+    assert error.diagnostic_id == ""
     assert projected[0]["params"]["data"] == {
         "event": "failed",
         "error": "ProviderGatewayError: gateway rejected request body",

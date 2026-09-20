@@ -22,6 +22,7 @@ from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_RECORD_KEY,
     LIFECYCLE_START_ERROR_KEY,
 )
+from agent_shell.storage.model_call_archive import ModelCallArchive
 
 
 def _lifecycle_record(
@@ -763,6 +764,40 @@ def test_export_reports_a_missing_frozen_workflow_as_a_local_file_error() -> Non
     assert workflow_path not in names
     assert "configuration/snapshot.json" in names
     assert "snapshot.json" in names
+
+
+def test_lifecycle_export_and_delete_include_the_model_call_archive(
+    tmp_path: Path,
+) -> None:
+    archive = ModelCallArchive(tmp_path / "model-calls")
+    archive.append("lifecycle-1", {"model": {"name": "gpt-test"}})
+
+    async def scenario():
+        client = _Client()
+        for runs in client.run_values.values():
+            for run in runs:
+                run["status"] = "success"
+        service = LangGraphLifecycleService(
+            lambda: client,
+            model_call_archive=archive,
+        )
+        exported = await service.export("lifecycle-1")
+        await service.delete("lifecycle-1")
+        return client, exported
+
+    _client, exported = asyncio.run(scenario())
+    with ZipFile(BytesIO(exported.content)) as bundle:
+        names = set(bundle.namelist())
+        manifest = json.loads(bundle.read("manifest.json"))
+        recorded = bundle.read("model-calls.jsonl").decode("utf-8")
+
+    assert "model-calls.jsonl" in names
+    assert "gpt-test" in recorded
+    result = next(
+        item for item in manifest["files"] if item["path"] == "model-calls.jsonl"
+    )
+    assert result["status"] == "available"
+    assert archive.content("lifecycle-1") is None
 
 
 def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:

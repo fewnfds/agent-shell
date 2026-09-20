@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from langgraph.store.base import BaseStore
@@ -16,6 +16,9 @@ from langgraph_sdk import get_client
 from agent_shell.file_manager import FileManagerService
 from agent_shell.external_agents.runtime import AntigravityRunner
 from agent_shell.response_stream_policy import ResponseStreamPolicy
+
+if TYPE_CHECKING:
+    from agent_shell.storage.model_call_archive import ModelCallArchive
 from agent_shell.python_packages.validation import PythonPackageValidationService
 from agent_shell.python_schema_component import (
     PythonSchemaReferenceError,
@@ -1838,6 +1841,7 @@ class RequestSnapshotRuntime:
         workflow_data: WorkflowDataService,
         detached_tasks: DetachedTaskManager,
         runtime_diagnostics: RuntimeDiagnostics,
+        model_call_archive: ModelCallArchive,
         workflow_lifecycle_settings: WorkflowLifecycleSettingsStore,
         response_stream_policy_provider: Callable[[], ResponseStreamPolicy],
         configuration_mutations: ConfigurationMutationCoordinator,
@@ -1856,6 +1860,7 @@ class RequestSnapshotRuntime:
         self._workflow_data = workflow_data
         self._detached_tasks = detached_tasks
         self._runtime_diagnostics = runtime_diagnostics
+        self._model_call_archive = model_call_archive
         self._response_stream_policy_provider = response_stream_policy_provider
         self._configuration_mutations = configuration_mutations
         self._model_resources = model_resources or ModelResourceStore(configuration.data_root)
@@ -1875,6 +1880,7 @@ class RequestSnapshotRuntime:
             self.new_agent_server_client,
             workflow_lifecycle_settings,
             configuration.data_root,
+            model_call_archive=model_call_archive,
         )
 
     def new_agent_server_client(self):
@@ -2057,6 +2063,8 @@ class RequestSnapshotRuntime:
                     model_resources=model_resources,
                     mcp_resources=mcp_resources,
                     repository_id=repository_id,
+                    runtime_diagnostics=self._runtime_diagnostics,
+                    model_call_archive=self._model_call_archive,
                 ),
                 self._files,
                 python_packages_dir=python_packages_dir,

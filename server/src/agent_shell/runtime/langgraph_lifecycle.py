@@ -5,8 +5,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
+
+if TYPE_CHECKING:
+    from agent_shell.storage.model_call_archive import ModelCallArchive
 
 from agent_shell.external_agents.layout import remove_antigravity_lifecycle_state
 from agent_shell.external_agents.monitoring import (
@@ -145,10 +148,13 @@ class LangGraphLifecycleService:
         client_factory: Callable[[], Any],
         settings: WorkflowLifecycleSettingsStore | None = None,
         data_root: Path | None = None,
+        *,
+        model_call_archive: ModelCallArchive | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._settings = settings
         self._data_root = data_root
+        self._model_call_archive = model_call_archive
 
     @staticmethod
     async def _configuration_snapshot(
@@ -857,6 +863,15 @@ class LangGraphLifecycleService:
                     lambda value=thread_id: self._full_history(client, value),
                 )
 
+        if self._model_call_archive is not None:
+            archived_calls = await asyncio.to_thread(
+                self._model_call_archive.content,
+                lifecycle_id,
+            )
+            if archived_calls is not None:
+                files["model-calls.jsonl"] = archived_calls
+                results.append({"path": "model-calls.jsonl", "status": "available"})
+
         exported_at = datetime.now(timezone.utc).isoformat()
         manifest = {
             "schema_version": 1,
@@ -959,6 +974,11 @@ class LangGraphLifecycleService:
             await asyncio.to_thread(
                 remove_antigravity_lifecycle_state,
                 self._data_root,
+                lifecycle_id,
+            )
+        if self._model_call_archive is not None:
+            await asyncio.to_thread(
+                self._model_call_archive.discard,
                 lifecycle_id,
             )
         return len(observation.threads)

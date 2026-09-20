@@ -71,6 +71,13 @@ class RuntimeDiagnosticDetailStore:
         with self._lock:
             return path if path.is_file() else None
 
+    def read(self, diagnostic_id: str) -> str | None:
+        path = self._path(diagnostic_id)
+        with self._lock:
+            if not path.is_file():
+                return None
+            return path.read_text(encoding="utf-8")
+
     def retain(self, diagnostic_ids: set[str]) -> None:
         expected = {self._path(diagnostic_id) for diagnostic_id in diagnostic_ids}
         with self._lock:

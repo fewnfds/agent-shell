@@ -171,10 +171,7 @@ def test_execution_failure_returns_decoded_provider_reason(
                 "ProviderGatewayError: upstream returned 503 with an invalid payload",
                 status_code=502,
                 source_exception_type="ProviderGatewayError",
-                remote_traceback=(
-                    "Traceback (most recent call last):\n"
-                    "ProviderGatewayError: upstream returned 503 with an invalid payload\n"
-                ),
+                diagnostic_id="1" * 32,
                 decoded_from_server=True,
             )
 

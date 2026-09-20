@@ -15,6 +15,7 @@ from agent_shell.runtime.context import (
     WorkflowRunContext,
     WorkflowRuntimeContext,
 )
+from agent_shell.runtime.errors import decode_server_run_error
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _AgentRunBinding,
@@ -24,7 +25,11 @@ from agent_shell.runtime.request_snapshot import (
 from agent_shell.runtime.stream_transformers import RawCustomEventTransformer
 from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle
 from agent_shell.workflow import admit_workflow_document
-from agent_shell.workflow.compiler import _node_runtime_context, compile_workflow
+from agent_shell.workflow.compiler import (
+    _make_command_node,
+    _node_runtime_context,
+    compile_workflow,
+)
 
 
 def _start_end_document():
@@ -739,3 +744,59 @@ def test_server_graph_preserves_the_control_input_state() -> None:
     result = graph.invoke({"state": {"request": "ready"}})
 
     assert result == {"state": {"request": "ready"}}
+
+
+def test_command_failure_persists_source_fact_and_transports_reference() -> None:
+    """A Command failure reaches the local fact store before Server sees it."""
+
+    recorded: list[dict[str, object]] = []
+
+    class Diagnostics:
+        def runtime_error(self, exc, **kwargs):
+            recorded.append({"exception": exc, **kwargs})
+            return "b" * 32
+
+    async def failing(state, runtime):
+        del state, runtime
+        raise RuntimeError("command body exploded")
+
+    node = _make_command_node(
+        node_id="router",
+        command=failing,
+        target_map={},
+        runtime_context=WorkflowRuntimeContext(
+            request_id="request-1",
+            lifecycle_id="lifecycle-1",
+            workflow_id="workflow-1",
+            diagnostics=Diagnostics(),
+        ),
+    )
+    runtime = Runtime(
+        context=WorkflowRunContext(
+            request_id="request-1",
+            lifecycle_id="lifecycle-1",
+        ),
+        execution_info=ExecutionInfo(
+            checkpoint_id="checkpoint-1",
+            checkpoint_ns="",
+            task_id="task-1",
+            thread_id="thread-1",
+            run_id="run-1",
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as captured:
+        asyncio.run(node({}, runtime))
+
+    transported = decode_server_run_error(str(captured.value))
+    assert transported is not None
+    assert transported.code == "workflow.command_failed"
+    assert transported.diagnostic_id == "b" * 32
+    assert "RuntimeError: command body exploded" in transported.message
+    assert recorded[0]["component"] == "graph_runtime"
+    context = recorded[0]["context"]
+    assert context.request_id == "request-1"
+    assert context.lifecycle_id == "lifecycle-1"
+    assert context.subject_kind == "workflow"
+    assert context.workflow_node_id == "router"
+    assert context.node_invocation_id == "task-1"

@@ -187,7 +187,9 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         agent_builder, "materialize_patch_tool_calls_middleware", lambda: main_patch
     )
     monkeypatch.setattr(
-        agent_builder, "ToolErrorBoundaryMiddleware", lambda: main_tool_boundary
+        agent_builder,
+        "ToolErrorBoundaryMiddleware",
+        lambda **_kwargs: main_tool_boundary,
     )
     monkeypatch.setattr(
         agent_builder,
@@ -195,7 +197,9 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         lambda **_kwargs: main_settings,
     )
     monkeypatch.setattr(
-        agent_builder, "ProviderErrorBoundaryMiddleware", lambda: main_provider_boundary
+        agent_builder,
+        "ProviderErrorBoundaryMiddleware",
+        lambda **_kwargs: main_provider_boundary,
     )
     monkeypatch.setattr(
         agent_builder,
@@ -206,7 +210,7 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         subagents, "materialize_patch_tool_calls_middleware", lambda: child_patch
     )
     monkeypatch.setattr(
-        subagents, "ToolErrorBoundaryMiddleware", lambda: child_tool_boundary
+        subagents, "ToolErrorBoundaryMiddleware", lambda **_kwargs: child_tool_boundary
     )
     monkeypatch.setattr(
         subagents,
@@ -214,7 +218,9 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         lambda **_kwargs: child_settings,
     )
     monkeypatch.setattr(
-        subagents, "ProviderErrorBoundaryMiddleware", lambda: child_provider_boundary
+        subagents,
+        "ProviderErrorBoundaryMiddleware",
+        lambda **_kwargs: child_provider_boundary,
     )
     monkeypatch.setattr(
         subagents, "EmptySystemMessageMiddleware", lambda: child_empty_prompt

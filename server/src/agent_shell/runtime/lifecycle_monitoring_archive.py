@@ -25,7 +25,10 @@ def build_lifecycle_monitoring_archive(
     with ZipFile(output, "w", compression=ZIP_DEFLATED, allowZip64=True) as archive:
         archive.writestr("manifest.json", _json_bytes(manifest))
         for path, value in sorted(files.items()):
-            archive.writestr(path, _json_bytes(value))
+            archive.writestr(
+                path,
+                value if isinstance(value, bytes) else _json_bytes(value),
+            )
     safe_id = re.sub(r"[^A-Za-z0-9._-]", "_", lifecycle_id)
     return LifecycleMonitoringArchive(
         filename=f"lifecycle-monitoring-{safe_id}.zip",

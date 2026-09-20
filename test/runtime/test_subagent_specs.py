@@ -38,7 +38,7 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
         subagents, "materialize_patch_tool_calls_middleware", lambda: patch
     )
     monkeypatch.setattr(
-        subagents, "ToolErrorBoundaryMiddleware", lambda: tool_boundary
+        subagents, "ToolErrorBoundaryMiddleware", lambda **_kwargs: tool_boundary
     )
     monkeypatch.setattr(
         subagents,
@@ -46,7 +46,9 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
         lambda **_kwargs: model_settings,
     )
     monkeypatch.setattr(
-        subagents, "ProviderErrorBoundaryMiddleware", lambda: provider_boundary
+        subagents,
+        "ProviderErrorBoundaryMiddleware",
+        lambda **_kwargs: provider_boundary,
     )
     monkeypatch.setattr(
         subagents, "EmptySystemMessageMiddleware", lambda: empty_prompt

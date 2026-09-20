@@ -50,6 +50,7 @@ Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和�
 
 - 拦截消息页在进程内暂存并展示最新一条 OpenAI 请求原文，服务重启后清空；
 - 运行诊断异常自动写入 `data/logs/diagnostics/` 的完整异常详情；
+- 每次模型调用的请求与返回归档写入 `data/logs/model-calls/`，内联二进制只记录类型与长度；
 - LangGraph Dev 保存 Assistant、Thread、Run、checkpoint、State/history 与 Server Store 数据；管理 API 通过公共接口读取 Lifecycle 下的官方 Run、Assistant Graph、latest Thread State 和 State history；
 - Lifecycle 监控 ZIP 在用户下载时通过公共 API 组合 snapshot、Store、Assistant Graph、latest State 和 checkpoint history，其中可能包含消息、reasoning、Tool 输入/输出、State 与文件路径；
 - 用户创建的组件、文件和 Python 资源。

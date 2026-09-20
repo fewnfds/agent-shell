@@ -123,7 +123,7 @@ class RuntimeDiagnostics:
         component: str,
         context: RuntimeDiagnosticContext | None = None,
         detail_exception: BaseException | None = None,
-    ) -> None:
+    ) -> str:
         summary_source = detail_exception or exc
         summary = describe_exception(summary_source)
         source_exception_type = (
@@ -132,7 +132,7 @@ class RuntimeDiagnostics:
             and summary_source.source_exception_type
             else type(summary_source).__name__
         )
-        self._emit_exception(
+        return self._emit_exception(
             exc,
             code=code,
             component=component,
@@ -150,8 +150,8 @@ class RuntimeDiagnostics:
         component: str,
         context: RuntimeDiagnosticContext | None = None,
         detail_exception: BaseException | None = None,
-    ) -> None:
-        await asyncio.to_thread(
+    ) -> str:
+        return await asyncio.to_thread(
             self.runtime_error,
             exc,
             code=code,
@@ -167,8 +167,8 @@ class RuntimeDiagnostics:
         code: str,
         component: str,
         context: RuntimeDiagnosticContext | None = None,
-    ) -> None:
-        self._emit_exception(
+    ) -> str:
+        return self._emit_exception(
             exc,
             code=code,
             component=component,
@@ -185,8 +185,8 @@ class RuntimeDiagnostics:
         code: str,
         component: str,
         context: RuntimeDiagnosticContext | None = None,
-    ) -> None:
-        await asyncio.to_thread(
+    ) -> str:
+        return await asyncio.to_thread(
             self.observation_error,
             exc,
             code=code,
@@ -204,7 +204,7 @@ class RuntimeDiagnostics:
         context: RuntimeDiagnosticContext | None,
         detail_exception: BaseException,
         source_exception_type: str,
-    ) -> None:
+    ) -> str:
         diagnostic_id = uuid4().hex
         occurred_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
         diagnostic_code = self._redact_secret_text(_diagnostic_text(code))
@@ -219,6 +219,12 @@ class RuntimeDiagnostics:
             for key, value in (context or RuntimeDiagnosticContext()).values().items()
         }
         diagnostic_exception_type = _optional_diagnostic_text(source_exception_type)
+        source_diagnostic_id = (
+            detail_exception.diagnostic_id
+            if isinstance(detail_exception, AgentRuntimeError)
+            and detail_exception.diagnostic_id
+            else ""
+        )
         prefix = (
             f"{occurred_at} [ERROR] component={diagnostic_component} "
             f"code={diagnostic_code} "
@@ -242,7 +248,20 @@ class RuntimeDiagnostics:
                             for key, value in diagnostic_context.items()
                             if value
                         ),
-                        f"exception_type={source_exception_type}\n\n",
+                        f"exception_type={source_exception_type}\n",
+                        (
+                            f"source_diagnostic_id={source_diagnostic_id}\n"
+                            if source_diagnostic_id
+                            else (
+                                "source_diagnostic_id=unavailable\n"
+                                if (
+                                    isinstance(detail_exception, AgentRuntimeError)
+                                    and detail_exception.decoded_from_server
+                                )
+                                else ""
+                            )
+                        ),
+                        "\n",
                     )
                 )
                 traceback_text = "".join(
@@ -250,13 +269,9 @@ class RuntimeDiagnostics:
                         detail_exception
                     ).format(chain=True)
                 )
-                if (
-                    isinstance(detail_exception, AgentRuntimeError)
-                    and detail_exception.remote_traceback
-                ):
-                    traceback_text += (
-                        "\nAgent Server source traceback:\n"
-                        + detail_exception.remote_traceback
+                if source_diagnostic_id:
+                    traceback_text += self._source_diagnostic_section(
+                        source_diagnostic_id
                     )
                 detail_available = self._details.write(
                     diagnostic_id,
@@ -294,7 +309,7 @@ class RuntimeDiagnostics:
                         + "\nruntime diagnostic cleanup failed: "
                         + self._redact_secret_text(describe_exception(cleanup_error))
                     )
-                return
+                return ""
             try:
                 self._reconcile_details()
             except Exception as cleanup_error:
@@ -304,6 +319,25 @@ class RuntimeDiagnostics:
                     + self._redact_secret_text(describe_exception(cleanup_error))
                 )
         self._publish({"type": "runtime_diagnostic", "entry": entry})
+        return diagnostic_id if detail_available else ""
+
+    def _source_diagnostic_section(self, source_diagnostic_id: str) -> str:
+        """Inline the source failure so one attachment answers the whole chain."""
+
+        try:
+            source = self._details.read(source_diagnostic_id)
+        except Exception as exc:
+            return (
+                "\nsource diagnostic could not be read: "
+                + self._redact_secret_text(describe_exception(exc))
+                + "\n"
+            )
+        if source is None:
+            return (
+                f"\nsource_diagnostic_id={source_diagnostic_id} "
+                "(detail is no longer retained)\n"
+            )
+        return "\nsource diagnostic:\n" + source + "\n"
 
 
 __all__ = ["RuntimeDiagnosticContext", "RuntimeDiagnostics"]

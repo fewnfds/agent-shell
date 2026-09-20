@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from langchain.chat_models import init_chat_model
 from langgraph.store.base import BaseStore
@@ -60,6 +60,7 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.model_request_settings import (
     make_model_request_settings_middleware,
 )
+from agent_shell.runtime.model_call_archive import ModelCallArchiveMiddleware
 from agent_shell.runtime.state import AgentInitialFilesMiddleware, AgentShellState
 from agent_shell.validation.capability_assembly import FilesystemMode
 from agent_shell.validation.service import ConfigurationValidationService
@@ -69,6 +70,10 @@ from agent_shell.storage.model_connections import ModelResourceSnapshot, ModelRe
 from agent_shell.storage.mcp_connections import McpResourceSnapshot
 from agent_shell.runtime.mcp import McpRunRuntime
 from agent_shell.validation.assembly import ResolvedMcpReference
+
+if TYPE_CHECKING:
+    from agent_shell.runtime.diagnostics import RuntimeDiagnostics
+    from agent_shell.storage.model_call_archive import ModelCallArchive
 from agent_shell.tool_packages import ToolPackageRuntime
 
 
@@ -151,6 +156,8 @@ class AgentBuilder:
         model_resources: ModelResourceStore | ModelResourceSnapshot | None = None,
         mcp_resources: McpResourceSnapshot | None = None,
         repository_id: str | None = None,
+        runtime_diagnostics: RuntimeDiagnostics | None = None,
+        model_call_archive: ModelCallArchive | None = None,
     ) -> None:
         self._secrets = secrets
         self._python_packages_dir = python_packages_dir
@@ -163,6 +170,8 @@ class AgentBuilder:
         self._model_resources = model_resources or getattr(secrets, "model_connections", None)
         self._repository_id = repository_id or getattr(secrets, "repository_id", "")
         self._mcp_resources = mcp_resources
+        self._runtime_diagnostics = runtime_diagnostics
+        self._model_call_archive = model_call_archive
         self._mcp_runtime: McpRunRuntime | None = None
         self._tool_runtime: ToolPackageRuntime | None = None
         self._middleware_runtime: MiddlewarePackageRuntime | None = None
@@ -733,6 +742,8 @@ class AgentBuilder:
                     mapped_directory_paths_by_filesystem
                 ),
                 initial_files=subagent_initial_files,
+                runtime_diagnostics=self._runtime_diagnostics,
+                model_call_archive=self._model_call_archive,
             )
             delegation_instruction = selected_blocks["subagent"][
                 "instruction_override"
@@ -774,9 +785,18 @@ class AgentBuilder:
             if materialized.exception_retry is not None
             else ()
         )
+        model_call_archive_middleware = (
+            ModelCallArchiveMiddleware(archive=self._model_call_archive)
+            if self._model_call_archive is not None
+            else None
+        )
         patch_tool_calls_middleware = materialize_patch_tool_calls_middleware()
-        tool_error_boundary = ToolErrorBoundaryMiddleware()
-        provider_error_boundary = ProviderErrorBoundaryMiddleware()
+        tool_error_boundary = ToolErrorBoundaryMiddleware(
+            runtime_diagnostics=self._runtime_diagnostics,
+        )
+        provider_error_boundary = ProviderErrorBoundaryMiddleware(
+            runtime_diagnostics=self._runtime_diagnostics,
+        )
         middleware_without_subagent = assemble_agent_middleware(
             foundation=materialized.foundation_middleware,
             subagent=None,
@@ -789,6 +809,7 @@ class AgentBuilder:
             model_request_settings=model_request_settings_middleware,
             provider_error_boundary=provider_error_boundary,
             exception_retry=exception_retry_middleware,
+            model_call_archive=model_call_archive_middleware,
             initial_files=initial_files_middleware,
             package=materialized.package_middleware,
         )
@@ -819,6 +840,7 @@ class AgentBuilder:
                 model_request_settings=model_request_settings_middleware,
                 provider_error_boundary=provider_error_boundary,
                 exception_retry=exception_retry_middleware,
+                model_call_archive=model_call_archive_middleware,
                 initial_files=initial_files_middleware,
                 package=materialized.package_middleware,
             )

@@ -15,6 +15,7 @@ from agent_shell.command import (
     run_command,
 )
 from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
+from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
 from agent_shell.runtime.state import WorkflowState
 from agent_shell.workflow.catalog import node_type_spec
@@ -64,6 +65,48 @@ def _node_runtime_context(
     return server_context.for_server_run(execution_info.run_id)
 
 
+def _command_failure(
+    code: str,
+    message: str,
+    *,
+    context: WorkflowRuntimeContext,
+    detail_exception: BaseException,
+    server_projection: bool,
+) -> BaseException:
+    """Persist the Command failure fact, then project only its reference."""
+
+    diagnostics = context.diagnostics
+    diagnostic_id = (
+        diagnostics.runtime_error(
+            detail_exception,
+            code=code,
+            component="graph_runtime",
+            context=RuntimeDiagnosticContext(
+                request_id=context.request_id,
+                lifecycle_id=context.lifecycle_id,
+                run_id=context.run_id,
+                subject_kind="workflow",
+                subject_id=context.workflow_id,
+                workflow_node_id=context.workflow_node_id,
+                node_invocation_id=context.node_invocation_id,
+            ),
+        )
+        if diagnostics is not None
+        else ""
+    )
+    error = AgentRuntimeError(
+        code,
+        message,
+        status_code=422,
+        diagnostic_id=diagnostic_id,
+    )
+    if server_projection:
+        return RuntimeError(
+            encode_server_run_error(error, detail_exception=detail_exception)
+        )
+    return error
+
+
 def _make_command_node(
     *,
     node_id: str,
@@ -93,27 +136,21 @@ def _make_command_node(
                 state_schema=state_schema,
             )
         except CommandStateSchemaError as exc:
-            error = AgentRuntimeError(
+            raise _command_failure(
                 "workflow.state_invalid",
                 str(exc),
-                status_code=422,
-            )
-            if runtime_context is not None:
-                raise RuntimeError(
-                    encode_server_run_error(error, detail_exception=exc)
-                ) from exc
-            raise error from exc
+                context=node_runtime.context,
+                detail_exception=exc,
+                server_projection=runtime_context is not None,
+            ) from exc
         except CommandError as exc:
-            error = AgentRuntimeError(
+            raise _command_failure(
                 "workflow.command_failed",
                 "The Command Node script failed.",
-                status_code=422,
-            )
-            if runtime_context is not None:
-                raise RuntimeError(
-                    encode_server_run_error(error, detail_exception=exc)
-                ) from exc
-            raise error from exc
+                context=node_runtime.context,
+                detail_exception=exc,
+                server_projection=runtime_context is not None,
+            ) from exc
 
     return call_command
 

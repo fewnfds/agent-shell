@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_shell.runtime.agent_compilation import (
     AgentResourceMaterializer,
@@ -24,11 +24,16 @@ from agent_shell.runtime.limits import (
 from agent_shell.runtime.model_request_settings import (
     make_model_request_settings_middleware,
 )
+from agent_shell.runtime.model_call_archive import ModelCallArchiveMiddleware
 from agent_shell.validation.assembly import (
     ResolvedSubagent,
     ResolvedSubagentEdge,
     SubagentNodeKey,
 )
+
+if TYPE_CHECKING:
+    from agent_shell.runtime.diagnostics import RuntimeDiagnostics
+    from agent_shell.storage.model_call_archive import ModelCallArchive
 
 
 def build_subagent_specs(
@@ -42,6 +47,8 @@ def build_subagent_specs(
         str, Mapping[str, Path]
     ] | None = None,
     initial_files: dict[str, Any] | None = None,
+    runtime_diagnostics: RuntimeDiagnostics | None = None,
+    model_call_archive: ModelCallArchive | None = None,
 ) -> list[dict[str, Any]]:
     """Project direct children to Deep Agents' official SubAgent dictionaries."""
 
@@ -55,6 +62,8 @@ def build_subagent_specs(
                 mapped_directory_paths_by_filesystem
             ),
             initial_files=initial_files,
+            runtime_diagnostics=runtime_diagnostics,
+            model_call_archive=model_call_archive,
         )
         for edge in roots
     ]
@@ -70,6 +79,8 @@ def _build_subagent_spec(
         str, Mapping[str, Path]
     ] | None,
     initial_files: dict[str, Any] | None,
+    runtime_diagnostics: RuntimeDiagnostics | None,
+    model_call_archive: ModelCallArchive | None,
 ) -> dict[str, Any]:
     child = materialize_resources(
         node.references,
@@ -108,14 +119,23 @@ def _build_subagent_spec(
         patch_tool_calls=materialize_patch_tool_calls_middleware(),
         model_call_limit=child.model_call_limit_middleware,
         tool_call_limit=child.tool_call_limit_middleware,
-        tool_error_boundary=ToolErrorBoundaryMiddleware(),
+        tool_error_boundary=ToolErrorBoundaryMiddleware(
+            runtime_diagnostics=runtime_diagnostics,
+        ),
         todo=child.todo_middleware,
         model_request_settings=model_request_settings_middleware,
-        provider_error_boundary=ProviderErrorBoundaryMiddleware(),
+        provider_error_boundary=ProviderErrorBoundaryMiddleware(
+            runtime_diagnostics=runtime_diagnostics,
+        ),
         exception_retry=(
             child.exception_retry.after_provider_boundary
             if child.exception_retry is not None
             else ()
+        ),
+        model_call_archive=(
+            ModelCallArchiveMiddleware(archive=model_call_archive)
+            if model_call_archive is not None
+            else None
         ),
         package=child.package_middleware,
         empty_system_message=EmptySystemMessageMiddleware(),

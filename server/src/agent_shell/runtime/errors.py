@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import traceback
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,7 +16,7 @@ class AgentRuntimeError(RuntimeError):
         status_code: int = 500,
         validation_report: ValidationReport | None = None,
         source_exception_type: str = "",
-        remote_traceback: str = "",
+        diagnostic_id: str = "",
         decoded_from_server: bool = False,
     ) -> None:
         self.code = code
@@ -25,7 +24,7 @@ class AgentRuntimeError(RuntimeError):
         self.status_code = status_code
         self.validation_report = validation_report
         self.source_exception_type = source_exception_type
-        self.remote_traceback = remote_traceback
+        self.diagnostic_id = diagnostic_id
         self.decoded_from_server = decoded_from_server
         super().__init__(message)
 
@@ -66,28 +65,25 @@ def encode_server_run_error(
     *,
     detail_exception: BaseException | None = None,
 ) -> str:
-    """Serialize a classified error and its source through Server's error field."""
+    """Serialize a classified error and its local diagnostic reference.
+
+    Server transports this envelope as a plain string. The real failure is a
+    local diagnostic fact created where the exception was still alive, so the
+    envelope only carries classification plus the ``diagnostic_id`` reference.
+    """
 
     source = detail_exception or error.__cause__ or (
         None if error.__suppress_context__ else error.__context__
     )
     message = describe_exception(source) if source is not None else error.message
     source_exception_type = error.source_exception_type
+    diagnostic_id = error.diagnostic_id
     if source is not None:
-        source_exception_type = (
-            source.source_exception_type
-            if isinstance(source, AgentRuntimeError) and source.source_exception_type
-            else type(source).__name__
-        )
-    remote_traceback = error.remote_traceback
-    if source is not None:
-        remote_traceback = (
-            source.remote_traceback
-            if isinstance(source, AgentRuntimeError) and source.remote_traceback
-            else "".join(
-                traceback.TracebackException.from_exception(source).format(chain=True)
-            )
-        )
+        if isinstance(source, AgentRuntimeError):
+            source_exception_type = source.source_exception_type or source_exception_type
+            diagnostic_id = source.diagnostic_id or diagnostic_id
+        else:
+            source_exception_type = type(source).__name__
 
     return _SERVER_RUN_ERROR_PREFIX + json.dumps(
         {
@@ -95,7 +91,7 @@ def encode_server_run_error(
             "message": message,
             "status_code": error.status_code,
             "source_exception_type": source_exception_type,
-            "traceback": remote_traceback,
+            "diagnostic_id": diagnostic_id,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -117,7 +113,7 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
     message = payload.get("message")
     status_code = payload.get("status_code")
     source_exception_type = payload.get("source_exception_type", "")
-    remote_traceback = payload.get("traceback", "")
+    diagnostic_id = payload.get("diagnostic_id", "")
     if (
         not isinstance(code, str)
         or not code
@@ -127,7 +123,7 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
         or isinstance(status_code, bool)
         or not 400 <= status_code <= 599
         or not isinstance(source_exception_type, str)
-        or not isinstance(remote_traceback, str)
+        or not isinstance(diagnostic_id, str)
     ):
         return None
     return AgentRuntimeError(
@@ -135,7 +131,7 @@ def decode_server_run_error(value: object) -> AgentRuntimeError | None:
         message,
         status_code=status_code,
         source_exception_type=source_exception_type,
-        remote_traceback=remote_traceback,
+        diagnostic_id=diagnostic_id,
         decoded_from_server=True,
     )
 

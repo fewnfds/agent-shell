@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 from agent_shell.external_agents.commands import ExternalAgentCommands
 from agent_shell.runtime.agent_run_commands import AgentRunCommands, AgentRunRuntime
+from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.runtime.run_calls import RunCaller
 from agent_shell.runtime.workflow_run_commands import WorkflowRunCommands, WorkflowRunRuntime
 from agent_shell.runtime.run_identity import AgentRunIdentity, WorkflowRunIdentity
@@ -69,6 +70,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
     workflow_runs: WorkflowRunCommands | None = None
     mcp: McpCommands | None = None
     external_agent: ExternalAgentCommands | None = None
+    diagnostics: RuntimeDiagnostics | None = None
     _mcp_commands_by_node: Mapping[str, McpCommands] | None = None
     _external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None
 
@@ -89,6 +91,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
         external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None,
+        runtime_diagnostics: RuntimeDiagnostics | None = None,
     ) -> "WorkflowRuntimeContext":
         context = cls(
             request_id=identity.request_id,
@@ -97,6 +100,7 @@ class WorkflowRuntimeContext(WorkflowRunContext):
             workflow_id=identity.workflow_id,
             caller_run_id=identity.caller_run_id,
             operation_id=identity.operation_id,
+            diagnostics=runtime_diagnostics,
         )
         return context.with_runtime_bindings(
             agent_run_runtime=agent_run_runtime,
@@ -112,11 +116,17 @@ class WorkflowRuntimeContext(WorkflowRunContext):
         workflow_run_runtime: WorkflowRunRuntime | None = None,
         mcp_commands_by_node: Mapping[str, McpCommands] | None = None,
         external_agents_by_node: Mapping[str, ExternalAgentCommands] | None = None,
+        runtime_diagnostics: RuntimeDiagnostics | None = None,
     ) -> "WorkflowRuntimeContext":
         """Attach execution-only capabilities without exposing them as JSON context."""
 
         return replace(
             self,
+            diagnostics=(
+                runtime_diagnostics
+                if runtime_diagnostics is not None
+                else self.diagnostics
+            ),
             agent_runs=(
                 AgentRunCommands(
                     agent_run_runtime,

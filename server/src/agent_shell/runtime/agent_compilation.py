@@ -73,6 +73,7 @@ def assemble_agent_middleware(
     model_request_settings: Any | None,
     provider_error_boundary: Any,
     exception_retry: Sequence[Any] = (),
+    model_call_archive: Any | None = None,
     initial_files: Any | None = None,
     package: Sequence[Any] = (),
     empty_system_message: Any | None = None,
@@ -96,6 +97,8 @@ def assemble_agent_middleware(
         if item is not None
     )
     middleware.extend(exception_retry)
+    if model_call_archive is not None:
+        middleware.append(model_call_archive)
     if initial_files is not None:
         middleware.append(initial_files)
     middleware.extend(package)

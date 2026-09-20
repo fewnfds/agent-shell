@@ -1625,6 +1625,7 @@ class AgentRuntime:
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
                     external_agents_by_node=external_agents_by_node,
+                    runtime_diagnostics=runtime_diagnostics,
                 )
                 if server_context is not None
                 else WorkflowRuntimeContext.for_run(
@@ -1633,6 +1634,7 @@ class AgentRuntime:
                     workflow_run_runtime=workflow_run_runtime,
                     mcp_commands_by_node=mcp_commands_by_node,
                     external_agents_by_node=external_agents_by_node,
+                    runtime_diagnostics=runtime_diagnostics,
                 )
             )
 

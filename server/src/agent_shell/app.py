@@ -71,6 +71,7 @@ from agent_shell.storage.file_config import (
 from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.runtime_diagnostic_details import RuntimeDiagnosticDetailStore
 from agent_shell.storage.runtime_diagnostics import RuntimeDiagnosticStore
+from agent_shell.storage.model_call_archive import ModelCallArchive
 from agent_shell.storage.workflow_lifecycle_settings import (
     WorkflowLifecycleSettingsStore,
 )
@@ -249,6 +250,10 @@ def create_app(
         details=runtime_diagnostic_details,
         redact_secret_text=environment.redact_secret_text,
     )
+    model_call_archive = ModelCallArchive(
+        logs_dir / "model-calls",
+        redact_secret_text=environment.redact_secret_text,
+    )
     detached_tasks = DetachedTaskManager()
     event_logger.set_failure_reporter(
         lambda exc, request_id: runtime_diagnostics.observation_error(
@@ -293,6 +298,7 @@ def create_app(
         workflow_data=workflow_data,
         detached_tasks=detached_tasks,
         runtime_diagnostics=runtime_diagnostics,
+        model_call_archive=model_call_archive,
         workflow_lifecycle_settings=workflow_lifecycle_settings,
         response_stream_policy_provider=system_settings.response_stream_policy,
         configuration_mutations=configuration_mutations,

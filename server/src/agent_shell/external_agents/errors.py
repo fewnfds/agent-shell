@@ -10,20 +10,18 @@ from agent_shell.runtime.errors import AgentRuntimeError
 def binary_unavailable(message: str, *, path: Path) -> AgentRuntimeError:
     return AgentRuntimeError(
         "external_agent_binary_unavailable",
-        message,
+        f"{message} (path: {path})",
         status_code=422,
         source_exception_type="MissingExternalAgentBinary",
-        remote_traceback=f"expected binary path: {path}",
     )
 
 
 def materialization_failed(message: str, *, path: Path) -> AgentRuntimeError:
     return AgentRuntimeError(
         "external_agent_materialization_failed",
-        message,
+        f"{message} (path: {path})",
         status_code=500,
         source_exception_type="ExternalAgentMaterializationError",
-        remote_traceback=f"failed path: {path}",
     )
 
 
