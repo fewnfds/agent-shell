@@ -25,7 +25,7 @@
 
 左侧按 Thread 列出 Agent 与 Workflow，当前有 pending/running Run 的 Thread 显示动态状态。同一列表还显示该 Lifecycle 中由 Workflow Command 启动的 External Agent Session，使用独立图标、预设名、session 短 ID 与终态区分。选中 External Agent Session 时，主视图显示其会话信息、最终响应、错误和归一化事件时间线；它不伪造为官方 Thread/Run。
 
-官方 Thread 选中后，右侧顶部按创建顺序显示所选 Thread 的 Run；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。消息或 Graph 视图由当前所选 Thread 的 subject kind 决定，与整个 Lifecycle 最初由 Agent 还是 Workflow 发起无关。
+官方 Thread 选中后，右侧顶部按创建顺序显示所选 Thread 的 Run；每个 Run 同时显示按 `run_id` 归档统计的模型请求数。该计数包含该 Run 内记录的模型调用尝试，不代表 Thread 或 Lifecycle 的请求数；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。消息或 Graph 视图由当前所选 Thread 的 subject kind 决定，与整个 Lifecycle 最初由 Agent 还是 Workflow 发起无关。
 
 Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_id`：
 

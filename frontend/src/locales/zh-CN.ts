@@ -328,6 +328,7 @@ export const zhCN = {
     resizeThreads: '调整 Threads 与 Graph 列宽',
     resizeInspector: '调整 Graph 与 State / Store 列宽',
     runs: 'Runs',
+    modelRequests: '模型请求: {count}',
     data: '运行数据',
     store: 'Store',
     workflow: {

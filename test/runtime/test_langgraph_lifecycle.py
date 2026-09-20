@@ -800,6 +800,28 @@ def test_lifecycle_export_and_delete_include_the_model_call_archive(
     assert archive.content("lifecycle-1") is None
 
 
+def test_snapshot_projects_model_request_counts_by_run(tmp_path: Path) -> None:
+    archive = ModelCallArchive(tmp_path / "model-calls")
+    archive.append("lifecycle-1", {"run_id": "run-entry"})
+    archive.append("lifecycle-1", {"run_id": "run-entry"})
+    archive.append("lifecycle-1", {"run_id": "run-peer"})
+
+    async def scenario():
+        service = LangGraphLifecycleService(
+            lambda: _Client(),
+            model_call_archive=archive,
+        )
+        return await service.snapshot("lifecycle-1")
+
+    snapshot = asyncio.run(scenario())
+    counts = {
+        run["run_id"]: run["model_request_count"]
+        for thread in snapshot["threads"]
+        for run in thread["runs"]
+    }
+    assert counts == {"run-entry": 2, "run-peer": 1}
+
+
 def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:
     async def scenario():
         client = _Client()

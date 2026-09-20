@@ -248,11 +248,22 @@ class LangGraphLifecycleService:
         client: Any,
         lifecycle: LifecycleRecord,
         threads: list[dict[str, Any]],
+        *,
+        include_model_request_counts: bool = False,
     ) -> _LifecycleObservation:
         """Group public Thread/Run objects while keeping local failures explicit."""
 
         lifecycle_id = lifecycle.lifecycle_id
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
+        model_request_counts = (
+            await asyncio.to_thread(
+                self._model_call_archive.run_request_counts,
+                lifecycle_id,
+            )
+            if include_model_request_counts
+            and self._model_call_archive is not None
+            else {}
+        )
         external_agent_sessions = await asyncio.to_thread(
             read_external_agent_sessions,
             self._data_root,
@@ -308,6 +319,7 @@ class LangGraphLifecycleService:
                             if relation is not None
                             else None
                         ),
+                        "model_request_count": model_request_counts.get(run_id, 0),
                         "error": None,
                     }
                 )
@@ -329,6 +341,10 @@ class LangGraphLifecycleService:
                     "run_id": relation.run_id,
                     "run": run,
                     "relation": relation.model_dump(mode="json"),
+                    "model_request_count": model_request_counts.get(
+                        relation.run_id,
+                        0,
+                    ),
                     "error": error,
                 }
             )
@@ -628,7 +644,12 @@ class LangGraphLifecycleService:
             if lifecycle is None:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
             threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle, threads)
+            observation = await self._observe_lifecycle(
+                client,
+                lifecycle,
+                threads,
+                include_model_request_counts=True,
+            )
         return {
             **self._summary(observation),
             "threads": observation.thread_groups,
@@ -794,7 +815,12 @@ class LangGraphLifecycleService:
             if lifecycle is None:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
             threads = await self._threads(client, lifecycle_id)
-            observation = await self._observe_lifecycle(client, lifecycle, threads)
+            observation = await self._observe_lifecycle(
+                client,
+                lifecycle,
+                threads,
+                include_model_request_counts=True,
+            )
             summary = self._summary(observation)
             snapshot = {
                 **summary,

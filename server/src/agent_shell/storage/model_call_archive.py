@@ -106,6 +106,27 @@ class ModelCallArchive:
                 return None
             return path.read_bytes()
 
+    def run_request_counts(self, scope_id: str) -> dict[str, int]:
+        """Count archived model-call attempts by their official Run identity."""
+
+        path = self._path(scope_id)
+        counts: dict[str, int] = {}
+        with self._lock:
+            if not path.is_file():
+                return counts
+            with path.open("r", encoding="utf-8") as stream:
+                for line in stream:
+                    if not line.strip():
+                        continue
+                    record = json.loads(line)
+                    if not isinstance(record, Mapping):
+                        continue
+                    run_id = record.get("run_id")
+                    if not isinstance(run_id, str) or not run_id:
+                        continue
+                    counts[run_id] = counts.get(run_id, 0) + 1
+        return counts
+
     def discard(self, scope_id: str) -> None:
         path = self._path(scope_id)
         with self._lock:

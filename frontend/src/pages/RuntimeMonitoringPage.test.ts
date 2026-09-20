@@ -65,6 +65,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             thread_id: 'thread-agent',
             run_id: 'run-agent',
           },
+          model_request_count: 2,
           error: null,
         },
         {
@@ -95,6 +96,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             thread_id: 'thread-agent',
             run_id: 'run-agent-2',
           },
+          model_request_count: 0,
           error: null,
         },
       ],
@@ -140,6 +142,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             thread_id: 'thread-workflow',
             run_id: 'run-workflow',
           },
+          model_request_count: 3,
           error: null,
         },
       ],
@@ -267,6 +270,7 @@ describe('RuntimeMonitoringPage', () => {
     const agentRuns = wrapper.findAll('.runtime-run-item')
     expect(agentRuns).toHaveLength(2)
     expect(agentRuns[0]?.attributes('aria-current')).toBe('true')
+    expect(agentRuns[0]?.text()).toContain('Model requests: 2')
     await agentRuns[1]?.trigger('click')
     await flushPromises()
     expect(wrapper.findAll('.runtime-run-item')[1]?.attributes('aria-current')).toBe('true')

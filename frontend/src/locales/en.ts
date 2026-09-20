@@ -330,6 +330,7 @@ export const en: MessageSchema = {
     resizeThreads: 'Resize Threads and Graph columns',
     resizeInspector: 'Resize Graph and State / Store columns',
     runs: 'Runs',
+    modelRequests: 'Model requests: {count}',
     data: 'Runtime data',
     store: 'Store',
     workflow: {

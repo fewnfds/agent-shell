@@ -675,6 +675,7 @@ export interface LangGraphRunObservation {
   run_id: string
   run: LangGraphRun | null
   relation: LangGraphRunRelation | null
+  model_request_count: number
   error: LangGraphMonitoringError | null
 }
 

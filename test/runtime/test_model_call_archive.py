@@ -62,6 +62,19 @@ def test_archive_projects_inline_binary_and_round_trips(tmp_path) -> None:
     assert archive.content("lifecycle-1") is None
 
 
+def test_archive_counts_model_requests_by_run(tmp_path) -> None:
+    archive = ModelCallArchive(tmp_path / "model-calls")
+    archive.append("lifecycle-1", {"run_id": "run-1"})
+    archive.append("lifecycle-1", {"run_id": "run-1"})
+    archive.append("lifecycle-1", {"run_id": "run-2"})
+    archive.append("lifecycle-1", {})
+
+    assert archive.run_request_counts("lifecycle-1") == {
+        "run-1": 2,
+        "run-2": 1,
+    }
+
+
 def test_model_call_archive_middleware_records_attempt_identity(tmp_path) -> None:
     archive = ModelCallArchive(tmp_path / "model-calls")
     middleware = ModelCallArchiveMiddleware(archive=archive)
