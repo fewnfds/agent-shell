@@ -12,10 +12,26 @@ from importlib import metadata
 import json
 from pathlib import Path
 import re
+import sys
 import tomllib
 from typing import Any
 
 from packaging.markers import Marker
+
+
+# Pinned distributions whose metadata carries no machine-readable license
+# expression. Each value was read from the license files shipped inside that
+# wheel, so an entry only applies to the exact verified version; a lock upgrade
+# makes the row fall back to NOASSERTION and reports the stale entry.
+_LICENSE_OVERRIDES: dict[tuple[str, str], str] = {
+    ("aiosqlite", "0.22.1"): "MIT",
+    ("blockbuster", "1.5.27"): "Apache-2.0",
+    ("colorama", "0.4.6"): "BSD-3-Clause",
+    ("forbiddenfruit", "0.1.4"): "GPL-3.0-or-later OR MIT",
+    ("pathspec", "1.1.1"): "MPL-2.0",
+    ("tiktoken", "0.13.0"): "MIT",
+}
+_USED_LICENSE_OVERRIDES: set[tuple[str, str]] = set()
 
 
 def _normalize(value: str) -> str:
@@ -26,13 +42,17 @@ def _source_url(name: str, version: str) -> str:
     return f"https://pypi.org/project/{name}/{version}/"
 
 
-def _license(dist: metadata.Distribution) -> str:
+def _license(dist: metadata.Distribution, name: str, version: str) -> str:
     expression = dist.metadata.get("License-Expression")
     if expression:
         return expression
     raw = (dist.metadata.get("License") or "").strip()
     if raw and "\n" not in raw and len(raw) <= 120:
         return raw
+    override = _LICENSE_OVERRIDES.get((name, version))
+    if override:
+        _USED_LICENSE_OVERRIDES.add((name, version))
+        return f"{override} †"
     return "NOASSERTION"
 
 
@@ -46,7 +66,7 @@ def _package_metadata(name: str, version: str) -> tuple[str, str]:
         raise SystemExit(
             f"installed package does not match uv.lock: {name} {installed} != {version}"
         )
-    return _license(dist), _source_url(name, version)
+    return _license(dist, name, version), _source_url(name, version)
 
 
 def _runtime_packages(root: Path) -> list[tuple[str, str, str, str, str]]:
@@ -153,7 +173,7 @@ def _render(root: Path) -> str:
         "Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.",
         f"Counts: npm {counts['npm']}, pypi {counts['pypi']}, runtime {counts['runtime']}. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.",
         "",
-        "`Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.",
+        "`Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `†` marks a value read from the license files shipped inside that pinned distribution, whose own metadata carried no machine-readable expression. `Source` points to the versioned package or project page.",
         "",
         "| Ecosystem | Component | Version | Declared license | Source |",
         "| --- | --- | --- | --- | --- |",
@@ -167,7 +187,16 @@ def main() -> None:
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[2])
     args = parser.parse_args()
     root = args.project_root.resolve()
-    (root / "THIRD_PARTY_NOTICES.md").write_text(_render(root), encoding="utf-8", newline="\n")
+    content = _render(root)
+    stale = sorted(set(_LICENSE_OVERRIDES) - _USED_LICENSE_OVERRIDES)
+    if stale:
+        print(
+            "warning: these pinned license overrides no longer match the locked closure; "
+            "re-verify the license of the new version and update them: "
+            + ", ".join(f"{name} {version}" for name, version in stale),
+            file=sys.stderr,
+        )
+    (root / "THIRD_PARTY_NOTICES.md").write_text(content, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

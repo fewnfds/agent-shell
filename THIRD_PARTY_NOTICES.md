@@ -3,7 +3,7 @@
 Agent Shell is licensed under the MIT License. This file is generated from the locked production frontend dependency closure, the non-dev `server/uv.lock` closure, `packaging/windows/runtime-lock.json`, and `packaging/windows/mcp-runtime-lock.json`.
 Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packaging/development/generate_third_party_notices.py` after changing a lock file.
 
-`Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `Source` points to the versioned package or project page.
+`Declared license` is the SPDX expression from package metadata when available; `NOASSERTION` means the upstream metadata did not provide a machine-readable expression. `†` marks a value read from the license files shipped inside that pinned distribution, whose own metadata carried no machine-readable expression. `Source` points to the versioned package or project page.
 
 | Ecosystem | Component | Version | Declared license | Source |
 | --- | --- | --- | --- | --- |
@@ -141,20 +141,20 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | npm | webpack-virtual-modules | `0.6.2` | MIT | https://www.npmjs.com/package/webpack-virtual-modules/v/0.6.2 |
 | npm | yaml | `2.9.0` | ISC | https://www.npmjs.com/package/yaml/v/2.9.0 |
 | npm | zod | `4.5.4` | MIT | https://www.npmjs.com/package/zod/v/4.5.4 |
-| pypi | aiosqlite | `0.22.1` | NOASSERTION | https://pypi.org/project/aiosqlite/0.22.1/ |
+| pypi | aiosqlite | `0.22.1` | MIT † | https://pypi.org/project/aiosqlite/0.22.1/ |
 | pypi | annotated-doc | `0.0.5` | MIT | https://pypi.org/project/annotated-doc/0.0.5/ |
 | pypi | annotated-types | `0.8.0` | MIT | https://pypi.org/project/annotated-types/0.8.0/ |
 | pypi | anthropic | `0.120.2` | MIT | https://pypi.org/project/anthropic/0.120.2/ |
 | pypi | anyio | `4.14.2` | MIT | https://pypi.org/project/anyio/4.14.2/ |
 | pypi | attrs | `26.1.0` | MIT | https://pypi.org/project/attrs/26.1.0/ |
-| pypi | blockbuster | `1.5.27` | NOASSERTION | https://pypi.org/project/blockbuster/1.5.27/ |
+| pypi | blockbuster | `1.5.27` | Apache-2.0 † | https://pypi.org/project/blockbuster/1.5.27/ |
 | pypi | bracex | `3.0.1` | MIT | https://pypi.org/project/bracex/3.0.1/ |
 | pypi | certifi | `2026.7.22` | MPL-2.0 | https://pypi.org/project/certifi/2026.7.22/ |
 | pypi | cffi | `2.1.1` | MIT-0 | https://pypi.org/project/cffi/2.1.1/ |
 | pypi | charset-normalizer | `3.4.9` | MIT | https://pypi.org/project/charset-normalizer/3.4.9/ |
 | pypi | click | `8.4.2` | BSD-3-Clause | https://pypi.org/project/click/8.4.2/ |
 | pypi | cloudpickle | `3.1.2` | BSD-3-Clause | https://pypi.org/project/cloudpickle/3.1.2/ |
-| pypi | colorama | `0.4.6` | NOASSERTION | https://pypi.org/project/colorama/0.4.6/ |
+| pypi | colorama | `0.4.6` | BSD-3-Clause † | https://pypi.org/project/colorama/0.4.6/ |
 | pypi | croniter | `6.2.4` | MIT | https://pypi.org/project/croniter/6.2.4/ |
 | pypi | cryptography | `50.0.0` | Apache-2.0 OR BSD-3-Clause | https://pypi.org/project/cryptography/50.0.0/ |
 | pypi | curl-cffi | `0.16.0` | MIT | https://pypi.org/project/curl-cffi/0.16.0/ |
@@ -163,7 +163,7 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | docstring-parser | `0.18.0` | MIT | https://pypi.org/project/docstring-parser/0.18.0/ |
 | pypi | fastapi | `0.141.1` | MIT | https://pypi.org/project/fastapi/0.141.1/ |
 | pypi | filetype | `1.2.0` | MIT | https://pypi.org/project/filetype/1.2.0/ |
-| pypi | forbiddenfruit | `0.1.4` | NOASSERTION | https://pypi.org/project/forbiddenfruit/0.1.4/ |
+| pypi | forbiddenfruit | `0.1.4` | GPL-3.0-or-later OR MIT † | https://pypi.org/project/forbiddenfruit/0.1.4/ |
 | pypi | google-auth | `2.56.3` | Apache 2.0 | https://pypi.org/project/google-auth/2.56.3/ |
 | pypi | google-genai | `2.22.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.22.0/ |
 | pypi | googleapis-common-protos | `1.75.1` | Apache 2.0 | https://pypi.org/project/googleapis-common-protos/1.75.1/ |
@@ -213,7 +213,7 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | orjson | `3.11.9` | MPL-2.0 AND (Apache-2.0 OR MIT) | https://pypi.org/project/orjson/3.11.9/ |
 | pypi | ormsgpack | `1.12.2` | Apache-2.0 OR MIT | https://pypi.org/project/ormsgpack/1.12.2/ |
 | pypi | packaging | `26.3` | Apache-2.0 OR BSD-2-Clause | https://pypi.org/project/packaging/26.3/ |
-| pypi | pathspec | `1.1.1` | NOASSERTION | https://pypi.org/project/pathspec/1.1.1/ |
+| pypi | pathspec | `1.1.1` | MPL-2.0 † | https://pypi.org/project/pathspec/1.1.1/ |
 | pypi | prometheus-client | `0.26.0` | Apache-2.0 AND BSD-2-Clause | https://pypi.org/project/prometheus-client/0.26.0/ |
 | pypi | protobuf | `6.33.6` | 3-Clause BSD License | https://pypi.org/project/protobuf/6.33.6/ |
 | pypi | pyasn1 | `0.6.4` | BSD-2-Clause | https://pypi.org/project/pyasn1/0.6.4/ |
@@ -241,7 +241,7 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | starlette | `1.4.1` | BSD-3-Clause | https://pypi.org/project/starlette/1.4.1/ |
 | pypi | structlog | `25.5.0` | MIT OR Apache-2.0 | https://pypi.org/project/structlog/25.5.0/ |
 | pypi | tenacity | `9.1.4` | Apache 2.0 | https://pypi.org/project/tenacity/9.1.4/ |
-| pypi | tiktoken | `0.13.0` | NOASSERTION | https://pypi.org/project/tiktoken/0.13.0/ |
+| pypi | tiktoken | `0.13.0` | MIT † | https://pypi.org/project/tiktoken/0.13.0/ |
 | pypi | tqdm | `4.70.0` | MPL-2.0 AND MIT | https://pypi.org/project/tqdm/4.70.0/ |
 | pypi | truststore | `0.10.4` | MIT | https://pypi.org/project/truststore/0.10.4/ |
 | pypi | typing-extensions | `4.16.0` | PSF-2.0 | https://pypi.org/project/typing-extensions/4.16.0/ |
