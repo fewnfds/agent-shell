@@ -3,10 +3,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from pydantic import ValidationError
+
 from agent_shell.graph_schema import (
     GraphSchema,
     GraphSchemaError,
     compile_graph_schema,
+)
+from agent_shell.runtime.state import (
+    validate_workflow_state_update,
+    wrap_workflow_state_update,
 )
 
 
@@ -31,6 +37,10 @@ def validate_workflow_state(
 ) -> None:
     """Validate one flat State value against the optional Pydantic model."""
 
+    try:
+        validate_workflow_state_update(wrap_workflow_state_update(state))
+    except ValidationError as exc:
+        raise WorkflowStateSchemaError(str(exc)) from exc
     if schema is not None:
         schema.validate_state(state)
 

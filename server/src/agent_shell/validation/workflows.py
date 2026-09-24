@@ -131,7 +131,7 @@ def workflow_executable_report(
             project_component_issues("python_schema_id", schema_report)
             if schema_report.valid:
                 try:
-                    compile_graph_schema(
+                    compiled_schema = compile_graph_schema(
                         resolve_python_schema_source(
                             blocks,
                             str(python_schema_id),
@@ -139,6 +139,8 @@ def workflow_executable_report(
                         require_input=python_schema_requires_input,
                         require_output=python_schema_requires_output,
                     )
+                    if workflow.get("is_model_entry") and compiled_schema is not None:
+                        compiled_schema.validate_state({})
                 except (GraphSchemaError, PythonSchemaReferenceError) as exc:
                     referenced_issues.append(
                         ValidationIssue(

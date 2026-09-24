@@ -340,8 +340,9 @@ def test_mcp_install_does_not_hold_the_store_lock(tmp_path: Path, monkeypatch) -
     install_started = threading.Event()
     install_release = threading.Event()
 
-    def slow_install(connection_id: str, connection: dict) -> dict:
+    def slow_install(connection_id: str, declaration) -> dict:
         assert connection_id == CONNECTION_ID
+        connection = declaration()
         assert connection["name"] == "Browser MCP"
         install_started.set()
         assert install_release.wait(timeout=10)
@@ -372,3 +373,45 @@ def test_mcp_install_does_not_hold_the_store_lock(tmp_path: Path, monkeypatch) -
 
     assert not installer.is_alive()
     assert installed == [{"status": "ready"}]
+
+
+def test_deleted_connection_cannot_install_from_an_earlier_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    resources = managed_resources(tmp_path)
+    resources.save_connection(CONNECTION_ID, stdio_connection_payload())
+    install_called = threading.Event()
+    release_install = threading.Event()
+    original_install = resources._installations.install
+    published: list[str] = []
+    errors: list[BaseException] = []
+
+    def delayed_install(connection_id, declaration):
+        install_called.set()
+        assert release_install.wait(timeout=5)
+        return original_install(connection_id, declaration)
+
+    def publish(_connection_id, _declaration):
+        published.append(_connection_id)
+        return {"status": "ready"}
+
+    def install() -> None:
+        try:
+            resources.install_connection(CONNECTION_ID)
+        except BaseException as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(resources._installations, "install", delayed_install)
+    monkeypatch.setattr(resources._installations, "_install", publish)
+    installer = threading.Thread(target=install)
+    installer.start()
+    try:
+        assert install_called.wait(timeout=5)
+        assert resources.delete_connection(CONNECTION_ID) is True
+    finally:
+        release_install.set()
+        installer.join(timeout=5)
+
+    assert not installer.is_alive()
+    assert published == []
+    assert len(errors) == 1 and isinstance(errors[0], KeyError)

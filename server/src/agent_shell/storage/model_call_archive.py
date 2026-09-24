@@ -53,6 +53,21 @@ def project_archive_value(value: Any) -> Any:
     return str(value)
 
 
+def _redact_projected_value(
+    value: Any, redact_secret_text: Callable[[str], str]
+) -> Any:
+    if isinstance(value, dict):
+        return {
+            redact_secret_text(key): _redact_projected_value(item, redact_secret_text)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_projected_value(item, redact_secret_text) for item in value]
+    if isinstance(value, str):
+        return redact_secret_text(value)
+    return value
+
+
 class ModelCallArchive:
     """Own the per-scope record of real model requests and responses.
 
@@ -78,7 +93,9 @@ class ModelCallArchive:
         return self._directory / f"model-calls-{safe}.jsonl"
 
     def append(self, scope_id: str, record: Mapping[str, Any]) -> None:
-        projected = project_archive_value(dict(record))
+        projected = _redact_projected_value(
+            project_archive_value(dict(record)), self._redact_secret_text
+        )
         line = (
             json.dumps(projected, ensure_ascii=False, default=str, separators=(",", ":"))
             + "\n"

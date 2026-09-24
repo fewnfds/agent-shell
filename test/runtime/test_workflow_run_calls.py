@@ -11,6 +11,7 @@ from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
     _OfficialRunEventGraph,
     _OfficialRunEventStream,
+    _RunBinding,
 )
 from agent_shell.runtime.run_calls import RunCaller, relation_key
 
@@ -98,8 +99,16 @@ class _Threads:
 class _Store:
     def __init__(self, relations: list[dict[str, object]]) -> None:
         self._relations = relations
+        self.search_count = 0
+        self.search_started: asyncio.Event | None = None
+        self.release_search: asyncio.Event | None = None
 
     async def search_items(self, namespace, *, limit: int, offset: int):
+        self.search_count += 1
+        if self.search_started is not None:
+            self.search_started.set()
+        if self.release_search is not None:
+            await self.release_search.wait()
         lifecycle_id = namespace[1]
         values = [
             {
@@ -181,6 +190,179 @@ def test_run_commands_treat_every_lifecycle_run_as_an_equal_target() -> None:
         )
         assert cancelled[0].status == "interrupted"
         assert client.runs.cancelled == ["run-active"]
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_workflow_start_reuses_the_pending_operation() -> None:
+    async def scenario() -> None:
+        workflow = {
+            "id": "workflow-pending",
+            "name": "Pending Workflow",
+            "enabled": True,
+            "on_disconnect": "cancel",
+        }
+        client = _Client([], {"run-pending": "running"})
+        coordinator = LifecycleRunCoordinator(
+            _owner=SimpleNamespace(new_agent_server_client=lambda: client),
+            _snapshot=SimpleNamespace(
+                workflow_by_id=lambda _workflow_id: workflow,
+                workflow_document=lambda _workflow_id: object(),
+            ),
+            _detached_tasks=SimpleNamespace(),
+        )
+        coordinator._lifecycle_id = "lifecycle-1"
+        caller = RunCaller("request-1", "lifecycle-1", "caller-run")
+        loop = asyncio.get_running_loop()
+        pending = _RunBinding(
+            workflow=workflow,
+            document=object(),
+            request_id=caller.request_id,
+            lifecycle_id=caller.lifecycle_id,
+            public_model=workflow["name"],
+            caller_run_id=caller.run_id,
+            operation_id="same-operation",
+            assistant_id="assistant-pending",
+            thread_id="thread-pending",
+            run_id_ready=loop.create_future(),
+            handle_ready=loop.create_future(),
+            execution_ready=loop.create_future(),
+        )
+        coordinator._bindings[pending.key] = pending
+
+        cancelled_duplicate = asyncio.create_task(
+            coordinator.start_workflow_run(
+                workflow["id"],
+                operation_id="same-operation",
+                caller=caller,
+                initial_state={},
+            )
+        )
+        await asyncio.sleep(0)
+        cancelled_duplicate.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled_duplicate
+        assert pending.handle_ready is not None
+        assert not pending.handle_ready.cancelled()
+
+        async def finish_first_start() -> None:
+            await asyncio.sleep(0)
+            pending.run_id = "run-pending"
+            assert pending.run_id_ready is not None
+            pending.run_id_ready.set_result(pending.run_id)
+            await asyncio.sleep(0)
+            assert not duplicate_start.done()
+            relation = coordinator._workflow_relation(pending)
+            assert pending.handle_ready is not None
+            pending.handle_ready.set_result(
+                coordinator._handle(
+                    relation,
+                    await client.runs.get(relation.thread_id, relation.run_id),
+                )
+            )
+
+        first_start = asyncio.create_task(finish_first_start())
+        duplicate_start = asyncio.create_task(
+            coordinator.start_workflow_run(
+                workflow["id"],
+                operation_id="same-operation",
+                caller=caller,
+                initial_state={"ignored": "retry input"},
+            )
+        )
+        duplicate = await duplicate_start
+        await first_start
+
+        assert duplicate.thread_id == "thread-pending"
+        assert duplicate.run_id == "run-pending"
+        assert duplicate.operation_id == "same-operation"
+
+        failed = _RunBinding(
+            workflow=workflow,
+            document=object(),
+            request_id=caller.request_id,
+            lifecycle_id=caller.lifecycle_id,
+            public_model=workflow["name"],
+            caller_run_id=caller.run_id,
+            operation_id="failed-operation",
+            assistant_id="assistant-failed",
+            thread_id="thread-failed",
+            run_id="run-failed",
+            run_id_ready=loop.create_future(),
+            handle_ready=loop.create_future(),
+            execution_ready=loop.create_future(),
+        )
+        coordinator._bindings[failed.key] = failed
+        failed_duplicate = asyncio.create_task(
+            coordinator.start_workflow_run(
+                workflow["id"],
+                operation_id="failed-operation",
+                caller=caller,
+                initial_state={},
+            )
+        )
+        await asyncio.sleep(0)
+        coordinator._fail_handle_ready(
+            failed,
+            OSError("relation store is unavailable"),
+        )
+        with pytest.raises(OSError, match="relation store is unavailable"):
+            await failed_duplicate
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_workflow_starts_claim_operation_before_relation_lookup() -> None:
+    async def scenario() -> None:
+        existing = _relation(
+            "run-existing",
+            operation_id="same-operation",
+            caller_run_id="caller-run",
+        )
+        workflow = {
+            "id": existing["workflow_id"],
+            "name": existing["workflow_name"],
+            "enabled": True,
+            "on_disconnect": "cancel",
+        }
+        client = _Client([existing], {"run-existing": "running"})
+        client.store.search_started = asyncio.Event()
+        client.store.release_search = asyncio.Event()
+        coordinator = LifecycleRunCoordinator(
+            _owner=SimpleNamespace(new_agent_server_client=lambda: client),
+            _snapshot=SimpleNamespace(
+                workflow_by_id=lambda _workflow_id: workflow,
+                workflow_document=lambda _workflow_id: object(),
+                python_schema_source=lambda _schema_id: None,
+            ),
+            _detached_tasks=SimpleNamespace(),
+        )
+        coordinator._lifecycle_id = "lifecycle-1"
+        caller = RunCaller("request-1", "lifecycle-1", "caller-run")
+
+        first = asyncio.create_task(
+            coordinator.start_workflow_run(
+                str(workflow["id"]),
+                operation_id="same-operation",
+                caller=caller,
+                initial_state={},
+            )
+        )
+        await client.store.search_started.wait()
+        duplicate = asyncio.create_task(
+            coordinator.start_workflow_run(
+                str(workflow["id"]),
+                operation_id="same-operation",
+                caller=caller,
+                initial_state={"ignored": "retry input"},
+            )
+        )
+        await asyncio.sleep(0)
+        client.store.release_search.set()
+        first_handle, duplicate_handle = await asyncio.gather(first, duplicate)
+
+        assert duplicate_handle == first_handle
+        assert client.store.search_count == 1
 
     asyncio.run(scenario())
 

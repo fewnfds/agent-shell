@@ -10,7 +10,11 @@ Agent Shell 通过 LangChain 官方 `langchain-mcp-adapters` 把 MCP Server 公�
 
 在【工作流】页面选择 MCP Tool，新建名称与说明并保存 Graph。Graph 仍由 Start、Command、End 和 Control Edge 组成，但 MCP Tool Command 不能绑定 External Agent，也不能依赖 Lifecycle 专属运行上下文。名称只允许 ASCII 字母、数字、`.`、`_`、`-`，并直接作为 `/mcp` tool name。
 
-draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。被 validation 拒绝的 draft 请求不改变已发布状态；已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
+draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。被 validation 拒绝的 draft 请求不改变已发布状态；撤下 Assistant 后若 draft/delete 的 Repository 提交失败，后端按当前 Repository 的 enabled 记录重新对齐公开 Tool。已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
+当前 Repository 即使没有任何 MCP Tool，启动和仓库切换也会执行这次对齐并隐藏遗留 Assistant，不让旧 Repository 的工具继续出现在 `/mcp tools/list`。仓库激活只有在新 Repository validation 与 Assistant 对齐都完成后才成功；任一步失败会恢复原 active Repository。
+Tool 的 Graph 更新若在 Assistant 刷新时失败，原 Graph 与发布状态会恢复，并按恢复后的 Repository 记录重新对齐 Assistant；首次发布失败不会把 draft 留在 `/mcp tools/list`。失败的更新返回 `mcp_tool_publication_failed`。
+
+已发布 MCP Tool 修改名称、说明或 Python Schema 时，后端先用候选 metadata 和当前 Graph 执行正式校验，再刷新 Assistant；校验失败不保存候选值，Assistant 更新失败会恢复原 metadata，并按当前 Repository 记录重新对齐 Assistant。草稿 metadata 仍可先保存不完整配置，待 Graph 正式保存时验证。
 
 在【工作流组件 / Python Schema】创建 Python Schema Component，内容定义 Pydantic `State`、`Input` 和 `Output`，然后在 MCP Tool 的 Python Schema Card 中引用：
 
@@ -33,7 +37,9 @@ class Output(BaseModel):
     answer: str
 ```
 
-LangGraph直接使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段。未选择 Python Schema Card 时使用开放mapping State，参数直接成为扁平键。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
+LangGraph使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段，并在所有 Graph 分支完成后按完整 Pydantic 模型校验，缺失或非法结果会使调用失败。带 Schema 的 State 在入口、每个 Command patch 与同一轮全部并行 patch 合并后校验，跨字段 validator 对最终合并值生效。未选择 Python Schema Card 时使用开放mapping State，参数直接成为扁平键；Command 返回的 update 作为正式 root patch 写入 LangGraph channel，同一轮并行分支更新不同键时由 channel 合并。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
+
+Command 返回 `Command(goto=END)` 时必须有该节点到 End 的 Control Edge；带 Python Schema 的 Tool 会先经过 Output 校验，再结束本次调用。
 
 ## 配置顺序
 
@@ -60,6 +66,7 @@ LangChain 负责按照 `command/args/env` 启动 stdio 子进程并把 MCP Tool 
 - PyPI 连接使用 `runtime/app` 的内置 CPython，并按锁在首次需要时准备 `runtime/bootstrap/uv.exe`，随后在每条 Connection 独立的 venv 中解析并安装精确版本；uv 优先使用兼容 wheel，没有 wheel 时按发行包声明尝试源码构建，所需编译器或系统库由实例维护者自行提供；
 - 安装 lock 保存于 `data/config/mcp-connections/<uuid>.installation-lock.json`，Connection 声明和 secret 仍分别保存在 Connection YAML 与 `agent-shell.env`；
 - 软件包、Node toolchain、下载 cache、失败状态和派生启动 manifest 都位于可重建的 `runtime/mcp/`，不会进入 `data/`、Configuration Bundle 或源码；
+- 同一 Connection 的安装先确认当前声明仍存在，再与重装、删除按顺序执行，防止删除完成后旧安装快照重新发布 runtime；不同 Connection 的安装可以并行，长时间安装不阻塞其它 Connection 的配置读写；
 - 修改 package、version 或 entrypoint 后当前声明变为【尚未安装】，必须重新安装。只修改 args、cwd 或 env 不要求重新下载；
 - Workflow 不隐式安装依赖。引用到未安装的 Managed Local Connection 时，在 Tool discovery 前以 `mcp_installation_not_ready` 失败。
 

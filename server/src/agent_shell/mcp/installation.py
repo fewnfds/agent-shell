@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import os
+from collections.abc import Callable
 from pathlib import Path
+import os
 import shutil
+import threading
 from typing import Any
 from uuid import uuid4
 
@@ -47,6 +49,12 @@ class McpInstallationManager:
         self.cache_root = self.root / "cache"
         self.toolchains_root = self.root / "toolchains"
         self.locks_root = self.data_root / "config" / "mcp-connections"
+        self._operation_locks_guard = threading.Lock()
+        self._operation_locks: dict[str, threading.Lock] = {}
+
+    def _operation_lock(self, connection_id: str) -> threading.Lock:
+        with self._operation_locks_guard:
+            return self._operation_locks.setdefault(connection_id, threading.Lock())
 
     def _core_runtime_lock(self) -> dict[str, Any]:
         value = load_json(
@@ -292,7 +300,16 @@ class McpInstallationManager:
         }
         return resolved
 
-    def install(self, connection_id: str, connection: dict[str, Any]) -> dict[str, Any]:
+    def install(
+        self,
+        connection_id: str,
+        connection: dict[str, Any] | Callable[[], dict[str, Any]],
+    ) -> dict[str, Any]:
+        with self._operation_lock(connection_id):
+            declared = connection() if callable(connection) else connection
+            return self._install(connection_id, declared)
+
+    def _install(self, connection_id: str, connection: dict[str, Any]) -> dict[str, Any]:
         if connection.get("transport") != "stdio":
             raise McpInstallationError(
                 "mcp_installation_not_applicable",
@@ -412,6 +429,10 @@ class McpInstallationManager:
                 shutil.rmtree(staging, ignore_errors=True)
 
     def remove(self, connection_id: str) -> None:
+        with self._operation_lock(connection_id):
+            self._remove(connection_id)
+
+    def _remove(self, connection_id: str) -> None:
         installation_root = self.installations_root / connection_id
         if installation_root.exists():
             shutil.rmtree(installation_root, ignore_errors=True)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import threading
 from typing import Any
 
 import pytest
@@ -438,11 +440,419 @@ def test_metadata_update_reports_publication_failure(
         stored = client.get(
             f"/agent-shell/api/mcp-tools/{mcp_tool['id']}"
         ).json()
+        repair_diagnostics = client.app.state.runtime_diagnostics.snapshot()["entries"]
 
     assert response.status_code == 502, response.text
     assert response.json()["detail"]["code"] == "mcp_tool_publication_failed"
-    assert stored["name"] == "renamed_guard"
+    assert stored["name"] == "rename_guard"
+    assert stored["description"] == "Before rename."
     assert stored["enabled"] is True
+    assert any(
+        entry["code"] == "mcp_tool_publication_repair_failed"
+        and "Agent Server is unavailable" in entry["summary"]
+        for entry in repair_diagnostics
+    )
+
+
+def test_metadata_update_realigns_a_partially_updated_assistant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote_names: dict[str, str] = {}
+    fail_after_remote_update = False
+
+    async def sync(self: McpToolPublicationService, mcp_tool_id: str, *, enabled: bool):
+        nonlocal fail_after_remote_update
+        del enabled
+        item = self._store.get_item(mcp_tool_id)
+        assert item is not None
+        remote_names[mcp_tool_id] = item["name"]
+        if fail_after_remote_update:
+            fail_after_remote_update = False
+            raise RuntimeError("Assistant update was applied before the response failed")
+
+    async def reconcile(self: McpToolPublicationService) -> None:
+        for item in self._store.list_items():
+            await self._sync(item["id"], enabled=item["enabled"])
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        schema = create_python_schema(client, name="Partial sync schema", source=SCHEMA_SOURCE)
+        tool = _create_mcp_tool(
+            client,
+            name="original_remote_name",
+            python_schema_id=schema["id"],
+        )
+        _publish_graph(client, tool["id"], _graph_document())
+        fail_after_remote_update = True
+
+        response = client.put(
+            f"/agent-shell/api/mcp-tools/{tool['id']}",
+            json={
+                "name": "partially_applied_name",
+                "description": "Candidate",
+                "python_schema_id": schema["id"],
+            },
+        )
+        stored = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}").json()
+
+    assert response.status_code == 502, response.text
+    assert stored["name"] == "original_remote_name"
+    assert remote_names[tool["id"]] == "original_remote_name"
+
+
+def test_published_mcp_tool_metadata_revalidates_its_current_graph(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def sync(_self, _mcp_tool_id, *, enabled):
+        del enabled
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    with make_client(tmp_path, monkeypatch) as client:
+        complete = create_python_schema(
+            client,
+            name="Complete MCP schema",
+            source=SCHEMA_SOURCE,
+        )
+        incomplete = create_python_schema(
+            client,
+            name="State-only MCP schema",
+            source=STATE_ONLY_SCHEMA_SOURCE,
+        )
+        tool = _create_mcp_tool(
+            client,
+            name="metadata_guard",
+            python_schema_id=complete["id"],
+        )
+        _publish_graph(client, tool["id"], _graph_document())
+        rejected = client.put(
+            f"/agent-shell/api/mcp-tools/{tool['id']}",
+            json={
+                "name": "metadata_guard",
+                "description": "Candidate",
+                "python_schema_id": incomplete["id"],
+            },
+        )
+        stored = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}").json()
+
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["detail"]["validation"]["issues"][0]["code"] == (
+        "mcp_tool.schema_invalid"
+    )
+    assert stored["enabled"] is True
+    assert stored["python_schema_id"] == complete["id"]
+    assert stored["description"] == ""
+
+
+def test_failed_graph_publication_restores_previous_published_graph(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_publication = False
+
+    async def sync(_self, _mcp_tool_id, *, enabled):
+        del enabled
+        if fail_publication:
+            raise RuntimeError("Agent Server is unavailable")
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    with make_client(tmp_path, monkeypatch) as client:
+        schema = create_python_schema(
+            client,
+            name="Graph rollback schema",
+            source=SCHEMA_SOURCE,
+        )
+        tool = _create_mcp_tool(
+            client,
+            name="graph_rollback",
+            python_schema_id=schema["id"],
+        )
+        original = _graph_document()
+        _publish_graph(client, tool["id"], original)
+        replacement = _graph_document()
+        replacement["layout"]["nodes"]["end"]["x"] = 720
+
+        fail_publication = True
+        rejected = client.put(
+            f"/agent-shell/api/mcp-tools/{tool['id']}/graph",
+            json=replacement,
+        )
+        stored = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}").json()
+        graph = client.get(
+            f"/agent-shell/api/mcp-tools/{tool['id']}/graph"
+        ).json()
+
+    assert rejected.status_code == 502, rejected.text
+    assert stored["enabled"] is True
+    assert graph == original
+
+
+def test_failed_first_graph_publication_realigns_a_partially_enabled_assistant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote_enabled: dict[str, bool] = {}
+    fail_after_remote_update = False
+
+    async def sync(
+        self: McpToolPublicationService,
+        mcp_tool_id: str,
+        *,
+        enabled: bool,
+    ) -> None:
+        nonlocal fail_after_remote_update
+        remote_enabled[mcp_tool_id] = enabled
+        if fail_after_remote_update:
+            fail_after_remote_update = False
+            raise RuntimeError(
+                "Assistant enable was applied before the response failed"
+            )
+
+    async def reconcile(self: McpToolPublicationService) -> None:
+        for item in self._store.list_items():
+            await self._sync(item["id"], enabled=item["enabled"])
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        tool = _create_mcp_tool(client, name="partial_graph_publish")
+        fail_after_remote_update = True
+
+        rejected = client.put(
+            f"/agent-shell/api/mcp-tools/{tool['id']}/graph",
+            json=_graph_document(),
+        )
+        stored = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}").json()
+
+    assert rejected.status_code == 502, rejected.text
+    assert stored["enabled"] is False
+    assert remote_enabled[tool["id"]] is False
+
+
+def test_failed_draft_store_commit_reconciles_the_published_assistant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synced: list[tuple[str, bool]] = []
+    fail_draft_commit = False
+    save_graph = McpToolStore.save_graph_and_enabled
+
+    async def sync(_self, mcp_tool_id, *, enabled):
+        synced.append((mcp_tool_id, enabled))
+
+    async def reconcile(self: McpToolPublicationService) -> None:
+        for item in await asyncio.to_thread(self._store.list_items):
+            await self._sync(str(item["id"]), enabled=bool(item["enabled"]))
+
+    def save_graph_with_failure(self, item_id, document, *, enabled, **kwargs):
+        if fail_draft_commit and not enabled:
+            raise OSError("repository write failed")
+        return save_graph(
+            self,
+            item_id,
+            document,
+            enabled=enabled,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+    monkeypatch.setattr(
+        McpToolStore,
+        "save_graph_and_enabled",
+        save_graph_with_failure,
+    )
+
+    with make_client(tmp_path, monkeypatch) as client:
+        tool = _create_mcp_tool(client, name="draft_commit_guard")
+        original = _graph_document()
+        _publish_graph(client, tool["id"], original)
+        synced.clear()
+        fail_draft_commit = True
+
+        with pytest.raises(OSError, match="repository write failed"):
+            client.put(
+                f"/agent-shell/api/mcp-tools/{tool['id']}/draft",
+                json=_graph_document(),
+            )
+        stored = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}").json()
+        graph = client.get(
+            f"/agent-shell/api/mcp-tools/{tool['id']}/graph"
+        ).json()
+
+    assert stored["enabled"] is True
+    assert graph == original
+    assert synced == [(tool["id"], False), (tool["id"], True)]
+
+
+def test_partial_bulk_withdrawal_reconciles_all_surviving_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synced: list[tuple[str, bool]] = []
+    fail_tool_id = ""
+
+    async def sync(_self, mcp_tool_id, *, enabled):
+        synced.append((mcp_tool_id, enabled))
+        if not enabled and mcp_tool_id == fail_tool_id:
+            raise RuntimeError("withdrawal failed")
+
+    async def reconcile(self: McpToolPublicationService) -> None:
+        for item in await asyncio.to_thread(self._store.list_items):
+            await self._sync(str(item["id"]), enabled=bool(item["enabled"]))
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        first = _create_mcp_tool(client, name="bulk_guard_a")
+        second = _create_mcp_tool(client, name="bulk_guard_b")
+        _publish_graph(client, first["id"], _graph_document())
+        _publish_graph(client, second["id"], _graph_document())
+        synced.clear()
+        fail_tool_id = second["id"]
+
+        rejected = client.post(
+            "/agent-shell/api/mcp-tools/delete",
+            json={"ids": [first["id"], second["id"]]},
+        )
+        stored = {
+            item["id"]: item
+            for item in client.get("/agent-shell/api/mcp-tools").json()
+        }
+
+    assert rejected.status_code == 502, rejected.text
+    assert all(stored[item_id]["enabled"] for item_id in (first["id"], second["id"]))
+    assert synced == [
+        (first["id"], False),
+        (second["id"], False),
+        (first["id"], True),
+        (second["id"], True),
+    ]
+
+
+def test_delete_does_not_commit_to_a_repository_activated_during_withdrawal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    switch_repository_id = ""
+    switch_on_withdrawal = False
+
+    async def sync(self: McpToolPublicationService, _item_id, *, enabled):
+        if switch_on_withdrawal and not enabled:
+            self._store._repository.switch_repository(switch_repository_id)
+
+    async def reconcile(_self: McpToolPublicationService) -> None:
+        return None
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        default_repository_id = client.get(
+            "/agent-shell/api/configuration-repositories"
+        ).json()["active_id"]
+        alternate = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "Delete race target"},
+        )
+        assert alternate.status_code == 200, alternate.text
+        switch_repository_id = alternate.json()["id"]
+        tool = _create_mcp_tool(client, name="repository_delete_guard")
+        _publish_graph(client, tool["id"], _graph_document())
+        switch_on_withdrawal = True
+
+        rejected = client.delete(f"/agent-shell/api/mcp-tools/{tool['id']}")
+        alternate_items = client.get("/agent-shell/api/mcp-tools").json()
+        client.app.state.mcp_tool_store._repository.switch_repository(
+            default_repository_id
+        )
+        original = client.get(f"/agent-shell/api/mcp-tools/{tool['id']}")
+
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["detail"]["code"] == "configuration_repository_changed"
+    assert alternate_items == []
+    assert original.status_code == 200, original.text
+    assert original.json()["enabled"] is True
+
+
+def test_repository_activation_waits_for_an_active_publication_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    block_publication = False
+    publication_started = threading.Event()
+    release_publication = threading.Event()
+
+    async def sync(
+        _self: McpToolPublicationService,
+        _item_id: str,
+        *,
+        enabled: bool,
+    ) -> None:
+        if block_publication and enabled:
+            publication_started.set()
+            assert await asyncio.to_thread(release_publication.wait, 5)
+
+    async def reconcile(_self: McpToolPublicationService) -> None:
+        return None
+
+    monkeypatch.setattr(McpToolPublicationService, "_sync", sync)
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        alternate = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "Publication command target"},
+        )
+        assert alternate.status_code == 200, alternate.text
+        alternate_id = alternate.json()["id"]
+        tool = _create_mcp_tool(client, name="publication_command_guard")
+        _publish_graph(client, tool["id"], _graph_document())
+        replacement = _graph_document()
+        replacement["layout"]["nodes"]["end"]["x"] = 720
+
+        repository = client.app.state.mcp_tool_store._repository
+        original_switch = repository.switch_repository
+        repository_switched = threading.Event()
+
+        def observed_switch(repository_id: str):
+            result = original_switch(repository_id)
+            if repository_id == alternate_id:
+                repository_switched.set()
+            return result
+
+        monkeypatch.setattr(repository, "switch_repository", observed_switch)
+        block_publication = True
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            publishing = executor.submit(
+                client.put,
+                f"/agent-shell/api/mcp-tools/{tool['id']}/graph",
+                json=replacement,
+            )
+            assert publication_started.wait(timeout=5)
+            activating = executor.submit(
+                client.post,
+                "/agent-shell/api/configuration-repositories/"
+                f"{alternate_id}/activate",
+            )
+            assert not repository_switched.wait(timeout=0.2)
+            release_publication.set()
+            published = publishing.result(timeout=5)
+            activated = activating.result(timeout=5)
+
+        active_id = client.get(
+            "/agent-shell/api/configuration-repositories"
+        ).json()["active_id"]
+
+    assert published.status_code == 200, published.text
+    assert activated.status_code == 200, activated.text
+    assert active_id == alternate_id
 
 
 def test_deleting_referenced_command_demotes_published_mcp_tool(
@@ -656,7 +1066,7 @@ def test_mcp_tool_publication_reconcile_aligns_official_assistants(
     assert (orphan_id, False) in hidden
 
 
-def test_mcp_tool_publication_reconcile_can_hide_orphans_from_empty_store(
+def test_mcp_tool_publication_reconcile_hides_orphans_from_empty_store(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -682,9 +1092,7 @@ def test_mcp_tool_publication_reconcile_can_hide_orphans_from_empty_store(
         lambda url=None: server,
     )
 
-    asyncio.run(
-        McpToolPublicationService(store).reconcile(include_empty=True)
-    )
+    asyncio.run(McpToolPublicationService(store).reconcile())
 
     hidden = [
         (assistant_id, kwargs["metadata"]["agent_shell_mcp_tool"])

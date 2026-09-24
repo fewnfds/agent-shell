@@ -800,6 +800,46 @@ def test_lifecycle_export_and_delete_include_the_model_call_archive(
     assert archive.content("lifecycle-1") is None
 
 
+def test_lifecycle_delete_keeps_record_when_owned_archive_cleanup_fails() -> None:
+    class _FailOnceArchive:
+        def __init__(self) -> None:
+            self.attempts = 0
+
+        def discard(self, _lifecycle_id: str) -> None:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise OSError("archive is temporarily locked")
+
+    async def scenario():
+        client = _Client()
+        client.thread_values.clear()
+        client.run_values.clear()
+        client.store_items = {
+            ("workflow-lifecycle", "lifecycle-1", "metadata"): {
+                LIFECYCLE_RECORD_KEY: _lifecycle_record()
+            },
+        }
+        archive = _FailOnceArchive()
+        service = LangGraphLifecycleService(
+            lambda: client,
+            model_call_archive=archive,
+        )
+
+        with pytest.raises(OSError, match="temporarily locked"):
+            await service.delete("lifecycle-1")
+        assert await service._lifecycle_record(client, "lifecycle-1") is not None
+
+        deleted = await service.delete("lifecycle-1")
+        return client, archive, deleted
+
+    client, archive, deleted = asyncio.run(scenario())
+    assert archive.attempts == 2
+    assert deleted == 0
+    assert client.store_items[
+        ("workflow-lifecycle", "lifecycle-1", "metadata")
+    ] == {}
+
+
 def test_snapshot_projects_model_request_counts_by_run(tmp_path: Path) -> None:
     archive = ModelCallArchive(tmp_path / "model-calls")
     archive.append("lifecycle-1", {"run_id": "run-entry"})
@@ -832,6 +872,11 @@ def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> 
         service = LangGraphLifecycleService(lambda: client)
 
         snapshot = await service.snapshot("lifecycle-1")
+        with pytest.raises(
+            LangGraphLifecycleUnavailable,
+            match="official Thread/Run status is unavailable",
+        ):
+            await service.cancel_active("lifecycle-1")
         with pytest.raises(
             LangGraphLifecycleUnavailable,
             match="official Thread/Run status is unavailable",

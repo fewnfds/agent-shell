@@ -24,6 +24,7 @@ from agent_shell.external_agents.runtime import (
     normalize_cli_event,
     watchdog_seconds,
 )
+from agent_shell.external_agents.layout import antigravity_lifecycle_layout
 from agent_shell.runtime.errors import AgentRuntimeError
 
 
@@ -395,15 +396,34 @@ def test_conversation_registry_serializes_one_conversation(tmp_path: Path) -> No
                 home, ConversationSelection.parse("continue-latest"), owner="preset"
             )
 
-        # ``new`` never conflicts, and releasing frees the named conversation.
-        assert (
-            await registry.acquire(
-                home, ConversationSelection.parse("new"), owner="preset"
-            )
-            is None
+        # Fresh conversations can overlap, but latest must wait for both.
+        fresh = await registry.acquire(
+            home, ConversationSelection.parse("new"), owner="preset"
         )
+        other_fresh = await registry.acquire(
+            home, ConversationSelection.parse("new"), owner="preset"
+        )
+        assert fresh != other_fresh
         await registry.release(home, other)
         await registry.release(home, first)
+        with pytest.raises(AgentRuntimeError) as raised:
+            await registry.acquire(
+                home, ConversationSelection.parse("continue-latest"), owner="preset"
+            )
+        assert raised.value.code == "external_agent_conversation_busy"
+        await registry.release(home, fresh)
+        with pytest.raises(AgentRuntimeError):
+            await registry.acquire(
+                home, ConversationSelection.parse("continue-latest"), owner="preset"
+            )
+        await registry.release(home, other_fresh)
+        latest = await registry.acquire(
+            home, ConversationSelection.parse("continue-latest"), owner="preset"
+        )
+        with pytest.raises(AgentRuntimeError) as raised:
+            await registry.acquire(home, ConversationSelection.parse("new"), owner="preset")
+        assert raised.value.code == "external_agent_conversation_busy"
+        await registry.release(home, latest)
         reacquired = await registry.acquire(
             home, ConversationSelection.parse(named), owner="preset"
         )
@@ -564,3 +584,68 @@ def test_runner_kills_process_at_watchdog(
     assert result.error_code == "external_agent_watchdog_timeout"
     assert result.exit_code is None
     assert result.usage == {}
+
+
+@pytest.mark.parametrize("pending_part", ["process", "stderr"])
+def test_watchdog_distinguishes_cli_exit_from_inherited_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pending_part: str,
+) -> None:
+    class ClosedStdoutProcess:
+        pid = 1
+        returncode: int | None = None
+
+        def __init__(self) -> None:
+            self.stdout = asyncio.StreamReader()
+            self.stdout.feed_eof()
+            self.stderr = asyncio.StreamReader()
+            if pending_part == "process":
+                self.stderr.feed_eof()
+            self.exited = asyncio.Event()
+            if pending_part == "stderr":
+                self.returncode = 0
+                self.exited.set()
+
+        async def wait(self) -> int:
+            await self.exited.wait()
+            assert self.returncode is not None
+            return self.returncode
+
+    async def start_process(*_args: object, **_kwargs: object) -> ClosedStdoutProcess:
+        return process
+
+    async def terminate(_process: object) -> None:
+        process.returncode = 0
+        process.exited.set()
+
+    monkeypatch.setattr(runtime_module.asyncio, "create_subprocess_exec", start_process)
+    monkeypatch.setattr(runtime_module, "_terminate_process", terminate)
+    monkeypatch.setattr(runtime_module, "watchdog_seconds", lambda _duration: 0.02)
+    layout = antigravity_lifecycle_layout(tmp_path, str(uuid4()), str(uuid4()))
+    layout.create()
+    session = layout.session(str(uuid4()))
+    session.create()
+    runner = AntigravityRunner(data_root=tmp_path, runtime_root=tmp_path)
+
+    async def scene() -> object:
+        nonlocal process
+        process = ClosedStdoutProcess()
+        with runtime_module._EventRecorder(session, None) as recorder:
+            return await asyncio.wait_for(
+                runner._stream(
+                    external_agent_profile(print_timeout="1s"),
+                    argv=["fake-cli"],
+                    environment={},
+                    layout=layout,
+                    session=session,
+                    recorder=recorder,
+                    selection=ConversationSelection.parse("new"),
+                ),
+                timeout=0.5,
+            )
+
+    process: ClosedStdoutProcess
+    outcome = asyncio.run(scene())
+    assert outcome.timed_out is (pending_part == "process")
+    assert outcome.exit_code == (None if pending_part == "process" else 0)

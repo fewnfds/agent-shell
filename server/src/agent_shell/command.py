@@ -7,7 +7,7 @@ from typing import Any, Callable
 from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import Command
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.graph_schema import GraphSchema
@@ -133,14 +133,14 @@ async def run_command(
             update = _detached(raw_update)
         else:
             raise TypeError("command update must be a Workflow State mapping")
-        validated_update = (
-            validate_workflow_state_update(wrap_workflow_state_update(update))
-            if update
-            else {}
-        )
         try:
+            validated_update = (
+                validate_workflow_state_update(wrap_workflow_state_update(update))
+                if update
+                else {}
+            )
             validate_workflow_state({**flat_state, **update}, state_schema)
-        except WorkflowStateSchemaError as exc:
+        except (ValidationError, WorkflowStateSchemaError) as exc:
             raise CommandStateSchemaError(str(exc)) from exc
         goto = normalize_command_goto(result.goto, target_map)
         return Command(update=validated_update or None, goto=goto)

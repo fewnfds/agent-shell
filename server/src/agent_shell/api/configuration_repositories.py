@@ -10,12 +10,12 @@ from agent_shell.http_surface import management_api_router
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.api.errors import management_error
 from agent_shell.mcp_tools.publication import McpToolPublicationService
+from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.configuration.repository_management import (
     ConfigurationRepositoryManagementService,
 )
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.file_config import ActiveRepositoryDeleteError
-from agent_shell.validation.models import ValidationReport
 from agent_shell.validation.repository import RepositoryValidationService
 
 
@@ -36,6 +36,8 @@ def build_configuration_repository_router(
     management: ConfigurationRepositoryManagementService,
     validation: RepositoryValidationService,
     mcp_tool_publication: McpToolPublicationService,
+    diagnostics: RuntimeDiagnostics,
+    publication_commands: asyncio.Lock,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -47,64 +49,99 @@ def build_configuration_repository_router(
         }
 
     @router.post("/configuration-repositories")
-    def create_repository(payload: RepositoryCreate) -> dict[str, object]:
-        try:
-            return repository.create_repository(payload.name)
-        except ValueError as exc:
-            raise management_error(
-                409,
-                code="configuration_repository_conflict",
-                message_key="errors.configurationRepositoryConflict",
-                message=str(exc),
-            ) from exc
+    async def create_repository(payload: RepositoryCreate) -> dict[str, object]:
+        async with publication_commands:
+            try:
+                return await asyncio.to_thread(
+                    repository.create_repository,
+                    payload.name,
+                )
+            except ValueError as exc:
+                raise management_error(
+                    409,
+                    code="configuration_repository_conflict",
+                    message_key="errors.configurationRepositoryConflict",
+                    message=str(exc),
+                ) from exc
 
     @router.post("/configuration-repositories/{repository_id}/activate")
     async def activate_repository(repository_id: str) -> dict[str, object]:
-        def activate() -> tuple[dict[str, object], ValidationReport]:
-            try:
-                active = repository.switch_repository(repository_id)
-            except ValueError as exc:
-                raise management_error(
-                    422,
-                    code="configuration_repository_invalid",
-                    message_key="errors.configurationRepositoryInvalid",
-                    message=str(exc),
-                ) from exc
-            return active, validation.validate_repository()
+        async with publication_commands:
+            previous_repository_id = repository.repository_id
 
-        active, report = await asyncio.to_thread(activate)
-        try:
-            await mcp_tool_publication.reconcile(include_empty=True)
-        except Exception as exc:
-            raise management_error(
-                502,
-                code="mcp_tool_publication_failed",
-                message_key="errors.mcpToolPublicationFailed",
-                message=(
-                    "The published MCP Tool Assistants could not be "
-                    "synchronized."
+            def activate() -> dict[str, object]:
+                try:
+                    return repository.switch_repository(repository_id)
+                except ValueError as exc:
+                    raise management_error(
+                        422,
+                        code="configuration_repository_invalid",
+                        message_key="errors.configurationRepositoryInvalid",
+                        message=str(exc),
+                    ) from exc
+
+            async def rollback() -> None:
+                await asyncio.to_thread(
+                    repository.switch_repository,
+                    previous_repository_id,
+                )
+                try:
+                    await mcp_tool_publication.reconcile()
+                except Exception as exc:
+                    # Startup retains the same canonical reconciliation boundary
+                    # for the restored Repository.
+                    await diagnostics.aruntime_error(
+                        exc,
+                        code="mcp_tool_publication_repair_failed",
+                        component="persistence",
+                    )
+
+            active = await asyncio.to_thread(activate)
+            try:
+                report = await asyncio.to_thread(validation.validate_repository)
+            except Exception:
+                await rollback()
+                raise
+            try:
+                await mcp_tool_publication.reconcile()
+            except Exception as exc:
+                await rollback()
+                raise management_error(
+                    502,
+                    code="mcp_tool_publication_failed",
+                    message_key="errors.mcpToolPublicationFailed",
+                    message=(
+                        "The published MCP Tool Assistants could not be "
+                        "synchronized."
+                    ),
+                ) from exc
+            return {
+                **active,
+                "restart_required": await asyncio.to_thread(
+                    management.active_repository_restart_required
                 ),
-            ) from exc
-        return {
-            **active,
-            "restart_required": management.active_repository_restart_required(),
-            "validation": report.as_dict(),
-        }
+                "validation": report.as_dict(),
+            }
 
     @router.post("/configuration-repositories/{repository_id}/copy")
-    def copy_repository(
+    async def copy_repository(
         repository_id: str,
         payload: RepositoryCopy,
     ) -> dict[str, object]:
-        try:
-            return management.copy(repository_id, payload.name)
-        except ValueError as exc:
-            raise management_error(
-                409,
-                code="configuration_repository_conflict",
-                message_key="errors.configurationRepositoryConflict",
-                message=str(exc),
-            ) from exc
+        async with publication_commands:
+            try:
+                return await asyncio.to_thread(
+                    management.copy,
+                    repository_id,
+                    payload.name,
+                )
+            except ValueError as exc:
+                raise management_error(
+                    409,
+                    code="configuration_repository_conflict",
+                    message_key="errors.configurationRepositoryConflict",
+                    message=str(exc),
+                ) from exc
 
     @router.get("/configuration-repositories/{repository_id}/download")
     def download_repository(repository_id: str) -> Response:
@@ -126,24 +163,25 @@ def build_configuration_repository_router(
         )
 
     @router.delete("/configuration-repositories/{repository_id}")
-    def delete_repository(repository_id: str) -> dict[str, bool]:
-        try:
-            management.delete(repository_id)
-        except ActiveRepositoryDeleteError as exc:
-            raise management_error(
-                409,
-                code="active_configuration_repository_delete_forbidden",
-                message_key="errors.activeConfigurationRepositoryDeleteForbidden",
-                message=str(exc),
-            ) from exc
-        except ValueError as exc:
-            raise management_error(
-                404,
-                code="configuration_repository_not_found",
-                message_key="errors.configurationRepositoryNotFound",
-                message=str(exc),
-            ) from exc
-        return {"ok": True}
+    async def delete_repository(repository_id: str) -> dict[str, bool]:
+        async with publication_commands:
+            try:
+                await asyncio.to_thread(management.delete, repository_id)
+            except ActiveRepositoryDeleteError as exc:
+                raise management_error(
+                    409,
+                    code="active_configuration_repository_delete_forbidden",
+                    message_key="errors.activeConfigurationRepositoryDeleteForbidden",
+                    message=str(exc),
+                ) from exc
+            except ValueError as exc:
+                raise management_error(
+                    404,
+                    code="configuration_repository_not_found",
+                    message_key="errors.configurationRepositoryNotFound",
+                    message=str(exc),
+                ) from exc
+            return {"ok": True}
 
     return router
 

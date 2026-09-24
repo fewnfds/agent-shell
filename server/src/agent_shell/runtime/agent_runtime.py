@@ -1071,7 +1071,6 @@ class AgentRuntime:
                 for reference in references
             )
             mcp_runtime = await self._builder.discover_mcp(all_mcp_references)
-            self._builder.bind_mcp_runtime(mcp_runtime)
             mcp_commands_by_node = (
                 {
                     node_id: mcp_runtime.commands_for(references)
@@ -1129,11 +1128,7 @@ class AgentRuntime:
         raw_messages: object,
         **kwargs: Any,
     ) -> BuiltAgent:
-        try:
-            return await self._builder.build_resolved(assembly, raw_messages, **kwargs)
-        except Exception:
-            await self._builder.close_failed_build()
-            raise
+        return await self._builder.build_resolved(assembly, raw_messages, **kwargs)
 
     def resolve_main_agent(self, main_agent_id: str) -> StaticAssembly:
         """Resolve one Main Agent without opening execution-only resources."""
@@ -1168,13 +1163,13 @@ class AgentRuntime:
                 ]
             )
         )
-        self._builder.bind_mcp_runtime(mcp_runtime)
         return await self.build_resolved_agent(
             assembly,
             [],
             request_id=request_id,
             mapped_directory_paths_by_filesystem=mapped_directories,
             context_schema=AgentRuntimeContext,
+            mcp_runtime=mcp_runtime,
         )
 
     def _resolved_command_mcp_references(
@@ -1605,7 +1600,6 @@ class AgentRuntime:
                 for reference in references
             )
             mcp_runtime = await self._builder.discover_mcp(all_mcp_references)
-            self._builder.bind_mcp_runtime(mcp_runtime)
             mcp_commands_by_node = (
                 {
                     node_id: mcp_runtime.commands_for(references)

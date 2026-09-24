@@ -141,6 +141,7 @@ def create_app(
         settings.resolved_application_database_path()
     )
     configuration_mutations = ConfigurationMutationCoordinator()
+    configuration_publication_commands = asyncio.Lock()
     environment = InstanceEnvironmentStore(
         settings.environment_file,
         mutations=configuration_mutations,
@@ -366,7 +367,8 @@ def create_app(
 
             await asyncio.to_thread(record_startup)
             try:
-                await mcp_tool_publication.reconcile()
+                async with configuration_publication_commands:
+                    await mcp_tool_publication.reconcile()
             except Exception as exc:
                 await runtime_diagnostics.aobservation_error(
                     exc,
@@ -634,6 +636,8 @@ def create_app(
             configuration_repository_management,
             repository_validation,
             mcp_tool_publication,
+            runtime_diagnostics,
+            configuration_publication_commands,
         )
     )
     app.include_router(
@@ -650,6 +654,7 @@ def create_app(
             skill_package_authoring,
             component_mutations,
             mcp_tool_publication,
+            configuration_publication_commands,
         )
     )
     app.include_router(
@@ -688,6 +693,8 @@ def create_app(
             block_store,
             configuration_validation,
             mcp_tool_publication,
+            runtime_diagnostics,
+            configuration_publication_commands,
         )
     )
     app.include_router(

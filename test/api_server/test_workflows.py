@@ -889,6 +889,136 @@ def test_workflow_rejects_missing_python_schema_references(
     assert response.json()["detail"]["code"] == "python_schema_not_found"
 
 
+def test_model_entry_workflow_schema_must_accept_the_empty_public_entry_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        required_schema = create_python_schema(
+            client,
+            name="Required public state",
+            source=STATE_SOURCE,
+        )
+        rejected_workflow = create_workflow(
+            client,
+            name="Rejected public workflow",
+            is_model_entry=True,
+            python_schema_id=required_schema["id"],
+        )
+        rejected = client.put(
+            f"/agent-shell/api/workflows/{rejected_workflow['id']}/graph",
+            json={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.control.v1",
+                    "nodes": [
+                        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                    ],
+                    "edges": [
+                        {"id": "finish", "source": "start", "source_handle": "next", "target": "end", "target_handle": "in"}
+                    ],
+                },
+                "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+            },
+        )
+
+        defaulted_schema = create_python_schema(
+            client,
+            name="Defaulted public state",
+            source=(
+                "from pydantic import BaseModel\n\n"
+                "class State(BaseModel):\n"
+                "    answer: int = 0\n"
+            ),
+        )
+        accepted_workflow = create_workflow(
+            client,
+            name="Accepted public workflow",
+            is_model_entry=True,
+            python_schema_id=defaulted_schema["id"],
+        )
+        accepted = client.put(
+            f"/agent-shell/api/workflows/{accepted_workflow['id']}/graph",
+            json={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.control.v1",
+                    "nodes": [
+                        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                    ],
+                    "edges": [
+                        {"id": "finish", "source": "start", "source_handle": "next", "target": "end", "target_handle": "in"}
+                    ],
+                },
+                "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+            },
+        )
+
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["detail"]["validation"]["issues"][0]["code"] == (
+        "workflow.schema_invalid"
+    )
+    assert accepted.status_code == 200, accepted.text
+
+
+def test_published_workflow_metadata_cannot_bypass_executable_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        required_schema = create_python_schema(
+            client,
+            name="Internal required state",
+            source=STATE_SOURCE,
+        )
+        workflow = create_workflow(
+            client,
+            name="Internal worker",
+            python_schema_id=required_schema["id"],
+        )
+        published = client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}/graph",
+            json={
+                "definition": {
+                    "schema_version": 1,
+                    "state_contract": "agent-shell.workflow.control.v1",
+                    "nodes": [
+                        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                    ],
+                    "edges": [
+                        {"id": "finish", "source": "start", "source_handle": "next", "target": "end", "target_handle": "in"}
+                    ],
+                },
+                "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+            },
+        )
+        rejected = client.put(
+            f"/agent-shell/api/workflows/{workflow['id']}",
+            json={
+                "name": workflow["name"],
+                "description": workflow["description"],
+                "is_model_entry": True,
+                "python_schema_id": required_schema["id"],
+                "workflow_event_output_id": None,
+                "on_disconnect": workflow["on_disconnect"],
+            },
+        )
+        stored = client.get(
+            f"/agent-shell/api/workflows/{workflow['id']}"
+        ).json()
+
+    assert published.status_code == 200, published.text
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["detail"]["validation"]["issues"][0]["code"] == (
+        "workflow.schema_invalid"
+    )
+    assert stored["enabled"] is True
+    assert stored["is_model_entry"] is False
+
+
 def test_deleting_referenced_python_schema_preserves_reference_and_reports_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

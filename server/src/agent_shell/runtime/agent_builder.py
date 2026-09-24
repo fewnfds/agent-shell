@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
@@ -183,9 +184,6 @@ class AgentBuilder:
         self._mcp_resources = mcp_resources
         self._runtime_diagnostics = runtime_diagnostics
         self._model_call_archive = model_call_archive
-        self._mcp_runtime: McpRunRuntime | None = None
-        self._tool_runtime: ToolPackageRuntime | None = None
-        self._middleware_runtime: MiddlewarePackageRuntime | None = None
 
     async def discover_mcp(
         self,
@@ -204,15 +202,6 @@ class AgentBuilder:
             self._repository_id,
             references,
         )
-
-    def bind_mcp_runtime(self, runtime: McpRunRuntime | None) -> None:
-        self._mcp_runtime = runtime
-
-    async def close_failed_build(self) -> None:
-        if self._tool_runtime is not None:
-            await self._tool_runtime.close()
-        if self._middleware_runtime is not None:
-            await self._middleware_runtime.close()
 
     def script_dependency_metadata(
         self,
@@ -274,6 +263,9 @@ class AgentBuilder:
             str, Mapping[str, Path]
         ] | None = None,
         mcp_references: tuple[ResolvedMcpReference, ...] = (),
+        tool_runtime: ToolPackageRuntime | None = None,
+        middleware_runtime: MiddlewarePackageRuntime | None = None,
+        mcp_runtime: McpRunRuntime | None = None,
     ) -> MaterializedAgentResources:
         requirement_id = references.get("model-requirement")
         if not requirement_id or "model-requirement" not in selected_blocks:
@@ -351,9 +343,9 @@ class AgentBuilder:
             ) from exc
 
         tools: list[Any] = []
-        if self._tool_runtime is not None:
+        if tool_runtime is not None:
             try:
-                tools.extend(self._tool_runtime.tools_for(owner_id))
+                tools.extend(tool_runtime.tools_for(owner_id))
             except AgentRuntimeError as exc:
                 raise reported_error(
                     exc,
@@ -363,7 +355,7 @@ class AgentBuilder:
                     path="tool_refs",
                 ) from exc
         if mcp_references:
-            if self._mcp_runtime is None:
+            if mcp_runtime is None:
                 raise configuration_error(
                     "mcp_runtime_unavailable",
                     "The selected MCP requirements are unavailable in this Workflow Run.",
@@ -374,7 +366,7 @@ class AgentBuilder:
                     path="mcp_refs",
                 )
             try:
-                tools.extend(self._mcp_runtime.tools_for(mcp_references))
+                tools.extend(mcp_runtime.tools_for(mcp_references))
             except AgentRuntimeError as exc:
                 raise reported_error(
                     exc,
@@ -546,9 +538,9 @@ class AgentBuilder:
                     path="capability_refs.tool-call-limit",
                 ) from exc
         package_middleware: tuple[Any, ...] = ()
-        if self._middleware_runtime is not None:
+        if middleware_runtime is not None:
             try:
-                package_middleware = self._middleware_runtime.middleware_for(
+                package_middleware = middleware_runtime.middleware_for(
                     owner_id,
                     context={
                         "config": dict(selected_blocks),
@@ -613,6 +605,7 @@ class AgentBuilder:
             str, Mapping[str, Path]
         ] | None = None,
         context_schema: type = WorkflowRuntimeContext,
+        mcp_runtime: McpRunRuntime | None = None,
     ) -> BuiltAgent:
         # Validate the immutable request snapshot before any selected user module
         # can be imported or any optional capability can be materialized.
@@ -628,6 +621,7 @@ class AgentBuilder:
                 mapped_directory_paths_by_filesystem
             ),
             context_schema=context_schema,
+            mcp_runtime=mcp_runtime,
         )
 
     async def build_resolved(
@@ -642,19 +636,73 @@ class AgentBuilder:
             str, Mapping[str, Path]
         ] | None = None,
         context_schema: type = WorkflowRuntimeContext,
+        mcp_runtime: McpRunRuntime | None = None,
     ) -> BuiltAgent:
-        return await asyncio.to_thread(
-            self._build_resolved,
-            assembly,
-            _messages,
-            request_id=request_id,
-            workflow_node_id=workflow_node_id,
-            workspace=workspace,
-            mapped_directory_paths_by_filesystem=(
-                mapped_directory_paths_by_filesystem
-            ),
-            context_schema=context_schema,
+        task = asyncio.create_task(
+            asyncio.to_thread(
+                self._build_resolved_with_resources,
+                assembly,
+                _messages,
+                request_id=request_id,
+                workflow_node_id=workflow_node_id,
+                workspace=workspace,
+                mapped_directory_paths_by_filesystem=(
+                    mapped_directory_paths_by_filesystem
+                ),
+                context_schema=context_schema,
+                mcp_runtime=mcp_runtime,
+            )
         )
+        try:
+            return await asyncio.shield(task)
+        except BaseException:
+            # asyncio.to_thread cannot stop its worker.  Wait for construction to
+            # settle, then release any successfully built request-local runtimes.
+            try:
+                built = await task
+            except BaseException:
+                built = None
+            if built is not None:
+                if built.tool_runtime is not None:
+                    await built.tool_runtime.close()
+                await built.middleware_runtime.close()
+            raise
+
+    def _build_resolved_with_resources(
+        self,
+        assembly: StaticAssembly,
+        _messages: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> BuiltAgent:
+        main_agent_id = str(assembly.main_agent["id"])
+        tool_runtime = ToolPackageRuntime.from_assembly(
+            assembly,
+            main_agent_id=main_agent_id,
+            request_id=str(kwargs.get("request_id", "")),
+            packages_dir=self._python_packages_dir,
+            runtime_root=self._runtime_dir,
+        )
+        middleware_runtime: MiddlewarePackageRuntime | None = None
+        try:
+            middleware_runtime = MiddlewarePackageRuntime.from_assembly(
+                assembly,
+                main_agent_id=main_agent_id,
+                request_id=str(kwargs.get("request_id", "")),
+                packages_dir=self._python_packages_dir,
+                runtime_root=self._runtime_dir,
+            )
+            return self._build_resolved(
+                assembly,
+                _messages,
+                tool_runtime=tool_runtime,
+                middleware_runtime=middleware_runtime,
+                **kwargs,
+            )
+        except BaseException:
+            tool_runtime.close_sync()
+            if middleware_runtime is not None:
+                middleware_runtime.close_sync()
+            raise
 
     def _build_resolved(
         self,
@@ -668,6 +716,9 @@ class AgentBuilder:
             str, Mapping[str, Path]
         ] | None = None,
         context_schema: type = WorkflowRuntimeContext,
+        mcp_runtime: McpRunRuntime | None = None,
+        tool_runtime: ToolPackageRuntime,
+        middleware_runtime: MiddlewarePackageRuntime,
     ) -> BuiltAgent:
         main_agent = assembly.main_agent
         references = assembly.references
@@ -684,22 +735,6 @@ class AgentBuilder:
 
         main_agent_id = str(main_agent["id"])
         main_agent_name = str(main_agent["name"])
-        tool_runtime = ToolPackageRuntime.from_assembly(
-            assembly,
-            main_agent_id=main_agent_id,
-            request_id=request_id,
-            packages_dir=self._python_packages_dir,
-            runtime_root=self._runtime_dir,
-        )
-        self._tool_runtime = tool_runtime
-        middleware_runtime = MiddlewarePackageRuntime.from_assembly(
-            assembly,
-            main_agent_id=main_agent_id,
-            request_id=request_id,
-            packages_dir=self._python_packages_dir,
-            runtime_root=self._runtime_dir,
-        )
-        self._middleware_runtime = middleware_runtime
         materialized = self._materialize_agent_resources(
             references,
             selected_blocks,
@@ -713,6 +748,9 @@ class AgentBuilder:
                 mapped_directory_paths_by_filesystem
             ),
             mcp_references=assembly.mcp_references,
+            tool_runtime=tool_runtime,
+            middleware_runtime=middleware_runtime,
+            mcp_runtime=mcp_runtime,
         )
         constructor: dict[str, object] = {
             "model": materialized.model,
@@ -747,7 +785,12 @@ class AgentBuilder:
                 roots=resolved_subagents,
                 nodes=assembly.subagent_nodes,
                 workspace=materialized.workspace,
-                materialize_resources=self._materialize_agent_resources,
+                materialize_resources=partial(
+                    self._materialize_agent_resources,
+                    tool_runtime=tool_runtime,
+                    middleware_runtime=middleware_runtime,
+                    mcp_runtime=mcp_runtime,
+                ),
                 workflow_node_id=workflow_node_id,
                 mapped_directory_paths_by_filesystem=(
                     mapped_directory_paths_by_filesystem

@@ -922,6 +922,11 @@ class LangGraphLifecycleService:
                 raise LangGraphLifecycleNotFound(lifecycle_id)
             threads = await self._threads(client, lifecycle_id)
             observation = await self._observe_lifecycle(client, lifecycle, threads)
+            if observation.read_failures:
+                raise LangGraphLifecycleUnavailable(
+                    "Cannot cancel a Lifecycle while its official Thread/Run status "
+                    "is unavailable"
+                ) from observation.read_failures[0]
             relations = {
                 relation.run_id: relation for relation in observation.relations
             }
@@ -993,20 +998,23 @@ class LangGraphLifecycleService:
                 raise LangGraphLifecycleActive(lifecycle_id)
             for thread in observation.threads:
                 await client.threads.delete(str(thread["thread_id"]))
+            if self._data_root is not None:
+                # External agent HOME and evidence follow the same Lifecycle
+                # lifetime; the workspace stays because it holds user output.
+                await asyncio.to_thread(
+                    remove_antigravity_lifecycle_state,
+                    self._data_root,
+                    lifecycle_id,
+                )
+            if self._model_call_archive is not None:
+                await asyncio.to_thread(
+                    self._model_call_archive.discard,
+                    lifecycle_id,
+                )
+            # The canonical record is part of this prefix and must be the last
+            # deletion boundary.  If an owned artifact cleanup above fails,
+            # keeping the record makes the same deletion command retryable.
             await self._delete_store_prefix(client, lifecycle_id)
-        if self._data_root is not None:
-            # External agent HOME and evidence follow the same Lifecycle
-            # lifetime; the workspace stays because it holds user output.
-            await asyncio.to_thread(
-                remove_antigravity_lifecycle_state,
-                self._data_root,
-                lifecycle_id,
-            )
-        if self._model_call_archive is not None:
-            await asyncio.to_thread(
-                self._model_call_archive.discard,
-                lifecycle_id,
-            )
         return len(observation.threads)
 
     async def delete_matching(self, query: str) -> dict[str, int]:

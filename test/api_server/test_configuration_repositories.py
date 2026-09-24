@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import json
+import threading
 from zipfile import ZipFile
 
 import yaml
@@ -79,6 +81,122 @@ def test_repository_switch_is_atomic_for_new_requests_and_preserves_old_snapshot
             "Default",
             "Alternate",
         }
+
+
+def test_repository_activation_rolls_back_when_mcp_publication_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_reconcile = False
+    reconciliations = 0
+
+    async def reconcile(_self: McpToolPublicationService) -> None:
+        nonlocal reconciliations
+        reconciliations += 1
+        if fail_reconcile:
+            raise RuntimeError("Agent Server is unavailable")
+
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        initial_id = client.get(
+            "/agent-shell/api/configuration-repositories"
+        ).json()["active_id"]
+        created = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "Publication failure target"},
+        )
+        assert created.status_code == 200, created.text
+        target_id = created.json()["id"]
+        fail_reconcile = True
+
+        rejected = client.post(
+            f"/agent-shell/api/configuration-repositories/{target_id}/activate"
+        )
+        listed = client.get("/agent-shell/api/configuration-repositories").json()
+        repair_diagnostics = client.app.state.runtime_diagnostics.snapshot()["entries"]
+
+    assert rejected.status_code == 502, rejected.text
+    assert rejected.json()["detail"]["code"] == "mcp_tool_publication_failed"
+    assert listed["active_id"] == initial_id
+    assert reconciliations == 3  # startup, target failure, restored Repository
+    assert any(
+        entry["code"] == "mcp_tool_publication_repair_failed"
+        and entry["component"] == "persistence"
+        for entry in repair_diagnostics
+    )
+
+
+def test_repository_commands_serialize_activation_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_next_reconcile = False
+    failed_activation_reconciling = threading.Event()
+    release_failed_activation = threading.Event()
+
+    async def reconcile(_self: McpToolPublicationService) -> None:
+        nonlocal fail_next_reconcile
+        if not fail_next_reconcile:
+            return
+        fail_next_reconcile = False
+        failed_activation_reconciling.set()
+        assert await asyncio.to_thread(
+            release_failed_activation.wait,
+            5,
+        )
+        raise RuntimeError("Agent Server is unavailable")
+
+    monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        first_id = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "First activation"},
+        ).json()["id"]
+        second_id = client.post(
+            "/agent-shell/api/configuration-repositories",
+            json={"name": "Second activation"},
+        ).json()["id"]
+        repository = client.app.state.mcp_tool_store._repository
+        original_switch = repository.switch_repository
+        second_switched = threading.Event()
+
+        def observed_switch(repository_id: str):
+            result = original_switch(repository_id)
+            if repository_id == second_id:
+                second_switched.set()
+            return result
+
+        monkeypatch.setattr(repository, "switch_repository", observed_switch)
+        fail_next_reconcile = True
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            failed = executor.submit(
+                client.post,
+                "/agent-shell/api/configuration-repositories/"
+                f"{first_id}/activate",
+            )
+            assert failed_activation_reconciling.wait(timeout=5)
+            later = executor.submit(
+                client.post,
+                "/agent-shell/api/configuration-repositories/"
+                f"{second_id}/activate",
+            )
+            # A later command cannot switch Repository until the first
+            # activation has either committed or completed its rollback.
+            assert not second_switched.wait(timeout=0.2)
+            release_failed_activation.set()
+            failed_response = failed.result(timeout=5)
+            later_response = later.result(timeout=5)
+
+        active_id = client.get(
+            "/agent-shell/api/configuration-repositories"
+        ).json()["active_id"]
+
+    assert failed_response.status_code == 502, failed_response.text
+    assert later_response.status_code == 200, later_response.text
+    assert active_id == second_id
 
 
 def test_repository_names_are_unique_without_switching_on_create(
@@ -273,14 +391,12 @@ def test_repository_activation_reconciles_empty_publication_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    reconciliations: list[bool] = []
+    reconciliations: list[str] = []
 
     async def reconcile(
         _self: McpToolPublicationService,
-        *,
-        include_empty: bool = False,
     ) -> None:
-        reconciliations.append(include_empty)
+        reconciliations.append("reconciled")
 
     monkeypatch.setattr(McpToolPublicationService, "reconcile", reconcile)
 
@@ -298,7 +414,7 @@ def test_repository_activation_reconciles_empty_publication_state(
         )
 
     assert activated.status_code == 200, activated.text
-    assert reconciliations == [True]
+    assert reconciliations == ["reconciled"]
 
 
 def test_repository_listing_ignores_only_internal_work_directories(

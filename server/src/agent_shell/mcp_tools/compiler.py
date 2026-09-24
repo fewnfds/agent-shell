@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from typing import Any
+from typing import Annotated, Any, get_type_hints
+from typing_extensions import NotRequired, TypedDict
 
+from langgraph.channels import BaseChannel
+from langgraph.errors import EmptyChannelError
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
@@ -14,22 +17,146 @@ from agent_shell.command import normalize_command_goto
 from agent_shell.graph_schema import GraphSchema, GraphSchemaError
 from agent_shell.runtime.context import McpToolRuntimeContext
 from agent_shell.runtime.errors import AgentRuntimeError
+from agent_shell.runtime.state import merge_workflow_state
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 from agent_shell.workflow.topology import validate_workflow_topology
 from agent_shell.workflow.validation import admit_workflow_document
 
 
+_MCP_TOOL_STATE_CHANNEL = "__agent_shell_mcp_tool_state__"
+_MCP_TOOL_INPUT_NODE = "__agent_shell_mcp_tool_input__"
+_MCP_TOOL_OUTPUT_NODE = "__agent_shell_mcp_tool_output__"
+
+
 def _compile_error(code: str, message: str) -> AgentRuntimeError:
     return AgentRuntimeError(code, message, status_code=422)
 
 
-def _flat_state(state: Any) -> dict[str, Any]:
+class _ValidatedMcpToolStateChannel(
+    BaseChannel[dict[str, Any], dict[str, Any], dict[str, Any]]
+):
+    """Merge and validate one complete MCP Tool State super-step."""
+
+    __slots__ = ("_has_value", "_value", "schema")
+
+    def __init__(self, schema: GraphSchema) -> None:
+        super().__init__(dict)
+        self.schema = schema
+        self._has_value = False
+        self._value: dict[str, Any] = {}
+
+    @property
+    def ValueType(self) -> type[dict[str, Any]]:
+        return dict
+
+    @property
+    def UpdateType(self) -> type[dict[str, Any]]:
+        return dict
+
+    def copy(self) -> "_ValidatedMcpToolStateChannel":
+        copied = self.__class__(self.schema)
+        copied.key = self.key
+        copied._has_value = self._has_value
+        copied._value = self._value
+        return copied
+
+    def from_checkpoint(
+        self,
+        checkpoint: dict[str, Any],
+    ) -> "_ValidatedMcpToolStateChannel":
+        restored = self.__class__(self.schema)
+        restored.key = self.key
+        if isinstance(checkpoint, dict):
+            restored._has_value = True
+            restored._value = checkpoint
+        return restored
+
+    def get(self) -> dict[str, Any]:
+        if not self._has_value:
+            raise EmptyChannelError()
+        return self._value
+
+    def is_available(self) -> bool:
+        return self._has_value
+
+    def update(self, values: Sequence[dict[str, Any]]) -> bool:
+        if not values:
+            return False
+        merged = self._value if self._has_value else {}
+        for value in values:
+            merged = merge_workflow_state(merged, value)
+        try:
+            self.schema.validate_state(merged)
+        except GraphSchemaError as exc:
+            raise AgentRuntimeError(
+                "mcp_tool.state_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
+        self._has_value = True
+        self._value = merged
+        return True
+
+
+def _mcp_tool_graph_state_schema(schema: GraphSchema) -> type:
+    return TypedDict(
+        "ValidatedMcpToolState",
+        {
+            **get_type_hints(schema.state_model, include_extras=True),
+            _MCP_TOOL_STATE_CHANNEL: NotRequired[
+                Annotated[
+                    dict[str, Any],
+                    _ValidatedMcpToolStateChannel(schema),
+                ]
+            ],
+        },
+        total=False,
+    )
+
+
+def _flat_state(state: Any, *, schema: GraphSchema | None) -> dict[str, Any]:
     if isinstance(state, BaseModel):
         return state.model_dump(mode="python")
     if isinstance(state, Mapping):
+        if schema is not None:
+            stored = state.get(_MCP_TOOL_STATE_CHANNEL)
+            if isinstance(stored, Mapping):
+                return dict(stored)
         return dict(state)
     raise TypeError("MCP Tool state must be a mapping or Pydantic model")
+
+
+def _schema_graph_update(
+    update: Mapping[str, Any],
+    schema: GraphSchema,
+) -> dict[str, Any]:
+    public_fields = schema.state_model.model_fields
+    return {
+        **{key: value for key, value in update.items() if key in public_fields},
+        _MCP_TOOL_STATE_CHANNEL: dict(update),
+    }
+
+
+def _make_schema_input_node(schema: GraphSchema):
+    def initialize_state(state: Any) -> dict[str, Any]:
+        return _schema_graph_update(_flat_state(state, schema=schema), schema)
+
+    return initialize_state
+
+
+def _make_schema_output_node(schema: GraphSchema):
+    def validate_output(state: Any) -> None:
+        try:
+            schema.validate_output(_flat_state(state, schema=schema))
+        except GraphSchemaError as exc:
+            raise AgentRuntimeError(
+                "mcp_tool.output_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
+
+    return validate_output
 
 
 def _invocation_id(runtime: Runtime[McpToolRuntimeContext]) -> str:
@@ -70,8 +197,7 @@ def _make_command_node(
                 invocation_id=invocation_id,
             )
         )
-        open_state = state if isinstance(state, dict) else None
-        flat_state = _flat_state(state)
+        flat_state = _flat_state(state, schema=schema)
         try:
             result = await command(
                 state=deepcopy(flat_state),
@@ -92,14 +218,9 @@ def _make_command_node(
                 raise TypeError("command update must be a mapping")
             if schema is not None:
                 schema.validate_state({**flat_state, **update})
-                graph_update = update
+                graph_update = _schema_graph_update(update, schema)
             else:
-                if open_state is None:
-                    raise TypeError(
-                        "open MCP Tool state must be mutable mapping state"
-                    )
-                open_state.update(update)
-                graph_update = None
+                graph_update = {"__root__": update} if update else None
             return Command(
                 update=graph_update or None,
                 goto=normalize_command_goto(result.goto, target_map),
@@ -157,13 +278,22 @@ def compile_mcp_tool_graph(
         node for node in normalized.definition.nodes if node.type == "command"
     ]
     target_maps: dict[str, dict[str, str]] = {}
+    end_target = _MCP_TOOL_OUTPUT_NODE if schema is not None else END
     for edge in normalized.definition.edges:
         if edge.source not in entry_ids:
-            target_maps.setdefault(edge.source, {})[edge.target] = (
-                END if edge.target in exit_ids else edge.target
+            target_map = target_maps.setdefault(edge.source, {})
+            target_map[edge.target] = (
+                end_target if edge.target in exit_ids else edge.target
             )
+            if edge.target in exit_ids:
+                target_map[END] = end_target
 
-    state_schema = schema.state_model if schema is not None else dict
+    open_state_schema = Annotated[dict[str, Any], merge_workflow_state]
+    state_schema = (
+        _mcp_tool_graph_state_schema(schema)
+        if schema is not None
+        else open_state_schema
+    )
     input_schema = (
         schema.input_model
         if schema is not None and schema.input_model is not None
@@ -180,6 +310,18 @@ def compile_mcp_tool_graph(
         output_schema=output_schema,
         context_schema=McpToolRuntimeContext,
     )
+    if schema is not None:
+        builder.add_node(
+            _MCP_TOOL_INPUT_NODE,
+            _make_schema_input_node(schema),
+            input_schema=schema.state_model,
+        )
+        builder.add_node(
+            _MCP_TOOL_OUTPUT_NODE,
+            _make_schema_output_node(schema),
+            defer=True,
+        )
+        builder.add_edge(_MCP_TOOL_OUTPUT_NODE, END)
     for node in command_nodes:
         spec = node_type_spec(node.type, node.type_version)
         assert spec is not None and spec.runtime_kind == "command_node"
@@ -203,11 +345,16 @@ def compile_mcp_tool_graph(
             destinations=tuple(dict.fromkeys(target_map.values())),
         )
 
+    if schema is not None:
+        builder.add_edge(START, _MCP_TOOL_INPUT_NODE)
     for edge in normalized.definition.edges:
         if edge.source not in entry_ids:
             continue
-        target = END if edge.target in exit_ids else edge.target
-        builder.add_edge(START, target)
+        target = end_target if edge.target in exit_ids else edge.target
+        builder.add_edge(
+            _MCP_TOOL_INPUT_NODE if schema is not None else START,
+            target,
+        )
     return builder.compile(store=store)
 
 

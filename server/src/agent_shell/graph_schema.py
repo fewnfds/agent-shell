@@ -30,6 +30,27 @@ class GraphSchema:
             self.state_model.model_validate(dict(value))
         except ValidationError as exc:
             raise GraphSchemaError(_format_validation_error(exc)) from exc
+        except Exception as exc:
+            raise GraphSchemaError(
+                f"The Python graph schema could not validate State: {exc}"
+            ) from exc
+
+    def validate_output(self, value: Mapping[str, Any]) -> None:
+        if self.output_model is None:
+            return
+        output = {
+            key: value[key]
+            for key in self.output_model.model_fields
+            if key in value
+        }
+        try:
+            self.output_model.model_validate(output)
+        except ValidationError as exc:
+            raise GraphSchemaError(_format_validation_error(exc)) from exc
+        except Exception as exc:
+            raise GraphSchemaError(
+                f"The Python graph schema could not validate Output: {exc}"
+            ) from exc
 
 
 def _format_validation_error(exc: ValidationError) -> str:

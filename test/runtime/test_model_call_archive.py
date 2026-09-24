@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
 from agent_shell.runtime.context import AgentRuntimeContext
 from agent_shell.runtime.model_call_archive import ModelCallArchiveMiddleware
+from agent_shell.storage.environment import EnvironmentSnapshot
 from agent_shell.storage.model_call_archive import ModelCallArchive
 
 
@@ -73,6 +75,25 @@ def test_archive_counts_model_requests_by_run(tmp_path) -> None:
         "run-1": 2,
         "run-2": 1,
     }
+
+
+def test_archive_redacts_secret_before_json_escaping(tmp_path) -> None:
+    secret = 'part"one\npart-two'
+    environment = EnvironmentSnapshot.capture({"MODEL_CREDENTIAL": secret})
+    archive = ModelCallArchive(
+        tmp_path / "model-calls",
+        redact_secret_text=environment.redact_secret_text,
+    )
+
+    archive.append(
+        "lifecycle-1",
+        {"request": {"messages": [{"content": f"token={secret}"}]}},
+    )
+
+    content = archive.content("lifecycle-1")
+    assert content is not None
+    record = json.loads(content)
+    assert record["request"]["messages"][0]["content"] == "token=[REDACTED]"
 
 
 def test_model_call_archive_middleware_records_attempt_identity(tmp_path) -> None:

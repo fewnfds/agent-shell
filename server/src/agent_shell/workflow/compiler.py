@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Annotated, Any
+from typing_extensions import NotRequired, TypedDict
 
+from langgraph.channels import BaseChannel
+from langgraph.errors import EmptyChannelError
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from pydantic import JsonValue
 
 from agent_shell.command import (
     CommandCallable,
@@ -17,16 +21,111 @@ from agent_shell.command import (
 from agent_shell.runtime.context import WorkflowRunContext, WorkflowRuntimeContext
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
 from agent_shell.runtime.errors import AgentRuntimeError, encode_server_run_error
-from agent_shell.runtime.state import WorkflowState
+from agent_shell.graph_schema import GraphSchema
+from agent_shell.runtime.state import (
+    WORKFLOW_STATE_CHANNEL,
+    WorkflowState,
+    merge_workflow_state,
+)
 from agent_shell.workflow.catalog import node_type_spec
 from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
-from agent_shell.workflow.state_schema import compile_workflow_state_schema
+from agent_shell.workflow.state_schema import (
+    WorkflowStateSchemaError,
+    compile_workflow_state_schema,
+    validate_workflow_state,
+)
 from agent_shell.workflow.topology import validate_workflow_topology
 from agent_shell.workflow.validation import admit_workflow_document
 
 
 def _compile_error(code: str, message: str) -> AgentRuntimeError:
     return AgentRuntimeError(code, message, status_code=422)
+
+
+class _ValidatedWorkflowStateChannel(
+    BaseChannel[
+        dict[str, JsonValue],
+        dict[str, JsonValue],
+        dict[str, JsonValue],
+    ]
+):
+    """Validate one super-step's fully accumulated flat State atomically."""
+
+    __slots__ = ("_has_value", "_value", "schema")
+
+    def __init__(self, schema: GraphSchema) -> None:
+        super().__init__(dict)
+        self.schema = schema
+        self._has_value = False
+        self._value: dict[str, JsonValue] = {}
+
+    @property
+    def ValueType(self) -> type[dict[str, JsonValue]]:
+        return dict
+
+    @property
+    def UpdateType(self) -> type[dict[str, JsonValue]]:
+        return dict
+
+    def copy(self) -> "_ValidatedWorkflowStateChannel":
+        copied = self.__class__(self.schema)
+        copied.key = self.key
+        copied._has_value = self._has_value
+        copied._value = self._value
+        return copied
+
+    def from_checkpoint(
+        self,
+        checkpoint: dict[str, JsonValue],
+    ) -> "_ValidatedWorkflowStateChannel":
+        restored = self.__class__(self.schema)
+        restored.key = self.key
+        if isinstance(checkpoint, dict):
+            restored._has_value = True
+            restored._value = checkpoint
+        return restored
+
+    def get(self) -> dict[str, JsonValue]:
+        if not self._has_value:
+            raise EmptyChannelError()
+        return self._value
+
+    def is_available(self) -> bool:
+        return self._has_value
+
+    def update(self, values: Sequence[dict[str, JsonValue]]) -> bool:
+        if not values:
+            return False
+        merged = self._value if self._has_value else {}
+        for value in values:
+            merged = merge_workflow_state(merged, value)
+        try:
+            validate_workflow_state(merged, self.schema)
+        except WorkflowStateSchemaError as exc:
+            raise AgentRuntimeError(
+                "workflow.state_invalid",
+                str(exc),
+                status_code=422,
+            ) from exc
+        self._has_value = True
+        self._value = merged
+        return True
+
+
+def _workflow_graph_state_schema(schema: GraphSchema | None) -> type:
+    if schema is None:
+        return WorkflowState
+    return TypedDict(
+        "ValidatedWorkflowState",
+        {
+            WORKFLOW_STATE_CHANNEL: NotRequired[
+                Annotated[
+                    dict[str, JsonValue],
+                    _ValidatedWorkflowStateChannel(schema),
+                ]
+            ]
+        },
+    )
 
 
 def _invocation_id(runtime: Runtime[Any]) -> str:
@@ -193,8 +292,9 @@ def compile_workflow(
                 END if edge.target in exit_ids else edge.target
             )
 
+    graph_state_schema = _workflow_graph_state_schema(state_schema)
     builder = StateGraph(
-        WorkflowState,
+        graph_state_schema,
         context_schema=(
             WorkflowRunContext
             if runtime_context is not None
@@ -220,6 +320,7 @@ def compile_workflow(
                 runtime_context=runtime_context,
                 state_schema=state_schema,
             ),
+            input_schema=graph_state_schema,
             destinations=tuple(dict.fromkeys(target_map.values())),
         )
 

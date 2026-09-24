@@ -34,6 +34,37 @@ class State(BaseModel):
     selected: str = ""
 """
 
+PARALLEL_STATE_SOURCE = """
+from pydantic import BaseModel, model_validator
+
+
+class State(BaseModel):
+    left: int
+    right: int
+
+    @model_validator(mode="after")
+    def reject_invalid_pair(self):
+        if self.left == 1 and self.right == 1:
+            raise ValueError("left and right cannot both be 1")
+        return self
+"""
+
+BULK_PARALLEL_STATE_SOURCE = """
+from pydantic import BaseModel, model_validator
+
+
+class State(BaseModel):
+    left: int
+    middle: int
+    right: int
+
+    @model_validator(mode="after")
+    def reject_exactly_two(self):
+        if self.left + self.middle + self.right == 2:
+            raise ValueError("exactly two updates is only an intermediate merge")
+        return self
+"""
+
 
 def _document(*, edges: list[dict] | None = None) -> WorkflowGraphDocumentV1:
     return WorkflowGraphDocumentV1.model_validate(
@@ -279,3 +310,131 @@ def test_declared_state_schema_fails_the_run_on_an_invalid_command_update() -> N
 
     assert raised.value.code == "workflow.state_invalid"
     assert raised.value.status_code == 422
+
+
+def _parallel_document() -> WorkflowGraphDocumentV1:
+    return WorkflowGraphDocumentV1.model_validate(
+        {
+            "definition": {
+                "schema_version": 1,
+                "state_contract": "agent-shell.workflow.control.v1",
+                "nodes": [
+                    {"id": "start", "type": "start", "type_version": 1, "config": {}},
+                    {"id": "fork", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+                    {"id": "left", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+                    {"id": "right", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+                    {"id": "end", "type": "end", "type_version": 1, "config": {}},
+                ],
+                "edges": [
+                    {"id": "start-fork", "source": "start", "source_handle": "next", "target": "fork", "target_handle": "in"},
+                    {"id": "fork-left", "source": "fork", "source_handle": "next", "target": "left", "target_handle": "in"},
+                    {"id": "fork-right", "source": "fork", "source_handle": "next", "target": "right", "target_handle": "in"},
+                    {"id": "left-end", "source": "left", "source_handle": "next", "target": "end", "target_handle": "in"},
+                    {"id": "right-end", "source": "right", "source_handle": "next", "target": "end", "target_handle": "in"},
+                ],
+            },
+            "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
+        }
+    )
+
+
+def test_parallel_updates_to_distinct_keys_merge_into_one_flat_state() -> None:
+    async def fork(state, runtime):
+        return Command(goto=["left", "right"])
+
+    async def left(state, runtime):
+        return Command(update={"left": 1}, goto=END)
+
+    async def right(state, runtime):
+        return Command(update={"right": 2}, goto=END)
+
+    graph = compile_workflow(
+        _parallel_document(),
+        commands={"fork": fork, "left": left, "right": right},
+    )
+    result = asyncio.run(
+        graph.ainvoke(
+            wrap_workflow_state_update({"left": 0, "right": 0}),
+            context=_context(),
+        )
+    )
+
+    assert result[WORKFLOW_STATE_CHANNEL] == {"left": 1, "right": 2}
+
+
+def test_declared_state_schema_rejects_an_invalid_parallel_merge() -> None:
+    async def fork(state, runtime):
+        return Command(goto=["left", "right"])
+
+    async def left(state, runtime):
+        return Command(update={"left": 1}, goto=END)
+
+    async def right(state, runtime):
+        return Command(update={"right": 1}, goto=END)
+
+    graph = compile_workflow(
+        _parallel_document(),
+        commands={"fork": fork, "left": left, "right": right},
+        state_schema_source=PARALLEL_STATE_SOURCE,
+    )
+    with pytest.raises(AgentRuntimeError) as raised:
+        asyncio.run(
+            graph.ainvoke(
+                wrap_workflow_state_update({"left": 0, "right": 0}),
+                context=_context(),
+            )
+        )
+
+    assert raised.value.code == "workflow.state_invalid"
+    assert "left and right cannot both be 1" in raised.value.message
+
+
+def test_declared_state_schema_validates_the_completed_super_step_once() -> None:
+    payload = _parallel_document().model_dump(mode="json")
+    payload["definition"]["nodes"].insert(
+        -1,
+        {
+            "id": "middle",
+            "type": "command",
+            "type_version": 1,
+            "config": {"command_id": COMMAND_ID},
+        },
+    )
+    payload["definition"]["edges"].extend(
+        [
+            {"id": "fork-middle", "source": "fork", "source_handle": "next", "target": "middle", "target_handle": "in"},
+            {"id": "middle-end", "source": "middle", "source_handle": "next", "target": "end", "target_handle": "in"},
+        ]
+    )
+
+    async def fork(state, runtime):
+        return Command(goto=["left", "middle", "right"])
+
+    def update(field: str):
+        async def command(state, runtime):
+            return Command(update={field: 1}, goto=END)
+
+        return command
+
+    graph = compile_workflow(
+        WorkflowGraphDocumentV1.model_validate(payload),
+        commands={
+            "fork": fork,
+            "left": update("left"),
+            "middle": update("middle"),
+            "right": update("right"),
+        },
+        state_schema_source=BULK_PARALLEL_STATE_SOURCE,
+    )
+    result = asyncio.run(
+        graph.ainvoke(
+            wrap_workflow_state_update({"left": 0, "middle": 0, "right": 0}),
+            context=_context(),
+        )
+    )
+
+    assert result[WORKFLOW_STATE_CHANNEL] == {
+        "left": 1,
+        "middle": 1,
+        "right": 1,
+    }

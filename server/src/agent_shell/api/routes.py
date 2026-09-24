@@ -275,6 +275,7 @@ def build_router(
     skill_package_authoring: SkillPackageAuthoringService,
     component_mutations: ComponentMutationService,
     mcp_tool_publication: McpToolPublicationService,
+    publication_commands: asyncio.Lock,
 ) -> APIRouter:
     router = management_api_router()
 
@@ -643,9 +644,10 @@ def build_router(
                 lambda: component_mutations.delete_many(block_type, ids)
             )
 
-        deleted = await asyncio.to_thread(remove_blocks)
-        await synchronize_mcp_tool_publication()
-        return {"deleted": deleted}
+        async with publication_commands:
+            deleted = await asyncio.to_thread(remove_blocks)
+            await synchronize_mcp_tool_publication()
+            return {"deleted": deleted}
 
     @router.get("/blocks/{block_type}/{block_id}")
     def get_block(block_type: str, block_id: str) -> dict:
@@ -752,11 +754,12 @@ def build_router(
         block_id: str,
     ) -> dict[str, bool]:
         check_type(block_type)
-        await asyncio.to_thread(
-            perform_component_mutation,
-            lambda: component_mutations.delete(block_type, block_id),
-        )
-        await synchronize_mcp_tool_publication()
-        return {"ok": True}
+        async with publication_commands:
+            await asyncio.to_thread(
+                perform_component_mutation,
+                lambda: component_mutations.delete(block_type, block_id),
+            )
+            await synchronize_mcp_tool_publication()
+            return {"ok": True}
 
     return router

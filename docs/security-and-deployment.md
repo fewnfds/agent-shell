@@ -27,7 +27,7 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 ## 数据分类与错误披露
 
-本节是 Agent Shell 的唯一数据敏感性与错误披露声明。敏感信息只有实例 `data/config/agent-shell.env` 中保存的实际密钥值，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。模型连接与 MCP 连接 YAML 保存变量引用；credential 读取 API 只投影 `masked`、`missing` 或 `configured` 状态。不要提交或公开分享 `agent-shell.env`。
+本节是 Agent Shell 的唯一数据敏感性与错误披露声明。敏感信息只有实例 `data/config/agent-shell.env` 中保存的实际密钥值，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。模型连接与 MCP 连接 YAML 保存变量引用；模型连接 credential 读取 API 只投影 `masked`、`missing` 或 `none` 状态，MCP secret map 只投影 `masked` 或 `missing` 状态，其他 API Key 只投影 `configured` 布尔状态。不要提交或公开分享 `agent-shell.env`。
 
 Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和默认 HTTP Header 是普通系统配置，明文保存在 `data/config/system.yaml` 并由经过认证的 System Settings API 回显。它们不使用 secret storage；显式 proxy URL 因此不接受内嵌用户名或密码。`x-opencode-session` 一类缓存/路由 Header 可以保存在这里，API Key、Authorization credential 等实际密钥继续使用 Model Connection credential owner。
 

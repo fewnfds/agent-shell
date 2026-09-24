@@ -182,3 +182,18 @@ class State(BaseModel):
                 ),
             )
         )
+
+
+def test_command_classifies_non_json_updates_as_state_schema_errors() -> None:
+    async def command(state, runtime):
+        return Command(update={"unsupported": {"set-value"}})
+
+    with pytest.raises(CommandStateSchemaError):
+        asyncio.run(
+            run_command(
+                command,
+                state=wrap_workflow_state_update({}),
+                runtime=_runtime(),
+                target_map={},
+            )
+        )

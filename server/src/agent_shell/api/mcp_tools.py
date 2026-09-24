@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -16,6 +15,7 @@ from agent_shell.api.errors import management_error
 from agent_shell.configuration.identity import ConfigurationName
 from agent_shell.mcp_tool_contracts import McpToolDefinition
 from agent_shell.mcp_tools.publication import McpToolPublicationService
+from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.mcp_tools import McpToolStore
 from agent_shell.validation import report_from_validation_error
@@ -74,14 +74,36 @@ def _validated(payload: dict, *, blocks: BlockStore) -> dict:
     return validated
 
 
-async def _publication_call(
-    operation: Coroutine[Any, Any, None],
+async def _repair_publication(
+    publication: McpToolPublicationService,
+    diagnostics: RuntimeDiagnostics,
+) -> None:
+    """Best-effort alignment after a cross-store mutation aborts."""
+
+    try:
+        await publication.reconcile()
+    except Exception as exc:
+        # The original operation already failed. Startup and repository
+        # activation retain the same canonical reconciliation boundary.
+        await diagnostics.aruntime_error(
+            exc,
+            code="mcp_tool_publication_repair_failed",
+            component="persistence",
+        )
+
+
+async def _withdraw_items(
+    publication: McpToolPublicationService,
+    diagnostics: RuntimeDiagnostics,
+    item_ids: list[str],
     *,
     message: str,
 ) -> None:
     try:
-        await operation
+        for item_id in item_ids:
+            await publication.delete(item_id)
     except Exception as exc:
+        await _repair_publication(publication, diagnostics)
         raise management_error(
             502,
             code="mcp_tool_publication_failed",
@@ -93,6 +115,7 @@ async def _publication_call(
 def _save_metadata(
     store: McpToolStore,
     blocks: BlockStore,
+    configuration_validation: ConfigurationValidationService,
     item_id: str,
     payload: dict,
     *,
@@ -101,6 +124,20 @@ def _save_metadata(
     existing = store.get_item(item_id)
     validated = _validated(payload, blocks=blocks)
     validated["enabled"] = existing["enabled"] if existing is not None else False
+    if existing is not None and validated["enabled"]:
+        document = store.get_graph(item_id)
+        assert document is not None
+        report = _validate_graph(
+            document,
+            mcp_tool={"id": item_id, **validated},
+            blocks=blocks,
+            configuration_validation=configuration_validation,
+        )
+        if not report.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=validation_failure_detail(report),
+            )
     try:
         store.save_item(
             item_id,
@@ -141,7 +178,8 @@ def _update_graph(
     configuration_validation: ConfigurationValidationService,
     item_id: str,
     payload: dict,
-) -> tuple[dict, WorkflowGraphDocumentV1]:
+) -> tuple[dict, WorkflowGraphDocumentV1, WorkflowGraphDocumentV1, bool, str]:
+    expected_repository_id = store.repository_id()
     mcp_tool = store.get_item(item_id)
     if mcp_tool is None:
         raise management_error(
@@ -150,6 +188,8 @@ def _update_graph(
             message_key="errors.mcpToolNotFound",
             message="The MCP Tool does not exist.",
         )
+    previous_document = store.get_graph(item_id)
+    assert previous_document is not None
     admission, document = admit_workflow_document(payload)
     if document is None:
         raise HTTPException(
@@ -176,7 +216,7 @@ def _update_graph(
         item_id,
         document,
         enabled=True,
-        expected_repository_id=store.repository_id(),
+        expected_repository_id=expected_repository_id,
     ):
         raise management_error(
             404,
@@ -184,7 +224,13 @@ def _update_graph(
             message_key="errors.mcpToolNotFound",
             message="The MCP Tool does not exist.",
         )
-    return document.model_dump(mode="json"), document
+    return (
+        document.model_dump(mode="json"),
+        document,
+        previous_document,
+        bool(mcp_tool["enabled"]),
+        expected_repository_id,
+    )
 
 
 def build_mcp_tool_router(
@@ -192,6 +238,8 @@ def build_mcp_tool_router(
     blocks: BlockStore,
     configuration_validation: ConfigurationValidationService,
     publication: McpToolPublicationService,
+    diagnostics: RuntimeDiagnostics,
+    publication_commands: asyncio.Lock,
 ) -> APIRouter:
     from agent_shell.http_surface import management_api_router
 
@@ -219,12 +267,14 @@ def build_mcp_tool_router(
 
     @router.post("/mcp-tools")
     def create_mcp_tool(payload: dict) -> dict:
+        expected_repository_id = store.repository_id()
         return _save_metadata(
             store,
             blocks,
+            configuration_validation,
             store.new_id(),
             payload,
-            expected_repository_id=store.repository_id(),
+            expected_repository_id=expected_repository_id,
         )
 
     @router.get("/mcp-tools/{item_id}")
@@ -241,32 +291,52 @@ def build_mcp_tool_router(
 
     @router.put("/mcp-tools/{item_id}")
     async def update_mcp_tool(item_id: str, payload: dict) -> dict:
-        def update_metadata() -> dict:
-            if store.get_item(item_id) is None:
+        def update_metadata() -> tuple[dict, dict, str]:
+            expected_repository_id = store.repository_id()
+            previous = store.get_item(item_id)
+            if previous is None:
                 raise management_error(
                     404,
                     code="mcp_tool_not_found",
                     message_key="errors.mcpToolNotFound",
                     message="The MCP Tool does not exist.",
                 )
-            return _save_metadata(
+            result = _save_metadata(
                 store,
                 blocks,
+                configuration_validation,
                 item_id,
                 payload,
-                expected_repository_id=store.repository_id(),
+                expected_repository_id=expected_repository_id,
             )
+            return previous, result, expected_repository_id
 
-        result = await asyncio.to_thread(update_metadata)
-        if result["enabled"]:
-            await _publication_call(
-                publication.publish(item_id),
-                message="The MCP Tool Assistant could not be published.",
+        async with publication_commands:
+            previous, result, expected_repository_id = await asyncio.to_thread(
+                update_metadata
             )
-        return result
+            if result["enabled"]:
+                try:
+                    await publication.publish(item_id)
+                except Exception as exc:
+                    await asyncio.to_thread(
+                        store.save_item,
+                        item_id,
+                        previous,
+                        expected_repository_id=expected_repository_id,
+                    )
+                    await _repair_publication(publication, diagnostics)
+                    raise management_error(
+                        502,
+                        code="mcp_tool_publication_failed",
+                        message_key="errors.mcpToolPublicationFailed",
+                        message="The MCP Tool Assistant could not be published.",
+                    ) from exc
+            return result
 
     @router.post("/mcp-tools/{item_id}/copy")
     def copy_mcp_tool(item_id: str, payload: McpToolCopy) -> dict:
+        expected_repository_id = store.repository_id()
         source = store.get_item(item_id)
         if source is None:
             raise management_error(
@@ -287,7 +357,7 @@ def build_mcp_tool_router(
                 item_id,
                 copy_id,
                 validated,
-                expected_repository_id=store.repository_id(),
+                expected_repository_id=expected_repository_id,
             )
         except ValueError as exc:
             raise management_error(
@@ -309,7 +379,8 @@ def build_mcp_tool_router(
 
     @router.post("/mcp-tools/delete")
     async def delete_mcp_tools(payload: McpToolBulkDelete) -> dict[str, int]:
-        def selected_ids() -> list[str]:
+        def selected_ids() -> tuple[list[str], str]:
+            expected_repository_id = store.repository_id()
             summaries = store.list_item_summaries()
             ids = (
                 list(dict.fromkeys(payload.ids))
@@ -331,21 +402,26 @@ def build_mcp_tool_router(
                     message_key="errors.mcpToolNotFound",
                     message="An MCP Tool does not exist.",
                 )
-            return ids
+            return ids, expected_repository_id
 
-        ids = await asyncio.to_thread(selected_ids)
-        for item_id in ids:
-            await _publication_call(
-                publication.delete(item_id),
+        async with publication_commands:
+            ids, expected_repository_id = await asyncio.to_thread(selected_ids)
+            await _withdraw_items(
+                publication,
+                diagnostics,
+                ids,
                 message="The MCP Tool Assistant could not be withdrawn.",
             )
-        return {
-            "deleted": await asyncio.to_thread(
-                store.delete_items,
-                ids,
-                expected_repository_id=store.repository_id(),
-            )
-        }
+            try:
+                deleted = await asyncio.to_thread(
+                    store.delete_items,
+                    ids,
+                    expected_repository_id=expected_repository_id,
+                )
+            except Exception:
+                await _repair_publication(publication, diagnostics)
+                raise
+            return {"deleted": deleted}
 
     @router.get("/mcp-tools/{item_id}/graph")
     def get_mcp_tool_graph(item_id: str) -> dict:
@@ -361,7 +437,8 @@ def build_mcp_tool_router(
 
     @router.put("/mcp-tools/{item_id}/draft")
     async def update_mcp_tool_draft(item_id: str, payload: dict) -> dict:
-        def parse_draft() -> WorkflowGraphDocumentV1:
+        def parse_draft() -> tuple[WorkflowGraphDocumentV1, str]:
+            expected_repository_id = store.repository_id()
             mcp_tool = store.get_item(item_id)
             if mcp_tool is None:
                 raise management_error(
@@ -371,7 +448,7 @@ def build_mcp_tool_router(
                     message="The MCP Tool does not exist.",
                 )
             try:
-                return WorkflowGraphDocumentV1.model_validate(payload)
+                document = WorkflowGraphDocumentV1.model_validate(payload)
             except ValidationError as exc:
                 report = report_from_validation_error(
                     exc,
@@ -385,29 +462,39 @@ def build_mcp_tool_router(
                     status_code=422,
                     detail=validation_failure_detail(report),
                 ) from exc
+            return document, expected_repository_id
 
-        document = await asyncio.to_thread(parse_draft)
-        await _publication_call(
-            publication.unpublish(item_id),
-            message="The MCP Tool Assistant could not be withdrawn.",
-        )
+        async with publication_commands:
+            document, expected_repository_id = await asyncio.to_thread(
+                parse_draft
+            )
+            await _withdraw_items(
+                publication,
+                diagnostics,
+                [item_id],
+                message="The MCP Tool Assistant could not be withdrawn.",
+            )
 
-        def save_draft() -> dict:
-            if not store.save_graph_and_enabled(
-                item_id,
-                document,
-                enabled=False,
-                expected_repository_id=store.repository_id(),
-            ):
-                raise management_error(
-                    404,
-                    code="mcp_tool_not_found",
-                    message_key="errors.mcpToolNotFound",
-                    message="The MCP Tool does not exist.",
-                )
-            return document.model_dump(mode="json")
+            def save_draft() -> dict:
+                if not store.save_graph_and_enabled(
+                    item_id,
+                    document,
+                    enabled=False,
+                    expected_repository_id=expected_repository_id,
+                ):
+                    raise management_error(
+                        404,
+                        code="mcp_tool_not_found",
+                        message_key="errors.mcpToolNotFound",
+                        message="The MCP Tool does not exist.",
+                    )
+                return document.model_dump(mode="json")
 
-        return await asyncio.to_thread(save_draft)
+            try:
+                return await asyncio.to_thread(save_draft)
+            except Exception:
+                await _repair_publication(publication, diagnostics)
+                raise
 
     @router.post("/mcp-tools/{item_id}/validate")
     def validate_mcp_tool(item_id: str, payload: dict) -> dict:
@@ -433,35 +520,44 @@ def build_mcp_tool_router(
 
     @router.put("/mcp-tools/{item_id}/graph")
     async def update_mcp_tool_graph(item_id: str, payload: dict) -> dict:
-        result, document = await asyncio.to_thread(
-            _update_graph,
-            store,
-            blocks,
-            configuration_validation,
-            item_id,
-            payload,
-        )
-        try:
-            await publication.publish(item_id)
-        except Exception as exc:
-            await asyncio.to_thread(
-                store.save_graph_and_enabled,
+        async with publication_commands:
+            (
+                result,
+                _document,
+                previous_document,
+                previous_enabled,
+                expected_repository_id,
+            ) = await asyncio.to_thread(
+                _update_graph,
+                store,
+                blocks,
+                configuration_validation,
                 item_id,
-                document,
-                enabled=False,
-                expected_repository_id=store.repository_id(),
+                payload,
             )
-            raise management_error(
-                502,
-                code="mcp_tool_publication_failed",
-                message_key="errors.mcpToolPublicationFailed",
-                message="The MCP Tool Assistant could not be published.",
-            ) from exc
-        return result
+            try:
+                await publication.publish(item_id)
+            except Exception as exc:
+                await asyncio.to_thread(
+                    store.save_graph_and_enabled,
+                    item_id,
+                    previous_document,
+                    enabled=previous_enabled,
+                    expected_repository_id=expected_repository_id,
+                )
+                await _repair_publication(publication, diagnostics)
+                raise management_error(
+                    502,
+                    code="mcp_tool_publication_failed",
+                    message_key="errors.mcpToolPublicationFailed",
+                    message="The MCP Tool Assistant could not be published.",
+                ) from exc
+            return result
 
     @router.delete("/mcp-tools/{item_id}")
     async def delete_mcp_tool(item_id: str) -> dict[str, bool]:
-        def require_item() -> None:
+        def require_item() -> str:
+            expected_repository_id = store.repository_id()
             if store.get_item(item_id) is None:
                 raise management_error(
                     404,
@@ -469,25 +565,34 @@ def build_mcp_tool_router(
                     message_key="errors.mcpToolNotFound",
                     message="The MCP Tool does not exist.",
                 )
+            return expected_repository_id
 
-        await asyncio.to_thread(require_item)
-        await _publication_call(
-            publication.delete(item_id),
-            message="The MCP Tool Assistant could not be withdrawn.",
-        )
-        deleted = await asyncio.to_thread(
-            store.delete_item,
-            item_id,
-            expected_repository_id=store.repository_id(),
-        )
-        if not deleted:
-            raise management_error(
-                404,
-                code="mcp_tool_not_found",
-                message_key="errors.mcpToolNotFound",
-                message="The MCP Tool does not exist.",
+        async with publication_commands:
+            expected_repository_id = await asyncio.to_thread(require_item)
+            await _withdraw_items(
+                publication,
+                diagnostics,
+                [item_id],
+                message="The MCP Tool Assistant could not be withdrawn.",
             )
-        return {"ok": True}
+            try:
+                deleted = await asyncio.to_thread(
+                    store.delete_item,
+                    item_id,
+                    expected_repository_id=expected_repository_id,
+                )
+            except Exception:
+                await _repair_publication(publication, diagnostics)
+                raise
+            if not deleted:
+                await _repair_publication(publication, diagnostics)
+                raise management_error(
+                    404,
+                    code="mcp_tool_not_found",
+                    message_key="errors.mcpToolNotFound",
+                    message="The MCP Tool does not exist.",
+                )
+            return {"ok": True}
 
     return router
 

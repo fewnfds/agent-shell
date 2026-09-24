@@ -68,6 +68,7 @@ def _validated(payload: dict) -> dict:
 def _save(
     store: WorkflowStore,
     blocks: BlockStore,
+    configuration_validation: ConfigurationValidationService,
     item_id: str,
     payload: dict,
     *,
@@ -101,6 +102,20 @@ def _save(
             message_key="errors.pythonSchemaNotFound",
             message="The selected Python Schema Component does not exist.",
         )
+    if existing is not None and validated["enabled"]:
+        document = store.get_graph(item_id)
+        assert document is not None
+        report = workflow_executable_report(
+            document,
+            workflow={"id": item_id, **validated},
+            blocks=blocks,
+            configuration_validation=configuration_validation,
+        )
+        if not report.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=validation_failure_detail(report),
+            )
     try:
         store.save_item(
             item_id,
@@ -201,6 +216,7 @@ def build_workflow_router(
         return _save(
             store,
             blocks,
+            configuration_validation,
             store.new_id(),
             payload,
             expected_repository_id=mutation_repository_id,
@@ -301,6 +317,7 @@ def build_workflow_router(
         return _save(
             store,
             blocks,
+            configuration_validation,
             item_id,
             payload,
             expected_repository_id=mutation_repository_id,

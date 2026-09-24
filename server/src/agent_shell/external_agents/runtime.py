@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
@@ -19,6 +20,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
+from uuid import uuid4
 
 from agent_shell.configuration.identity import is_configuration_id
 from agent_shell.contracts import ExternalAgentProfile
@@ -426,7 +428,8 @@ def recorded_definition_revision(
 class ConversationRegistry:
     """In-process guard: at most one writer per conversation inside one HOME.
 
-    ``new`` never conflicts because the CLI allocates a fresh conversation.
+    ``new`` calls can run together because the CLI allocates fresh conversations,
+    but they still participate in the HOME-wide ``continue-latest`` claim.
     A named conversation conflicts with itself, and ``continue-latest``
     targets whichever conversation it finds, so it owns the whole HOME.
     Cross-instance sharing of one data directory is out of scope.
@@ -443,9 +446,7 @@ class ConversationRegistry:
         *,
         owner: str,
     ) -> str | None:
-        claim = selection.claim
-        if claim is None:
-            return None
+        claim = selection.claim or f"new:{uuid4()}"
         key = str(home)
         async with self._lock:
             active = self._active.get(key)
@@ -685,8 +686,8 @@ class AntigravityRunner:
             if outcome.timed_out:
                 return (
                     "external_agent_watchdog_timeout",
-                    "The Antigravity CLI did not exit before the process "
-                    "watchdog killed it.",
+                    "The Antigravity CLI output or process did not complete "
+                    "before the process watchdog stopped it.",
                 )
             return (
                 "external_agent_print_timeout",
@@ -769,13 +770,33 @@ class AntigravityRunner:
                         self._consume_envelope(
                             line, state, recorder, selection
                         )
+                # Process.wait() can remain pending after CLI exit if a
+                # descendant still holds an inherited stderr pipe.
+                while process.returncode is None:
+                    await asyncio.sleep(0.1)
+                exit_code = await process.wait()
+                # Let the collector flush any stderr already delivered before
+                # stopping it when a descendant keeps the pipe open.
+                await asyncio.sleep(0)
         except TimeoutError:
             timed_out = True
             await _terminate_process(process)
+            exit_code = process.returncode
         except BaseException:
             await _terminate_process(process)
-            await stderr_task
+            stderr_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stderr_task
             raise
+        if stderr_task.done() and not stderr_task.cancelled():
+            stderr_text = stderr_task.result()
+        else:
+            stderr_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stderr_task
+            stderr_text = await asyncio.to_thread(
+                session.stderr_log.read_text, encoding="utf-8", errors="replace"
+            )
         if profile.output_format == "text":
             tail = decoder.decode(b"", final=True)
             if tail:
@@ -787,8 +808,6 @@ class AntigravityRunner:
                 self._consume_envelope(remaining, state, recorder, selection)
             elif profile.output_format == "json" and remaining.strip():
                 self._consume_json_result(remaining, state, recorder, selection)
-        exit_code = await process.wait()
-        stderr_text = await stderr_task
         denied_actions = state.denied_actions or denied_permissions_from_stderr(
             stderr_text
         )

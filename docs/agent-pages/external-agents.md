@@ -87,11 +87,13 @@ sessions/<session_id>/             meta.json / events.ndjson / stderr.log / resu
 
 | 本次取值 | 行为 |
 | --- | --- |
-| `new` | 不传会话参数，外部 CLI 新建会话并在结果里返回新的会话 ID |
-| `continue-latest` | 传 `-c`，接续该 HOME 内最近一次会话；同一 HOME 同时只允许一个这类调用 |
+| `new` | 不传会话参数，外部 CLI 新建会话并在结果里返回新的会话 ID；多个新会话可并行 |
+| `continue-latest` | 传 `-c`，接续该 HOME 内最近一次会话；运行期间与同一 HOME 中其他会话调用互斥 |
 | 具体会话 ID | 传 `--conversation <id>`；返回 ID 与请求 ID 不一致时按"实际新建"如实上报 |
 
 同一会话 ID 的并发调用在起进程前被拒绝（`external_agent_conversation_busy`）。恢复会话时若预设的 system prompt 已改变，调用在起进程前失败（`external_agent_system_prompt_changed`），需要改用新会话。
+
+进程看门狗覆盖 stdout 读取和 CLI 退出状态；CLI 提前关闭输出但仍未退出时，到期会终止进程并记录 `timeout`。CLI 已退出而后代仍持有 stderr 管道时，调用读取已落盘的 stderr 内容，并按 CLI 的 exit code 与结果状态判定终态。
 
 一次调用有四种终态：
 

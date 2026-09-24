@@ -5,18 +5,28 @@ from fastapi.testclient import TestClient
 
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
 from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleNotFound
+from agent_shell.runtime.langgraph_lifecycle import LangGraphLifecycleUnavailable
 
 
 class _LifecycleService:
-    def __init__(self, *, cancelled_runs: int = 0, missing: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        cancelled_runs: int = 0,
+        missing: bool = False,
+        unavailable: bool = False,
+    ) -> None:
         self.cancelled_runs = cancelled_runs
         self.missing = missing
+        self.unavailable = unavailable
         self.cancelled_lifecycle_ids: list[str] = []
 
     async def cancel_active(self, lifecycle_id: str) -> int:
         self.cancelled_lifecycle_ids.append(lifecycle_id)
         if self.missing:
             raise LangGraphLifecycleNotFound(lifecycle_id)
+        if self.unavailable:
+            raise LangGraphLifecycleUnavailable(lifecycle_id)
         return self.cancelled_runs
 
 
@@ -76,3 +86,19 @@ def test_cancel_workflow_lifecycle_maps_missing_lifecycle_to_404() -> None:
     assert response.json()["detail"]["code"] == "workflow_lifecycle_not_found"
     assert runtime.terminated_lifecycle_ids == ["missing"]
     assert service.cancelled_lifecycle_ids == ["missing"]
+
+
+def test_cancel_workflow_lifecycle_reports_unavailable_official_status() -> None:
+    service = _LifecycleService(unavailable=True)
+    runtime = _RequestRuntime(terminated=True)
+
+    response = _client(service, runtime).post(
+        "/agent-shell/api/workflow-lifecycles/lifecycle-1/cancel"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == (
+        "workflow_lifecycle_status_unavailable"
+    )
+    assert runtime.terminated_lifecycle_ids == ["lifecycle-1"]
+    assert service.cancelled_lifecycle_ids == ["lifecycle-1"]

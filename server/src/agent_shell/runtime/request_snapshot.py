@@ -282,6 +282,7 @@ class _RunBinding:
     initial_state: Mapping[str, Any] = field(default_factory=dict)
     response_consumer: bool = False
     run_id_ready: asyncio.Future[str] | None = None
+    handle_ready: asyncio.Future[WorkflowRunHandle] | None = None
     execution_ready: asyncio.Future[RunExecution] | None = None
     protocol_stream: _OfficialRunEventStream | None = None
 
@@ -310,6 +311,7 @@ class _AgentRunBinding:
     run_id: str = ""
     response_consumer: bool = False
     run_id_ready: asyncio.Future[str] | None = None
+    handle_ready: asyncio.Future[AgentRunHandle] | None = None
     execution_ready: asyncio.Future[RunExecution] | None = None
     protocol_stream: _OfficialRunEventStream | None = None
 
@@ -630,14 +632,19 @@ class LifecycleRunCoordinator:
             )
             result = await self._start_bound_run(binding, thread_stream)
             self._bind_official_run_id(binding, result)
-            await self._record_relation(
-                client,
-                self._workflow_relation(binding),
-            )
+            relation = self._workflow_relation(binding)
+            await self._record_relation(client, relation)
             assert binding.execution_ready is not None
             return await binding.execution_ready
         except BaseException as exc:
             self._cancel_binding_futures(binding)
+            if binding.thread_id and binding.run_id:
+                with suppress(Exception):
+                    await self.cancel_official_run(
+                        binding.thread_id,
+                        binding.run_id,
+                        wait=True,
+                    )
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             if isinstance(exc, Exception):
@@ -715,14 +722,19 @@ class LifecycleRunCoordinator:
             result = await self._start_bound_agent_run(binding, thread_stream)
             run_id = self._run_id_from_result(result, graph_kind="Main Agent")
             self._bind_agent_run_id(binding, run_id)
-            await self._record_relation(
-                client,
-                self._agent_relation(binding),
-            )
+            relation = self._agent_relation(binding)
+            await self._record_relation(client, relation)
             assert binding.execution_ready is not None
             return await binding.execution_ready
         except BaseException as exc:
             self._cancel_agent_binding_futures(binding)
+            if binding.thread_id and binding.run_id:
+                with suppress(Exception):
+                    await self.cancel_official_run(
+                        binding.thread_id,
+                        binding.run_id,
+                        wait=True,
+                    )
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             if client is not None and binding.thread_id not in self._sessions:
@@ -913,20 +925,17 @@ class LifecycleRunCoordinator:
                 f"Workflow {target_workflow_id} is not in the Lifecycle snapshot.",
                 status_code=422,
             )
-        existing = await self._relation_for_operation(
-            caller,
-            normalized_operation_id,
-        )
-        if existing is not None:
-            if existing.resource_id != target_workflow_id:
+        key = relation_key(caller.run_id, normalized_operation_id)
+        pending = self._bindings.get(key)
+        if pending is not None:
+            if str(pending.workflow["id"]) != target_workflow_id:
                 raise AgentRuntimeError(
                     "workflow_run_operation_conflict",
                     "The operation_id is already bound to another Workflow.",
                     status_code=409,
                 )
-            async with self._owner.new_agent_server_client() as client:
-                run = await client.runs.get(existing.thread_id, existing.run_id)
-            return self._handle(existing, run)
+            assert pending.handle_ready is not None
+            return await asyncio.shield(pending.handle_ready)
 
         binding = self._new_binding(
             target,
@@ -935,16 +944,32 @@ class LifecycleRunCoordinator:
             public_model=str(target["name"]),
             caller_run_id=caller.run_id,
             operation_id=normalized_operation_id,
-            initial_state=deepcopy(dict(initial_state)),
+            validate_initial_state=False,
         )
-        if binding.key in self._bindings:
-            raise AgentRuntimeError(
-                "workflow_run_operation_conflict",
-                "The operation_id is already being started.",
-                status_code=409,
-            )
         self._bindings[binding.key] = binding
         try:
+            existing = await self._relation_for_operation(
+                caller,
+                normalized_operation_id,
+            )
+            if existing is not None:
+                if existing.resource_id != target_workflow_id:
+                    raise AgentRuntimeError(
+                        "workflow_run_operation_conflict",
+                        "The operation_id is already bound to another Workflow.",
+                        status_code=409,
+                    )
+                async with self._owner.new_agent_server_client() as client:
+                    run = await client.runs.get(existing.thread_id, existing.run_id)
+                handle = self._handle(existing, run)
+                self._bind_handle_ready(binding, handle)
+                self._bindings.pop(binding.key, None)
+                return handle
+
+            binding.initial_state = self._workflow_initial_state(
+                target,
+                initial_state,
+            )
             client, thread_stream = await self._open_run_session(binding)
             result = await self._start_bound_run(binding, thread_stream)
             self._bind_official_run_id(binding, result)
@@ -957,13 +982,20 @@ class LifecycleRunCoordinator:
                 name=f"workflow-run-stream:{binding.run_id}",
             )
             run = await client.runs.get(binding.thread_id, binding.run_id)
-            return self._handle(relation, run)
-        except BaseException:
+            handle = self._handle(relation, run)
+            self._bind_handle_ready(binding, handle)
+            return handle
+        except BaseException as exc:
+            self._fail_handle_ready(binding, exc)
             self._bindings.pop(binding.key, None)
             self._cancel_binding_futures(binding)
             if binding.thread_id and binding.run_id:
                 with suppress(Exception):
-                    await self.cancel_official_run(binding.thread_id, binding.run_id)
+                    await self.cancel_official_run(
+                        binding.thread_id,
+                        binding.run_id,
+                        wait=True,
+                    )
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             raise
@@ -1003,50 +1035,27 @@ class LifecycleRunCoordinator:
                     status_code=422,
                 )
 
-        existing = await self._relation_for_operation(
-            caller,
-            normalized_operation_id,
-            graph_kind="agent",
-        )
-        if existing is not None:
-            if (
-                existing.resource_id != main_agent_id
-                or (
-                    requested_thread_id is not None
-                    and existing.thread_id != requested_thread_id
-                )
-            ):
-                raise AgentRuntimeError(
-                    "agent_run_operation_conflict",
-                    "The operation_id is already bound to another Agent Run.",
-                    status_code=409,
-                )
-            async with self._owner.new_agent_server_client() as client:
-                run = await client.runs.get(existing.thread_id, existing.run_id)
-            return self._agent_handle(existing, run)
-
         key = relation_key(caller.run_id, normalized_operation_id)
         pending = self._agent_bindings.get(key)
         if pending is not None:
-            if (
-                str(pending.main_agent["id"]) != main_agent_id
-                or (
-                    requested_thread_id is not None
-                    and pending.thread_id
-                    and pending.thread_id != requested_thread_id
+            if str(pending.main_agent["id"]) != main_agent_id:
+                raise AgentRuntimeError(
+                    "agent_run_operation_conflict",
+                    "The operation_id is already bound to another Agent Run.",
+                    status_code=409,
                 )
+            assert pending.handle_ready is not None
+            handle = await asyncio.shield(pending.handle_ready)
+            if (
+                requested_thread_id is not None
+                and handle.thread_id != requested_thread_id
             ):
                 raise AgentRuntimeError(
                     "agent_run_operation_conflict",
                     "The operation_id is already bound to another Agent Run.",
                     status_code=409,
                 )
-            assert pending.run_id_ready is not None
-            await pending.run_id_ready
-            relation = self._agent_relation(pending)
-            async with self._owner.new_agent_server_client() as client:
-                run = await client.runs.get(relation.thread_id, relation.run_id)
-            return self._agent_handle(relation, run)
+            return handle
 
         loop = asyncio.get_running_loop()
         binding = _AgentRunBinding(
@@ -1058,11 +1067,40 @@ class LifecycleRunCoordinator:
             caller_run_id=caller.run_id,
             operation_id=normalized_operation_id,
             run_id_ready=loop.create_future(),
+            handle_ready=loop.create_future(),
             execution_ready=loop.create_future(),
         )
         self._agent_bindings[key] = binding
         client: Any | None = None
         try:
+            existing = await self._relation_for_operation(
+                caller,
+                normalized_operation_id,
+                graph_kind="agent",
+            )
+            if existing is not None:
+                if (
+                    existing.resource_id != main_agent_id
+                    or (
+                        requested_thread_id is not None
+                        and existing.thread_id != requested_thread_id
+                    )
+                ):
+                    raise AgentRuntimeError(
+                        "agent_run_operation_conflict",
+                        "The operation_id is already bound to another Agent Run.",
+                        status_code=409,
+                    )
+                async with self._owner.new_agent_server_client() as existing_client:
+                    run = await existing_client.runs.get(
+                        existing.thread_id,
+                        existing.run_id,
+                    )
+                handle = self._agent_handle(existing, run)
+                self._bind_handle_ready(binding, handle)
+                self._agent_bindings.pop(key, None)
+                return handle
+
             client, thread_stream = await self._open_agent_run_session(
                 binding,
                 existing_thread_id=requested_thread_id,
@@ -1079,13 +1117,20 @@ class LifecycleRunCoordinator:
                 name=f"agent-run-stream:{binding.run_id}",
             )
             run = await client.runs.get(binding.thread_id, binding.run_id)
-            return self._agent_handle(relation, run)
-        except BaseException:
+            handle = self._agent_handle(relation, run)
+            self._bind_handle_ready(binding, handle)
+            return handle
+        except BaseException as exc:
+            self._fail_handle_ready(binding, exc)
             self._agent_bindings.pop(key, None)
             self._cancel_agent_binding_futures(binding)
             if binding.thread_id and binding.run_id:
                 with suppress(Exception):
-                    await self.cancel_official_run(binding.thread_id, binding.run_id)
+                    await self.cancel_official_run(
+                        binding.thread_id,
+                        binding.run_id,
+                        wait=True,
+                    )
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
             if client is not None and binding.thread_id not in self._sessions:
@@ -1302,13 +1347,19 @@ class LifecycleRunCoordinator:
             self._detached_run_ids.discard(relation.run_id)
             self._release_if_finished()
 
-    async def cancel_official_run(self, thread_id: str, run_id: str) -> None:
+    async def cancel_official_run(
+        self,
+        thread_id: str,
+        run_id: str,
+        *,
+        wait: bool = False,
+    ) -> None:
         if not thread_id or not run_id:
             return
         async with self._owner.new_agent_server_client() as client:
             run = await client.runs.get(thread_id, run_id)
             if official_status(run) in ACTIVE_RUN_STATUSES:
-                await client.runs.cancel(thread_id, run_id)
+                await client.runs.cancel(thread_id, run_id, wait=wait)
 
     async def official_output(self, thread_id: str) -> object:
         session = self._sessions.get(thread_id)
@@ -1340,11 +1391,38 @@ class LifecycleRunCoordinator:
         operation_id: str = "",
         initial_state: Mapping[str, Any] | None = None,
         response_consumer: bool = False,
+        validate_initial_state: bool = True,
     ) -> _RunBinding:
         document = self._snapshot.workflow_document(str(workflow["id"]))
         if document is None:
             raise RuntimeError("the captured Workflow no longer exists")
-        entry_state = dict(initial_state or {})
+        entry_state = (
+            self._workflow_initial_state(workflow, initial_state)
+            if validate_initial_state
+            else {}
+        )
+        loop = asyncio.get_running_loop()
+        return _RunBinding(
+            workflow=workflow,
+            document=document,
+            request_id=request_id,
+            lifecycle_id=lifecycle_id,
+            public_model=public_model,
+            caller_run_id=caller_run_id,
+            operation_id=operation_id,
+            initial_state=entry_state,
+            response_consumer=response_consumer,
+            run_id_ready=loop.create_future(),
+            handle_ready=(loop.create_future() if operation_id else None),
+            execution_ready=loop.create_future(),
+        )
+
+    def _workflow_initial_state(
+        self,
+        workflow: Mapping[str, Any],
+        initial_state: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        entry_state = deepcopy(dict(initial_state or {}))
         try:
             state_schema = compile_workflow_state_schema(
                 self._snapshot.python_schema_source(
@@ -1365,20 +1443,7 @@ class LifecycleRunCoordinator:
                 str(exc),
                 status_code=422,
             ) from exc
-        loop = asyncio.get_running_loop()
-        return _RunBinding(
-            workflow=workflow,
-            document=document,
-            request_id=request_id,
-            lifecycle_id=lifecycle_id,
-            public_model=public_model,
-            caller_run_id=caller_run_id,
-            operation_id=operation_id,
-            initial_state=entry_state,
-            response_consumer=response_consumer,
-            run_id_ready=loop.create_future(),
-            execution_ready=loop.create_future(),
-        )
+        return entry_state
 
     async def _open_run_session(self, binding: _RunBinding) -> tuple[Any, Any]:
         client = self._owner.new_agent_server_client()
@@ -1593,14 +1658,45 @@ class LifecycleRunCoordinator:
         binding.run_id_ready.set_result(run_id)
 
     @staticmethod
+    def _bind_handle_ready(
+        binding: _RunBinding | _AgentRunBinding,
+        handle: WorkflowRunHandle | AgentRunHandle,
+    ) -> None:
+        assert binding.handle_ready is not None
+        if not binding.handle_ready.done():
+            binding.handle_ready.set_result(handle)
+
+    @staticmethod
+    def _fail_handle_ready(
+        binding: _RunBinding | _AgentRunBinding,
+        exc: BaseException,
+    ) -> None:
+        future = binding.handle_ready
+        if future is None or future.done():
+            return
+        future.set_exception(exc)
+        # A request may fail before a duplicate starts awaiting this Future.
+        # Retrieve the exception now to avoid an unobserved-Future warning;
+        # later awaiters still receive the same exception.
+        future.exception()
+
+    @staticmethod
     def _cancel_binding_futures(binding: _RunBinding) -> None:
-        for future in (binding.run_id_ready, binding.execution_ready):
+        for future in (
+            binding.run_id_ready,
+            binding.handle_ready,
+            binding.execution_ready,
+        ):
             if future is not None and not future.done():
                 future.cancel()
 
     @staticmethod
     def _cancel_agent_binding_futures(binding: _AgentRunBinding) -> None:
-        for future in (binding.run_id_ready, binding.execution_ready):
+        for future in (
+            binding.run_id_ready,
+            binding.handle_ready,
+            binding.execution_ready,
+        ):
             if future is not None and not future.done():
                 future.cancel()
 

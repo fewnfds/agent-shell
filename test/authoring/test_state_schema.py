@@ -27,6 +27,11 @@ def test_open_state_accepts_any_json_object() -> None:
     validate_workflow_state({}, None)
 
 
+def test_open_state_rejects_values_that_cannot_enter_the_json_channel() -> None:
+    with pytest.raises(WorkflowStateSchemaError):
+        validate_workflow_state({"unsupported": {"set-value"}}, None)
+
+
 def test_declared_state_schema_requires_a_pydantic_state() -> None:
     with pytest.raises(WorkflowStateSchemaError, match="Pydantic 'State'"):
         validate_workflow_state_schema("value = 1")
@@ -63,3 +68,24 @@ def test_declared_state_schema_reports_missing_required_keys() -> None:
     schema = compile_workflow_state_schema(STATE_SOURCE)
     with pytest.raises(WorkflowStateSchemaError, match="count"):
         validate_workflow_state({}, schema)
+
+
+def test_declared_state_schema_wraps_custom_validator_failures() -> None:
+    schema = compile_workflow_state_schema(
+        """
+from pydantic import BaseModel, field_validator
+
+
+class State(BaseModel):
+    count: int
+
+    @field_validator("count")
+    @classmethod
+    def reject_seven(cls, value):
+        if value == 7:
+            raise TypeError("seven is unsupported")
+        return value
+"""
+    )
+    with pytest.raises(WorkflowStateSchemaError, match="seven is unsupported"):
+        validate_workflow_state({"count": 7}, schema)

@@ -114,6 +114,16 @@ def build_workflow_lifecycle_router(
                 message_key="errors.workflowLifecycleNotFound",
                 message="The Workflow Lifecycle does not exist.",
             ) from exc
+        except LangGraphLifecycleUnavailable as exc:
+            raise management_error(
+                409,
+                code="workflow_lifecycle_status_unavailable",
+                message_key="errors.workflowLifecycleStatusUnavailable",
+                message=(
+                    "Official Thread/Run status is unavailable, so this Lifecycle "
+                    "cannot be cancelled safely."
+                ),
+            ) from exc
         return {
             "ok": True,
             "terminated_response": terminated_response,

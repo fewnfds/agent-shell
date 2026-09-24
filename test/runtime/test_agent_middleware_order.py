@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from typing import Annotated
 
@@ -312,6 +313,203 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         *child_packages,
         child_empty_prompt,
     ]
+
+
+def test_concurrent_agent_builds_keep_request_local_package_runtimes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class FakeToolRuntime:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+
+        def tools_for(self, _owner_id: str):
+            return (SimpleNamespace(name=f"{self.label}-tool"),)
+
+        def close_sync(self) -> None:
+            self.closed = True
+
+        async def close(self) -> None:
+            self.close_sync()
+
+    class FakeMiddlewareRuntime:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+
+        def middleware_for(self, _owner_id: str, *, context=None):
+            del context
+            return (_middleware(f"{self.label}-middleware"),)
+
+        def close_sync(self) -> None:
+            self.closed = True
+
+        async def close(self) -> None:
+            self.close_sync()
+
+    def assembly(label: str) -> StaticAssembly:
+        output_id = "55555555-5555-4555-8555-555555555555"
+        return StaticAssembly(
+            main_agent={"id": label, "name": label},
+            references={},
+            blocks={
+                "agent-event-output": {
+                    "id": output_id,
+                    "name": "Output",
+                    "python_package": {"folder": output_id},
+                }
+            },
+            filesystem_mode="composite",
+            subagents=(),
+            subagent_nodes={},
+        )
+
+    tool_runtimes: dict[str, FakeToolRuntime] = {}
+    middleware_runtimes: dict[str, FakeMiddlewareRuntime] = {}
+
+    def make_tool_runtime(value, **_kwargs):
+        label = str(value.main_agent["id"])
+        runtime = FakeToolRuntime(label)
+        tool_runtimes[label] = runtime
+        return runtime
+
+    def make_middleware_runtime(value, **_kwargs):
+        label = str(value.main_agent["id"])
+        runtime = FakeMiddlewareRuntime(label)
+        middleware_runtimes[label] = runtime
+        return runtime
+
+    monkeypatch.setattr(
+        agent_builder.ToolPackageRuntime,
+        "from_assembly",
+        classmethod(lambda _cls, value, **kwargs: make_tool_runtime(value, **kwargs)),
+    )
+    monkeypatch.setattr(
+        agent_builder.MiddlewarePackageRuntime,
+        "from_assembly",
+        classmethod(
+            lambda _cls, value, **kwargs: make_middleware_runtime(value, **kwargs)
+        ),
+    )
+
+    builder = AgentBuilder(
+        SimpleNamespace(),
+        python_packages_dir=tmp_path / "python-packages",
+        data_root=tmp_path,
+        runtime_dir=tmp_path / "runtime",
+        skills_dir=tmp_path / "skills",
+        validation=SimpleNamespace(),
+        provider_http_clients=SimpleNamespace(),
+        store=InMemoryStore(),
+    )
+    first_materializing = threading.Event()
+    release_first = threading.Event()
+    second_materialized = threading.Event()
+    observed: dict[str, tuple[str, str, str]] = {}
+
+    def materialize(
+        *_args,
+        owner_id: str,
+        tool_runtime=None,
+        middleware_runtime=None,
+        mcp_runtime=None,
+        **_kwargs,
+    ) -> MaterializedAgentResources:
+        if owner_id == "agent-a":
+            first_materializing.set()
+            assert release_first.wait(timeout=5)
+        effective_tools = tool_runtime or getattr(builder, "_tool_runtime")
+        effective_middleware = middleware_runtime or getattr(
+            builder, "_middleware_runtime"
+        )
+        observed[owner_id] = (
+            effective_tools.label,
+            effective_middleware.label,
+            mcp_runtime.label,
+        )
+        if owner_id == "agent-b":
+            second_materialized.set()
+        return MaterializedAgentResources(
+            model=object(),
+            tool_choice=None,
+            response_format=None,
+            model_settings={},
+            exception_retry=None,
+            system_prompt=None,
+            tools=effective_tools.tools_for(owner_id),
+            foundation_middleware=(),
+            todo_middleware=None,
+            summarization_middleware=None,
+            model_call_limit_middleware=None,
+            tool_call_limit_middleware=None,
+            package_middleware=effective_middleware.middleware_for(owner_id),
+            backend=None,
+            middleware_backend=None,
+            workspace=None,
+        )
+
+    monkeypatch.setattr(builder, "_materialize_agent_resources", materialize)
+    monkeypatch.setattr(
+        agent_builder,
+        "materialize_patch_tool_calls_middleware",
+        lambda: _middleware("Patch"),
+    )
+    monkeypatch.setattr(
+        agent_builder,
+        "ToolErrorBoundaryMiddleware",
+        lambda **_kwargs: _middleware("ToolBoundary"),
+    )
+    monkeypatch.setattr(
+        agent_builder,
+        "ProviderErrorBoundaryMiddleware",
+        lambda **_kwargs: _middleware("ProviderBoundary"),
+    )
+    def construct(constructor, **_kwargs):
+        if constructor["name"] == "agent-a":
+            raise RuntimeError("agent-a construction failed")
+        return object()
+
+    monkeypatch.setattr(agent_builder, "construct_agent", construct)
+
+    async def scenario() -> None:
+        first = asyncio.create_task(
+            builder.build_resolved(
+                assembly("agent-a"),
+                [],
+                mcp_runtime=SimpleNamespace(label="agent-a"),
+            )
+        )
+        assert await asyncio.to_thread(first_materializing.wait, 5)
+        second = asyncio.create_task(
+            builder.build_resolved(
+                assembly("agent-b"),
+                [],
+                mcp_runtime=SimpleNamespace(label="agent-b"),
+            )
+        )
+        assert await asyncio.to_thread(second_materialized.wait, 5)
+        release_first.set()
+        failed_first, built_second = await asyncio.gather(
+            first,
+            second,
+            return_exceptions=True,
+        )
+        assert isinstance(failed_first, RuntimeError)
+        assert str(failed_first) == "agent-a construction failed"
+        assert tool_runtimes["agent-a"].closed is True
+        assert middleware_runtimes["agent-a"].closed is True
+        assert built_second.tool_runtime.closed is False
+        assert built_second.middleware_runtime.closed is False
+        await built_second.tool_runtime.close()
+        await built_second.middleware_runtime.close()
+
+    asyncio.run(scenario())
+
+    assert observed == {
+        "agent-a": ("agent-a", "agent-a", "agent-a"),
+        "agent-b": ("agent-b", "agent-b", "agent-b"),
+    }
 
 
 def test_optional_slots_are_physically_absent() -> None:

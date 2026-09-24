@@ -4,8 +4,13 @@ import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
 
+import pytest
+
 from agent_shell.response_stream_policy import ResponseStreamPolicy
-from agent_shell.runtime.request_snapshot import LifecycleRunCoordinator
+from agent_shell.runtime.request_snapshot import (
+    LifecycleRunCoordinator,
+    _AgentRunBinding,
+)
 from agent_shell.runtime.lifecycle_store import (
     LIFECYCLE_INPUT_KEY,
     LIFECYCLE_RECORD_KEY,
@@ -20,10 +25,16 @@ class _Store:
     def __init__(self) -> None:
         self.items: dict[tuple[str, ...], dict[str, dict]] = {}
         self.events: list[str] = []
+        self.fail_run_relation = False
+        self.search_count = 0
+        self.search_started: asyncio.Event | None = None
+        self.release_search: asyncio.Event | None = None
 
     async def put_item(self, namespace, key, value, *, index=False):
         del index
         self.events.append(f"store:{tuple(namespace)[-1]}:{key}")
+        if tuple(namespace)[-1] == "runs" and self.fail_run_relation:
+            raise OSError("relation store is unavailable")
         self.items.setdefault(tuple(namespace), {})[key] = deepcopy(value)
 
     async def get_item(self, namespace, key):
@@ -31,6 +42,11 @@ class _Store:
         return None if value is None else {"key": key, "value": deepcopy(value)}
 
     async def search_items(self, namespace, *, limit: int, offset: int):
+        self.search_count += 1
+        if self.search_started is not None:
+            self.search_started.set()
+        if self.release_search is not None:
+            await self.release_search.wait()
         values = [
             {"key": key, "value": deepcopy(value)}
             for key, value in self.items.get(tuple(namespace), {}).items()
@@ -382,6 +398,38 @@ def test_start_error_marker_survives_diagnostic_write_failure() -> None:
     assert marker["message"] == "RuntimeError: run creation exploded"
 
 
+def test_request_entry_cancels_started_run_when_relation_persistence_fails() -> None:
+    async def scenario():
+        profile = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Researcher",
+        }
+        coordinator, client, _detached = _coordinator(profile)
+        coordinator._lifecycle_id = ""
+        client.store.fail_run_relation = True
+
+        with pytest.raises(OSError, match="relation store is unavailable"):
+            await coordinator.start_agent(
+                profile,
+                {"messages": [{"role": "user", "content": "hello"}]},
+                request_id="request-1",
+            )
+
+        marker = client.store.items[
+            lifecycle_input_namespace(coordinator.lifecycle_id)
+        ][LIFECYCLE_START_ERROR_KEY]
+        return client, marker
+
+    client, marker = asyncio.run(scenario())
+    created = client.runs.created[0]
+    assert client.runs.cancelled == [(created["thread_id"], created["run_id"])]
+    assert client.runs.values[(created["thread_id"], created["run_id"])][
+        "status"
+    ] == "interrupted"
+    assert marker["code"] == "run_start_failed"
+    assert "relation store is unavailable" in marker["message"]
+
+
 def test_agent_run_facade_is_idempotent_and_can_continue_a_thread() -> None:
     async def scenario() -> None:
         profile = {
@@ -439,6 +487,110 @@ def test_agent_run_facade_is_idempotent_and_can_continue_a_thread() -> None:
         )
         assert cancelled.status == "interrupted"
         assert client.runs.cancelled == [(second.thread_id, second.run_id)]
+        await asyncio.gather(*detached.tasks)
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_agent_start_waits_for_the_persisted_relation() -> None:
+    async def scenario() -> None:
+        profile = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Researcher",
+            "on_disconnect": "cancel",
+        }
+        coordinator, client, _detached = _coordinator(profile)
+        caller = RunCaller("request-1", "lifecycle-1", "caller-run")
+        loop = asyncio.get_running_loop()
+        pending = _AgentRunBinding(
+            main_agent=profile,
+            messages=[{"role": "user", "content": "first"}],
+            request_id=caller.request_id,
+            lifecycle_id=caller.lifecycle_id,
+            public_model=profile["name"],
+            caller_run_id=caller.run_id,
+            operation_id="same-operation",
+            assistant_id="assistant-pending",
+            thread_id="thread-pending",
+            run_id_ready=loop.create_future(),
+            handle_ready=loop.create_future(),
+            execution_ready=loop.create_future(),
+        )
+        coordinator._agent_bindings[pending.key] = pending
+        client.runs.values[("thread-pending", "run-pending")] = {
+            "thread_id": "thread-pending",
+            "run_id": "run-pending",
+            "assistant_id": "assistant-pending",
+            "status": "running",
+        }
+
+        duplicate_start = asyncio.create_task(
+            coordinator.start_agent_run(
+                profile["id"],
+                [{"role": "user", "content": "ignored retry input"}],
+                operation_id="same-operation",
+                caller=caller,
+            )
+        )
+        await asyncio.sleep(0)
+        pending.run_id = "run-pending"
+        assert pending.run_id_ready is not None
+        pending.run_id_ready.set_result(pending.run_id)
+        await asyncio.sleep(0)
+        assert not duplicate_start.done()
+        relation = coordinator._agent_relation(pending)
+        assert pending.handle_ready is not None
+        pending.handle_ready.set_result(
+            coordinator._agent_handle(
+                relation,
+                await client.runs.get(relation.thread_id, relation.run_id),
+            )
+        )
+
+        duplicate = await duplicate_start
+        assert duplicate.thread_id == "thread-pending"
+        assert duplicate.run_id == "run-pending"
+        assert duplicate.operation_id == "same-operation"
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_agent_starts_claim_operation_before_relation_lookup() -> None:
+    async def scenario() -> None:
+        profile = {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Researcher",
+            "on_disconnect": "cancel",
+        }
+        coordinator, client, detached = _coordinator(profile)
+        caller = RunCaller("request-1", "lifecycle-1", "caller-run")
+        client.store.search_started = asyncio.Event()
+        client.store.release_search = asyncio.Event()
+
+        first = asyncio.create_task(
+            coordinator.start_agent_run(
+                profile["id"],
+                [{"role": "user", "content": "first"}],
+                operation_id="same-operation",
+                caller=caller,
+            )
+        )
+        await client.store.search_started.wait()
+        duplicate = asyncio.create_task(
+            coordinator.start_agent_run(
+                profile["id"],
+                [{"role": "user", "content": "ignored retry input"}],
+                operation_id="same-operation",
+                caller=caller,
+            )
+        )
+        await asyncio.sleep(0)
+        client.store.release_search.set()
+        first_handle, duplicate_handle = await asyncio.gather(first, duplicate)
+
+        assert duplicate_handle == first_handle
+        assert client.store.search_count == 1
+        assert len(client.runs.created) == 1
         await asyncio.gather(*detached.tasks)
 
     asyncio.run(scenario())

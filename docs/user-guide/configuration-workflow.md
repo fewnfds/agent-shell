@@ -21,13 +21,15 @@ Workflow metadata 保存 name、description、`is_model_entry`、`on_disconnect`
 
 Command 的 outgoing Edge 声明允许的目标 Node ID。运行时由脚本返回 `goto="<node-id>"` 选择目标；compiler不会为Command再注册static Edge。Start outgoing Edge才编译为`add_edge(START, target)`。
 
-Workflow State是一张扁平变量表，入口传入的键和Command写回的键都保留在同一个checkpoint里。Command读写`state.get(...)`并返回`update={...}`。在【工作流组件 / Python Schema】创建独立组件并用Python定义Pydantic`State`，再在Workflow的Python Schema Card中引用；声明后入口输入与每个Command的update结果都按它校验，不合法时以`workflow.state_invalid`失败；不声明则不做校验。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
+Workflow State是一张扁平变量表，入口传入的键和Command写回的键都保留在同一个checkpoint里。Command读写`state.get(...)`并返回`update={...}`。在【工作流组件 / Python Schema】创建独立组件并用Python定义Pydantic`State`，再在Workflow的Python Schema Card中引用；声明后入口输入、每个Command的update结果和并行分支合并后的最终State都按它校验，不合法时以`workflow.state_invalid`失败；不声明则不做校验。公开模型入口的初始State固定为`{}`，因此其Schema字段需要可选或提供Pydantic default；内部Workflow可由`start_workflow(initial_state=...)`提供必填字段。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
+
+已发布 Workflow 修改 metadata 时仍保持发布状态，后端会把更新后的模型入口、Python Schema 与 Event Output 和当前 Graph 一起重新校验；失败时原配置保持不变。草稿可以先保存不完整组合，再到编辑器完成验证和正式保存。
 
 ## MCP Tool
 
 【工作流】页面下同时管理 Workflow 与 MCP Tool。MCP Tool 拥有独立名称、说明、Graph document 和启用状态；名称直接成为官方 `/mcp` 的 tool name，只允许 ASCII 字母、数字、点、下划线和连字符。
 
-发布前先保存 draft。draft 会停止对外可见，但保存 Graph；正式保存会执行完整 validation，并只在成功后创建或刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 与 Workflow 不会出现。删除 MCP Tool 后对应工具也不再可见。draft 请求被 validation 拒绝时不改变已发布状态，工具继续可见并保持原 Graph。已发布 MCP Tool 引用的 Command 被删除时，该 MCP Tool 自动回到未发布状态并从 `/mcp` 消失；服务重启后按当前 Configuration Repository 的记录重新对齐官方 Assistant。
+发布前先保存 draft。draft 会停止对外可见，但保存 Graph；正式保存会执行完整 validation，并只在成功后创建或刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 与 Workflow 不会出现。删除 MCP Tool 后对应工具也不再可见。draft 请求被 validation 拒绝时不改变已发布状态，工具继续可见并保持原 Graph；Assistant 撤下后的 Repository 提交若失败，会按当前 Repository 记录重新对齐公开工具。已发布 MCP Tool 引用的 Command 被删除时，该 MCP Tool 自动回到未发布状态并从 `/mcp` 消失；服务重启后按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 
 MCP Tool 在 Python Schema Card 中选择的独立 Python Schema Component 必须至少定义 `State`、`Input`、`Output` 三个 Pydantic 模型：
 

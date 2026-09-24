@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import shutil
+import threading
 
 import pytest
 
@@ -194,6 +196,129 @@ def test_reinstall_failure_preserves_ready_environment(monkeypatch, tmp_path: Pa
 
     assert installations.status(CONNECTION_ID, connection())["status"] == "ready"
     assert installations.resolve_connection(CONNECTION_ID, connection()) == resolved_before
+
+
+def test_same_connection_installations_are_serialized(monkeypatch, tmp_path: Path) -> None:
+    installations = manager(tmp_path)
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    overlap = threading.Event()
+    state_lock = threading.Lock()
+    active = 0
+    calls = 0
+
+    def install_ready(**values):
+        nonlocal active, calls
+        with state_lock:
+            active += 1
+            calls += 1
+            call = calls
+            if active > 1:
+                overlap.set()
+        if call == 1:
+            first_entered.set()
+            assert release_first.wait(timeout=2)
+        staging = values["staging"]
+        command = staging / "toolchain" / "node.exe"
+        entry = staging / "server.js"
+        command.parent.mkdir(parents=True)
+        command.write_bytes(b"node")
+        entry.write_text("server", encoding="utf-8")
+        common = {
+            "declaration_fingerprint": values["declaration_fingerprint"],
+            "toolchain_identity": values["toolchain_identity"],
+            "source": "npm",
+        }
+        with state_lock:
+            active -= 1
+        return (
+            {
+                **common,
+                "schema": INSTALLATION_SCHEMA,
+                "status": "ready",
+                "entrypoint": "browser-mcp",
+                "command": "toolchain/node.exe",
+                "entry": "server.js",
+                "path_entries": ["toolchain"],
+            },
+            {**common, "schema": LOCK_SCHEMA, "package_lock": {}},
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.mcp.installation.install_npm_package",
+        install_ready,
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(installations.install, CONNECTION_ID, connection())
+        assert first_entered.wait(timeout=2)
+        second = executor.submit(installations.install, CONNECTION_ID, connection())
+        concurrently_entered = overlap.wait(timeout=0.2)
+        release_first.set()
+        results = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert not concurrently_entered
+    assert all(result["status"] == "ready" for result in results)
+    assert installations.status(CONNECTION_ID, connection())["status"] == "ready"
+
+
+def test_remove_waits_for_active_install_and_leaves_no_runtime(
+    monkeypatch, tmp_path: Path
+) -> None:
+    installations = manager(tmp_path)
+    install_entered = threading.Event()
+    release_install = threading.Event()
+
+    def install_ready(**values):
+        install_entered.set()
+        assert release_install.wait(timeout=2)
+        staging = values["staging"]
+        command = staging / "toolchain" / "node.exe"
+        entry = staging / "server.js"
+        command.parent.mkdir(parents=True)
+        command.write_bytes(b"node")
+        entry.write_text("server", encoding="utf-8")
+        common = {
+            "declaration_fingerprint": values["declaration_fingerprint"],
+            "toolchain_identity": values["toolchain_identity"],
+            "source": "npm",
+        }
+        return (
+            {
+                **common,
+                "schema": INSTALLATION_SCHEMA,
+                "status": "ready",
+                "entrypoint": "browser-mcp",
+                "command": "toolchain/node.exe",
+                "entry": "server.js",
+                "path_entries": ["toolchain"],
+            },
+            {**common, "schema": LOCK_SCHEMA, "package_lock": {}},
+        )
+
+    monkeypatch.setattr(
+        "agent_shell.mcp.installation.install_npm_package",
+        install_ready,
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        installing = executor.submit(
+            installations.install, CONNECTION_ID, connection()
+        )
+        assert install_entered.wait(timeout=2)
+        removing = executor.submit(installations.remove, CONNECTION_ID)
+        assert not removing.done()
+        release_install.set()
+        assert installing.result(timeout=2)["status"] == "ready"
+        removing.result(timeout=2)
+
+    assert installations.status(CONNECTION_ID, connection())["status"] == "not_installed"
+    assert not (installations.installations_root / CONNECTION_ID).exists()
+    assert not (
+        tmp_path
+        / "data"
+        / "config"
+        / "mcp-connections"
+        / f"{CONNECTION_ID}.installation-lock.json"
+    ).exists()
 
 
 def test_publish_failure_preserves_ready_environment(monkeypatch, tmp_path: Path) -> None:

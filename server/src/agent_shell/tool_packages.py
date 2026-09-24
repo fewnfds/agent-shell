@@ -148,6 +148,9 @@ class ToolPackageRuntime:
         return tools
 
     async def close(self) -> None:
+        self.close_sync()
+
+    def close_sync(self) -> None:
         if self._closed:
             return
         self._closed = True
