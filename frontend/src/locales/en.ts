@@ -1478,6 +1478,7 @@ export const en: MessageSchema = {
     apiKeyInvalid: 'API keys must be non-empty printable ASCII values without spaces.',
     eventFeedTimeWindowInvalid: 'The log time window is invalid.',
     eventFeedItemNotFound: 'The event was deleted, trimmed, or rotated. Reload the feed.',
+    providerHttpLogActive: 'This HTTP exchange is still in progress. Download is available after it ends.',
     authenticationCancelled: 'Management authentication was cancelled.',
     codeLabel: 'Error code',
     eventStreamUnavailable: 'The management event stream is unavailable.',

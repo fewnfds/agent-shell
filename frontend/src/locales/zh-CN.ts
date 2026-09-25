@@ -1476,6 +1476,7 @@ export const zhCN = {
     apiKeyInvalid: 'API Key 不能为空，并且只能使用不含空格的可打印 ASCII 字符。',
     eventFeedTimeWindowInvalid: '日志时间区间无效。',
     eventFeedItemNotFound: '事件已被删除、裁剪或轮转，请重新载入。',
+    providerHttpLogActive: '本次 HTTP 交互仍在进行，结束后可下载。',
     authenticationCancelled: '已取消管理身份验证。',
     codeLabel: '错误代码',
     eventStreamUnavailable: '管理事件流不可用。',
