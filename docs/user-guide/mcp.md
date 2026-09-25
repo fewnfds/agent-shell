@@ -8,7 +8,7 @@ Agent Shell 通过 LangChain 官方 `langchain-mcp-adapters` 把 MCP Server 公�
 
 这里的 MCP Tool 不是“从外部 Server 引入 Tool”，而是 Agent Shell 自己通过 LangGraph 官方 `/mcp` 暴露给其他 MCP Client 的工具。它与 MCP Connection 是相反方向，也不属于 Model Shell：每次 `tools/call` 创建独立 Graph Run，不创建 Lifecycle，不复用上一次调用的 State，也没有续聊或 Thread 概念。
 
-在【工作流】页面选择 MCP Tool，新建名称与说明并保存 Graph。Graph 仍由 Start、Command、End 和 Control Edge 组成，但 MCP Tool Command 不能绑定 External Agent，也不能依赖 Lifecycle 专属运行上下文。名称只允许 ASCII 字母、数字、`.`、`_`、`-`，并直接作为 `/mcp` tool name。
+在【工作流】页面选择 MCP Tool，新建名称与说明并保存 Graph。Graph 仍由 Start、Command、End 和 Control Edge 组成，但 MCP Tool Command 不能绑定 External Agent，也不能依赖 Lifecycle 专属运行上下文。名称长度为 1 至 128 个字符，只允许 ASCII 字母、数字、`.`、`_`、`-`，并直接作为 `/mcp` tool name。
 
 draft 与正式保存是两种状态。draft 停止该工具的外部可见性并保存 Graph；正式保存执行完整 validation，成功后刷新官方 Assistant。`/mcp tools/list` 只列出已发布的 MCP Tool，Main Agent 和普通 Workflow 不会出现；删除 MCP Tool 后它也不再可见。被 validation 拒绝的 draft 请求不改变已发布状态；撤下 Assistant 后若 draft/delete 的 Repository 提交失败，后端按当前 Repository 的 enabled 记录重新对齐公开 Tool。已发布 MCP Tool 依赖的 Command 被删除时，该工具自动取消发布并从 `/mcp` 消失；服务启动时按当前 Configuration Repository 的记录重新对齐官方 Assistant。
 当前 Repository 即使没有任何 MCP Tool，启动和仓库切换也会执行这次对齐并隐藏遗留 Assistant，不让旧 Repository 的工具继续出现在 `/mcp tools/list`。仓库激活只有在新 Repository validation 与 Assistant 对齐都完成后才成功；任一步失败会恢复原 active Repository。

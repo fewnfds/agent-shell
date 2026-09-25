@@ -258,7 +258,6 @@ export const zhCN = {
     settings: {
       title: '监控设定',
       retainedLifecycles: '已结束 Lifecycle 保留数量',
-      retainedLifecyclesHelp: '只计算已结束的 Lifecycle；0 表示不保留。保存较小值会立即删除超出的运行数据。',
       saved: '监控设定已保存。',
       failed: '无法载入或保存监控设定',
     },
@@ -389,7 +388,6 @@ export const zhCN = {
     },
     providerNetwork: {
       title: 'Provider 网络',
-      description: '为模型 Provider 出站请求选择标准 LangChain/HTTPX 路线或浏览器兼容路线。保存后重启生效。',
       transport: '传输路线',
       transports: {
         httpx: '标准（LangChain / HTTPX）',
@@ -409,14 +407,10 @@ export const zhCN = {
       addHeader: '添加 Header',
       headerName: '名称',
       headerValue: '值',
-      headersHint: '这些值按普通系统配置保存在 system.yaml；API Key 等凭据继续使用 Model Connection credential。请求级 extra_headers 可以覆盖同名值。添加 User-Agent 即可替换 Agent-Shell/<version>。',
       userAgentSummary: '当前表单中的全局默认 User-Agent：',
       userAgentBuiltIn: '（程序默认）',
       userAgentCustomized: '（自定义 Header；修改后保存并重启生效）',
       emptyHeaderValue: '（空字符串）',
-      httpxHint: '标准路线使用其他 LangChain Agent 项目常用的 HTTPX 网络栈。',
-      curlCffiHint: '浏览器兼容路线固定使用 Chrome TLS/HTTP 指纹，不自动添加 Chrome 请求头；它不执行 JavaScript、Turnstile 或 CAPTCHA。',
-      coverageHint: '完整网络路线用于 OpenAI、DeepSeek 和模型目录请求。',
       invalid: '请修正 Provider 网络配置中的无效字段或重复 Header。',
       saved: 'Provider 网络配置已保存，重启后生效。',
       saveFailed: '无法保存 Provider 网络配置',
@@ -504,7 +498,6 @@ export const zhCN = {
     },
     retention: {
       title: '日志设置',
-      providerHttpHelp: '保留最近完成的交互；进行中的记录单独保留。单个附件可能很大。',
       systemMaxSize: '系统日志容量',
       systemConfirmTitle: '降低系统日志大小上限',
       systemConfirmDescription: '将最大保存大小降低到 {count} MiB？超过新上限时，当前日志会清空并从新事件继续记录。',
@@ -1160,7 +1153,6 @@ export const zhCN = {
     fields: {
       description: '描述',
       pythonSchema: 'Python Schema',
-      nameHint: '名称只能使用字母、数字、点、下划线或连字符，最长 128 个字符。',
     },
     copy: {
       title: '复制 MCP Tool',

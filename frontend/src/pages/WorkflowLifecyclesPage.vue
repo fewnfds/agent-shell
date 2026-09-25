@@ -299,9 +299,6 @@ onMounted(() => { void loadSettings() })
               {{ t('common.save') }}
             </LteButton>
           </div>
-          <p class="form-text mb-0">
-            {{ t('workflowLifecycles.settings.retainedLifecyclesHelp') }}
-          </p>
         </form>
       </div>
     </LteCard>

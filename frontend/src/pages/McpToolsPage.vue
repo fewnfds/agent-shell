@@ -215,7 +215,6 @@ onMounted(() => { void loadWorkspace() })
           @select="selectRecord"
           @update:name="updateName"
         />
-        <div class="form-text">{{ t('mcpTools.fields.nameHint') }}</div>
         <section class="mt-3">
           <div class="row g-3">
             <div class="col-lg-8">

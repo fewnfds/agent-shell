@@ -423,9 +423,6 @@ onMounted(() => { void loadControls() })
                 {{ t('common.save') }}
               </LteButton>
             </div>
-            <small v-if="source === 'provider_http'" class="form-text text-body-secondary">
-              {{ t('eventFeed.retention.providerHttpHelp') }}
-            </small>
           </form>
           <form class="col-lg-3" data-testid="system-log-settings" @submit.prevent="saveSystemLogSettings">
             <label class="form-label" for="system-log-max-size">{{ t('eventFeed.retention.systemMaxSize') }}</label>

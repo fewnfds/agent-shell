@@ -713,9 +713,6 @@ onMounted(() => { void load() })
             <LteAlert v-if="providerNetworkError" theme="danger" :title="t('systemSettings.providerNetwork.saveFailed')">
               {{ providerNetworkError }}
             </LteAlert>
-            <p class="text-body-secondary small">
-              {{ t('systemSettings.providerNetwork.description') }}
-            </p>
             <div class="row g-3">
               <div class="col-lg-3 col-md-6">
                 <label class="form-label" for="provider-transport">
@@ -767,14 +764,6 @@ onMounted(() => { void load() })
                 />
               </div>
             </div>
-            <p class="text-body-secondary small mt-3 mb-0">
-              {{ providerTransport === 'curl_cffi'
-                ? t('systemSettings.providerNetwork.curlCffiHint')
-                : t('systemSettings.providerNetwork.httpxHint') }}
-            </p>
-            <p class="text-body-secondary small mt-2 mb-0">
-              {{ t('systemSettings.providerNetwork.coverageHint') }}
-            </p>
             <div class="d-flex align-items-center gap-2 mt-4 mb-2">
               <h3 class="h6 mb-0">
                 {{ fieldLabel('systemSettings.providerNetwork.defaultHeaders', 'provider_http.default_headers') }}
@@ -784,9 +773,6 @@ onMounted(() => { void load() })
                 {{ t('systemSettings.providerNetwork.addHeader') }}
               </LteButton>
             </div>
-            <p class="text-body-secondary small">
-              {{ t('systemSettings.providerNetwork.headersHint') }}
-            </p>
             <p class="small" data-testid="provider-user-agent-summary">
               {{ t('systemSettings.providerNetwork.userAgentSummary') }}
               <code>{{ providerUserAgent || t('systemSettings.providerNetwork.emptyHeaderValue') }}</code>

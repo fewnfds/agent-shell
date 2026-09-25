@@ -260,7 +260,6 @@ export const en: MessageSchema = {
     settings: {
       title: 'Monitoring settings',
       retainedLifecycles: 'Completed Lifecycle retention',
-      retainedLifecyclesHelp: 'Only completed Lifecycles count. Set 0 to retain none. Saving a lower value immediately deletes excess runtime data.',
       saved: 'Monitoring settings saved.',
       failed: 'Could not load or save monitoring settings',
     },
@@ -391,7 +390,6 @@ export const en: MessageSchema = {
     },
     providerNetwork: {
       title: 'Provider network',
-      description: 'Choose the standard LangChain/HTTPX route or the browser-compatible route for model Provider requests. Restart after saving.',
       transport: 'Transport route',
       transports: {
         httpx: 'Standard (LangChain / HTTPX)',
@@ -411,14 +409,10 @@ export const en: MessageSchema = {
       addHeader: 'Add header',
       headerName: 'Name',
       headerValue: 'Value',
-      headersHint: 'These values are ordinary system configuration stored in system.yaml. Keep API keys and other credentials in the Model Connection credential. Request-level extra_headers override matching names. Add User-Agent to replace Agent-Shell/<version>.',
       userAgentSummary: 'Global default User-Agent in this form:',
       userAgentBuiltIn: '(built-in default)',
       userAgentCustomized: '(custom header; changes apply after save and restart)',
       emptyHeaderValue: '(empty string)',
-      httpxHint: 'The standard route uses the HTTPX stack commonly used by other LangChain Agent projects.',
-      curlCffiHint: 'The browser-compatible route uses a Chrome TLS/HTTP fingerprint without adding Chrome headers. It does not execute JavaScript, Turnstile, or CAPTCHA.',
-      coverageHint: 'The full transport route applies to OpenAI, DeepSeek, and model catalog requests.',
       invalid: 'Correct invalid Provider network fields or duplicate headers.',
       saved: 'Provider network settings saved. Restart to apply.',
       saveFailed: 'Could not save Provider network settings',
@@ -506,7 +500,6 @@ export const en: MessageSchema = {
     },
     retention: {
       title: 'Log settings',
-      providerHttpHelp: 'Keep the newest completed exchanges. Active exchanges are retained separately. Each archive may be large.',
       systemMaxSize: 'System log capacity',
       systemConfirmTitle: 'Lower the system log size limit',
       systemConfirmDescription: 'Lower the maximum saved size to {count} MiB? Once the new limit is exceeded, the current log is cleared and recording continues with new events.',
@@ -1162,7 +1155,6 @@ export const en: MessageSchema = {
     fields: {
       description: 'Description',
       pythonSchema: 'Python Schema',
-      nameHint: 'Tool names use letters, digits, dots, underscores, or hyphens; up to 128 characters.',
     },
     copy: {
       title: 'Copy MCP Tool',
