@@ -121,6 +121,9 @@ def _build_chat_model(
             # This connection is the API key Gemini Developer API. Vertex AI
             # project/location credentials stay outside the Model Connection.
             kwargs["vertexai"] = False
+            transport = provider_http_clients.google_transport()
+            if transport is not None:
+                kwargs["client_args"] = {"transport": transport}
         return init_chat_model(
             model=str(block["model"]),
             model_provider=provider,

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Response
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_shell.http_surface import management_api_router
@@ -32,6 +33,12 @@ class SystemLogSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_size_mib: int = Field(strict=True, ge=MIN_SYSTEM_LOG_MAX_SIZE_MIB)
+
+
+class ProviderHttpSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    retention_limit: int = Field(strict=True, ge=1)
 
 
 def _time_window(started_at: datetime, ended_at: datetime) -> tuple[datetime, datetime]:
@@ -106,6 +113,30 @@ def build_event_feed_router(
         source: EventSource,
         item_id: str,
     ) -> Response:
+        if source == "provider_http":
+            try:
+                prepared = service.prepare_provider_http_download(item_id)
+            except RuntimeError as exc:
+                raise management_error(
+                    409,
+                    code="provider_http_log_active",
+                    message_key="errors.providerHttpLogActive",
+                    message="The Provider HTTP exchange has not finished.",
+                ) from exc
+            if prepared is None:
+                raise management_error(
+                    404,
+                    code="event_feed_item_not_found",
+                    message_key="errors.eventFeedItemNotFound",
+                    message="The event feed item does not exist.",
+                )
+            path, filename = prepared
+            return FileResponse(
+                path,
+                filename=filename,
+                media_type="application/zip",
+                background=BackgroundTask(service.release_provider_http_download, path),
+            )
         result = service.download(source, item_id)
         if result is None:
             raise management_error(
@@ -136,6 +167,16 @@ def build_event_feed_router(
         payload: SystemLogSettingsUpdate,
     ) -> dict[str, int]:
         result = service.set_system_log_max_size_mib(payload.max_size_mib)
+        events.publish_nowait({"type": "settings_changed"})
+        return result
+
+    @router.get("/event-feed/provider-http/settings")
+    def get_provider_http_settings() -> dict[str, int]:
+        return service.provider_http_settings()
+
+    @router.put("/event-feed/provider-http/settings")
+    def update_provider_http_settings(payload: ProviderHttpSettingsUpdate) -> dict[str, int]:
+        result = service.set_provider_http_retention(payload.retention_limit)
         events.publish_nowait({"type": "settings_changed"})
         return result
 

@@ -276,6 +276,7 @@ Content-Type: application/json
 6. 检查 Provider endpoint、model capability 和 credential missing state；
 7. 通过 `GET /agent-shell/api/workflow-lifecycles` 找到当前 Lifecycle；
 8. 先读取 OpenAI-compatible response 的 `error.code`、`request_id` 和 `lifecycle_id`，再在【系统 / 日志中心】按这些 identity 定位运行诊断，并在诊断中读取完整异常链、按需下载 traceback 附件；
+   如果涉及 Provider，再筛选 `source=provider_http` 并用 `request_id` 或保存的 `run_id` 查询各次 HTTP 发送。下载对应 ZIP，先看 `metadata.json` 的 status、结束原因和目标 URL，再打开 `request.body`、`response.body` 或 `transport-error.txt`。正文只在下载包中，不参与日志列表查询；本地网关后的下一跳不在 Agent Shell 的 HTTP 观察范围内。
 9. 根据诊断关联的 subject、Workflow Node、`node_invocation_id`、`exception_type` 和稳定错误码修正一个 owner；
 10. 使用同一个可复现输入重试。
 

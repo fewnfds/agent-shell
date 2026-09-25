@@ -16,7 +16,9 @@ function api() {
       total: 0,
       total_pages: 1,
     })),
-    downloadEvent: vi.fn(async () => new Blob(['{}'])),
+    downloadEvent: vi.fn(async () => ({ blob: new Blob(['{}']), filename: 'event.json' })),
+    getProviderHttpLogSettings: vi.fn(async () => ({ retention_limit: 100 })),
+    updateProviderHttpLogSettings: vi.fn(async (retentionLimit: number) => ({ retention_limit: retentionLimit })),
     getRuntimeDiagnostics: vi.fn(async () => ({
       retention_limit: 20,
     })),
@@ -62,11 +64,23 @@ describe('EventFeedPage', () => {
     const wrapper = await mountPage(mockApi)
 
     expect(wrapper.find('[data-testid="retention-runtime"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="retention-provider_http"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="retention-workflow-debug"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="retention-api_call"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="runtime-detail"]').exists()).toBe(false)
     expect(mockApi.listEventFeed).toHaveBeenCalledWith(expect.objectContaining({
       source: ['runtime'],
     }))
+  })
+
+  it('saves the Provider HTTP retention limit', async () => {
+    const mockApi = api()
+    const wrapper = await mountPage(mockApi)
+
+    await wrapper.find('[data-testid="retention-provider_http"] input').setValue('101')
+    await wrapper.find('[data-testid="retention-provider_http"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockApi.updateProviderHttpLogSettings).toHaveBeenCalledWith(101)
   })
 })

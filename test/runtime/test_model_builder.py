@@ -128,6 +128,7 @@ def test_model_builder_keeps_the_gemini_adapter_off_the_shared_transport(
     assert "http_client" not in captured
     assert "http_async_client" not in captured
     assert "default_headers" not in captured
+    assert isinstance(captured["client_args"]["transport"], httpx.MockTransport)
 
 
 def test_model_builder_requires_an_api_key_for_the_gemini_developer_api(

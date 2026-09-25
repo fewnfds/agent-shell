@@ -9,6 +9,13 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agent_shell.provider_http_logging import (
+    GoogleObservedTransport,
+    ObservedAsyncTransport,
+    ObservedSyncTransport,
+    ProviderHttpObserver,
+)
+
 
 ProviderHttpTransport = Literal["httpx", "curl_cffi"]
 ProviderHttpVersion = Literal["auto", "http1", "http2"]
@@ -119,6 +126,7 @@ class ProviderHttpClients:
         settings: ProviderHttpSettings | None = None,
         *,
         data_root: Path | None = None,
+        observer: ProviderHttpObserver | None = None,
     ) -> None:
         self.settings = (settings or ProviderHttpSettings()).model_copy(deep=True)
         self._ca_bundle = self.settings.resolve_ca_bundle(
@@ -126,7 +134,10 @@ class ProviderHttpClients:
         )
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
+        self._google_sync_client: httpx.Client | None = None
+        self._google_async_client: httpx.AsyncClient | None = None
         self._closed = False
+        self._observer = observer
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -176,10 +187,21 @@ class ProviderHttpClients:
         self._ensure_open()
         if self._sync_client is None:
             if self.settings.transport == "httpx":
-                self._sync_client = httpx.Client(**self._httpx_options())
+                if self._observer is None:
+                    self._sync_client = httpx.Client(**self._httpx_options())
+                else:
+                    inner = httpx.HTTPTransport(**self._httpx_options())
+                    self._sync_client = httpx.Client(
+                        transport=ObservedSyncTransport(inner, self._observer),
+                        trust_env=False,
+                    )
             else:
+                transport = self._curl_transport(asynchronous=False)
                 self._sync_client = httpx.Client(
-                    transport=self._curl_transport(asynchronous=False),
+                    transport=(
+                        ObservedSyncTransport(transport, self._observer, already_decoded=True)
+                        if self._observer is not None else transport
+                    ),
                     trust_env=False,
                 )
         return self._sync_client
@@ -189,16 +211,41 @@ class ProviderHttpClients:
         self._ensure_open()
         if self._async_client is None:
             if self.settings.transport == "httpx":
-                self._async_client = httpx.AsyncClient(**self._httpx_options())
+                if self._observer is None:
+                    self._async_client = httpx.AsyncClient(**self._httpx_options())
+                else:
+                    inner = httpx.AsyncHTTPTransport(**self._httpx_options())
+                    self._async_client = httpx.AsyncClient(
+                        transport=ObservedAsyncTransport(inner, self._observer),
+                        trust_env=False,
+                    )
             else:
+                transport = cast(
+                    httpx.AsyncBaseTransport,
+                    self._curl_transport(asynchronous=True),
+                )
                 self._async_client = httpx.AsyncClient(
-                    transport=cast(
-                        httpx.AsyncBaseTransport,
-                        self._curl_transport(asynchronous=True),
+                    transport=(
+                        ObservedAsyncTransport(transport, self._observer, already_decoded=True)
+                        if self._observer is not None else transport
                     ),
                     trust_env=False,
                 )
         return self._async_client
+
+    def google_transport(self) -> GoogleObservedTransport | None:
+        self._ensure_open()
+        if self._observer is None:
+            return None
+        if self._google_sync_client is None:
+            self._google_sync_client = httpx.Client()
+        if self._google_async_client is None:
+            self._google_async_client = httpx.AsyncClient()
+        return GoogleObservedTransport(
+            self._observer,
+            sync_client=self._google_sync_client,
+            async_client=self._google_async_client,
+        )
 
     async def aclose(self) -> None:
         if self._closed:
@@ -206,9 +253,19 @@ class ProviderHttpClients:
         self._closed = True
         async_client, self._async_client = self._async_client, None
         sync_client, self._sync_client = self._sync_client, None
+        google_async, self._google_async_client = self._google_async_client, None
+        google_sync, self._google_sync_client = self._google_sync_client, None
         try:
             if async_client is not None:
                 await async_client.aclose()
         finally:
-            if sync_client is not None:
-                sync_client.close()
+            try:
+                if google_async is not None:
+                    await google_async.aclose()
+            finally:
+                try:
+                    if sync_client is not None:
+                        sync_client.close()
+                finally:
+                    if google_sync is not None:
+                        google_sync.close()

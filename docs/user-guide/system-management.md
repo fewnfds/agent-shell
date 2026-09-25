@@ -32,9 +32,10 @@ data/
     workflow/workflow_event_output/
   logs/security-events.jsonl
   logs/diagnostics/*.log
+  logs/provider-http/<id>/  metadata.json、request.body、response.body
 ```
 
-它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行数据，完整 `data/` 是实例备份单位。数据分类与 credential 披露边界见[安全与部署](../security-and-deployment.md#数据分类与错误披露)。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 只保存结构化 runtime 失败诊断。LangGraph Dev 把 Assistant、Thread、Run、checkpoint、State/history、Server Store、Lifecycle input、Filesystem route 和Graph Run调用关系集中写入 `data/state/langgraph-dev/.langgraph_api/`；这是官方运行时拥有的内部目录，Agent Shell 只通过公开 SDK/API 读写，不解析其中的文件。迁移时先完全停止服务，再复制完整 `data/`，包括当时存在的 SQLite、WAL、SHM 和 `.langgraph_api` 数据。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行数据，完整 `data/` 是实例备份单位。数据分类与 credential 披露边界见[安全与部署](../security-and-deployment.md#数据分类与错误披露)。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存结构化 runtime 失败诊断与 Provider HTTP 摘要；完整 HTTP 附件位于 `data/logs/provider-http/`。LangGraph Dev 把 Assistant、Thread、Run、checkpoint、State/history、Server Store、Lifecycle input、Filesystem route 和Graph Run调用关系集中写入 `data/state/langgraph-dev/.langgraph_api/`；这是官方运行时拥有的内部目录，Agent Shell 只通过公开 SDK/API 读写，不解析其中的文件。迁移时先完全停止服务，再复制完整 `data/`，包括当时存在的 SQLite、WAL、SHM 和 `.langgraph_api` 数据。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/config_repos/<repository-name>/python_packages/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 
@@ -110,4 +111,4 @@ LangSmith 配置项含义如下：
 系统日志或运行诊断；开关从关闭变为开启或服务重启时清空，关闭期间不捕获。已开启时重复保存不会清空当前原文。日志中心另见[日志中心与 Workflow 观测](runtime-observability.md)。
 远程部署要求见[安全与部署](../security-and-deployment.md)。
 
-【系统 / 日志中心】展示系统日志和运行失败诊断，不承载 Lifecycle、Run、checkpoint 或 Store 数据。系统错误事件保存真实 message；运行诊断按可用范围关联 request、Lifecycle、Run、Workflow 和当前 subject。正常完成不生成诊断。新异常的完整 exception chain 和 traceback 自动写入 `data/logs/diagnostics/`，写入成功时可从对应诊断行下载。内容投影遵循[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。日志中心不提供采集开关。
+【系统 / 日志中心】展示系统日志、运行失败诊断和 Provider HTTP 交互摘要。运行诊断按可用范围关联 request、Lifecycle、Run、Workflow 和当前 subject；新异常的完整 exception chain 和 traceback 写入 `data/logs/diagnostics/`，可从对应诊断行下载。Provider HTTP 的每次实际发送尝试都记录，完整请求与已收到响应从对应行下载 ZIP。日志设置提供 Provider HTTP 保存数量，默认最近完成的 100 条，严格整数且最小 1；降低后立即清理超额已结束记录，进行中的记录单独保留。数量增加会保留更多可能包含完整对话和多模态数据的附件，磁盘占用随内容增长。完整行为见[日志中心与 Graph 运行观测](runtime-observability.md)。内容投影遵循[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。

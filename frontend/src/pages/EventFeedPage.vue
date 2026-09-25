@@ -12,6 +12,8 @@ import {
   type EventLevel,
   type EventSource,
   type ManagementEvent,
+  type NamedDownload,
+  type ProviderHttpLogSettings,
   type RuntimeDiagnostics,
   type SystemLogSettings,
 } from '@/api'
@@ -29,17 +31,19 @@ import { useManagementEvents } from '@/composables/useManagementEvents'
 import { useToasts } from '@/composables/useToasts'
 import { triggerBrowserDownload } from '@/utils/download'
 
-const sources: EventSource[] = ['system', 'runtime']
+const sources: EventSource[] = ['system', 'runtime', 'provider_http']
 const levels: EventLevel[] = ['debug', 'info', 'warning', 'error']
 
 interface EventFeedApi {
   listEventFeed(filters: EventFeedFilters): Promise<EventFeedResponse>
-  downloadEvent(source: EventSource, id: string): Promise<Blob>
+  downloadEvent(source: EventSource, id: string): Promise<NamedDownload>
+  getProviderHttpLogSettings(): Promise<ProviderHttpLogSettings>
+  updateProviderHttpLogSettings(value: number): Promise<ProviderHttpLogSettings>
   getRuntimeDiagnostics(): Promise<RuntimeDiagnostics>
   updateRuntimeDiagnosticRetention(value: number): Promise<RuntimeDiagnostics>
   getSystemLogSettings(): Promise<SystemLogSettings>
   updateSystemLogSettings(value: number): Promise<SystemLogSettings>
-  deleteMatchingEventFeed(filters: EventFeedFilters): Promise<{ deleted: number }>
+  deleteMatchingEventFeed(filters: EventFeedFilters): Promise<{ deleted: number; skipped_active?: number }>
   watchApiServerEvents(
     onEvent: (event: ManagementEvent) => void,
     onError?: (error: unknown) => void,
@@ -84,8 +88,8 @@ const controlsLoading = ref(false)
 const controlsReady = ref(false)
 const controlsError = ref('')
 const stale = ref(false)
-const retentionDrafts = ref({ runtime: 20 })
-const savedRetentions = ref({ runtime: 20 })
+const retentionDrafts = ref({ runtime: 20, provider_http: 100 })
+const savedRetentions = ref({ runtime: 20, provider_http: 100 })
 const systemLogSizeDraft = ref(5)
 const savedSystemLogSize = ref(5)
 const systemLogSizeMin = ref(1)
@@ -119,6 +123,11 @@ function deletedCount(result: unknown): number {
   return Number((result as { deleted: unknown }).deleted) || 0
 }
 
+function skippedActiveCount(result: unknown): number {
+  if (!result || typeof result !== 'object' || !('skipped_active' in result)) return 0
+  return Number((result as { skipped_active: unknown }).skipped_active) || 0
+}
+
 function formatTime(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(formattingLocale(locale.value), {
@@ -132,23 +141,9 @@ function displaySummary(item: EventFeedItem): string {
   return item.source === 'system' && te(key) ? t(key) : item.summary
 }
 
-function downloadFilename(item: EventFeedItem, blob: Blob): string {
-  const parsed = new Date(item.occurred_at)
-  const stamp = Number.isNaN(parsed.getTime())
-    ? 'unknown-time'
-    : parsed.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
-  const extension = item.source === 'runtime' && blob.type.startsWith('text/plain')
-    ? 'log'
-    : 'json'
-  const kind = item.download_kind === 'diagnostic_detail'
-    ? 'diagnostic-detail'
-    : `event-${item.source}`
-  return `agent-shell-${kind}-${stamp}-${item.id.slice(0, 8)}.${extension}`
-}
-
 async function download(item: EventFeedItem): Promise<void> {
-  const blob = await api.downloadEvent(item.source, item.id)
-  triggerBrowserDownload(blob, downloadFilename(item, blob))
+  const result = await api.downloadEvent(item.source, item.id)
+  triggerBrowserDownload(result.blob, result.filename)
 }
 
 const eventTableConfig: DataTableConfig<EventFeedItem> = {
@@ -229,6 +224,8 @@ const eventTableConfig: DataTableConfig<EventFeedItem> = {
       key: 'download-event',
       label: (item) => t(item.download_kind === 'diagnostic_detail'
         ? 'eventFeed.downloadDetail'
+        : item.download_kind === 'http_exchange'
+          ? 'eventFeed.downloadExchange'
         : 'eventFeed.downloadEntry'),
       tone: 'secondary',
       icon: 'download',
@@ -258,7 +255,10 @@ const eventTableConfig: DataTableConfig<EventFeedItem> = {
         query: context.applied.query,
       })
     },
-    successTitle: (result) => t('eventFeed.feedback.deleted', { count: deletedCount(result) }),
+    successTitle: (result) => t(
+      skippedActiveCount(result) ? 'eventFeed.feedback.deletedWithActive' : 'eventFeed.feedback.deleted',
+      { count: deletedCount(result), active: skippedActiveCount(result) },
+    ),
     failureTitle: () => t('eventFeed.feedback.deleteFailed'),
   },
   pageSize: 50,
@@ -269,12 +269,14 @@ async function loadControls(): Promise<void> {
   controlsLoading.value = true
   controlsError.value = ''
   try {
-    const [diagnostics, systemLog] = await Promise.all([
+    const [diagnostics, systemLog, providerHttp] = await Promise.all([
       api.getRuntimeDiagnostics(),
       api.getSystemLogSettings(),
+      api.getProviderHttpLogSettings(),
     ])
     const loadedRetentions = {
       runtime: diagnostics.retention_limit,
+      provider_http: providerHttp.retention_limit,
     }
     retentionDrafts.value = loadedRetentions
     savedRetentions.value = { ...loadedRetentions }
@@ -300,7 +302,7 @@ async function refreshAll(): Promise<void> {
   await Promise.all([refreshWindow(), loadControls()])
 }
 
-async function saveRetention(source: 'runtime'): Promise<void> {
+async function saveRetention(source: 'runtime' | 'provider_http'): Promise<void> {
   const value = retentionDrafts.value[source]
   if (value < savedRetentions.value[source]) {
     const accepted = await confirmation.confirm({
@@ -314,7 +316,9 @@ async function saveRetention(source: 'runtime'): Promise<void> {
   }
   savingControl.value = `${source}-retention`
   try {
-    const result = await api.updateRuntimeDiagnosticRetention(value)
+    const result = source === 'runtime'
+      ? await api.updateRuntimeDiagnosticRetention(value)
+      : await api.updateProviderHttpLogSettings(value)
     retentionDrafts.value[source] = result.retention_limit
     savedRetentions.value[source] = result.retention_limit
     notify({
@@ -397,7 +401,7 @@ onMounted(() => { void loadControls() })
       <div v-if="controlsReady">
         <div class="row g-3" data-ui-control-row>
           <form
-            v-for="source in (['runtime'] as const)"
+            v-for="source in (['runtime', 'provider_http'] as const)"
             :key="source"
             class="col-lg-3"
             :data-testid="`retention-${source}`"
@@ -419,6 +423,9 @@ onMounted(() => { void loadControls() })
                 {{ t('common.save') }}
               </LteButton>
             </div>
+            <small v-if="source === 'provider_http'" class="form-text text-body-secondary">
+              {{ t('eventFeed.retention.providerHttpHelp') }}
+            </small>
           </form>
           <form class="col-lg-3" data-testid="system-log-settings" @submit.prevent="saveSystemLogSettings">
             <label class="form-label" for="system-log-max-size">{{ t('eventFeed.retention.systemMaxSize') }}</label>
@@ -458,6 +465,9 @@ onMounted(() => { void loadControls() })
       <template #cell-summary="{ value }"><span class="text-break">{{ value }}</span></template>
       <template #detail="{ row }">
         <article>
+          <p v-if="row.source === 'provider_http'" class="text-body-secondary mb-0">
+            {{ t(row.download_kind ? 'eventFeed.providerHttpDownloadHelp' : 'eventFeed.providerHttpActive') }}
+          </p>
           <pre v-if="row.inline_content" class="bg-body-tertiary border rounded p-3 overflow-auto mb-0">{{ row.inline_content }}</pre>
           <p v-if="row.matched_in_content" class="text-body-secondary mb-0">
             {{ t('eventFeed.matchedInContent') }}

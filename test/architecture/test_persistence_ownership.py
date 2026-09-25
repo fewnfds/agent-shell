@@ -42,6 +42,7 @@ REGISTERED_WRITE_MODULES = {
     "storage/model_call_archive.py",
     "storage/model_connections.py",
     "storage/permissions.py",
+    "storage/provider_http_logs.py",
     "storage/runtime_diagnostic_details.py",
 }
 

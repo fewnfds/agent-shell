@@ -471,10 +471,14 @@ export const en: MessageSchema = {
     empty: 'No events match the current filters.',
     downloadEntry: 'Download entry',
     downloadDetail: 'Download exception details',
+    downloadExchange: 'Download request and response',
+    providerHttpDownloadHelp: 'Download the ZIP to inspect the request and the response received from the Provider.',
+    providerHttpActive: 'This HTTP exchange is still in progress. Download is available after it ends.',
     matchedInContent: 'The query matched full content that is not shown in the list.',
     sources: {
       system: 'System log',
       runtime: 'Runtime diagnostics',
+      provider_http: 'Provider HTTP',
     },
     levels: {
       debug: 'Debug',
@@ -498,6 +502,7 @@ export const en: MessageSchema = {
     },
     retention: {
       title: 'Log settings',
+      providerHttpHelp: 'Keep the newest completed exchanges. Active exchanges are retained separately. Each archive may be large.',
       systemMaxSize: 'System log capacity',
       systemConfirmTitle: 'Lower the system log size limit',
       systemConfirmDescription: 'Lower the maximum saved size to {count} MiB? Once the new limit is exceeded, the current log is cleared and recording continues with new events.',
@@ -524,6 +529,7 @@ export const en: MessageSchema = {
       downloadFailed: 'Could not download the full entry',
       deleteFailed: 'Could not delete events',
       deleted: 'Deleted {count} events.',
+      deletedWithActive: 'Deleted {count} events; skipped {active} active HTTP exchanges.',
       retentionSaved: 'The retention limit is now {count}.',
       retentionFailed: 'Could not update the retention limit',
       systemLogSizeSaved: 'The system log capacity is now {count} MiB.',

@@ -37,6 +37,8 @@ from agent_shell.api.workflows import build_workflow_router
 from agent_shell.api.workflow_lifecycles import build_workflow_lifecycle_router
 from agent_shell.api.runtime_monitoring import build_runtime_monitoring_router
 from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.provider_http_logging import ProviderHttpObserver
+from agent_shell.storage.provider_http_logs import ProviderHttpLogStore
 from agent_shell.http_surface import ADMIN_PATH, is_agent_shell_api_path
 from agent_shell.provider_secrets import ProviderSecretResolver
 from agent_shell.langsmith_tracing import configure_project_langsmith_tracing
@@ -268,15 +270,23 @@ def create_app(
             ),
         )
     )
+    provider_http_logs = ProviderHttpLogStore(
+        application_database,
+        logs_dir / "provider-http",
+        history_retention,
+        notify_change=lambda: api_server_events.publish_nowait({"type": "history_changed"}),
+    )
     event_feed = EventFeedService(
         event_logger,
         runtime_diagnostics,
         system_log_settings,
+        provider_http_logs,
     )
     secret_resolver = ProviderSecretResolver(configuration, model_resources)
     provider_http_clients = ProviderHttpClients(
         settings.provider_http,
         data_root=settings.data_root,
+        observer=ProviderHttpObserver(provider_http_logs, environment),
     )
     file_manager = FileManagerService(
         settings.data_root,
@@ -599,6 +609,7 @@ def create_app(
     app.state.api_server_store = api_server_store
     app.state.message_interception = message_interception
     app.state.provider_http_clients = provider_http_clients
+    app.state.provider_http_logs = provider_http_logs
     app.state.event_feed = event_feed
     app.state.workflow_data = workflow_data
     app.state.langgraph_lifecycles = agent_runtime.langgraph_lifecycles

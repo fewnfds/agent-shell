@@ -2,7 +2,17 @@
 
 ## 日志中心
 
-【系统 / 日志中心】保存系统事件和结构化运行失败诊断。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目直接显示 Provider、Tool 或 Graph 的具体异常链、源异常类型以及 request、Lifecycle、Run 和 Thread ID；附件包含本地消费 traceback，跨 Agent Server 的异常还包含 Agent Server source traceback。错误码用于检索和程序分类，不替代异常原因。日志中心是完整错误事实的唯一出口：对外 API 只返回分类信息，使用者凭 `request_id` / `lifecycle_id` 在此定位完整诊断。系统事件的 timestamp、event、category 和 level 保持可解析的结构值；request ID、actor 和 metadata 按实例已保存的 credential 值公开投影。诊断写入自身失败时，服务端 stderr 会输出具体的持久化异常。日志不是已经建立的官方 Run 状态来源。
+【系统 / 日志中心】提供系统事件、结构化运行诊断和 `Provider HTTP` 三个来源。Graph 运行错误使用通用的 `graph_runtime` component，并通过 subject kind、ID 和名称区分 Main Agent 与 Workflow。诊断条目显示 Provider、Tool 或 Graph 的具体异常链、源异常类型以及可用的 request、Lifecycle、Run 和 Thread ID；附件包含本地消费 traceback，跨 Agent Server 的异常还包含 Agent Server source traceback。错误码用于检索和程序分类。对外 OpenAI-compatible API 只返回分类信息，使用者凭 `request_id` / `lifecycle_id` 在日志中心定位完整诊断。系统事件的 timestamp、event、category 和 level 保持可解析的结构值。日志不定义官方 Run 状态。
+
+### Provider HTTP
+
+`Provider HTTP` 在每次 Provider HTTP 发送尝试建立一条记录，覆盖 OpenAI、DeepSeek、Google GenAI 的模型请求、流式请求、Responses API 以及模型目录读取；SDK 重试产生新的记录。列表只返回时间、级别、request ID 和简短摘要，不载入完整 Header 或正文。查询匹配摘要、URL、status 和保存的关联元数据，不搜索请求或响应正文。正在进行的记录可见，结束后提供“下载请求与响应”。
+
+下载的 ZIP 包含 `metadata.json`、`request.body`、收到响应时的 `response.body`，以及有传输或读取异常时的 `transport-error.txt`。`metadata.json` 记录 method、URL、按顺序排列的请求和响应 Header、HTTP status、时间、关联 ID、正文表示层、结束原因、字节数和采集完整性。正文保存 HTTP client 实际观察到的 JSON、SSE 或其他字节内容；SSE 不被合成为最终回答。标准 HTTPX 的压缩响应在日志副本中解码，curl-cffi 已解码的响应直接复制，原响应 Header 仍保留，随后执行[凭据值投影](../security-and-deployment.md#数据分类与错误披露)。
+
+HTTP 4xx/5xx 和连接失败显示为 error；取消、服务中断或采集故障显示为 warning。HTTP 200 只说明该次 HTTP 交互的状态，模型解析或后续 Graph 执行结果仍以运行诊断与官方 Run 状态为准。流式消费者提前关闭时，ZIP 保存已读前缀并标记 `consumer_closed`；读取失败时保存已读前缀和异常。取消请求时，当前写盘操作完成后将条目标记 `cancelled`。连接失败时 `response` 为 `null`，SDK 已构造并缓存在 HTTP request 中的正文仍会保存；它表示尝试发送的内容，不证明对端已收到。日志观察到的是本进程 HTTP client 与配置的直接对端之间的内容；若端点是本地网关，网关后续转发不在此日志内。
+
+日志设置的 `Provider HTTP` 保存数量默认为最近完成的 100 条，最小 1、没有产品最大值。修改后立即清理超额已结束记录及附件；进行中的记录单独保留且批量删除会跳过它们。每条记录可以包含完整对话、Tool schema 和多模态正文，保存数量控制条目数，不限制单条附件大小或磁盘总字节。Provider HTTP 日志有独立的保留与删除路径，Lifecycle 删除不清理它；需要长期保存某次证据时下载 ZIP。设置和下载均使用当前 Management API 鉴权。
 
 ## 运行监控
 

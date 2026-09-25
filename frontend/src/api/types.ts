@@ -1067,7 +1067,7 @@ export interface PaginationResponse<TItem> {
   total_pages: number
 }
 
-export type EventSource = 'system' | 'runtime'
+export type EventSource = 'system' | 'runtime' | 'provider_http'
 export type EventLevel = 'debug' | 'info' | 'warning' | 'error'
 
 export interface EventFeedItem {
@@ -1079,7 +1079,7 @@ export interface EventFeedItem {
   summary: string
   inline_content: string | null
   matched_in_content: boolean
-  download_kind: 'entry' | 'diagnostic_detail' | null
+  download_kind: 'entry' | 'diagnostic_detail' | 'http_exchange' | null
 }
 
 export type EventFeedResponse = PaginationResponse<EventFeedItem>
@@ -1097,6 +1097,10 @@ export interface EventFeedFilters {
 export interface SystemLogSettings {
   max_size_mib: number
   min_size_mib: number
+}
+
+export interface ProviderHttpLogSettings {
+  retention_limit: number
 }
 
 export interface RuntimeDiagnosticEntry {

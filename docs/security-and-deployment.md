@@ -27,13 +27,13 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 ## 数据分类与错误披露
 
-本节是 Agent Shell 的唯一数据敏感性与错误披露声明。敏感信息只有实例 `data/config/agent-shell.env` 中保存的实际密钥值，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。模型连接与 MCP 连接 YAML 保存变量引用；模型连接 credential 读取 API 只投影 `masked`、`missing` 或 `none` 状态，MCP secret map 只投影 `masked` 或 `missing` 状态，其他 API Key 只投影 `configured` 布尔状态。不要提交或公开分享 `agent-shell.env`。
+本节是 Agent Shell 的唯一数据敏感性与错误披露声明。实例 `data/config/agent-shell.env` 中保存的实际密钥值属于敏感信息，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。Provider HTTP 日志还把本次请求中已解析的 Provider credential 实际值纳入同一投影；这包括模型目录读取时尚未保存的候选 API Key。模型连接与 MCP 连接 YAML 保存变量引用；模型连接 credential 读取 API 只投影 `masked`、`missing` 或 `none` 状态，MCP secret map 只投影 `masked` 或 `missing` 状态，其他 API Key 只投影 `configured` 布尔状态。不要提交或公开分享 `agent-shell.env`。
 
 Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和默认 HTTP Header 是普通系统配置，明文保存在 `data/config/system.yaml` 并由经过认证的 System Settings API 回显。它们不使用 secret storage；显式 proxy URL 因此不接受内嵌用户名或密码。`x-opencode-session` 一类缓存/路由 Header 可以保存在这里，API Key、Authorization credential 等实际密钥继续使用 Model Connection credential owner。
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
-`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。普通内容是否进入某个载体由该领域 owner 的 contract 决定；内容进入错误事实后，不再根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。
+`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。Provider HTTP 日志在发送时捕获该环境快照，并从该请求使用的标准 `Authorization: Bearer` 或 `x-goog-api-key` 取得本次 Provider credential 实际值；URL、Header、请求与响应正文、异常文本在写盘前替换这些实际值，流式正文覆盖跨 chunk 出现的值。普通内容是否进入某个载体由该领域 owner 的 contract 决定；其他错误事实不根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。
 
 披露内容按鉴权等级分层：
 

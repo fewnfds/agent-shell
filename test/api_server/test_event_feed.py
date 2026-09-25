@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
+import json
 from types import SimpleNamespace
+from zipfile import ZipFile
 
 from agent_shell.runtime.context import AgentRuntimeContext
 from agent_shell.runtime.diagnostics import RuntimeDiagnosticContext
@@ -9,6 +12,99 @@ from agent_shell.runtime.errors import AgentRuntimeError, decode_server_run_erro
 from agent_shell.runtime.limits import ProviderErrorBoundaryMiddleware
 
 from .support import *
+
+
+@pytest.fixture(autouse=True)
+def isolate_mcp_publication(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These tests run the management app without the official Agent Server.
+    # Startup reconciliation is covered by test_mcp_tools.py.
+    async def reconcile(_self) -> None:
+        return None
+
+    monkeypatch.setattr("agent_shell.mcp_tools.publication.McpToolPublicationService.reconcile", reconcile)
+
+
+def test_provider_http_feed_download_and_retention(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        store = client.app.state.provider_http_logs
+        first = store.begin(
+            method="POST",
+            url="https://provider.example/v1/chat/completions",
+            headers=[("Authorization", "Bearer [REDACTED]")],
+            secrets=(),
+            request_id="request-http-1",
+            context={"run_id": "run-http-1", "operation": "model_call"},
+        )
+        store.append_request(first, b'{"model":"first"}')
+        store.response_headers(
+            first, status=500, http_version="HTTP/1.1",
+            headers=[("Content-Type", "application/json")],
+            representation="decoded HTTP entity body", secrets=(),
+        )
+        store.append_response(first, b'{"error":"provider failed"}')
+        store.finish(first, "eof")
+
+        active = store.begin(
+            method="POST", url="https://provider.example/v1/chat/completions",
+            headers=[], secrets=(), request_id="request-http-active",
+        )
+        listing = client.get(
+            "/agent-shell/api/event-feed",
+            params=event_feed_params(source="provider_http", query="request-http-1"),
+        ).json()
+        body_query = client.get(
+            "/agent-shell/api/event-feed",
+            params=event_feed_params(source="provider_http", query="provider failed"),
+        ).json()
+        run_query = client.get(
+            "/agent-shell/api/event-feed",
+            params=event_feed_params(source="provider_http", query="run-http-1"),
+        ).json()
+        download = client.get(
+            f"/agent-shell/api/event-feed/provider_http/{first.id}/download"
+        )
+        active_download = client.get(
+            f"/agent-shell/api/event-feed/provider_http/{active.id}/download"
+        )
+        removed = client.post(
+            "/agent-shell/api/event-feed/delete",
+            json={**EVENT_FEED_TEST_WINDOW, "source": ["provider_http"], "query": "request-http-active"},
+        )
+        invalid = client.put(
+            "/agent-shell/api/event-feed/provider-http/settings",
+            json={"retention_limit": True},
+        )
+        settings = client.put(
+            "/agent-shell/api/event-feed/provider-http/settings",
+            json={"retention_limit": 1},
+        )
+        second = store.begin(
+            method="GET", url="https://provider.example/models", headers=[],
+            secrets=(), request_id="request-http-2",
+        )
+        store.finish(second, "eof")
+        trimmed = client.get(
+            f"/agent-shell/api/event-feed/provider_http/{first.id}/download"
+        )
+        store.finish(active, "consumer_closed")
+
+    assert listing["total"] == 1
+    assert body_query["total"] == 0
+    assert run_query["total"] == 1
+    assert listing["items"][0]["inline_content"] is None
+    assert listing["items"][0]["matched_in_content"] is False
+    assert listing["items"][0]["download_kind"] == "http_exchange"
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/zip"
+    with ZipFile(BytesIO(download.content)) as archive:
+        assert archive.read("request.body") == b'{"model":"first"}'
+        assert archive.read("response.body") == b'{"error":"provider failed"}'
+        assert json.loads(archive.read("metadata.json"))["response"]["status"] == 500
+    assert active_download.status_code == 409
+    assert removed.json() == {"deleted": 0, "skipped_active": 1}
+    assert invalid.status_code == 422
+    assert settings.json() == {"retention_limit": 1}
+    assert trimmed.status_code == 404
 
 
 def test_event_feed_exposes_only_supported_sources(

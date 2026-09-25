@@ -41,6 +41,7 @@ import type {
   EventFeedFilters,
   EventFeedResponse,
   EventSource,
+  ProviderHttpLogSettings,
   HealthResponse,
   ManagementEvent,
   NamedDownload,
@@ -1000,9 +1001,20 @@ export const managementApi = {
     })}`)
   },
 
-  downloadEvent(source: EventSource, id: string): Promise<Blob> {
+  downloadEvent(source: EventSource, id: string): Promise<NamedDownload> {
     const path = `/event-feed/${source}/${encodeURIComponent(id)}/download`
-    return managementDownload(path)
+    return managementNamedDownload(path)
+  },
+
+  getProviderHttpLogSettings(): Promise<ProviderHttpLogSettings> {
+    return managementRequest('/event-feed/provider-http/settings')
+  },
+
+  updateProviderHttpLogSettings(retentionLimit: number): Promise<ProviderHttpLogSettings> {
+    return managementRequest('/event-feed/provider-http/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ retention_limit: retentionLimit }),
+    })
   },
 
   getSystemLogSettings(): Promise<SystemLogSettings> {

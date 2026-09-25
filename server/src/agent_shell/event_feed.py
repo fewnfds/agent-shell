@@ -10,16 +10,18 @@ from typing import Literal
 from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.security_events import SecurityEventLogger
 from agent_shell.storage.system_log_settings import MIB_BYTES, SystemLogSettingsStore
+from agent_shell.storage.provider_http_logs import ProviderHttpLogStore
 
 
 EVENT_DOWNLOAD_THRESHOLD_BYTES = 4 * 1024
 EVENT_SUMMARY_MAX_CHARS = 240
-EventSource = Literal["system", "runtime"]
+EventSource = Literal["system", "runtime", "provider_http"]
 EventLevel = Literal["debug", "info", "warning", "error"]
 
 _SOURCE_RANK: dict[str, int] = {
     "system": 2,
     "runtime": 1,
+    "provider_http": 3,
 }
 
 
@@ -53,10 +55,31 @@ class EventFeedService:
         system_events: SecurityEventLogger,
         diagnostics: RuntimeDiagnostics,
         system_log_settings: SystemLogSettingsStore,
+        provider_http_logs: ProviderHttpLogStore | None = None,
     ) -> None:
         self._system_events = system_events
         self._diagnostics = diagnostics
         self._system_log_settings = system_log_settings
+        self._provider_http_logs = provider_http_logs
+
+    def provider_http_settings(self) -> dict[str, int]:
+        if self._provider_http_logs is None:
+            raise RuntimeError("Provider HTTP logs are unavailable")
+        return self._provider_http_logs.retention_settings()
+
+    def set_provider_http_retention(self, limit: int) -> dict[str, int]:
+        if self._provider_http_logs is None:
+            raise RuntimeError("Provider HTTP logs are unavailable")
+        return self._provider_http_logs.set_retention(limit)
+
+    def prepare_provider_http_download(self, item_id: str) -> tuple[Path, str] | None:
+        if self._provider_http_logs is None:
+            return None
+        return self._provider_http_logs.prepare_download(item_id)
+
+    def release_provider_http_download(self, path: Path) -> None:
+        if self._provider_http_logs is not None:
+            self._provider_http_logs.release_download(path)
 
     def system_log_settings(self) -> dict[str, int]:
         return self._system_log_settings.snapshot()
@@ -132,6 +155,20 @@ class EventFeedService:
             ),
         }
 
+    @staticmethod
+    def _provider_http_item(record: dict[str, object]) -> dict[str, object]:
+        return {
+            "id": record["id"],
+            "source": "provider_http",
+            "occurred_at": record["occurred_at"],
+            "level": record["level"],
+            "request_id": record["request_id"],
+            "summary": _summary(record["summary"]),
+            "inline_content": None,
+            "matched_in_content": False,
+            "download_kind": "http_exchange" if record["ended_at"] is not None else None,
+        }
+
     @classmethod
     def _public_items(
         cls,
@@ -202,6 +239,18 @@ class EventFeedService:
                     ended_at=ended_at,
                 )
             )
+        if "provider_http" in selected_sources and self._provider_http_logs is not None:
+            provider_items = self._public_items(
+                self._provider_http_logs.records(),
+                make_item=self._provider_http_item,
+                levels=levels,
+                needle=needle,
+                started_at=started_at,
+                ended_at=ended_at,
+            )
+            for item in provider_items:
+                item["matched_in_content"] = False
+            items.extend(provider_items)
 
         items.sort(key=self._key, reverse=True)
         total = len(items)
@@ -272,7 +321,22 @@ class EventFeedService:
             deleted += self._system_events.delete_public_records(matches_system)
         if "runtime" in selected_sources:
             deleted += self._diagnostics.delete_entries(matches_runtime)
-        return {"deleted": deleted}
+        skipped_active = 0
+        if "provider_http" in selected_sources and self._provider_http_logs is not None:
+            result = self._provider_http_logs.delete_matching(
+                lambda record: self._public_record_matches(
+                    record,
+                    occurred_at_key="occurred_at",
+                    level_key="level",
+                    levels=levels,
+                    needle=needle,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            )
+            deleted += result["deleted"]
+            skipped_active = result["skipped_active"]
+        return {"deleted": deleted, **({"skipped_active": skipped_active} if skipped_active else {})}
 
     def _system_record(self, item_id: str) -> dict[str, object] | None:
         return next(
@@ -299,6 +363,8 @@ class EventFeedService:
         source: EventSource,
         item_id: str,
     ) -> tuple[bytes | Path, str, str] | None:
+        if source == "provider_http":
+            return None
         if source == "system":
             entry = self._system_record(item_id)
             timestamp_key = "timestamp"

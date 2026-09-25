@@ -469,10 +469,14 @@ export const zhCN = {
     empty: '没有符合条件的事件。',
     downloadEntry: '下载条目',
     downloadDetail: '下载异常详情',
+    downloadExchange: '下载请求与响应',
+    providerHttpDownloadHelp: '下载 ZIP 查看发给 Provider 的请求和收到的响应。',
+    providerHttpActive: '本次 HTTP 交互仍在进行，结束后可下载。',
     matchedInContent: '查询词命中了未在列表中展示的完整内容。',
     sources: {
       system: '系统日志',
       runtime: '运行诊断',
+      provider_http: 'Provider HTTP',
     },
     levels: {
       debug: '调试',
@@ -496,6 +500,7 @@ export const zhCN = {
     },
     retention: {
       title: '日志设置',
+      providerHttpHelp: '保留最近完成的交互；进行中的记录单独保留。单个附件可能很大。',
       systemMaxSize: '系统日志容量',
       systemConfirmTitle: '降低系统日志大小上限',
       systemConfirmDescription: '将最大保存大小降低到 {count} MiB？超过新上限时，当前日志会清空并从新事件继续记录。',
@@ -522,6 +527,7 @@ export const zhCN = {
       downloadFailed: '完整条目下载失败',
       deleteFailed: '事件删除失败',
       deleted: '已删除 {count} 条事件。',
+      deletedWithActive: '已删除 {count} 条事件；跳过 {active} 条进行中的 HTTP 交互。',
       retentionSaved: '保存上限已更新为 {count} 条。',
       retentionFailed: '保存上限更新失败',
       systemLogSizeSaved: '系统日志容量已更新为 {count} MiB。',

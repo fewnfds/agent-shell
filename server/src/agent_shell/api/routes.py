@@ -35,6 +35,7 @@ from agent_shell.configuration.component_mutations import (
 )
 from agent_shell.registries.skills import scan_skills
 from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.provider_http_logging import bind_provider_http_context
 from agent_shell.provider_integrations import bundled_provider_ids
 from agent_shell.provider_secrets import ProviderCredentialError, ProviderSecretResolver
 from agent_shell.storage.agent_configs import AgentConfigStore
@@ -133,17 +134,19 @@ async def _model_catalog_request(
     provider_http_clients: ProviderHttpClients,
     url: str,
     *,
+    provider: str,
     headers: dict[str, str],
     params: dict[str, str] | None,
     credential: str | None,
 ) -> object:
     try:
-        response = await provider_http_clients.async_client.get(
-            url,
-            headers=headers,
-            params=params,
-            timeout=None,
-        )
+        with bind_provider_http_context(operation="model_catalog", provider=provider):
+            response = await provider_http_clients.async_client.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=None,
+            )
     except httpx.HTTPError as exc:
         raise management_error(
             502,
@@ -249,6 +252,7 @@ async def _google_genai_model_ids(
         payload = await _model_catalog_request(
             provider_http_clients,
             f"{base_url}/{api_version}/models",
+            provider="google_genai",
             headers=headers,
             params={"pageToken": page_token} if page_token else None,
             credential=credential,
@@ -518,6 +522,7 @@ def build_router(
         payload = await _model_catalog_request(
             provider_http_clients,
             f"{base_url}/models",
+            provider=provider,
             headers=headers,
             params=None,
             credential=api_key,

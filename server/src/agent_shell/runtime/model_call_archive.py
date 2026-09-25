@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 
+from agent_shell.provider_http_logging import bind_provider_http_context
+
 if TYPE_CHECKING:
     from agent_shell.storage.model_call_archive import ModelCallArchive
 
@@ -113,7 +115,12 @@ class ModelCallArchiveMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         started = time.monotonic()
         try:
-            response = handler(request)
+            with bind_provider_http_context(
+                operation="model_call",
+                model=str(_model_record(getattr(request, "model", None))["name"]),
+                **{key: str(value) for key, value in _identity(request).items() if value},
+            ):
+                response = handler(request)
         except Exception as exc:
             self._record(request, started, error=exc)
             raise
@@ -127,7 +134,12 @@ class ModelCallArchiveMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         started = time.monotonic()
         try:
-            response = await handler(request)
+            with bind_provider_http_context(
+                operation="model_call",
+                model=str(_model_record(getattr(request, "model", None))["name"]),
+                **{key: str(value) for key, value in _identity(request).items() if value},
+            ):
+                response = await handler(request)
         except Exception as exc:
             await asyncio.to_thread(self._record, request, started, error=exc)
             raise

@@ -105,6 +105,7 @@ def _default_system() -> dict[str, Any]:
         },
         "history_retention": {
             "runtime_diagnostics": 20,
+            "provider_http": 100,
         },
         "workflow_lifecycles": {
             "retained_lifecycles": 20,

@@ -14,6 +14,8 @@ Google GenAI 连接的 `provider` 是 `google_genai`，由 `langchain-google-gen
 
 Provider 出站网络由【系统 / 系统配置 / Provider Network】统一管理。标准 HTTPX 与 curl-cffi 浏览器兼容线路可以切换；`curl-cffi` 始终随软件安装，选择 HTTPX 表示 Provider 请求不经过它。系统不会在两条线路之间自动失败重试。HTTP version、TLS、自定义 CA、显式 proxy 与普通默认 Header 的完整共享 transport 用于 OpenAI、DeepSeek 连接与模型目录读取；Google GenAI 连接由 `langchain-google-genai` 建立自己的 HTTP client，不经过 Provider Network 的线路、TLS、CA 与 proxy 设置。
 
+这三类 Provider 的模型 HTTP 请求和模型目录请求逐次进入日志中心的 `Provider HTTP` 来源。Google GenAI 经 integration 的公开 `client_args` 接入 HTTPX 观察 transport；其异步请求也由 HTTPX 执行，并继续使用 Google 自身的网络配置与环境代理。HTTP 日志的 ZIP 保存 SDK 业务解析前可观察到的请求和已收到的响应，适合排查网关返回的原始错误；一次 SDK 重试产生一条新的 HTTP 记录。具体格式、保留和观察边界见[日志中心与 Graph 运行观测](runtime-observability.md)。
+
 全局 Header 是 `system.yaml` 中可读取的普通配置，适合 `x-opencode-session` 等非 credential 参数。API Key 仍使用 Model Connection credential。模型连接的 `model_settings.extra_headers` 继续作为请求级设置，并按 Header 名称大小写不敏感地覆盖全局同名值。默认 `User-Agent` 为 `Agent-Shell/<version>`；需要自定义 Agent Shell 的 HTTP client identity 时，在全局 Header 中添加 `User-Agent`。
 
 连接 YAML 位于 `data/config/model-connections/<uuid>.yaml`，实际 secret 位于 `data/config/agent-shell.env` 的 `AGENT_SHELL_MODEL_<UUID_WITHOUT_HYPHENS>_API_KEY`；API response 返回 `credential.status` 为 `masked`、`missing` 或 `none`，其中 `none` 表示该连接不使用凭据、`missing` 表示引用存在但环境值缺失。编辑时 `credential: null` 在 Provider 与 `base_url` 保持不变时保留原 Key。名称去除首尾空白后须为 1-120 个字符且在实例内大小写不敏感唯一；格式错误返回 422 `model_connection_invalid`，重名返回 409 `model_connection_name_conflict`。

@@ -157,6 +157,7 @@ def provider_http_clients():
         sync_client=sync_client,
         async_client=async_client,
         settings=SimpleNamespace(proxy_url=None),
+        google_transport=lambda: httpx.MockTransport(handler),
         request_headers=lambda defaults=None, overrides=None: {
             **(defaults or {}),
             **(overrides or {}),

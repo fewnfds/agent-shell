@@ -71,4 +71,25 @@ ON runtime_diagnostics(lifecycle_id, occurred_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_runtime_diagnostics_run
 ON runtime_diagnostics(run_id, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS provider_http_logs (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    occurred_at TEXT NOT NULL,
+    ended_at TEXT,
+    level TEXT NOT NULL,
+    state TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    method TEXT NOT NULL,
+    url TEXT NOT NULL,
+    status_code INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_http_logs_occurred
+ON provider_http_logs(occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_provider_http_logs_ended
+ON provider_http_logs(ended_at DESC, sequence DESC);
 """

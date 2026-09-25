@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from deepagents.middleware.unsupported_content import UnsupportedContentMiddleware
+
 from agent_shell.runtime import subagents
 from agent_shell.runtime.subagents import build_subagent_specs
 from agent_shell.validation.assembly import (
@@ -133,7 +135,7 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
     assert materialized_workspaces == [workspace, workspace]
     assert all("permissions" not in item for item in specs)
     assert all("graph" not in item and "runnable" not in item for item in specs)
-    assert specs[0]["middleware"] == [
+    assert specs[0]["middleware"][:-1] == [
         skill,
         filesystem,
         summarization,
@@ -148,3 +150,4 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
         package,
         empty_prompt,
     ]
+    assert isinstance(specs[0]["middleware"][-1], UnsupportedContentMiddleware)
