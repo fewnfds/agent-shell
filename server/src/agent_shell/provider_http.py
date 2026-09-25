@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agent_shell import __version__
 from agent_shell.provider_http_logging import (
     GoogleObservedTransport,
     ObservedAsyncTransport,
@@ -19,6 +20,7 @@ from agent_shell.provider_http_logging import (
 
 ProviderHttpTransport = Literal["httpx", "curl_cffi"]
 ProviderHttpVersion = Literal["auto", "http1", "http2"]
+DEFAULT_PROVIDER_USER_AGENT = f"Agent-Shell/{__version__}"
 
 _HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 

@@ -103,6 +103,12 @@ const apiKeyPlaceholder = computed(() => apiServerSettings.value?.api_key.config
 const langsmithApiKeyPlaceholder = computed(() => settings.value?.langsmith_api_key.configured
   ? t('common.configuredSecretPlaceholder')
   : t('common.apiKeyPlaceholder'))
+const configuredUserAgent = computed(() => providerHeaders.value.find(
+  (header) => header.name.trim().toLowerCase() === 'user-agent',
+))
+const providerUserAgent = computed(() => configuredUserAgent.value?.value
+  ?? settings.value?.provider_default_user_agent
+  ?? '')
 
 function fieldLabel(messageKey: string, wireField: string): string {
   return locale.value === 'debug' ? wireField : t(messageKey)
@@ -780,6 +786,13 @@ onMounted(() => { void load() })
             </div>
             <p class="text-body-secondary small">
               {{ t('systemSettings.providerNetwork.headersHint') }}
+            </p>
+            <p class="small" data-testid="provider-user-agent-summary">
+              {{ t('systemSettings.providerNetwork.userAgentSummary') }}
+              <code>{{ providerUserAgent || t('systemSettings.providerNetwork.emptyHeaderValue') }}</code>
+              {{ configuredUserAgent
+                ? t('systemSettings.providerNetwork.userAgentCustomized')
+                : t('systemSettings.providerNetwork.userAgentBuiltIn') }}
             </p>
             <div v-if="providerHeaders.length" class="vstack gap-2" data-testid="provider-default-headers">
               <div v-for="header in providerHeaders" :key="header.id" class="row g-2 align-items-end">

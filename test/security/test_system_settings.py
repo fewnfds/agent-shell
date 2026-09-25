@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from agent_shell.app import create_app
+from agent_shell.provider_http import DEFAULT_PROVIDER_USER_AGENT
 from agent_shell.settings import get_settings
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.system_log_settings import SystemLogSettingsStore
@@ -107,6 +108,7 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
             "proxy_url": None,
             "default_headers": {},
         },
+        "provider_default_user_agent": DEFAULT_PROVIDER_USER_AGENT,
         "restart_required": False,
         "active_management_url": "http://testserver/admin#/",
         "active_api_docs_url": "http://testserver/docs",

@@ -12,7 +12,6 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
-from agent_shell import __version__
 from agent_shell.http_surface import management_api_router
 from agent_shell.api.configuration_collections import (
     configuration_collection,
@@ -34,7 +33,7 @@ from agent_shell.configuration.component_mutations import (
     ComponentMutationValidationError,
 )
 from agent_shell.registries.skills import scan_skills
-from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.provider_http import DEFAULT_PROVIDER_USER_AGENT, ProviderHttpClients
 from agent_shell.provider_http_logging import bind_provider_http_context
 from agent_shell.provider_integrations import bundled_provider_ids
 from agent_shell.provider_secrets import ProviderCredentialError, ProviderSecretResolver
@@ -503,7 +502,7 @@ def build_router(
                 message="The provider credential input is invalid.",
             ) from exc
         headers = provider_http_clients.request_headers(
-            {"User-Agent": f"Agent-Shell/{__version__}"}
+            {"User-Agent": DEFAULT_PROVIDER_USER_AGENT}
         )
         if provider == "google_genai":
             # The Gemini Developer API reads the key from its own Header and

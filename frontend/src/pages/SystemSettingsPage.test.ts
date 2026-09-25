@@ -39,6 +39,7 @@ const systemSettings: SystemSettings = {
     proxy_url: null,
     default_headers: {},
   },
+  provider_default_user_agent: 'Agent-Shell/0.2.0',
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',

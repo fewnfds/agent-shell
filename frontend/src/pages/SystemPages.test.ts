@@ -46,6 +46,7 @@ const currentSettings: SystemSettings = {
     proxy_url: null,
     default_headers: {},
   },
+  provider_default_user_agent: 'Agent-Shell/0.2.0',
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -201,6 +202,7 @@ describe('SystemSettingsPage', () => {
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()
 
+    expect(wrapper.get('[data-testid="provider-user-agent-summary"]').text()).toContain('Agent-Shell/0.2.0')
     expect(wrapper.get('#allow-remote').element.tagName).toBe('SELECT')
     expect(wrapper.get('#langsmith-tracing').element.tagName).toBe('SELECT')
     await wrapper.get('#system-host').setValue('0.0.0.0')
@@ -276,6 +278,7 @@ describe('SystemSettingsPage', () => {
     await wrapper.get('[data-testid="add-provider-header"]').trigger('click')
     await wrapper.get('[id^="provider-header-name-"]').setValue('User-Agent')
     await wrapper.get('[id^="provider-header-value-"]').setValue('my-agent/2.0')
+    expect(wrapper.get('[data-testid="provider-user-agent-summary"]').text()).toContain('my-agent/2.0')
     await wrapper.get('[data-testid="system-card-provider-network"]').trigger('submit')
     await flushPromises()
     expect(api.updateSystemSettings).toHaveBeenNthCalledWith(5, expect.objectContaining({

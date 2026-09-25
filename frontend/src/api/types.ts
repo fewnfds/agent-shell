@@ -352,6 +352,7 @@ export interface SystemSettings {
   trusted_proxy_cidrs: string[]
   response_stream_scheduling: ResponseStreamPolicy
   provider_http: ProviderHttpSettings
+  provider_default_user_agent: string
   restart_required: boolean
   active_management_url: string
   active_api_docs_url: string

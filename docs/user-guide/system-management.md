@@ -86,6 +86,8 @@ Provider Network Card 管理 Provider 出站请求。`transport=httpx` 使用标
 
 两条线路都可选择 Auto、HTTP/1.1 或 HTTP/2，设置 TLS certificate verification、自定义 CA 文件和显式 HTTP(S) proxy。CA 文件可填写绝对路径，或填写相对 `data/` 根目录的路径，保存时必须已经存在且为普通文件；关闭 TLS verification 时不能同时填写 CA。Proxy URL 不接受 credential、path、query 或 fragment，也不读取进程环境代理。普通 Header 直接保存在 `system.yaml`，可以用于 `x-opencode-session` 等缓存或路由参数；请求级 `model_settings.extra_headers` 的同名 Header 优先。系统默认发送 `User-Agent: Agent-Shell/<version>`，在全局 Header 中填写 `User-Agent` 即可覆盖。
 
+Provider Network Card 显示当前表单中的默认 `User-Agent` 完整值，并标出它来自程序默认值还是自定义 Header。新增或编辑 `User-Agent` 时摘要随表单更新；保存并重启后用于模型请求。具体 Model Connection 的 `model_settings.extra_headers` 仍可覆盖这项默认值。
+
 完整的 HTTPX/curl-cffi transport、HTTP version、TLS 和 CA 配置用于 OpenAI、DeepSeek 以及模型目录请求。浏览器兼容线路只模拟网络指纹，不执行 JavaScript、Turnstile 或 CAPTCHA。
 
 Agent Shell API Server 区域只设置 API Key。OpenAI-compatible 请求不设置 Agent Shell 项目级请求体、消息条数、content block 数量或解码媒体字节上限。模型请求 timeout 由 Model Connection 的 Provider 官方字段或 Provider SDK 默认行为负责；模型目录读取复用共享 Provider HTTP client，Agent Shell 不额外设置 timeout。生成媒体落盘和 File Manager 在线文本编辑同样不设置项目级字节上限，实际能力由 Provider、内存、磁盘和操作系统决定。

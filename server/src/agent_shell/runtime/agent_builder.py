@@ -10,7 +10,6 @@ from langchain.chat_models import init_chat_model
 from langgraph.store.base import BaseStore
 from pydantic import SecretStr
 
-from agent_shell import __version__
 from agent_shell.middleware_packages.runtime import MiddlewarePackageRuntime
 from agent_shell.python_packages.dependencies import dependency_metadata
 from agent_shell.contracts import (
@@ -19,7 +18,7 @@ from agent_shell.contracts import (
     FilesystemToolsBlock,
     SkillBlock,
 )
-from agent_shell.provider_http import ProviderHttpClients
+from agent_shell.provider_http import DEFAULT_PROVIDER_USER_AGENT, ProviderHttpClients
 from agent_shell.provider_secrets import ProviderCredentialError, ProviderSecretResolver
 from agent_shell.runtime.capabilities import (
     DeepAgentsCapabilityError,
@@ -108,7 +107,7 @@ def _build_chat_model(
             kwargs.update(
                 {
                     "default_headers": provider_http_clients.request_headers(
-                        {"User-Agent": f"Agent-Shell/{__version__}"}
+                        {"User-Agent": DEFAULT_PROVIDER_USER_AGENT}
                     ),
                     "http_client": provider_http_clients.sync_client,
                     "http_async_client": provider_http_clients.async_client,

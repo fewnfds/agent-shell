@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from agent_shell.http_surface import http_surface, management_api_router
 from agent_shell.api.errors import management_error
 from agent_shell.settings import DEFAULT_GRAPH_MAX_CONCURRENCY
-from agent_shell.provider_http import ProviderHttpSettings
+from agent_shell.provider_http import DEFAULT_PROVIDER_USER_AGENT, ProviderHttpSettings
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
 
@@ -66,6 +66,7 @@ def _with_active_urls(payload: dict, request: Request) -> dict:
     entries = http_surface(request)["service_entries"]
     return {
         **payload,
+        "provider_default_user_agent": DEFAULT_PROVIDER_USER_AGENT,
         "active_management_url": entries["management_console_url"],
         "active_api_docs_url": entries["api_docs_url"],
         "active_studio_url": entries["langgraph_studio_url"],
