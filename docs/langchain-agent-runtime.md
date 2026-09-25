@@ -1,13 +1,14 @@
 # LangChain Agent runtime 基线
 
-Agent Shell 使用 `langchain>=1.4.0,<2.0`，并精确锁定 `deepagents==0.7.13`，通过
+Agent Shell 使用 `langchain>=1.4.2,<2.0`，并精确锁定 `deepagents==0.7.19`，通过
 `langchain.agents.create_agent()` 构造 Main Agent。返回的
 `CompiledStateGraph` 直接注册为 `agent-shell-agent` root graph。Deep Agents
 继续提供 Filesystem、Skills、增强 Summarization、PatchToolCalls、同步
 Subagent、Backend 和 State 等公共组件。
 
 Main Agent 和 Subagent 的完整 middleware 集合由 Agent Shell 根据已校验配置显式装配。
-未选择或被 Subagent 设为 `disabled` 的可选能力不进入最终 middleware 列表。
+未选择或被 Subagent 设为 `disabled` 的可选能力不进入最终 middleware 列表；
+`UnsupportedContentMiddleware` 固定装配，无需组件配置。
 
 ## 责任边界
 
@@ -20,7 +21,8 @@ Deep Agents 公共组件拥有下列行为：
 - `FilesystemMiddleware`、`SkillsMiddleware` 与对应 Backend；
 - `SummarizationMiddleware` 的模型感知阈值、归档和裁剪；
 - `PatchToolCallsMiddleware` 的 tool-call repair；
-- `SubAgentMiddleware`、`task` Tool 与 declarative child 编译；
+- `UnsupportedContentMiddleware` 对当前模型不支持的媒体内容块的请求级替换；
+- `SubAgentMiddleware`、`task` Tool 与 declarative Subagent 编译；
 - `DeepAgentState`、`FilesystemState` 及相关 private State contract。
 
 用户 Python Middleware 扩展只返回官方 `AgentMiddleware`。Agent Shell 不建立第二套
@@ -49,21 +51,22 @@ Main Agent middleware 顺序如下：
 12. 可选 Exception Retry middleware；
 13. 启用模型调用归档时的 `ModelCallArchiveMiddleware`；
 14. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
-15. 按配置顺序排列的 Custom Middleware。
+15. 按配置顺序排列的 Custom Middleware；
+16. 固定的 `UnsupportedContentMiddleware`。
 
 列表顺序同时决定 wrapper 嵌套和 hook 顺序。LangChain 按正向顺序执行 before hook，
 按反向顺序执行 after hook。每个 Run 使用本次装配产生的 middleware 实例。
 
 ## 同步 Subagent
 
-只有 Main Agent 保存 direct Subagent UUID。每个 direct child 解析自己的 effective
+只有 Main Agent 保存 direct Subagent UUID。每个直接引用的 Subagent 解析自己的 effective
 capability、Tool、Middleware、MCP 和 Filesystem，并投影为 Deep Agents declarative
 `SubAgent` dictionary。dictionary 包含 name、description、system prompt、model、tools、
 middleware 及可选 response format；当前使用官方默认的 `isolated` mode。
 
 Main Agent 的显式 `SubAgentMiddleware` 持有这些 dictionary spec，并提供 `task` Tool。
-Deep Agents 使用 `create_agent()` 编译 child；raw dictionary 形态同时支持 task 调用携带
-dynamic response schema 时按该 schema 生成 child runnable。Subagent 不装配 nested
+Deep Agents 使用 `create_agent()` 编译 Subagent；raw dictionary 形态同时支持 task 调用携带
+dynamic response schema 时按该 schema 生成 Subagent runnable。Subagent 不装配 nested
 `SubAgentMiddleware` 或 `AgentInitialFilesMiddleware`。
 
 Subagent middleware 顺序如下：
@@ -81,15 +84,17 @@ Subagent middleware 顺序如下：
 11. 可选 Exception Retry middleware；
 12. 启用模型调用归档时的 `ModelCallArchiveMiddleware`；
 13. 按配置顺序排列的 Custom Middleware；
-14. `EmptySystemMessageMiddleware`。
+14. `EmptySystemMessageMiddleware`；
+15. 固定的 `UnsupportedContentMiddleware`。
 
-Deep Agents `0.7.13` 的 declarative child helper 在未配置 system prompt 时传入空字符串。
-child-only compatibility middleware 将精确的空 `SystemMessage` 投影为 `None`；所有非空
+Deep Agents `0.7.19` 的 `create_sub_agent()` 按 middleware 名称识别已装配的
+`UnsupportedContentMiddleware`，不会重复添加。该函数在未配置 system prompt 时传入空字符串。
+仅用于 Subagent 的 compatibility middleware 将精确的空 `SystemMessage` 投影为 `None`；所有非空
 system content 保持原样。Main Agent 直接使用 `system_prompt=None`，无需该兼容层。
 
 `SubAgentMiddleware` 的 private state keys 从 `AgentShellState`、
 `SummarizationState` 和最终 stack 中每个 middleware 的公开 `state_schema` 聚合。
-Filesystem 权限直接保存在各 child 的 `FilesystemMiddleware` 实例中。
+Filesystem 权限直接保存在各 Subagent 的 `FilesystemMiddleware` 实例中。
 
 ## 调用限制
 
@@ -99,11 +104,11 @@ Filesystem 权限直接保存在各 child 的 `FilesystemMiddleware` 实例中�
 invocation 重置；`thread_limit` 使用 private checkpoint state，在同一持久 Main Agent
 Thread 的后续 Run 中累计。
 
-同步 Subagent 使用自己的 effective middleware stack。当前 isolated child 没有独立
-checkpointer，每次 `task` 调用都从新的 child state 开始，因此 child 的 `thread_limit` 只在
+同步 Subagent 使用自己的 effective middleware stack。当前 isolated Subagent 没有独立
+checkpointer，每次 `task` 调用都从新的 Agent State 开始，因此 Subagent 的 `thread_limit` 只在
 本次 `task` 内累计，与 `run_limit` 具有相同的状态生命周期。Call Limit 的 private state key
-会加入 `SubAgentMiddleware.private_state_keys`，child counter 不投影回 parent，因此不会消耗
-父 Agent 的 Model/Tool Thread 额度。Tool limit 在模型返回调用后、Tool 执行前拦截超限项。
+会加入 `SubAgentMiddleware.private_state_keys`，Subagent counter 不投影回 Main Agent，因此不会消耗
+Main Agent 的 Model/Tool Thread 额度。Tool limit 在模型返回调用后、Tool 执行前拦截超限项。
 这些计数与 Graph super-step `recursion_limit` 相互独立。
 
 ## Filesystem、Skill 与摘要
@@ -126,10 +131,17 @@ Summarization 但没有用户 Filesystem Backend 时，Agent Shell 只为该 mid
 `StateBackend`，不把它暴露为用户 Filesystem 能力；没有 Filesystem Tools 时模型不能通过
 `read_file` 重新读取归档，因此配置校验给出 warning。
 
-没有 `FilesystemMiddleware` 时，大 Tool result 与 Human message 不执行文件卸载，完整内容继续
-进入消息上下文；这不会产生卸载阶段错误，但会增加 token 与延迟，并可能最终触发模型供应商的
-context window 超限。
+没有 `FilesystemMiddleware` 时，大 Tool result 与 Human message 不执行文件卸载，原内容仍保存在
+消息中；发送模型时仍经过固定的媒体过滤。这不会产生卸载阶段错误，但大文本会增加 token 与
+延迟，并可能最终触发模型供应商的 context window 超限。
 `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 只匹配虚拟根目录。
+
+`UnsupportedContentMiddleware` 位于最终 middleware 列表末尾，根据本次模型请求实际选定的
+model profile 判断用户消息和 Tool 消息中的媒体块。明确不受支持的媒体块在本次模型请求中
+替换为文字提示，原 Thread 消息仍保留媒体。一般媒体类型在 profile 未声明支持情况时按支持
+处理；内联非 PDF 文件另按 MIME 与 OpenAI Responses 模式判断。
+`FilesystemMiddleware` 遇到模型拒绝 `read_file` 媒体 Tool 消息时会尝试一次文字替换重试；
+重试成功后的 Tool 消息写回 State。此过滤不依赖 Filesystem Tools 是否启用。
 
 ## State、Thread 与输出
 

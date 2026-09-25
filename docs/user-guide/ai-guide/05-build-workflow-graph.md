@@ -151,7 +151,7 @@ PUT /agent-shell/api/workflows/<workflow-id>/graph
 - 每个Command返回官方`Command`；
 - 每个可能goto目标都有同源outgoing Edge；
 - Command只依赖官方`Command(update, goto)`与显式Run facade；
-- child Run使用稳定operation ID；
+- spawned Run使用稳定operation ID；
 - loop有业务退出条件；
 - Workflow Event Output只投影Workflow自己的event。
 

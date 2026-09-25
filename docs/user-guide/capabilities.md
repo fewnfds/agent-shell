@@ -35,9 +35,11 @@ Custom Middleware 组件保存一个配置独占的 Python 扩展引用，并只
 
 Custom Tool 组件同样保存一个配置独占的 Python 扩展，但固定由同步 `create_tool()` 返回一个 LangChain `BaseTool`。Main Agent 和 Subagent 分别通过有序 `tool_refs` 装配多个配置；每个配置对应一个 Tool。完整 contract 见[Custom Tool](../wizard-pages/custom-tool-config.md)。
 
-Model Call Limit 与 Tool Call Limit 是两个独立的官方 middleware capability。两者都可按单次 Run 计数；Main Agent 还可依赖 checkpoint 按持久 Thread 累计。同步 isolated Subagent 每次 `task` 调用重新建立 child state，因此其 `thread_limit` 不跨 `task` 累计。未选择时不会自动启用，也不替代 LangGraph `recursion_limit`。Tool Call Limit 可以统计全部工具或一个最终 model-visible Tool name。字段与达限行为见 [Model Call Limit](../wizard-pages/model-call-limit-config.md) 和 [Tool Call Limit](../wizard-pages/tool-call-limit-config.md)。
+Model Call Limit 与 Tool Call Limit 是两个独立的官方 middleware capability。两者都可按单次 Run 计数；Main Agent 还可依赖 checkpoint 按持久 Thread 累计。同步 isolated Subagent 每次 `task` 调用重新建立 Agent State，因此其 `thread_limit` 不跨 `task` 累计。未选择时不会自动启用，也不替代 LangGraph `recursion_limit`。Tool Call Limit 可以统计全部工具或一个最终 model-visible Tool name。字段与达限行为见 [Model Call Limit](../wizard-pages/model-call-limit-config.md) 和 [Tool Call Limit](../wizard-pages/tool-call-limit-config.md)。
 
-Filesystem Backend 与 Filesystem Tools 都可以不选。选择 Tools 时必须同时选择 Backend；Backend 引用 Skill Package或设置 filesystem system prompt override 时必须同时选择 Tools；`execute` 只允许与 LocalShellBackend 组合。选择 Summarization 但没有 Tools 会产生 warning：摘要仍使用内部 `StateBackend`，但模型不能重新读取归档。没有 FilesystemMiddleware 时，大 Tool result 与 Human message 会完整保留在上下文中，不会在卸载阶段报错；代价是更多 token、延迟，以及最终触发 Provider context window 超限的可能。
+Filesystem Backend 与 Filesystem Tools 都可以不选。选择 Tools 时必须同时选择 Backend；Backend 引用 Skill Package或设置 filesystem system prompt override 时必须同时选择 Tools；`execute` 只允许与 LocalShellBackend 组合。选择 Summarization 但没有 Tools 会产生 warning：摘要仍使用内部 `StateBackend`，但模型不能重新读取归档。没有 FilesystemMiddleware 时，大 Tool result 与 Human message 不执行文件卸载，原内容仍保存在消息中；发送模型时会经过固定的媒体过滤。大文本会增加 token、延迟，以及触发 Provider context window 超限的可能。
+
+Main Agent 和 Subagent 固定装配 `UnsupportedContentMiddleware`，无需选择组件。Deep Agents 根据本次模型的能力资料判定不能发送的媒体，会在模型请求中替换为文字提示；这种请求级过滤会保留 Thread 原消息中的媒体。媒体来自用户消息时也会处理，因此此能力与 Filesystem Tools 的选择无关。如果模型拒绝 `read_file` 返回的媒体，Filesystem 会尝试一次文字替换重试；成功后替换的 ToolMessage 写回 State。
 
 Agent Additional Prompt（AAP）是推荐的 Agent 初始提示词注入范式，通过普通 Custom Middleware 实现：从 `内置示例-agent-additional-prompt` 创建独立配置，再由需要它的 Main Agent 或 Subagent 通过 `middleware_refs` 选择。完整原理和修改位置见 [Agent Additional Prompt](agent-additional-prompt.md)。
 

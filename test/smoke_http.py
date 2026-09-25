@@ -1773,8 +1773,7 @@ def main() -> int:
     ) as scratch:
         root = Path(scratch)
         reports = [_run_mode(repo_root, root)]
-    leftovers = list(scratch_parent.glob("security-http-smoke-*"))
-    if leftovers:
+    if root.exists():
         raise AssertionError("security smoke left temporary artifacts")
     print(json.dumps({"status": "passed", "modes": reports}, sort_keys=True))
     return 0

@@ -173,7 +173,7 @@ External Agent Session 会出现在该 Lifecycle 的运行监控左栏。它使�
 
 ## 11. 观测与交付检查
 
-运行监控按`Lifecycle -> Thread -> Run`显示本次请求的全部官方执行。选择Main Agent Thread时显示由官方stream/latest State恢复的连续消息、reasoning、Tool与错误；选择Workflow Thread时显示冻结Graph document的原始Vue Flow位置、handle、Edge和viewport，并高亮当前活动Node。旁侧字段树显示Thread State与Lifecycle Store，监控ZIP包含configuration snapshot、冻结Workflow document和公共API可读取的完整checkpoint history。`caller_run_id`只用于理解调用关系，不形成Parent/Child能力层级。
+运行监控按`Lifecycle -> Thread -> Run`显示本次请求的全部官方执行。选择Main Agent Thread时显示由官方`@langchain/vue useStream`与latest State恢复的连续消息、reasoning、Tool与错误；Thread stream连接断开时由官方SDK重连，最终失败时显示stream error。选择Workflow Thread时显示冻结Graph document的原始Vue Flow位置、handle、Edge和viewport，并高亮当前活动Node。旁侧字段树显示Thread State与Lifecycle Store，监控ZIP包含configuration snapshot、冻结Workflow document和公共API可读取的完整checkpoint history。`caller_run_id`只用于理解调用关系，不形成Parent/Child能力层级。
 
 交付前确认：
 

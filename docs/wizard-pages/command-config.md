@@ -134,7 +134,7 @@ async def command(state, runtime):
 
 每次 start 创建独立 Thread/Run；显式续聊时复用 idle Thread 并创建新 Run。相同 caller Run 中的 `operation_id` 幂等，不能绑定到另一个 target。
 
-跨 Workflow 调用使用 `runtime.context.workflow_runs.start_workflow(...)`，规则相同。child State 不会自动合并进 caller State。
+跨 Workflow 调用使用 `runtime.context.workflow_runs.start_workflow(...)`，规则相同。spawned Run 所属 Thread 的 State 不会自动合并进 caller Run 所属 Thread 的 State。
 
 ## External Agent
 

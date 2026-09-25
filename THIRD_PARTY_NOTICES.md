@@ -31,10 +31,10 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | npm | @jridgewell/resolve-uri | `3.1.2` | MIT | https://www.npmjs.com/package/@jridgewell/resolve-uri/v/3.1.2 |
 | npm | @jridgewell/sourcemap-codec | `1.5.5` | MIT | https://www.npmjs.com/package/@jridgewell/sourcemap-codec/v/1.5.5 |
 | npm | @jridgewell/trace-mapping | `0.3.31` | MIT | https://www.npmjs.com/package/@jridgewell/trace-mapping/v/0.3.31 |
-| npm | @langchain/core | `1.2.9` | MIT | https://www.npmjs.com/package/@langchain/core/v/1.2.9 |
-| npm | @langchain/langgraph-sdk | `1.10.2` | MIT | https://www.npmjs.com/package/@langchain/langgraph-sdk/v/1.10.2 |
+| npm | @langchain/core | `1.2.12` | MIT | https://www.npmjs.com/package/@langchain/core/v/1.2.12 |
+| npm | @langchain/langgraph-sdk | `1.11.2` | MIT | https://www.npmjs.com/package/@langchain/langgraph-sdk/v/1.11.2 |
 | npm | @langchain/protocol | `0.0.19` | MIT | https://www.npmjs.com/package/@langchain/protocol/v/0.0.19 |
-| npm | @langchain/vue | `1.0.35` | MIT | https://www.npmjs.com/package/@langchain/vue/v/1.0.35 |
+| npm | @langchain/vue | `1.1.2` | MIT | https://www.npmjs.com/package/@langchain/vue/v/1.1.2 |
 | npm | @standard-schema/spec | `1.1.0` | MIT | https://www.npmjs.com/package/@standard-schema/spec/v/1.1.0 |
 | npm | @types/jsesc | `2.5.1` | MIT | https://www.npmjs.com/package/@types/jsesc/v/2.5.1 |
 | npm | @types/json-schema | `7.0.15` | MIT | https://www.npmjs.com/package/@types/json-schema/v/7.0.15 |
@@ -113,7 +113,7 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | npm | p-queue | `9.3.3` | MIT | https://www.npmjs.com/package/p-queue/v/9.3.3 |
 | npm | p-queue | `6.6.2` | MIT | https://www.npmjs.com/package/p-queue/v/6.6.2 |
 | npm | p-retry | `7.1.1` | MIT | https://www.npmjs.com/package/p-retry/v/7.1.1 |
-| npm | p-timeout | `7.0.1` | MIT | https://www.npmjs.com/package/p-timeout/v/7.0.1 |
+| npm | p-timeout | `7.0.2` | MIT | https://www.npmjs.com/package/p-timeout/v/7.0.2 |
 | npm | p-timeout | `3.2.0` | MIT | https://www.npmjs.com/package/p-timeout/v/3.2.0 |
 | npm | pathe | `2.0.3` | MIT | https://www.npmjs.com/package/pathe/v/2.0.3 |
 | npm | perfect-debounce | `2.1.0` | MIT | https://www.npmjs.com/package/perfect-debounce/v/2.1.0 |
@@ -158,14 +158,14 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | croniter | `6.2.4` | MIT | https://pypi.org/project/croniter/6.2.4/ |
 | pypi | cryptography | `50.0.0` | Apache-2.0 OR BSD-3-Clause | https://pypi.org/project/cryptography/50.0.0/ |
 | pypi | curl-cffi | `0.16.0` | MIT | https://pypi.org/project/curl-cffi/0.16.0/ |
-| pypi | deepagents | `0.7.13` | MIT | https://pypi.org/project/deepagents/0.7.13/ |
+| pypi | deepagents | `0.7.19` | MIT | https://pypi.org/project/deepagents/0.7.19/ |
 | pypi | distro | `1.9.0` | Apache License, Version 2.0 | https://pypi.org/project/distro/1.9.0/ |
 | pypi | docstring-parser | `0.18.0` | MIT | https://pypi.org/project/docstring-parser/0.18.0/ |
 | pypi | fastapi | `0.141.1` | MIT | https://pypi.org/project/fastapi/0.141.1/ |
 | pypi | filetype | `1.2.0` | MIT | https://pypi.org/project/filetype/1.2.0/ |
 | pypi | forbiddenfruit | `0.1.4` | GPL-3.0-or-later OR MIT † | https://pypi.org/project/forbiddenfruit/0.1.4/ |
 | pypi | google-auth | `2.56.3` | Apache 2.0 | https://pypi.org/project/google-auth/2.56.3/ |
-| pypi | google-genai | `2.22.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.22.0/ |
+| pypi | google-genai | `2.25.0` | Apache-2.0 | https://pypi.org/project/google-genai/2.25.0/ |
 | pypi | googleapis-common-protos | `1.75.1` | Apache 2.0 | https://pypi.org/project/googleapis-common-protos/1.75.1/ |
 | pypi | grpcio | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio/1.81.1/ |
 | pypi | grpcio-health-checking | `1.81.1` | Apache-2.0 | https://pypi.org/project/grpcio-health-checking/1.81.1/ |
@@ -184,24 +184,24 @@ Counts: npm 134, pypi 113, runtime 3. Run `server/.venv/Scripts/python.exe packa
 | pypi | jsonschema | `4.26.0` | MIT | https://pypi.org/project/jsonschema/4.26.0/ |
 | pypi | jsonschema-rs | `0.44.1` | MIT | https://pypi.org/project/jsonschema-rs/0.44.1/ |
 | pypi | jsonschema-specifications | `2025.9.1` | MIT | https://pypi.org/project/jsonschema-specifications/2025.9.1/ |
-| pypi | langchain | `1.4.0` | MIT | https://pypi.org/project/langchain/1.4.0/ |
-| pypi | langchain-anthropic | `1.7.1` | MIT | https://pypi.org/project/langchain-anthropic/1.7.1/ |
-| pypi | langchain-core | `1.6.2` | MIT | https://pypi.org/project/langchain-core/1.6.2/ |
-| pypi | langchain-deepseek | `1.1.0` | MIT | https://pypi.org/project/langchain-deepseek/1.1.0/ |
+| pypi | langchain | `1.4.2` | MIT | https://pypi.org/project/langchain/1.4.2/ |
+| pypi | langchain-anthropic | `1.7.4` | MIT | https://pypi.org/project/langchain-anthropic/1.7.4/ |
+| pypi | langchain-core | `1.6.5` | MIT | https://pypi.org/project/langchain-core/1.6.5/ |
+| pypi | langchain-deepseek | `1.1.1` | MIT | https://pypi.org/project/langchain-deepseek/1.1.1/ |
 | pypi | langchain-google-genai | `4.4.0` | MIT | https://pypi.org/project/langchain-google-genai/4.4.0/ |
 | pypi | langchain-mcp-adapters | `0.3.2` | MIT | https://pypi.org/project/langchain-mcp-adapters/0.3.2/ |
-| pypi | langchain-openai | `1.6.1` | MIT | https://pypi.org/project/langchain-openai/1.6.1/ |
+| pypi | langchain-openai | `1.6.6` | MIT | https://pypi.org/project/langchain-openai/1.6.6/ |
 | pypi | langchain-protocol | `0.0.19` | MIT | https://pypi.org/project/langchain-protocol/0.0.19/ |
-| pypi | langgraph | `1.2.11` | MIT | https://pypi.org/project/langgraph/1.2.11/ |
-| pypi | langgraph-api | `0.14.0` | Elastic-2.0 | https://pypi.org/project/langgraph-api/0.14.0/ |
+| pypi | langgraph | `1.2.12` | MIT | https://pypi.org/project/langgraph/1.2.12/ |
+| pypi | langgraph-api | `0.14.4` | Elastic-2.0 | https://pypi.org/project/langgraph-api/0.14.4/ |
 | pypi | langgraph-checkpoint | `4.2.0` | MIT | https://pypi.org/project/langgraph-checkpoint/4.2.0/ |
 | pypi | langgraph-checkpoint-sqlite | `3.1.1` | MIT | https://pypi.org/project/langgraph-checkpoint-sqlite/3.1.1/ |
-| pypi | langgraph-cli | `0.4.31` | MIT | https://pypi.org/project/langgraph-cli/0.4.31/ |
+| pypi | langgraph-cli | `0.4.32` | MIT | https://pypi.org/project/langgraph-cli/0.4.32/ |
 | pypi | langgraph-prebuilt | `1.1.0` | MIT | https://pypi.org/project/langgraph-prebuilt/1.1.0/ |
-| pypi | langgraph-runtime-inmem | `0.34.0` | Elastic-2.0 | https://pypi.org/project/langgraph-runtime-inmem/0.34.0/ |
-| pypi | langgraph-sdk | `0.4.4` | MIT | https://pypi.org/project/langgraph-sdk/0.4.4/ |
-| pypi | langsmith | `0.12.2` | MIT | https://pypi.org/project/langsmith/0.12.2/ |
-| pypi | mcp | `1.29.1` | MIT | https://pypi.org/project/mcp/1.29.1/ |
+| pypi | langgraph-runtime-inmem | `0.34.1` | Elastic-2.0 | https://pypi.org/project/langgraph-runtime-inmem/0.34.1/ |
+| pypi | langgraph-sdk | `0.4.5` | MIT | https://pypi.org/project/langgraph-sdk/0.4.5/ |
+| pypi | langsmith | `0.14.0` | MIT | https://pypi.org/project/langsmith/0.14.0/ |
+| pypi | mcp | `1.30.0` | MIT | https://pypi.org/project/mcp/1.30.0/ |
 | pypi | openai | `2.53.0` | Apache-2.0 | https://pypi.org/project/openai/2.53.0/ |
 | pypi | opentelemetry-api | `1.42.1` | Apache-2.0 | https://pypi.org/project/opentelemetry-api/1.42.1/ |
 | pypi | opentelemetry-exporter-otlp-proto-common | `1.42.1` | Apache-2.0 | https://pypi.org/project/opentelemetry-exporter-otlp-proto-common/1.42.1/ |

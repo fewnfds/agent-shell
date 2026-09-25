@@ -6,7 +6,7 @@
 
 ## 运行监控
 
-【系统 / 运行监控】按 `Lifecycle -> Thread -> Run` 展示本次请求启动的官方 LangGraph 工作。Lifecycle 只是观察、下载和批量操作分组；所有 Run 能力相同，调用关系不会形成 Parent/Child 权限。Studio与Assistant的Graph结构检查不创建Lifecycle记录。
+【系统 / 运行监控】按 `Lifecycle -> Thread -> Run` 展示本次请求启动的官方 LangGraph 工作。Lifecycle 只是观察、下载和批量操作分组；所有 Run 能力相同，caller Run 与 spawned Run 的调用关系不定义权限层级。Studio与Assistant的Graph结构检查不创建Lifecycle记录。
 
 目录列出：
 
@@ -31,6 +31,7 @@ Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_
 
 - 页面进入时从 latest Thread State hydration 已经 checkpoint 的消息；
 - Thread 仍 active 时，`useStream.messages` 按官方 message delta 实时增长 reasoning 与 assistant text，Tool、interrupt 和 error 也沿官方 stream 更新；
+- Thread stream 连接中断时由官方 SDK 自动重连并恢复观察；重连最终失败时显示 stream error；
 - State snapshot 提供 hydration 和最终权威 State，不承担 token 流的重建；
 - 每个 AI 响应建立一段模型请求；Tool result 保留在产生该 Tool call 的 AI 回复下，下一段从后续 Human/System 输入或下一条 AI 响应开始，无文本的连续 Tool call 循环也会分开；隔断显示请求序号和该次响应可用的官方消息 ID；
 - reasoning 与 assistant text 在 Run 结束前使用流式 Markdown 渲染，root Run 结束后同一消息转为 final；Tool 调用与结果在同一条记录中更新；

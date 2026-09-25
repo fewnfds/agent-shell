@@ -45,6 +45,7 @@ Command 返回 `Command(goto=END)` 时必须有该节点到 End 的 Control Edge
 
 1. 在【代理组件 / MCP 要求】创建 Repository-owned `MCP Requirement`，填写说明和稳定 `namespace`。namespace 只允许字母、数字和下划线，且以字母或下划线开头；同一 Configuration Repository 内必须唯一。
 2. 在【MCP / MCP 连接】创建 instance-owned `MCP Connection`。远程 Server 选择 Streamable HTTP；本地 Server 选择【本地软件包（stdio）】，填写 npm/PyPI 包名与精确版本，保存后点击【安装并测试】。本地安装完成后，页面显示发现到的 Tool 数量。
+   远程 URL 填写实际提供 MCP 服务的 endpoint。MCP 客户端可跟随同源重定向，以及同一主机默认端口从 HTTP 升级到 HTTPS 的重定向；初始化和 Tool 调用所用的 POST 请求仅跟随保留请求方法的 307/308。跳转到其他主机或端口会使连接或 Tool 调用失败。若服务商提供的入口会跨站跳转，请直接填写跳转后的 endpoint URL。
 3. 在【MCP / MCP 映射】把当前 Repository 的每个 MCP Requirement 绑定到本实例的一条 MCP Connection。
 4. 在 Main Agent、Subagent 或【工作流组件 / Command 节点】的 MCP 要求 Card 中装配一个或多个 Requirement。每个调用方独立选择服务器全部 Tool，或只允许一组服务器原始 Tool name。
 

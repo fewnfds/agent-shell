@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 import threading
 from types import SimpleNamespace
-from typing import Annotated
+from typing import Annotated, ClassVar
 
+from deepagents.middleware import UnsupportedContentMiddleware
+from langchain.agents import create_agent
 from langchain.agents.middleware.types import PrivateStateAttr
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.messages import HumanMessage
 from langgraph.store.memory import InMemoryStore
 from typing_extensions import NotRequired, TypedDict
 
@@ -63,7 +67,7 @@ def _resources(
     )
 
 
-def test_main_and_child_use_the_shell_owned_middleware_slots(
+def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -263,7 +267,7 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         "middleware",
     }
     assert constructor["state_schema"] is AgentShellState
-    assert constructor["middleware"] == [
+    assert constructor["middleware"][:-1] == [
         main_skill,
         main_filesystem,
         delegation,
@@ -279,7 +283,8 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         main_initial_files,
         *main_packages,
     ]
-    assert captured["delegation_input"] == [
+    assert isinstance(constructor["middleware"][-1], UnsupportedContentMiddleware)
+    assert captured["delegation_input"][:-1] == [
         main_skill,
         main_filesystem,
         main_summarization,
@@ -294,11 +299,12 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         main_initial_files,
         *main_packages,
     ]
+    assert isinstance(captured["delegation_input"][-1], UnsupportedContentMiddleware)
 
     child_spec = captured["subagent_specs"][0]
     assert "permissions" not in child_spec
     assert "runnable" not in child_spec
-    assert child_spec["middleware"] == [
+    assert child_spec["middleware"][:-1] == [
         child_skill,
         child_filesystem,
         child_summarization,
@@ -313,6 +319,7 @@ def test_main_and_child_use_the_shell_owned_middleware_slots(
         *child_packages,
         child_empty_prompt,
     ]
+    assert isinstance(child_spec["middleware"][-1], UnsupportedContentMiddleware)
 
 
 def test_concurrent_agent_builds_keep_request_local_package_runtimes(
@@ -512,14 +519,13 @@ def test_concurrent_agent_builds_keep_request_local_package_runtimes(
     }
 
 
-def test_optional_slots_are_physically_absent() -> None:
-    foundation = _middleware("Filesystem")
+def test_optional_slots_are_physically_absent_but_content_filter_is_fixed() -> None:
     patch = _middleware("Patch")
     tool_boundary = _middleware("ToolBoundary")
     provider_boundary = _middleware("ProviderBoundary")
 
     middleware = assemble_agent_middleware(
-        foundation=(foundation,),
+        foundation=(),
         subagent=None,
         summarization=None,
         patch_tool_calls=patch,
@@ -531,7 +537,46 @@ def test_optional_slots_are_physically_absent() -> None:
         provider_error_boundary=provider_boundary,
     )
 
-    assert middleware == [foundation, patch, tool_boundary, provider_boundary]
+    assert middleware[:-1] == [patch, tool_boundary, provider_boundary]
+    assert isinstance(middleware[-1], UnsupportedContentMiddleware)
+
+
+def test_fixed_content_filter_replaces_unsupported_user_media_for_one_model_call() -> None:
+    class CaptureModel(FakeListChatModel):
+        seen_messages: ClassVar[list[list[object]]] = []
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            type(self).seen_messages.append(list(messages))
+            return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+    CaptureModel.seen_messages.clear()
+    model = CaptureModel(responses=["ok"], profile={"image_inputs": False})
+    middleware = assemble_agent_middleware(
+        foundation=(),
+        subagent=None,
+        summarization=None,
+        patch_tool_calls=_middleware("Patch"),
+        model_call_limit=None,
+        tool_call_limit=None,
+        tool_error_boundary=_middleware("ToolBoundary"),
+        todo=None,
+        model_request_settings=None,
+        provider_error_boundary=_middleware("ProviderBoundary"),
+    )
+    agent = create_agent(model=model, middleware=[middleware[-1]])
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": "Describe this image"},
+            {"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png"},
+        ]
+    )
+
+    result = agent.invoke({"messages": [message]})
+
+    assert result["messages"][0].content_blocks[1]["type"] == "image"
+    model_message = CaptureModel.seen_messages[0][0]
+    assert model_message.content_blocks[1]["type"] == "text"
+    assert "does not support image content" in model_message.content_blocks[1]["text"]
 
 
 def test_call_limit_materializers_preserve_official_configuration() -> None:

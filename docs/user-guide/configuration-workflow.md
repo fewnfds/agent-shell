@@ -21,7 +21,7 @@ Workflow metadata 保存 name、description、`is_model_entry`、`on_disconnect`
 
 Command 的 outgoing Edge 声明允许的目标 Node ID。运行时由脚本返回 `goto="<node-id>"` 选择目标；compiler不会为Command再注册static Edge。Start outgoing Edge才编译为`add_edge(START, target)`。
 
-Workflow State是一张扁平变量表，入口传入的键和Command写回的键都保留在同一个checkpoint里。Command读写`state.get(...)`并返回`update={...}`。在【工作流组件 / Python Schema】创建独立组件并用Python定义Pydantic`State`，再在Workflow的Python Schema Card中引用；声明后入口输入、每个Command的update结果和并行分支合并后的最终State都按它校验，不合法时以`workflow.state_invalid`失败；不声明则不做校验。公开模型入口的初始State固定为`{}`，因此其Schema字段需要可选或提供Pydantic default；内部Workflow可由`start_workflow(initial_state=...)`提供必填字段。Agent messages、child State、文件与checkpoint不进入Workflow State。需要child结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
+Workflow State是一张扁平变量表，入口传入的键和Command写回的键都保留在同一个checkpoint里。Command读写`state.get(...)`并返回`update={...}`。在【工作流组件 / Python Schema】创建独立组件并用Python定义Pydantic`State`，再在Workflow的Python Schema Card中引用；声明后入口输入、每个Command的update结果和并行分支合并后的最终State都按它校验，不合法时以`workflow.state_invalid`失败；不声明则不做校验。公开模型入口的初始State固定为`{}`，因此其Schema字段需要可选或提供Pydantic default；内部Workflow可由`start_workflow(initial_state=...)`提供必填字段。Agent messages、被调用 Run 所属 Thread 的 State、文件与checkpoint不进入Workflow State。需要被调用 Run 的结果时，Command显式调用`agent_runs.check/join`或`workflow_runs.check/join`并把所需值写入自己的`Command.update`。
 
 已发布 Workflow 修改 metadata 时仍保持发布状态，后端会把更新后的模型入口、Python Schema 与 Event Output 和当前 Graph 一起重新校验；失败时原配置保持不变。草稿可以先保存不完整组合，再到编辑器完成验证和正式保存。
 

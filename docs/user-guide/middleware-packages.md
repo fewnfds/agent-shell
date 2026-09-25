@@ -106,7 +106,7 @@ def create_command():
 
 `command(state, runtime)`直接返回官方`langgraph.types.Command`。现行contract只使用`update`与`goto`：`update`是只含已声明channel的Workflow State partial update，`goto`是当前Command outgoing Edge已经声明的目标Canvas Node ID。package不接触Edge ID、handle或layout，不使用`Send`、`resume`或跨graph routing。
 
-需要Agent执行时，Command通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run；child State不会自动合并进Workflow。完整规则与内置示例见[Command](../wizard-pages/command-config.md)。
+需要Agent执行时，Command通过`runtime.context.agent_runs`启动独立Main Agent Thread/Run；被调用 Main Agent 的 Agent State 不会自动合并进 Workflow State。完整规则与内置示例见[Command](../wizard-pages/command-config.md)。
 
 ## Custom Middleware
 

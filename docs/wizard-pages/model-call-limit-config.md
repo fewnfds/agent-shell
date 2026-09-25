@@ -13,7 +13,7 @@
 
 `exit_behavior=end` 让 middleware 写入达限 AI message 并结束当前 Agent；`error` 抛出 LangChain `ModelCallLimitExceededError`，当前 Run 失败。限制检查发生在下一次模型调用之前，因此已经完成的模型调用与 Tool 结果不会被撤销。
 
-Main Agent 的 `thread_limit` 随同一 Agent Thread 的 checkpoint 跨多个 Run 累计。Workflow Command 创建的新 Main Agent Thread 独立计数；明确续用同一 Thread 时继续累计。同步 isolated Subagent 没有独立 checkpointer，每次 `task` 调用都从新的 child state 开始，因此它的 `thread_limit` 只在本次 `task` 内累计，且 private counter 不并入父 Agent 的模型调用计数。
+Main Agent 的 `thread_limit` 随同一 Agent Thread 的 checkpoint 跨多个 Run 累计。Workflow Command 创建的新 Main Agent Thread 独立计数；明确续用同一 Thread 时继续累计。同步 isolated Subagent 没有独立 checkpointer，每次 `task` 调用都从新的 Agent State 开始，因此它的 `thread_limit` 只在本次 `task` 内累计，且 private counter 不并入 Main Agent 的模型调用计数。
 
 示例：
 

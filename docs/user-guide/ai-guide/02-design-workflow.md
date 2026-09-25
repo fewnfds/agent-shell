@@ -27,8 +27,8 @@
 | 模型推理、Tool loop、对话连续性 | Main Agent | Agent Thread checkpoint |
 | Main Agent内部同步委派 | Deep Agents Subagent | 同一agent loop |
 | 确定性计算、路由、外部API编排 | Workflow Command | Workflow 扁平变量表 |
-| 独立AI工作 | `runtime.context.agent_runs` | child Agent Thread |
-| 独立控制流程 | `runtime.context.workflow_runs` | child Workflow Thread |
+| 独立AI工作 | `runtime.context.agent_runs` | 独立 Main Agent Thread checkpoint |
+| 独立控制流程 | `runtime.context.workflow_runs` | 独立 Workflow Thread checkpoint |
 | 跨Thread共享artifact | 显式Store/Filesystem reference | 对应artifact owner |
 
 Workflow不拥有Agent messages、conversation channel、dispatch task或Agent checkpoint。
@@ -79,7 +79,7 @@ Workflow 提供一个可选的 `python_schema_id`，指向独立 Python Schema C
 适合放进 State 的内容：
 
 - route choice；
-- child Run ID和operation ID；
+- spawned Run ID和operation ID；
 - 少量结构化业务结果；
 - loop计数和完成标志。
 

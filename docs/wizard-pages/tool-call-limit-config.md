@@ -20,7 +20,7 @@
 - `error`：抛出 LangChain `ToolCallLimitExceededError`，当前 Run 失败；
 - `end`：阻止该批次的全部待执行调用，为每个调用补充 `ToolMessage`，再追加说明原因的 AI message 并结束当前 Agent。`tool_name` 可以填写或留空，同一响应包含多个并行调用时同样受支持。
 
-Tool limit 检查模型刚生成的工具调用，并在实际 Tool 执行前阻止超限项。Main Agent 的 `thread_limit` 随同一 Agent Thread 的 checkpoint 跨多个 Run 累计。同步 isolated Subagent 没有独立 checkpointer，每次 `task` 调用都从新的 child state 开始，因此它的 `thread_limit` 只在本次 `task` 内累计，且 private counter 不并入父 Agent 的工具调用计数。
+Tool limit 检查模型刚生成的工具调用，并在实际 Tool 执行前阻止超限项。Main Agent 的 `thread_limit` 随同一 Agent Thread 的 checkpoint 跨多个 Run 累计。同步 isolated Subagent 没有独立 checkpointer，每次 `task` 调用都从新的 Agent State 开始，因此它的 `thread_limit` 只在本次 `task` 内累计，且 private counter 不并入 Main Agent 的工具调用计数。
 
 示例：
 

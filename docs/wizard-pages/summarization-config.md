@@ -11,10 +11,12 @@
 - `truncate_args_enabled` 默认 `true`；
 - `truncate_args_max_length` 默认 `2000` 字符，最小 `1`；
 - `truncate_args_text` 默认 `...(argument truncated)`；
-- `trim_tokens_to_summarize` 默认 `4000` tokens，最小 `1`，也可为 `null`；
+- `trim_tokens_to_summarize` 默认 `4000` tokens，最小 `1`，也可为 `null`；它限制送入摘要模型的较旧历史消息，不限制生成摘要的长度，也不触发摘要；
 - `summary_prompt_override` 默认 `null`，表示使用 Deep Agents 默认 Prompt。
 
 摘要前的 original messages 由 Deep Agents 写入 selected Backend 的 protected prefix `/conversation_history/{session_uuid}.md`；session UUID 隔离 parallel Agent 的内部摘要会话。选择用户 Filesystem Backend 时使用该 Backend；没有选择时，Agent Shell 只为 SummarizationMiddleware 提供内部 `StateBackend`，不暴露文件工具。未选择 Filesystem Tools 时摘要仍可运行并正式保存，但校验给出 warning，因为模型不能用 `read_file` 重新读取归档。该内部文件由 Deep Agents 管理。
+
+Deep Agents 按当前模型的上下文窗口和最大输出 token 预算处理上下文溢出；摘要后仍超限时会尝试缩小保留窗口，无法继续缩小时报告上下文溢出错误。
 
 摘要 Prompt 编辑器默认显示 Deep Agents 内置 Prompt；未修改时仍使用该默认值，点击“恢复默认 Prompt”可撤销覆写。
 “工具参数截断后的替代文本”用于标记超过长度阈值的历史工具参数；摘要 Prompt 单独配置。

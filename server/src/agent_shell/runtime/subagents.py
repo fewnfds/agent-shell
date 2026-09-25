@@ -50,7 +50,7 @@ def build_subagent_specs(
     runtime_diagnostics: RuntimeDiagnostics | None = None,
     model_call_archive: ModelCallArchive | None = None,
 ) -> list[dict[str, Any]]:
-    """Project direct children to Deep Agents' official SubAgent dictionaries."""
+    """Project directly referenced Subagents to official SubAgent dictionaries."""
 
     return [
         _build_subagent_spec(
@@ -82,7 +82,7 @@ def _build_subagent_spec(
     runtime_diagnostics: RuntimeDiagnostics | None,
     model_call_archive: ModelCallArchive | None,
 ) -> dict[str, Any]:
-    child = materialize_resources(
+    subagent_resources = materialize_resources(
         node.references,
         node.blocks,
         filesystem_mode=node.filesystem_mode,
@@ -96,8 +96,8 @@ def _build_subagent_spec(
         ),
         mcp_references=node.mcp_references,
     )
-    if initial_files is not None and child.workspace is not None:
-        for path, value in child.workspace.initial_files.items():
+    if initial_files is not None and subagent_resources.workspace is not None:
+        for path, value in subagent_resources.workspace.initial_files.items():
             previous = initial_files.get(path)
             if previous is not None and previous != value:
                 raise AgentRuntimeError(
@@ -107,29 +107,29 @@ def _build_subagent_spec(
                 )
             initial_files[path] = value
     model_request_settings_middleware = None
-    if child.tool_choice is not None or child.model_settings:
+    if subagent_resources.tool_choice is not None or subagent_resources.model_settings:
         model_request_settings_middleware = make_model_request_settings_middleware(
-            tool_choice=child.tool_choice,
-            model_settings=child.model_settings,
+            tool_choice=subagent_resources.tool_choice,
+            model_settings=subagent_resources.model_settings,
         )
     middleware = assemble_agent_middleware(
-        foundation=child.foundation_middleware,
+        foundation=subagent_resources.foundation_middleware,
         subagent=None,
-        summarization=child.summarization_middleware,
+        summarization=subagent_resources.summarization_middleware,
         patch_tool_calls=materialize_patch_tool_calls_middleware(),
-        model_call_limit=child.model_call_limit_middleware,
-        tool_call_limit=child.tool_call_limit_middleware,
+        model_call_limit=subagent_resources.model_call_limit_middleware,
+        tool_call_limit=subagent_resources.tool_call_limit_middleware,
         tool_error_boundary=ToolErrorBoundaryMiddleware(
             runtime_diagnostics=runtime_diagnostics,
         ),
-        todo=child.todo_middleware,
+        todo=subagent_resources.todo_middleware,
         model_request_settings=model_request_settings_middleware,
         provider_error_boundary=ProviderErrorBoundaryMiddleware(
             runtime_diagnostics=runtime_diagnostics,
         ),
         exception_retry=(
-            child.exception_retry.after_provider_boundary
-            if child.exception_retry is not None
+            subagent_resources.exception_retry.after_provider_boundary
+            if subagent_resources.exception_retry is not None
             else ()
         ),
         model_call_archive=(
@@ -137,14 +137,14 @@ def _build_subagent_spec(
             if model_call_archive is not None
             else None
         ),
-        package=child.package_middleware,
+        package=subagent_resources.package_middleware,
         empty_system_message=EmptySystemMessageMiddleware(),
     )
 
     try:
         validate_middleware_names(middleware, owner=f"Subagent {node.name}")
         validate_model_visible_tool_names(
-            tools=child.tools,
+            tools=subagent_resources.tools,
             middleware=middleware,
             owner=f"Subagent {node.name}",
         )
@@ -160,11 +160,11 @@ def _build_subagent_spec(
     spec: dict[str, Any] = {
         "name": node.name,
         "description": node.description,
-        "system_prompt": child.system_prompt or "",
-        "model": child.model,
-        "tools": list(child.tools),
+        "system_prompt": subagent_resources.system_prompt or "",
+        "model": subagent_resources.model,
+        "tools": list(subagent_resources.tools),
         "middleware": middleware,
     }
-    if child.response_format is not None:
-        spec["response_format"] = child.response_format
+    if subagent_resources.response_format is not None:
+        spec["response_format"] = subagent_resources.response_format
     return spec

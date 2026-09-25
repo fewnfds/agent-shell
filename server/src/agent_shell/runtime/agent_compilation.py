@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from deepagents.middleware import UnsupportedContentMiddleware
+
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.capabilities.exception_retry import ExceptionRetryRuntime
 from agent_shell.runtime.errors import AgentRuntimeError, describe_exception
@@ -104,6 +106,7 @@ def assemble_agent_middleware(
     middleware.extend(package)
     if empty_system_message is not None:
         middleware.append(empty_system_message)
+    middleware.append(UnsupportedContentMiddleware())
     return middleware
 
 

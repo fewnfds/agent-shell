@@ -32,7 +32,7 @@ class _CaptureModel(BaseChatModel):
         )
 
 
-def test_declarative_child_without_authored_prompt_omits_empty_system_message() -> None:
+def test_declarative_subagent_without_authored_prompt_omits_empty_system_message() -> None:
     _CaptureModel.captured_messages.clear()
     agent = create_sub_agent(
         {

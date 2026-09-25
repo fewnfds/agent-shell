@@ -83,9 +83,9 @@ LocalShellBackend 不接受 Composite 来源或 `skill_package_id`，也没有�
 
 虚拟目录必须以 `/` 开头和结尾；虚拟文件以 `/` 开头且文件名与来源相同。`data-root-relative` 本地路径拒绝盘符、绝对/UNC 路径、冒号和 `.`/`..` 段，也不能逃出实例 `data/`。所有来源均不允许重叠 route、重复目标、文件/目录冲突、符号链接、junction 或其他 reparse point。以下 namespace 保留：`/large_tool_results/`、`/conversation_history/`、`/skills/`、`/memory/`、`/memories/`。
 
-Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为锁定的 Deep Agents 0.7.13 会为 Composite + execute 追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
+Deep Agents 在 selected Backend 的 `/conversation_history/` 与 `/large_tool_results/` 保存内部 artifact。CompositeBackend 的 default 是请求级 StateBackend；LocalShellBackend 直接使用真实 workspace，因此会在 workspace 创建这些目录和文件。LocalShell 不叠加 StateBackend route，因为 Deep Agents 会为 Composite + execute 追加虚拟路径与宿主路径说明，Filesystem 自定义提示词不能关闭该追加。conversation history UUID 只隔离运行时内部摘要会话，不对应产品 Lifecycle、thread 或用户对话历史。
 
-Filesystem system prompt override 只在 FilesystemMiddleware 存在时有消费者，因此设置 override 的 Backend 必须同时选择 Filesystem Tools。没有选择 Backend 和 Tools 时，Agent 不装配 FilesystemMiddleware；大 Tool result 与 Human message 会完整留在上下文，不会发生卸载阶段错误，但会增加 token、延迟和 Provider context window 超限风险。
+Filesystem system prompt override 只在 FilesystemMiddleware 存在时有消费者，因此设置 override 的 Backend 必须同时选择 Filesystem Tools。没有选择 Backend 和 Tools 时，Agent 不装配 FilesystemMiddleware；大 Tool result 与 Human message 不执行文件卸载，原内容仍保存在消息中，发送模型时仍经过固定的媒体过滤。大文本会增加 token、延迟和 Provider context window 超限风险。
 
 同一个 Workflow Run 中的 Main Agent 与 synchronous Subagent 共享 Deep Agents StateBackend 文件状态，但各自使用自己继承或替换后的 Filesystem Backend 和 Filesystem Tools。跨 Workflow 调用创建的独立 Run 不复制或合并调用方的请求级文件；CompositeBackend 的真实 mapped route 可以让引用同一配置的 Run 访问同一落盘目录。
 

@@ -46,6 +46,8 @@ OpenAI-compatible request (request.messages[])
 
 需要在Thread第一次执行时整理Agent输入时，为该Agent装配Agent Additional Prompt（AAP）或其他明确的Custom Middleware。AAP从current AgentState messages或显式Store/Filesystem来源选择材料，并用private checkpoint marker保证同一stateful Thread只初始化一次。
 
+Main Agent 和 Subagent 固定装配 Deep Agents `UnsupportedContentMiddleware`，没有对应的 Component 配置。Deep Agents 根据本次模型的能力资料判定不能发送的用户或 Tool 媒体块，会在模型请求中变成文字提示；请求级过滤保留原 Thread 消息。`read_file` 的文本结果包含 `@@ ... @@` 状态头，状态头以下是原样文件内容；编辑时只使用正文。
+
 ## 3. 配置对象关系
 
 常见依赖方向如下：
@@ -66,6 +68,7 @@ enabled Main Agent/Workflow + is_model_entry
 Model Connection 是当前实例私有资源。Model Requirement 是可迁移的能力描述。Model Mapping 把当前 Configuration Repository 中的 Model Requirement 绑定到本机 Model Connection。
 
 MCP Connection 也是当前实例私有资源。Repository-owned MCP Requirement 保存稳定 namespace，MCP Mapping 把它绑定到本机 MCP Connection；Main Agent、Subagent 和 Command 再通过各自的 ordered `mcp_refs` 选择可用 Tool。
+Streamable HTTP MCP Connection 的 URL 指向实际 MCP endpoint；跨主机或端口的重定向会使连接或 Tool 调用失败，需把 Connection URL 更新为最终 endpoint。同主机默认端口的 HTTP→HTTPS 升级可跟随。
 
 Workflow Graph 决定 Command super-step、State transition 和结束条件。Main Agent 表示一次由 LangChain 执行、按配置装配 Deep Agents 公共组件的完整 Agent loop，Component 为 Agent、Command 或 output projection 提供配置。
 

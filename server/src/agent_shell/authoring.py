@@ -86,8 +86,7 @@ READ_FILE_TOOL_DESCRIPTION = """Reads a file from the filesystem. Assume any pat
 
 Usage:
 - By default, it reads up to 100 lines starting from the beginning of the file. Use `offset`/`limit` to page through large files instead of reading them whole.
-- Results are returned with line numbers starting at `offset` + 1 (1 by default), then two spaces, then the source line. Never include these line-number prefixes when editing.
-- Lines over 5,000 characters are split with continuation markers (e.g. 5.1, 5.2); `limit` counts source lines, so continuation rows do not consume the budget.
+- A status header, `@@ field | field | ... @@`, sits above the file content, and every line after it is verbatim file content. When content is truncated, there may be an explanation before the header. Never include the header when editing.
 - Speculatively batch multiple `read_file` calls in one response when several files may be useful.
 - An empty file returns a system-reminder warning in place of contents.
 - Large tool results may be offloaded to a file; the tool message gives the path. Read that path here, paging with `offset`/`limit`.
@@ -106,7 +105,7 @@ EDIT_FILE_TOOL_DESCRIPTION = """Performs exact string replacements in files.
 
 Usage:
 - You must read the file before editing; this tool errors otherwise.
-- Preserve the exact indentation from the read output, and never include line-number prefixes in old_string or new_string.
+- Preserve the exact source indentation from the read output, and never include the read status header in old_string or new_string.
 - Prefer editing an existing file over creating a new one.
 - Only use emojis if the user explicitly requests it."""
 

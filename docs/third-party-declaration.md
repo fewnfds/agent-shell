@@ -22,7 +22,7 @@ Agent Shell 自身源码以 MIT 许可发布（根目录 `LICENSE`）。本页�
 
 | 项目 | 上游组件 | 现行做法 | 源码 owner |
 | --- | --- | --- | --- |
-| child 空 SystemMessage 兼容 | `deepagents==0.7.13` | `create_sub_agent()` 在 declarative child 未配置 prompt 时传入 `system_prompt=""`，产生的空 `SystemMessage` 会进入 Provider 请求。本项目在 child stack 装配 `EmptySystemMessageMiddleware`，只把内容为空字符串的 `SystemMessage` 投影为 `None`，非空 system content 保持原样。 | `server/src/agent_shell/runtime/deepagents_compatibility.py` |
+| Subagent 空 SystemMessage 兼容 | `deepagents==0.7.19` | `create_sub_agent()` 在 declarative Subagent 未配置 prompt 时传入 `system_prompt=""`，产生的空 `SystemMessage` 会进入 Provider 请求。本项目在 Subagent middleware stack 装配 `EmptySystemMessageMiddleware`，只把内容为空字符串的 `SystemMessage` 投影为 `None`，非空 system content 保持原样。 | `server/src/agent_shell/runtime/deepagents_compatibility.py` |
 
 `server/uv.lock` 安装的 Deep Agents wheel 保持原样。源码、开发虚拟环境和 portable runtime 均不修改 `site-packages/deepagents`；适配代码位于 `server/src/agent_shell/`，由 Git、测试和升级审查追踪。逐项接入清单见 [Deep Agents 公共组件接入清单](deep-agents-customizations.md)。
 
@@ -30,7 +30,7 @@ Agent Shell 自身源码以 MIT 许可发布（根目录 `LICENSE`）。本页�
 
 | 项目 | 上游组件 | 现行做法 | 源码 owner |
 | --- | --- | --- | --- |
-| Windows curl-cffi BlockBuster 兼容 | `langgraph-runtime-inmem==0.34.0`（Elastic-2.0） | 包装 `langgraph_runtime_inmem.queue._enable_blockbuster`，在它返回的 blocker 上追加一条白名单：`socket.py::_fallback_socketpair`。 | `server/src/agent_shell/langgraph_dev.py` |
+| Windows curl-cffi BlockBuster 兼容 | `langgraph-runtime-inmem==0.34.1`（Elastic-2.0） | 包装 `langgraph_runtime_inmem.queue._enable_blockbuster`，在它返回的 blocker 上追加一条白名单：`socket.py::_fallback_socketpair`。 | `server/src/agent_shell/langgraph_dev.py` |
 
 ### 为什么要打这个补丁
 
