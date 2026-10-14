@@ -5,7 +5,8 @@ import threading
 from types import SimpleNamespace
 from typing import Annotated, ClassVar
 
-from deepagents.middleware import UnsupportedContentMiddleware
+from deepagents.backends import StateBackend
+from deepagents.middleware import SkillsMiddleware, UnsupportedContentMiddleware
 from langchain.agents import create_agent
 from langchain.agents.middleware.types import PrivateStateAttr
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
@@ -71,7 +72,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     tmp_path,
     monkeypatch,
 ) -> None:
-    main_skill = _middleware("MainSkills")
+    main_skill = SkillsMiddleware(backend=StateBackend(), sources=["/skills/"])
     main_filesystem = _middleware("MainFilesystem")
     main_todo = _middleware("MainTodo")
     main_summarization = _middleware("MainSummarization")
@@ -93,7 +94,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         workspace=SimpleNamespace(initial_files={"/seed.txt": "seed"}),
     )
 
-    child_skill = _middleware("ChildSkills")
+    child_skill = SkillsMiddleware(backend=StateBackend(), sources=["/skills/"])
     child_filesystem = _middleware("ChildFilesystem")
     child_todo = _middleware("ChildTodo")
     child_summarization = _middleware("ChildSummarization")
@@ -268,7 +269,6 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     }
     assert constructor["state_schema"] is AgentShellState
     assert constructor["middleware"][:-1] == [
-        main_skill,
         main_filesystem,
         delegation,
         main_summarization,
@@ -282,10 +282,10 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         main_retry,
         main_initial_files,
         *main_packages,
+        main_skill,
     ]
     assert isinstance(constructor["middleware"][-1], UnsupportedContentMiddleware)
     assert captured["delegation_input"][:-1] == [
-        main_skill,
         main_filesystem,
         main_summarization,
         main_patch,
@@ -298,6 +298,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         main_retry,
         main_initial_files,
         *main_packages,
+        main_skill,
     ]
     assert isinstance(captured["delegation_input"][-1], UnsupportedContentMiddleware)
 
@@ -305,7 +306,6 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     assert "permissions" not in child_spec
     assert "runnable" not in child_spec
     assert child_spec["middleware"][:-1] == [
-        child_skill,
         child_filesystem,
         child_summarization,
         child_patch,
@@ -317,6 +317,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         child_provider_boundary,
         child_retry,
         *child_packages,
+        child_skill,
         child_empty_prompt,
     ]
     assert isinstance(child_spec["middleware"][-1], UnsupportedContentMiddleware)

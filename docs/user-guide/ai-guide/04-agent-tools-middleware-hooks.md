@@ -277,6 +277,8 @@ Subagent 把相同形状保存在 `settings.middleware_refs`。LangChain 按以�
 
 多个 Middleware 修改同一个 State channel 或 model request 时，后续 hook 看到前序 hook 已提交的结果。保存 `middleware_refs` 前应明确这些更新的组合结果。
 
+Custom Middleware 的整体 slot 位于内置 `SkillsMiddleware` 之前。Model routing/fallback 先执行，Skills 使用 compacted messages 和 final model 做 Tool disclosure。Custom `abefore_agent` 先于本轮 `skills_metadata` 加载，custom model wrapper 的前置代码看到 Skill catalog 注入前的 request；catalog 格式由 Skill 配置的 instruction override 定义。Model Call Archive 在 Skills 和 `UnsupportedContentMiddleware` 之后记录最终 Provider request/response。
+
 ## 9. Agent Additional Prompt
 
 Agent Additional Prompt是内置Custom Middleware template。它在`abefore_agent`中读取current Agent可访问的AgentState messages、Lifecycle `input/request` envelope的`request.messages`或delegated messages，以及显式选择的Store artifact与Filesystem，然后返回该Agent私有的初始`messages`和checkpointed initialization marker。

@@ -84,7 +84,7 @@ LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在�
 
 Provider Network Card 管理 Provider 出站请求。`transport=httpx` 使用标准 HTTPX 网络栈；`transport=curl_cffi` 使用带 Chrome TLS/HTTP fingerprint 的浏览器兼容线路，默认保持该线路以延续现有网关兼容行为。`curl-cffi` 始终是随软件安装的运行依赖，选择 HTTPX 只让请求不经过它。系统不会在请求失败后自动切换或重放到另一条线路，避免重复提交模型请求。
 
-两条线路都可选择 Auto、HTTP/1.1 或 HTTP/2，设置 TLS certificate verification、自定义 CA 文件和显式 HTTP(S) proxy。CA 文件可填写绝对路径，或填写相对 `data/` 根目录的路径，保存时必须已经存在且为普通文件；关闭 TLS verification 时不能同时填写 CA。Proxy URL 不接受 credential、path、query 或 fragment，也不读取进程环境代理。普通 Header 直接保存在 `system.yaml`，可以用于 `x-opencode-session` 等缓存或路由参数；请求级 `model_settings.extra_headers` 的同名 Header 优先。系统默认发送 `User-Agent: Agent-Shell/<version>`，在全局 Header 中填写 `User-Agent` 即可覆盖。
+两条线路都可选择 Auto、HTTP/1.1 或 HTTP/2，设置 TLS certificate verification、自定义 CA 文件和显式 HTTP(S) proxy。CA 文件可填写绝对路径，或填写相对 `data/` 根目录的路径，保存时必须已经存在且为普通文件；关闭 TLS verification 时不能同时填写 CA。Proxy URL 不接受 credential、path、query 或 fragment，也不读取进程环境代理。普通 Header 直接保存在 `system.yaml`，可以用于 `x-opencode-session` 等缓存或路由参数；请求级 `model_settings.extra_headers` 的同名 Header 优先。系统默认发送 `User-Agent: agent`，在全局 Header 中填写 `User-Agent` 即可覆盖。
 
 Provider Network Card 显示当前表单中的默认 `User-Agent` 完整值，并标出它来自程序默认值还是自定义 Header。新增或编辑 `User-Agent` 时摘要随表单更新；保存并重启后用于模型请求。具体 Model Connection 的 `model_settings.extra_headers` 仍可覆盖这项默认值。
 

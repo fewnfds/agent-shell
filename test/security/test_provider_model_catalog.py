@@ -4,7 +4,6 @@ import asyncio
 import httpx
 import pytest
 
-from agent_shell import __version__
 from agent_shell.app import create_app
 
 from .provider_secret_support import *
@@ -93,8 +92,8 @@ def test_model_catalog_uses_entered_or_saved_key_and_allows_no_key(
     assert no_key_response.status_code == 200
     assert response.json() == ["one"]
     assert observed == [
-        (f"Bearer {LOCAL_SECRET}", f"Agent-Shell/{__version__}"),
-        ("", f"Agent-Shell/{__version__}"),
+        (f"Bearer {LOCAL_SECRET}", "agent"),
+        ("", "agent"),
     ]
     assert observed_timeouts == [
         {"connect": None, "read": None, "write": None, "pool": None},

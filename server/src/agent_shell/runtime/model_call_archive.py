@@ -100,8 +100,9 @@ def _tool_records(tools: object) -> list[object]:
 class ModelCallArchiveMiddleware(AgentMiddleware):
     """Record the real request and response of every provider attempt.
 
-    It sits inside the provider retry boundary, so retried attempts each get
-    their own record. Recording never changes the model call result.
+    It sits after request-transforming middleware and inside the provider
+    retry boundary, so retried attempts each get their final request recorded.
+    Recording never changes the model call result.
     """
 
     def __init__(self, *, archive: ModelCallArchive | None = None) -> None:

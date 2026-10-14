@@ -1,6 +1,6 @@
 # Deep Agents 公共组件接入清单
 
-Agent Shell 当前锁定 `deepagents==0.7.19`。本页记录 Agent Shell 在 Deep Agents
+Agent Shell 当前锁定 `deepagents==0.7.24`。本页记录 Agent Shell 在 Deep Agents
 公共 Backend、Middleware 和 State API 之上的适配代码，以及升级时必须复核的边界。
 完整装配链见 [LangChain Agent runtime 基线](langchain-agent-runtime.md)。
 
@@ -23,7 +23,8 @@ assembler 与直接测试。
 | Filesystem 与 Skill | `runtime/capabilities/deepagents.py` | 依据 Backend、Filesystem Tools、mapped source、Skill package 和权限构造官方 Backend、`FilesystemMiddleware`、`SkillsMiddleware` 与 `FilesystemPermission` | BackendProtocol、Composite route、middleware constructor、permission、Tool surface、host-path mapping、归档路径和 `glob` |
 | 增强 Summarization | `runtime/capabilities/summarization.py` | 使用 Deep Agents 的模型感知默认值、归档 Backend、阈值与 Tool 参数裁剪 | defaults、threshold schema、归档路径、State 和 trace policy |
 | PatchToolCalls | `runtime/agent_compilation.py` | 为 Main Agent 和 Subagent 显式构造官方 `PatchToolCallsMiddleware` | constructor、repair 行为、State 和 trace policy |
-| 媒体内容过滤 | `runtime/agent_compilation.py` | 在 Main Agent 和 Subagent middleware 列表末尾固定装配官方 `UnsupportedContentMiddleware`，按本次请求最终模型的 profile 处理用户和 Tool 媒体 | constructor、model profile、请求级替换、Filesystem 拒绝媒体后的重试与 trace policy |
+| 媒体内容过滤 | `runtime/agent_compilation.py` | 在 Main Agent 和 Subagent request transformation 的末尾固定装配官方 `UnsupportedContentMiddleware`，按本次请求最终模型的 profile 处理用户和 Tool 媒体 | constructor、model profile、请求级替换、Filesystem 拒绝媒体后的重试与 trace policy |
+| Skills slot 与模型归档 | `runtime/agent_compilation.py`、`runtime/model_call_archive.py` | Skills 位于 Summarization/Custom Middleware 之后；模型归档位于所有 request transformation 之后、Provider retry 内层 | compacted messages、最终 routed model、Skill Tool disclosure、每次 Provider attempt 的最终请求与响应 |
 | 同步 Subagent | `runtime/subagents.py`、`runtime/subagent_middleware.py` | 投影 declarative dictionary，显式构造 `SubAgentMiddleware`，并聚合全部公开 `PrivateStateAttr` | dictionary fields、dynamic response schema、isolated/fork mode、task placeholder、`create_sub_agent()` 编译、State schema 与 private-state 发现方式 |
 | Subagent 空 SystemMessage 兼容 | `runtime/deepagents_compatibility.py`、`runtime/subagents.py` | declarative Subagent 未配置 prompt 时，将精确的空 `SystemMessage` 投影为 `None`；非空内容保持 | `create_sub_agent()` 对缺省 `system_prompt` 的处理；上游不再生成空消息后删除兼容层及直接测试 |
 | Agent State 与首次文件播种 | `runtime/state.py` | `AgentShellState` 组合 `DeepAgentState` 与 `FilesystemState`；`AgentInitialFilesMiddleware` 在 Main Agent Thread 首次运行时播种固定虚拟文件 | reducer、FilesystemState、`PrivateStateAttr` 与 before-agent hook contract |
@@ -32,7 +33,7 @@ assembler 与直接测试。
 
 ## declarative Subagent 的空提示词
 
-Deep Agents `0.7.19` 的 `create_sub_agent()` 使用：
+Deep Agents `0.7.24` 的 `create_sub_agent()` 使用：
 
 ```python
 create_agent(

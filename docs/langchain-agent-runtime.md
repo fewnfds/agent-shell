@@ -1,6 +1,6 @@
 # LangChain Agent runtime 基线
 
-Agent Shell 使用 `langchain>=1.4.2,<2.0`，并精确锁定 `deepagents==0.7.19`，通过
+Agent Shell 使用 `langchain>=1.4.5,<2.0`，并精确锁定 `deepagents==0.7.24`，通过
 `langchain.agents.create_agent()` 构造 Main Agent。返回的
 `CompiledStateGraph` 直接注册为 `agent-shell-agent` root graph。Deep Agents
 继续提供 Filesystem、Skills、增强 Summarization、PatchToolCalls、同步
@@ -37,22 +37,22 @@ system prompt、direct tools 和 response format。
 
 Main Agent middleware 顺序如下：
 
-1. 可选 `SkillsMiddleware`；
-2. 可选 `FilesystemMiddleware`；
-3. 有直接子级时的 `SubAgentMiddleware`；
-4. 可选 Deep Agents `SummarizationMiddleware`；
-5. 必选 `PatchToolCallsMiddleware`；
-6. 可选 `ModelCallLimitMiddleware`；
-7. 可选 `ToolCallLimitMiddleware`；
-8. `ToolErrorBoundaryMiddleware`；
-9. 可选 `TodoListMiddleware`；
-10. 可选 Model Request Settings middleware；
-11. `ProviderErrorBoundaryMiddleware`；
-12. 可选 Exception Retry middleware；
-13. 启用模型调用归档时的 `ModelCallArchiveMiddleware`；
-14. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
-15. 按配置顺序排列的 Custom Middleware；
-16. 固定的 `UnsupportedContentMiddleware`。
+1. 可选 `FilesystemMiddleware`；
+2. 有直接子级时的 `SubAgentMiddleware`；
+3. 可选 Deep Agents `SummarizationMiddleware`；
+4. 必选 `PatchToolCallsMiddleware`；
+5. 可选 `ModelCallLimitMiddleware`；
+6. 可选 `ToolCallLimitMiddleware`；
+7. `ToolErrorBoundaryMiddleware`；
+8. 可选 `TodoListMiddleware`；
+9. 可选 Model Request Settings middleware；
+10. `ProviderErrorBoundaryMiddleware`；
+11. 可选 Exception Retry middleware；
+12. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
+13. 按配置顺序排列的 Custom Middleware；
+14. 可选 `SkillsMiddleware`；
+15. 固定的 `UnsupportedContentMiddleware`；
+16. 启用模型调用归档时的 `ModelCallArchiveMiddleware`。
 
 列表顺序同时决定 wrapper 嵌套和 hook 顺序。LangChain 按正向顺序执行 before hook，
 按反向顺序执行 after hook。每个 Run 使用本次装配产生的 middleware 实例。
@@ -71,23 +71,23 @@ dynamic response schema 时按该 schema 生成 Subagent runnable。Subagent 不
 
 Subagent middleware 顺序如下：
 
-1. 可选 `SkillsMiddleware`；
-2. 可选 `FilesystemMiddleware`；
-3. 可选 Deep Agents `SummarizationMiddleware`；
-4. 必选 `PatchToolCallsMiddleware`；
-5. 可选 `ModelCallLimitMiddleware`；
-6. 可选 `ToolCallLimitMiddleware`；
-7. `ToolErrorBoundaryMiddleware`；
-8. 可选 `TodoListMiddleware`；
-9. 可选 Model Request Settings middleware；
-10. `ProviderErrorBoundaryMiddleware`；
-11. 可选 Exception Retry middleware；
-12. 启用模型调用归档时的 `ModelCallArchiveMiddleware`；
-13. 按配置顺序排列的 Custom Middleware；
-14. `EmptySystemMessageMiddleware`；
-15. 固定的 `UnsupportedContentMiddleware`。
+1. 可选 `FilesystemMiddleware`；
+2. 可选 Deep Agents `SummarizationMiddleware`；
+3. 必选 `PatchToolCallsMiddleware`；
+4. 可选 `ModelCallLimitMiddleware`；
+5. 可选 `ToolCallLimitMiddleware`；
+6. `ToolErrorBoundaryMiddleware`；
+7. 可选 `TodoListMiddleware`；
+8. 可选 Model Request Settings middleware；
+9. `ProviderErrorBoundaryMiddleware`；
+10. 可选 Exception Retry middleware；
+11. 按配置顺序排列的 Custom Middleware；
+12. 可选 `SkillsMiddleware`；
+13. `EmptySystemMessageMiddleware`；
+14. 固定的 `UnsupportedContentMiddleware`；
+15. 启用模型调用归档时的 `ModelCallArchiveMiddleware`。
 
-Deep Agents `0.7.19` 的 `create_sub_agent()` 按 middleware 名称识别已装配的
+Deep Agents `0.7.24` 的 `create_sub_agent()` 按 middleware 名称识别已装配的
 `UnsupportedContentMiddleware`，不会重复添加。该函数在未配置 system prompt 时传入空字符串。
 仅用于 Subagent 的 compatibility middleware 将精确的空 `SystemMessage` 投影为 `None`；所有非空
 system content 保持原样。Main Agent 直接使用 `system_prompt=None`，无需该兼容层。
@@ -124,6 +124,16 @@ CompositeBackend 的来源权限、只读 `/skills/` route 与请求级 StateBac
 `runtime/capabilities/deepagents.py` 物化。LocalShellBackend 使用配置的固定真实
 workspace，并可在 Filesystem Tools 显式启用 `execute`。
 
+`SkillsMiddleware` 在 Summarization 与 Custom Middleware 之后运行，按摘要后的有效 messages
+和 model routing/fallback 最终选择的模型执行提示词注入与 Tool disclosure。Skill catalog 的格式
+由 Skill 配置的 instruction override 控制。Custom Middleware 的 `before_agent` 先于本轮 Skill
+metadata 加载；自定义 model wrapper 的前置代码看到的是 Skill 提示词注入前的 request。
+每个同步 Subagent 使用自己 effective Skill package 的 metadata、待 pin 的 Skill 和 Tool disclosure State。
+
+Skill 的 `metadata.include_tools` 按官方 contract 对已注册且显式设置
+`extras={"defer_loading": True}` 的 Tool 执行按需披露。常规 Custom/MCP Tool 继续作为已注册
+Tool 传给 `create_agent()`。Filesystem binary blob offload 使用官方默认值 `False`。
+
 Deep Agents Summarization 将摘要前的原始消息写入 selected Backend 的
 `/conversation_history/{session_uuid}.md`。CompositeBackend 的 default 是请求级
 StateBackend；LocalShellBackend 的归档和 large tool result 位于真实 workspace。选择
@@ -136,12 +146,15 @@ Summarization 但没有用户 Filesystem Backend 时，Agent Shell 只为该 mid
 延迟，并可能最终触发模型供应商的 context window 超限。
 `glob` 未以 `/` 锚定的模式递归匹配虚拟文件树，例如 `*.py`；`/*.py` 只匹配虚拟根目录。
 
-`UnsupportedContentMiddleware` 位于最终 middleware 列表末尾，根据本次模型请求实际选定的
+`UnsupportedContentMiddleware` 位于 request transformation 的末尾，根据本次模型请求实际选定的
 model profile 判断用户消息和 Tool 消息中的媒体块。明确不受支持的媒体块在本次模型请求中
 替换为文字提示，原 Thread 消息仍保留媒体。一般媒体类型在 profile 未声明支持情况时按支持
 处理；内联非 PDF 文件另按 MIME 与 OpenAI Responses 模式判断。
 `FilesystemMiddleware` 遇到模型拒绝 `read_file` 媒体 Tool 消息时会尝试一次文字替换重试；
 重试成功后的 Tool 消息写回 State。此过滤不依赖 Filesystem Tools 是否启用。
+
+启用模型调用归档时，`ModelCallArchiveMiddleware` 位于所有 request transformation 之后，
+处于 Provider Exception Retry 内层，记录每次实际尝试的最终模型、提示词、Tool、媒体投影与结果。
 
 ## State、Thread 与输出
 

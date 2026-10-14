@@ -243,7 +243,7 @@ def test_model_builder_passes_native_provider_fields_unchanged(
     assert captured["api_key"].get_secret_value() == credential
     assert captured["http_client"] is provider_http_clients.sync_client
     assert captured["http_async_client"] is provider_http_clients.async_client
-    assert captured["default_headers"] == {"User-Agent": "Agent-Shell/0.2.0"}
+    assert captured["default_headers"] == {"User-Agent": "agent"}
     if "timeout" in settings:
         assert captured["timeout"] == settings["timeout"]
     else:

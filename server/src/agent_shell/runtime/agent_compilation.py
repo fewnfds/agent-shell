@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from deepagents.middleware import UnsupportedContentMiddleware
+from deepagents.middleware import SkillsMiddleware, UnsupportedContentMiddleware
 
 from agent_shell.runtime.capabilities import DeepAgentsWorkspace
 from agent_shell.runtime.capabilities.exception_retry import ExceptionRetryRuntime
@@ -82,7 +82,11 @@ def assemble_agent_middleware(
 ) -> list[Any]:
     """Assemble the complete Agent Shell middleware stack in owned slots."""
 
-    middleware = list(foundation)
+    # Skills must see the compacted conversation and the final routed model.
+    skills = [item for item in foundation if isinstance(item, SkillsMiddleware)]
+    middleware = [
+        item for item in foundation if not isinstance(item, SkillsMiddleware)
+    ]
     middleware.extend(
         item
         for item in (
@@ -99,14 +103,17 @@ def assemble_agent_middleware(
         if item is not None
     )
     middleware.extend(exception_retry)
-    if model_call_archive is not None:
-        middleware.append(model_call_archive)
     if initial_files is not None:
         middleware.append(initial_files)
     middleware.extend(package)
+    middleware.extend(skills)
     if empty_system_message is not None:
         middleware.append(empty_system_message)
     middleware.append(UnsupportedContentMiddleware())
+    # Observe the request after all model, prompt, tool and media transforms,
+    # while remaining inside the provider retry boundary for each attempt.
+    if model_call_archive is not None:
+        middleware.append(model_call_archive)
     return middleware
 
 

@@ -22,7 +22,7 @@ Agent Shell 自身源码以 MIT 许可发布（根目录 `LICENSE`）。本页�
 
 | 项目 | 上游组件 | 现行做法 | 源码 owner |
 | --- | --- | --- | --- |
-| Subagent 空 SystemMessage 兼容 | `deepagents==0.7.19` | `create_sub_agent()` 在 declarative Subagent 未配置 prompt 时传入 `system_prompt=""`，产生的空 `SystemMessage` 会进入 Provider 请求。本项目在 Subagent middleware stack 装配 `EmptySystemMessageMiddleware`，只把内容为空字符串的 `SystemMessage` 投影为 `None`，非空 system content 保持原样。 | `server/src/agent_shell/runtime/deepagents_compatibility.py` |
+| Subagent 空 SystemMessage 兼容 | `deepagents==0.7.24` | `create_sub_agent()` 在 declarative Subagent 未配置 prompt 时传入 `system_prompt=""`，产生的空 `SystemMessage` 会进入 Provider 请求。本项目在 Subagent middleware stack 装配 `EmptySystemMessageMiddleware`，只把内容为空字符串的 `SystemMessage` 投影为 `None`，非空 system content 保持原样。 | `server/src/agent_shell/runtime/deepagents_compatibility.py` |
 
 `server/uv.lock` 安装的 Deep Agents wheel 保持原样。源码、开发虚拟环境和 portable runtime 均不修改 `site-packages/deepagents`；适配代码位于 `server/src/agent_shell/`，由 Git、测试和升级审查追踪。逐项接入清单见 [Deep Agents 公共组件接入清单](deep-agents-customizations.md)。
 
@@ -30,7 +30,7 @@ Agent Shell 自身源码以 MIT 许可发布（根目录 `LICENSE`）。本页�
 
 | 项目 | 上游组件 | 现行做法 | 源码 owner |
 | --- | --- | --- | --- |
-| Windows curl-cffi BlockBuster 兼容 | `langgraph-runtime-inmem==0.34.1`（Elastic-2.0） | 包装 `langgraph_runtime_inmem.queue._enable_blockbuster`，在它返回的 blocker 上追加一条白名单：`socket.py::_fallback_socketpair`。 | `server/src/agent_shell/langgraph_dev.py` |
+| Windows curl-cffi BlockBuster 兼容 | `langgraph-runtime-inmem==0.34.3`（Elastic-2.0） | 包装 `langgraph_runtime_inmem.queue._enable_blockbuster`，在它返回的 blocker 上追加一条白名单：`socket.py::_fallback_socketpair`。 | `server/src/agent_shell/langgraph_dev.py` |
 
 ### 为什么要打这个补丁
 
@@ -54,7 +54,7 @@ Windows CPython 没有原生 `socketpair`，标准库 `socket.py` 用 `_fallback
 
 - `THIRD_PARTY_NOTICES.md` 中带 `†` 的行，是元数据没有机器可读许可表达的发行包；该值读取自对应版本 wheel 内附带的许可文件，并与包名、精确版本绑定。依赖升级后重跑生成脚本，这些行会回到 `NOASSERTION`，脚本同时在 stderr 报告过期条目，需要重新核对。
 - `forbiddenfruit 0.1.4` 随包提供 GPL-3.0-or-later 与 MIT 两份许可文本，上游同时接受两种选择；本项目按 MIT 使用，运行时不修改它的源码。它由 `blockbuster` → `langgraph-runtime-inmem` 传递引入。
-- MPL-2.0 组件（`certifi`、`pathspec`、`orjson`、`tqdm`）以未修改的依赖形式使用。依赖闭包中没有要求本项目整体按 copyleft 许可发布的组件。
+- MPL-2.0 组件（`certifi`、`pathspec`、`orjson`）以未修改的依赖形式使用。依赖闭包中没有要求本项目整体按 copyleft 许可发布的组件。
 - portable runtime 的 CPython（PSF-2.0）、Managed Local MCP 的内部 Node.js（MIT）与 uv（Apache-2.0 OR MIT）同样列在 `THIRD_PARTY_NOTICES.md` 中。
 
 ## 复核入口

@@ -46,7 +46,7 @@ const currentSettings: SystemSettings = {
     proxy_url: null,
     default_headers: {},
   },
-  provider_default_user_agent: 'Agent-Shell/0.2.0',
+  provider_default_user_agent: 'agent',
   restart_required: false,
   active_management_url: 'http://127.0.0.1:19100/admin#/',
   active_api_docs_url: 'http://127.0.0.1:19100/docs',
@@ -202,7 +202,7 @@ describe('SystemSettingsPage', () => {
     const wrapper = mount(SystemSettingsPage, { props: { api } })
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="provider-user-agent-summary"]').text()).toContain('Agent-Shell/0.2.0')
+    expect(wrapper.get('[data-testid="provider-user-agent-summary"]').text()).toContain('agent')
     expect(wrapper.get('#allow-remote').element.tagName).toBe('SELECT')
     expect(wrapper.get('#langsmith-tracing').element.tagName).toBe('SELECT')
     await wrapper.get('#system-host').setValue('0.0.0.0')

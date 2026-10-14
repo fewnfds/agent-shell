@@ -16,7 +16,7 @@ Provider 出站网络由【系统 / 系统配置 / Provider Network】统一管�
 
 这三类 Provider 的模型 HTTP 请求和模型目录请求逐次进入日志中心的 `Provider HTTP` 来源。Google GenAI 经 integration 的公开 `client_args` 接入 HTTPX 观察 transport；其异步请求也由 HTTPX 执行，并继续使用 Google 自身的网络配置与环境代理。HTTP 日志的 ZIP 保存 SDK 业务解析前可观察到的请求和已收到的响应，适合排查网关返回的原始错误；一次 SDK 重试产生一条新的 HTTP 记录。具体格式、保留和观察边界见[日志中心与 Graph 运行观测](runtime-observability.md)。
 
-全局 Header 是 `system.yaml` 中可读取的普通配置，适合 `x-opencode-session` 等非 credential 参数。API Key 仍使用 Model Connection credential。模型连接的 `model_settings.extra_headers` 继续作为请求级设置，并按 Header 名称大小写不敏感地覆盖全局同名值。默认 `User-Agent` 为 `Agent-Shell/<version>`；需要自定义 Agent Shell 的 HTTP client identity 时，在全局 Header 中添加 `User-Agent`。
+全局 Header 是 `system.yaml` 中可读取的普通配置，适合 `x-opencode-session` 等非 credential 参数。API Key 仍使用 Model Connection credential。模型连接的 `model_settings.extra_headers` 继续作为请求级设置，并按 Header 名称大小写不敏感地覆盖全局同名值。默认 `User-Agent` 为 `agent`；需要自定义 Agent Shell 的 HTTP client identity 时，在全局 Header 中添加 `User-Agent`。
 
 OpenAI、DeepSeek 连接可在多行 `model_settings` JSON 中填写 `extra_headers` 和 `extra_body`，例如 `{"extra_headers":{"X-Route":"route-a"},"extra_body":{"custom_flag":true}}`。前者为本模型请求添加 Header，后者交给 Provider SDK 作为附加请求体字段；字段名称和值须符合目标 Provider API。`model_settings` 不改变 Provider Network 的传输线路。Google GenAI 使用自己的 SDK，不按 OpenAI 的 `extra_body` 语义配置。
 
