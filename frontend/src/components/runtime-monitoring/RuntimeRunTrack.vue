@@ -43,7 +43,9 @@ function runTime(observation: LangGraphRunObservation): string {
         <strong>{{ t(`workflowLifecycles.runStatuses.${monitoringRunStatus(run)}`) }}</strong>
       </span>
       <span class="runtime-run-meta">
-        <span>{{ t('runtimeMonitoring.modelRequests', { count: run.model_request_count }) }}</span>
+        <span :title="run.model_request_count_error?.message">
+          {{ t('runtimeMonitoring.modelRequests', { count: run.model_request_count ?? '—' }) }}
+        </span>
         <span aria-hidden="true">·</span>
         <time :datetime="runTime(run)" :title="monitoringLocalTime(runTime(run))">
           {{ monitoringCompactTime(runTime(run)) }}

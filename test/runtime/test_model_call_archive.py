@@ -112,6 +112,39 @@ def test_archive_redacts_secret_before_json_escaping(tmp_path) -> None:
     assert record["request"]["messages"][0]["content"] == "token=[REDACTED]"
 
 
+@pytest.mark.parametrize("secret", ["12345", "1", "true", "null", "\\n"])
+def test_archive_secret_projection_preserves_json_values(tmp_path, secret: str) -> None:
+    environment = EnvironmentSnapshot.capture({"MODEL_CREDENTIAL": secret})
+    archive = ModelCallArchive(
+        tmp_path / "model-calls",
+        redact_secret_text=environment.redact_secret_text,
+    )
+    archive.append(
+        "lifecycle",
+        {
+            "run_id": "run",
+            "duration_ms": 12345,
+            "node_attempt": 1,
+            "response": None,
+            "has_structured_response": True,
+            "request": {"content": f"token={secret}", "text": "first\nsecond"},
+        },
+    )
+
+    content = archive.content("lifecycle")
+    assert content is not None
+    record = json.loads(content)
+    assert record["duration_ms"] == 12345
+    assert record["node_attempt"] == 1
+    assert record["response"] is None
+    assert record["has_structured_response"] is True
+    assert record["request"] == {
+        "content": "token=[REDACTED]",
+        "text": "first\nsecond",
+    }
+    assert archive.run_request_counts("lifecycle") == {"run": 1}
+
+
 def test_model_call_archive_middleware_records_attempt_identity(tmp_path) -> None:
     archive = ModelCallArchive(tmp_path / "model-calls")
     middleware = ModelCallArchiveMiddleware(archive=archive)

@@ -66,6 +66,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             run_id: 'run-agent',
           },
           model_request_count: 2,
+          model_request_count_error: null,
           error: null,
         },
         {
@@ -97,6 +98,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             run_id: 'run-agent-2',
           },
           model_request_count: 0,
+          model_request_count_error: null,
           error: null,
         },
       ],
@@ -143,6 +145,7 @@ const snapshot: LangGraphLifecycleSnapshot = {
             run_id: 'run-workflow',
           },
           model_request_count: 3,
+          model_request_count_error: null,
           error: null,
         },
       ],

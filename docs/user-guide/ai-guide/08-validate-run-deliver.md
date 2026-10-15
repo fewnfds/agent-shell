@@ -282,6 +282,8 @@ Content-Type: application/json
 
 运行监控页面按 `Lifecycle -> Thread -> Run` 浏览本次请求已登记的官方执行，并在左栏额外显示 External Agent Session。Main Agent Thread 显示由官方 stream/latest State 恢复的连续消息、reasoning、Tool 与错误；Workflow Thread 显示只读 Graph、当前活动 Node 和 latest State，旁侧字段树显示 State 与 Lifecycle Store；External Agent Session 显示预设、实际 conversation、终态、最终 response 和归一化事件。active Lifecycle 自动低频刷新事实，完整 checkpoint history 只进入按需生成的监控 ZIP。页面不从日志推演 Edge、Node attempt 或跨资源 Timeline。运行失败继续结合调用方 structured error（仅含稳定码与基础分类消息）和日志中心诊断定位。
 
+Lifecycle monitoring snapshot 的 Run observation 包含 `model_request_count`。本地 Model Call Archive 读取或解析失败时，该字段为 `null`，`model_request_count_error.code` 为 `model_request_count_unavailable`，`message` 保存具体原因；官方 Thread/Run 数据与 Lifecycle status 继续读取。该错误只说明模型请求数不可读取，排查先核对归档格式及异常位置。
+
 只要一个 Lifecycle 仍显示 active Run，`DELETE /agent-shell/api/workflow-lifecycles/{lifecycle_id}` 就返回 `409 workflow_lifecycle_active`。需要停止它时使用 `POST /agent-shell/api/workflow-lifecycles/{lifecycle_id}/cancel`：它取消该 Lifecycle 的全部 active Run，并结束该 Lifecycle 仍在等待的 OpenAI-compatible 响应，响应以 `completion_cancelled` 收尾。取消只作用于这个 Lifecycle；Run 进入终态后即可删除。
 
 常见 HTTP 范围：

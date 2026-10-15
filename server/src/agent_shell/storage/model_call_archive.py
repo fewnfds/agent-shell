@@ -100,7 +100,6 @@ class ModelCallArchive:
             json.dumps(projected, ensure_ascii=False, default=str, separators=(",", ":"))
             + "\n"
         )
-        line = self._redact_secret_text(line)
         path = self._path(scope_id)
         with self._lock:
             if not path.exists():

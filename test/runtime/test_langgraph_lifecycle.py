@@ -862,6 +862,37 @@ def test_snapshot_projects_model_request_counts_by_run(tmp_path: Path) -> None:
     assert counts == {"run-entry": 2, "run-peer": 1}
 
 
+def test_invalid_model_call_archive_keeps_lifecycle_monitoring_available(
+    tmp_path: Path,
+) -> None:
+    archive = ModelCallArchive(tmp_path / "model-calls")
+    archive.append("lifecycle-1", {"run_id": "run-entry"})
+    path = tmp_path / "model-calls" / "model-calls-lifecycle-1.jsonl"
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write('{"run_id":"run-entry","duration_ms":[REDACTED]796}\n')
+
+    async def scenario():
+        service = LangGraphLifecycleService(
+            lambda: _Client(),
+            model_call_archive=archive,
+        )
+        return await service.snapshot("lifecycle-1"), await service.export("lifecycle-1")
+
+    snapshot, exported = asyncio.run(scenario())
+    assert snapshot["status"] == "running"
+    assert snapshot["run_count"] == 2
+    for thread in snapshot["threads"]:
+        for run in thread["runs"]:
+            assert run["run"] is not None
+            assert run["error"] is None
+            assert run["model_request_count"] is None
+            assert run["model_request_count_error"]["code"] == "model_request_count_unavailable"
+            assert "Expecting value" in run["model_request_count_error"]["message"]
+    with ZipFile(BytesIO(exported.content)) as zipped:
+        assert json.loads(zipped.read("snapshot.json")) == snapshot
+        assert zipped.read("model-calls.jsonl") == archive.content("lifecycle-1")
+
+
 def test_lifecycle_delete_stops_when_official_run_observation_is_uncertain() -> None:
     async def scenario():
         client = _Client()

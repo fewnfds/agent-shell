@@ -255,15 +255,19 @@ class LangGraphLifecycleService:
 
         lifecycle_id = lifecycle.lifecycle_id
         relations = await search_lifecycle_run_relations(client, lifecycle_id)
-        model_request_counts = (
-            await asyncio.to_thread(
-                self._model_call_archive.run_request_counts,
-                lifecycle_id,
-            )
-            if include_model_request_counts
-            and self._model_call_archive is not None
-            else {}
-        )
+        model_request_counts: dict[str, int] | None = {}
+        model_request_count_error: dict[str, str] | None = None
+        if include_model_request_counts and self._model_call_archive is not None:
+            try:
+                model_request_counts = await asyncio.to_thread(
+                    self._model_call_archive.run_request_counts,
+                    lifecycle_id,
+                )
+            except (OSError, ValueError) as exc:
+                model_request_counts = None
+                model_request_count_error = _unavailable(
+                    "model_request_count_unavailable", exc
+                )
         external_agent_sessions = await asyncio.to_thread(
             read_external_agent_sessions,
             self._data_root,
@@ -319,7 +323,12 @@ class LangGraphLifecycleService:
                             if relation is not None
                             else None
                         ),
-                        "model_request_count": model_request_counts.get(run_id, 0),
+                        "model_request_count": (
+                            model_request_counts.get(run_id, 0)
+                            if model_request_counts is not None
+                            else None
+                        ),
+                        "model_request_count_error": model_request_count_error,
                         "error": None,
                     }
                 )
@@ -341,10 +350,12 @@ class LangGraphLifecycleService:
                     "run_id": relation.run_id,
                     "run": run,
                     "relation": relation.model_dump(mode="json"),
-                    "model_request_count": model_request_counts.get(
-                        relation.run_id,
-                        0,
+                    "model_request_count": (
+                        model_request_counts.get(relation.run_id, 0)
+                        if model_request_counts is not None
+                        else None
                     ),
+                    "model_request_count_error": model_request_count_error,
                     "error": error,
                 }
             )

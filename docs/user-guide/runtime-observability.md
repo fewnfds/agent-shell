@@ -37,6 +37,8 @@ HTTP 4xx/5xx 和连接失败显示为 error；取消、服务中断或采集故�
 
 官方 Thread 选中后，右侧顶部按创建顺序显示所选 Thread 的 Run；每个 Run 同时显示按 `run_id` 归档统计的模型请求数。该计数包含该 Run 内记录的模型调用尝试，不代表 Thread 或 Lifecycle 的请求数；当前真实运行路径通常每个 Thread 只有一个 Run，这一层仍保留 LangGraph 的 Thread/Run 边界。消息或 Graph 视图由当前所选 Thread 的 subject kind 决定，与整个 Lifecycle 最初由 Agent 还是 Workflow 发起无关。
 
+模型调用归档读取或 JSON 解析失败时，模型请求数显示 `—`，悬停可查看具体原因；Thread、Run 与其他监控数据继续载入。Management API 对应 Run 的 `model_request_count` 为 `null`，`model_request_count_error` 返回错误码 `model_request_count_unavailable` 和原因。监控 ZIP 保留归档原始内容及 snapshot 中的计数错误。
+
 Agent Thread 使用官方 `@langchain/vue useStream` 直接连接已有 `thread_id`：
 
 - 页面进入时从 latest Thread State hydration 已经 checkpoint 的消息；
