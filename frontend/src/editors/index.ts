@@ -13,5 +13,6 @@ export { default as SubagentCapabilityEditor } from './SubagentCapabilityEditor.
 export { default as SystemPromptEditor } from './SystemPromptEditor.vue'
 export { default as TodoListEditor } from './TodoListEditor.vue'
 export { default as SummarizationEditor } from './SummarizationEditor.vue'
+export { default as PiiEditor } from './PiiEditor.vue'
 export { default as WorkflowEventOutputEditor } from './WorkflowEventOutputEditor.vue'
 export { default as CommandEditor } from './CommandEditor.vue'

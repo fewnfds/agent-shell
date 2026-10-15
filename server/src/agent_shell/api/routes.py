@@ -94,13 +94,8 @@ RESOURCE_COMPONENT_CATALOG = (
 )
 
 
-def _model_catalog_message(value: str, credential: str | None) -> str:
-    return value.replace(credential, "[REDACTED]") if credential else value
-
-
 def _model_catalog_response_message(
     response: httpx.Response,
-    credential: str | None,
     *,
     reason: str,
 ) -> str:
@@ -110,21 +105,19 @@ def _model_catalog_response_message(
     )
     if response.text:
         message += f"\nProvider response:\n{response.text}"
-    return _model_catalog_message(message, credential)
+    return message
 
 
 def _invalid_model_catalog_response(
     payload: object,
-    credential: str | None,
 ) -> HTTPException:
     return management_error(
         502,
         code="invalid_model_catalog_response",
         message_key="errors.modelCatalogResponseInvalid",
-        message=_model_catalog_message(
+        message=(
             "The model service returned an invalid model catalog response: "
-            + json.dumps(payload, ensure_ascii=False),
-            credential,
+            + json.dumps(payload, ensure_ascii=False)
         ),
     )
 
@@ -136,7 +129,6 @@ async def _model_catalog_request(
     provider: str,
     headers: dict[str, str],
     params: dict[str, str] | None,
-    credential: str | None,
 ) -> object:
     try:
         with bind_provider_http_context(operation="model_catalog", provider=provider):
@@ -151,10 +143,7 @@ async def _model_catalog_request(
             502,
             code="model_catalog_unreachable",
             message_key="errors.modelCatalogUnreachable",
-            message=_model_catalog_message(
-                f"{type(exc).__name__}: {exc}",
-                credential,
-            ),
+            message=f"{type(exc).__name__}: {exc}",
         ) from exc
     if (
         response.status_code == 403
@@ -166,7 +155,6 @@ async def _model_catalog_request(
             message_key="errors.modelCatalogBrowserChallenge",
             message=_model_catalog_response_message(
                 response,
-                credential,
                 reason=(
                     "Cloudflare rejected the server-side API client with a "
                     "browser challenge."
@@ -183,7 +171,6 @@ async def _model_catalog_request(
             message_key="errors.modelCatalogUpstreamError",
             message=_model_catalog_response_message(
                 exc.response,
-                credential,
                 reason="The model catalog request failed.",
             ),
         ) from exc
@@ -192,17 +179,14 @@ async def _model_catalog_request(
             502,
             code="invalid_model_catalog_response",
             message_key="errors.modelCatalogResponseInvalid",
-            message=_model_catalog_message(
-                f"{type(exc).__name__}: {exc}\nProvider response:\n{response.text}",
-                credential,
-            ),
+            message=f"{type(exc).__name__}: {exc}\nProvider response:\n{response.text}",
         ) from exc
 
 
-def _openai_compatible_model_ids(payload: object, credential: str | None) -> list[str]:
+def _openai_compatible_model_ids(payload: object) -> list[str]:
     models = payload.get("data") if isinstance(payload, dict) else payload
     if not isinstance(models, list):
-        raise _invalid_model_catalog_response(payload, credential)
+        raise _invalid_model_catalog_response(payload)
     model_ids: list[str] = []
     for item in models:
         if (
@@ -210,29 +194,28 @@ def _openai_compatible_model_ids(payload: object, credential: str | None) -> lis
             or not isinstance(item.get("id"), str)
             or not item["id"]
         ):
-            raise _invalid_model_catalog_response(payload, credential)
+            raise _invalid_model_catalog_response(payload)
         model_ids.append(item["id"])
     return model_ids
 
 
 def _google_genai_model_page(
     payload: object,
-    credential: str | None,
 ) -> tuple[list[str], str]:
     models = payload.get("models") if isinstance(payload, dict) else None
     if not isinstance(models, list):
-        raise _invalid_model_catalog_response(payload, credential)
+        raise _invalid_model_catalog_response(payload)
     model_ids: list[str] = []
     for item in models:
         name = item.get("name") if isinstance(item, dict) else None
         if not isinstance(name, str) or not name:
-            raise _invalid_model_catalog_response(payload, credential)
+            raise _invalid_model_catalog_response(payload)
         model_ids.append(name.removeprefix("models/"))
     page_token = payload.get("nextPageToken") if isinstance(payload, dict) else None
     if page_token is None:
         return model_ids, ""
     if not isinstance(page_token, str):
-        raise _invalid_model_catalog_response(payload, credential)
+        raise _invalid_model_catalog_response(payload)
     return model_ids, page_token
 
 
@@ -242,7 +225,6 @@ async def _google_genai_model_ids(
     api_version: str,
     *,
     headers: dict[str, str],
-    credential: str | None,
 ) -> list[str]:
     model_ids: list[str] = []
     page_token = ""
@@ -254,9 +236,8 @@ async def _google_genai_model_ids(
             provider="google_genai",
             headers=headers,
             params={"pageToken": page_token} if page_token else None,
-            credential=credential,
         )
-        page_ids, token = _google_genai_model_page(payload, credential)
+        page_ids, token = _google_genai_model_page(payload)
         model_ids.extend(page_ids)
         # A repeated page token means the endpoint is not advancing.
         if not token or token in seen_page_tokens:
@@ -514,7 +495,6 @@ def build_router(
                 base_url,
                 api_version or "v1beta",
                 headers=headers,
-                credential=api_key,
             )
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -524,9 +504,8 @@ def build_router(
             provider=provider,
             headers=headers,
             params=None,
-            credential=api_key,
         )
-        return _openai_compatible_model_ids(payload, api_key)
+        return _openai_compatible_model_ids(payload)
 
     @router.get("/skills")
     def skills() -> dict:

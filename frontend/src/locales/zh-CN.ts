@@ -646,6 +646,7 @@ export const zhCN = {
     summarization: {
       label: '上下文摘要',
     },
+    pii: { label: 'PIIMiddleware' },
     'workflow-event-output': {
       label: 'Workflow 事件输出',
     },
@@ -690,6 +691,12 @@ export const zhCN = {
     submit: '继续',
   },
   fields: {
+    pii_type: 'PII 类型',
+    pii_strategy: '处理策略',
+    detector: 'Detector（Python 正则）',
+    apply_to_input: '处理用户输入',
+    apply_to_output: '处理模型输出',
+    apply_to_tool_results: '处理工具结果',
     unknown: '配置项',
     id: 'UUID',
     agent_name: 'Agent 名称',
@@ -796,6 +803,14 @@ export const zhCN = {
     },
   },
   editors: {
+    pii: {
+      addRule: '添加规则',
+      rule: '规则 {number}',
+      moveUp: '上移',
+      moveDown: '下移',
+      customDetector: '使用自定义 detector 正则',
+      strategies: { block: '阻止（block）', redact: '替换（redact）', mask: '掩码（mask）', hash: '哈希（hash）' },
+    },
     common: {
       add: '添加',
       disabled: '已关闭',

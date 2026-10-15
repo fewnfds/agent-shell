@@ -11,7 +11,6 @@ import httpx
 
 from agent_shell.request_context import current_request_id
 if TYPE_CHECKING:
-    from agent_shell.storage.environment import InstanceEnvironmentStore
     from agent_shell.storage.provider_http_logs import ProviderHttpCapture, ProviderHttpLogStore
 
 
@@ -44,13 +43,6 @@ def bind_provider_http_context(**values: str) -> Iterator[None]:
         yield
     finally:
         _CONTEXT.reset(token)
-
-
-def _credential_values(request: httpx.Request) -> tuple[str, ...]:
-    """Known Provider authentication fields in the outgoing request."""
-    authorization = request.headers.get("authorization", "")
-    bearer = authorization[7:] if authorization.lower().startswith("bearer ") else ""
-    return tuple(value for value in (bearer, request.headers.get("x-goog-api-key", "")) if value)
 
 
 def _headers(headers: httpx.Headers) -> list[tuple[str, str]]:
@@ -87,7 +79,7 @@ class _DeflateDecoder:
 
 class _EntityDecoder:
     def __init__(self, encoding: str, *, already_decoded: bool) -> None:
-        self.representation = "decoded HTTP entity body after credential projection"
+        self.representation = "decoded HTTP entity body"
         self._decoders: list[object] = []
         if already_decoded or not encoding or encoding.lower() == "identity":
             return
@@ -127,26 +119,23 @@ class _EntityDecoder:
 
 
 class ProviderHttpObserver:
-    def __init__(self, store: ProviderHttpLogStore, environment: InstanceEnvironmentStore) -> None:
+    def __init__(self, store: ProviderHttpLogStore) -> None:
         self.store = store
-        self.environment = environment
 
-    def begin(self, request: httpx.Request) -> tuple[ProviderHttpCapture | None, tuple[bytes, ...]]:
+    def begin(self, request: httpx.Request) -> ProviderHttpCapture | None:
         try:
-            secrets = self.environment.snapshot().provider_http_secrets(*_credential_values(request))
             context = dict(_CONTEXT.get())
             capture = self.store.begin(
                 method=request.method,
                 url=str(request.url),
                 headers=_headers(request.headers),
-                secrets=secrets,
                 request_id=context.get("request_id") or current_request_id(),
                 context=context,
             )
-            return capture, secrets
+            return capture
         except Exception as exc:
             _LOGGER.warning("Provider HTTP capture begin failed: %s", type(exc).__name__)
-            return None, ()
+            return None
 
     def failure(self, capture: ProviderHttpCapture | None, exc: BaseException) -> None:
         if capture is not None:
@@ -160,11 +149,11 @@ class ProviderHttpObserver:
             except Exception as exc:
                 self.failure(capture, exc)
 
-    def finish(self, capture: ProviderHttpCapture | None, state: str, *, error: BaseException | None = None, secrets: tuple[bytes, ...] = ()) -> None:
+    def finish(self, capture: ProviderHttpCapture | None, state: str, *, error: BaseException | None = None) -> None:
         if capture is None:
             return
         try:
-            detail = self.store._project(f"{type(error).__name__}: {error}", secrets) if error else ""
+            detail = f"{type(error).__name__}: {error}" if error else ""
             self.store.finish(capture, state, error=detail)
         except Exception as exc:
             self.failure(capture, exc)
@@ -175,7 +164,6 @@ class ProviderHttpObserver:
         response: httpx.Response,
         *,
         already_decoded: bool,
-        secrets: tuple[bytes, ...],
     ) -> _EntityDecoder | None:
         if capture is None:
             return None
@@ -197,7 +185,6 @@ class ProviderHttpObserver:
                 http_version=str(version),
                 headers=_headers(response.headers),
                 representation=decoder.representation if decoder else "omitted: content encoding could not be decoded",
-                secrets=secrets,
             )
             return decoder
         except Exception as exc:
@@ -232,14 +219,14 @@ class _AsyncRequestStream(httpx.AsyncByteStream):
 
 
 class _SyncResponseStream(httpx.SyncByteStream):
-    def __init__(self, inner: httpx.SyncByteStream, observer: ProviderHttpObserver, capture: ProviderHttpCapture | None, decoder: _EntityDecoder | None, secrets: tuple[bytes, ...]) -> None:
-        self.inner, self.observer, self.capture, self.decoder, self.secrets = inner, observer, capture, decoder, secrets
+    def __init__(self, inner: httpx.SyncByteStream, observer: ProviderHttpObserver, capture: ProviderHttpCapture | None, decoder: _EntityDecoder | None) -> None:
+        self.inner, self.observer, self.capture, self.decoder = inner, observer, capture, decoder
         self.finished = False
 
     def _finish(self, state: str, error: BaseException | None = None) -> None:
         if not self.finished:
             self.finished = True
-            self.observer.finish(self.capture, state, error=error, secrets=self.secrets)
+            self.observer.finish(self.capture, state, error=error)
 
     def __iter__(self) -> Iterator[bytes]:
         try:
@@ -272,15 +259,15 @@ class _SyncResponseStream(httpx.SyncByteStream):
 
 
 class _AsyncResponseStream(httpx.AsyncByteStream):
-    def __init__(self, inner: httpx.AsyncByteStream, observer: ProviderHttpObserver, capture: ProviderHttpCapture | None, decoder: _EntityDecoder | None, secrets: tuple[bytes, ...]) -> None:
-        self.inner, self.observer, self.capture, self.decoder, self.secrets = inner, observer, capture, decoder, secrets
+    def __init__(self, inner: httpx.AsyncByteStream, observer: ProviderHttpObserver, capture: ProviderHttpCapture | None, decoder: _EntityDecoder | None) -> None:
+        self.inner, self.observer, self.capture, self.decoder = inner, observer, capture, decoder
         self.finished = False
 
     async def _finish(self, state: str, error: BaseException | None = None) -> None:
         if not self.finished:
             self.finished = True
             await _capture_io(
-                self.observer.finish, self.capture, state, error=error, secrets=self.secrets
+                self.observer.finish, self.capture, state, error=error
             )
 
     async def __aiter__(self):
@@ -320,7 +307,7 @@ class ObservedSyncTransport(httpx.BaseTransport):
         self.inner, self.observer, self.already_decoded = inner, observer, already_decoded
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        capture, secrets = self.observer.begin(request)
+        capture = self.observer.begin(request)
         try:
             content = request.content
         except httpx.RequestNotRead:
@@ -331,10 +318,10 @@ class ObservedSyncTransport(httpx.BaseTransport):
         try:
             response = self.inner.handle_request(request)
         except BaseException as exc:
-            self.observer.finish(capture, "transport_error", error=exc, secrets=secrets)
+            self.observer.finish(capture, "transport_error", error=exc)
             raise
-        decoder = self.observer.headers(capture, response, already_decoded=self.already_decoded, secrets=secrets)
-        response.stream = _SyncResponseStream(response.stream, self.observer, capture, decoder, secrets)
+        decoder = self.observer.headers(capture, response, already_decoded=self.already_decoded)
+        response.stream = _SyncResponseStream(response.stream, self.observer, capture, decoder)
         return response
 
     def close(self) -> None:
@@ -346,12 +333,12 @@ class ObservedAsyncTransport(httpx.AsyncBaseTransport):
         self.inner, self.observer, self.already_decoded = inner, observer, already_decoded
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        capture, secrets = None, ()
+        capture = None
         response = None
 
         def begin() -> None:
-            nonlocal capture, secrets
-            capture, secrets = self.observer.begin(request)
+            nonlocal capture
+            capture = self.observer.begin(request)
 
         try:
             await _capture_io(begin)
@@ -362,7 +349,7 @@ class ObservedAsyncTransport(httpx.AsyncBaseTransport):
             else:
                 await _capture_io(self.observer.request_body, capture, content)
             response = await self.inner.handle_async_request(request)
-            decoder = await _capture_io(self.observer.headers, capture, response, already_decoded=self.already_decoded, secrets=secrets)
+            decoder = await _capture_io(self.observer.headers, capture, response, already_decoded=self.already_decoded)
         except BaseException as exc:
             try:
                 if response is not None:
@@ -371,10 +358,10 @@ class ObservedAsyncTransport(httpx.AsyncBaseTransport):
                 await _capture_io(
                     self.observer.finish, capture,
                     "cancelled" if isinstance(exc, asyncio.CancelledError) else "transport_error",
-                    error=exc, secrets=secrets,
+                    error=exc,
                 )
             raise
-        response.stream = _AsyncResponseStream(response.stream, self.observer, capture, decoder, secrets)
+        response.stream = _AsyncResponseStream(response.stream, self.observer, capture, decoder)
         return response
 
     async def aclose(self) -> None:

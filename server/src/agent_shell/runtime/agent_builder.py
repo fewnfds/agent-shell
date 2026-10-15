@@ -37,6 +37,7 @@ from agent_shell.runtime.capabilities.call_limits import (
 from agent_shell.runtime.capabilities.summarization import (
     materialize_summarization_middleware,
 )
+from agent_shell.runtime.capabilities.pii import materialize_pii_middleware
 from agent_shell.runtime.capabilities.todo_list import (
     materialize_todo_list_middleware,
 )
@@ -486,6 +487,21 @@ class AgentBuilder:
         ):
             middleware_backend = build_internal_state_backend()
 
+        pii_middleware = ()
+        pii = selected_blocks.get("pii")
+        if pii is not None:
+            try:
+                pii_middleware = materialize_pii_middleware(pii)
+            except Exception as exc:
+                raise configuration_error(
+                    "middleware_materialization_failed",
+                    "The selected PIIMiddleware configuration could not be constructed.",
+                    status_code=422,
+                    scope=scope,
+                    owner_id=owner_id,
+                    owner_name=owner_name,
+                    path="capability_refs.pii",
+                ) from exc
         summarization_middleware = None
         summarization = selected_blocks.get("summarization")
         if summarization is not None:
@@ -587,6 +603,7 @@ class AgentBuilder:
             foundation_middleware=foundation_middleware,
             todo_middleware=todo_middleware,
             summarization_middleware=summarization_middleware,
+            pii_middleware=pii_middleware,
             model_call_limit_middleware=model_call_limit_middleware,
             tool_call_limit_middleware=tool_call_limit_middleware,
             package_middleware=package_middleware,
@@ -857,6 +874,7 @@ class AgentBuilder:
             foundation=materialized.foundation_middleware,
             subagent=None,
             summarization=materialized.summarization_middleware,
+            pii=materialized.pii_middleware,
             patch_tool_calls=patch_tool_calls_middleware,
             model_call_limit=materialized.model_call_limit_middleware,
             tool_call_limit=materialized.tool_call_limit_middleware,
@@ -888,6 +906,7 @@ class AgentBuilder:
                 foundation=materialized.foundation_middleware,
                 subagent=subagent_middleware,
                 summarization=materialized.summarization_middleware,
+                pii=materialized.pii_middleware,
                 patch_tool_calls=patch_tool_calls_middleware,
                 model_call_limit=materialized.model_call_limit_middleware,
                 tool_call_limit=materialized.tool_call_limit_middleware,

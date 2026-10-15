@@ -23,7 +23,6 @@ from agent_shell.runtime.limits import (
     ToolErrorBoundaryMiddleware,
 )
 from agent_shell.runtime.model_call_archive import ModelCallArchiveMiddleware
-from agent_shell.storage.environment import EnvironmentSnapshot
 from agent_shell.storage.model_call_archive import ModelCallArchive
 
 
@@ -93,56 +92,21 @@ def test_archive_counts_model_requests_by_run(tmp_path) -> None:
     }
 
 
-def test_archive_redacts_secret_before_json_escaping(tmp_path) -> None:
-    secret = 'part"one\npart-two'
-    environment = EnvironmentSnapshot.capture({"MODEL_CREDENTIAL": secret})
-    archive = ModelCallArchive(
-        tmp_path / "model-calls",
-        redact_secret_text=environment.redact_secret_text,
-    )
-
-    archive.append(
-        "lifecycle-1",
-        {"request": {"messages": [{"content": f"token={secret}"}]}},
-    )
-
-    content = archive.content("lifecycle-1")
-    assert content is not None
-    record = json.loads(content)
-    assert record["request"]["messages"][0]["content"] == "token=[REDACTED]"
-
-
-@pytest.mark.parametrize("secret", ["12345", "1", "true", "null", "\\n"])
-def test_archive_secret_projection_preserves_json_values(tmp_path, secret: str) -> None:
-    environment = EnvironmentSnapshot.capture({"MODEL_CREDENTIAL": secret})
-    archive = ModelCallArchive(
-        tmp_path / "model-calls",
-        redact_secret_text=environment.redact_secret_text,
-    )
-    archive.append(
-        "lifecycle",
-        {
-            "run_id": "run",
-            "duration_ms": 12345,
-            "node_attempt": 1,
-            "response": None,
-            "has_structured_response": True,
-            "request": {"content": f"token={secret}", "text": "first\nsecond"},
-        },
-    )
-
+def test_archive_preserves_json_values_and_run_identity(tmp_path) -> None:
+    archive = ModelCallArchive(tmp_path / "model-calls")
+    record = {
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "timestamp": "2026-10-15T12:00:00.222+00:00",
+        "duration_ms": 222.796,
+        "request": {"222": 'text 222 with a "quote"\nand newline'},
+        "response": None,
+        "success": True,
+    }
+    archive.append("lifecycle", record)
     content = archive.content("lifecycle")
     assert content is not None
-    record = json.loads(content)
-    assert record["duration_ms"] == 12345
-    assert record["node_attempt"] == 1
-    assert record["response"] is None
-    assert record["has_structured_response"] is True
-    assert record["request"] == {
-        "content": "token=[REDACTED]",
-        "text": "first\nsecond",
-    }
-    assert archive.run_request_counts("lifecycle") == {"run": 1}
+    assert json.loads(content) == record
+    assert archive.run_request_counts("lifecycle") == {record["run_id"]: 1}
 
 
 def test_model_call_archive_middleware_records_attempt_identity(tmp_path) -> None:

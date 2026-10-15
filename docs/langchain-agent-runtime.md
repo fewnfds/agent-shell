@@ -38,21 +38,22 @@ system prompt、direct tools 和 response format。
 Main Agent middleware 顺序如下：
 
 1. 可选 `FilesystemMiddleware`；
-2. 有直接子级时的 `SubAgentMiddleware`；
-3. 可选 Deep Agents `SummarizationMiddleware`；
-4. 必选 `PatchToolCallsMiddleware`；
-5. 可选 `ModelCallLimitMiddleware`；
-6. 可选 `ToolCallLimitMiddleware`；
-7. `ToolErrorBoundaryMiddleware`；
-8. 可选 `TodoListMiddleware`；
-9. 可选 Model Request Settings middleware；
-10. `ProviderErrorBoundaryMiddleware`；
-11. 可选 Exception Retry middleware；
-12. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
-13. 按配置顺序排列的 Custom Middleware；
-14. 可选 `SkillsMiddleware`；
-15. 固定的 `UnsupportedContentMiddleware`；
-16. 启用模型调用归档时的 `ModelCallArchiveMiddleware`。
+2. 可选有序 `PIIMiddleware`，在 Summarization 前处理输入；
+3. 有直接子级时的 `SubAgentMiddleware`；
+4. 可选 Deep Agents `SummarizationMiddleware`；
+5. 必选 `PatchToolCallsMiddleware`；
+6. 可选 `ModelCallLimitMiddleware`；
+7. 可选 `ToolCallLimitMiddleware`；
+8. `ToolErrorBoundaryMiddleware`；
+9. 可选 `TodoListMiddleware`；
+10. 可选 Model Request Settings middleware；
+11. `ProviderErrorBoundaryMiddleware`；
+12. 可选 Exception Retry middleware；
+13. 有固定虚拟文件时的 `AgentInitialFilesMiddleware`；
+14. 按配置顺序排列的 Custom Middleware；
+15. 可选 `SkillsMiddleware`；
+16. 固定的 `UnsupportedContentMiddleware`；
+17. 启用模型调用归档时的 `ModelCallArchiveMiddleware`。
 
 列表顺序同时决定 wrapper 嵌套和 hook 顺序。LangChain 按正向顺序执行 before hook，
 按反向顺序执行 after hook。每个 Run 使用本次装配产生的 middleware 实例。

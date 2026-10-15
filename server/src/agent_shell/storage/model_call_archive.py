@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 import json
 import os
 from pathlib import Path
@@ -53,21 +53,6 @@ def project_archive_value(value: Any) -> Any:
     return str(value)
 
 
-def _redact_projected_value(
-    value: Any, redact_secret_text: Callable[[str], str]
-) -> Any:
-    if isinstance(value, dict):
-        return {
-            redact_secret_text(key): _redact_projected_value(item, redact_secret_text)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_projected_value(item, redact_secret_text) for item in value]
-    if isinstance(value, str):
-        return redact_secret_text(value)
-    return value
-
-
 class ModelCallArchive:
     """Own the per-scope record of real model requests and responses.
 
@@ -80,12 +65,9 @@ class ModelCallArchive:
     def __init__(
         self,
         directory: Path,
-        *,
-        redact_secret_text: Callable[[str], str] | None = None,
     ) -> None:
         self._lock = threading.Lock()
         self._directory = directory
-        self._redact_secret_text = redact_secret_text or (lambda value: value)
         self.directory_permission = secure_directory(directory)
 
     def _path(self, scope_id: str) -> Path:
@@ -93,9 +75,7 @@ class ModelCallArchive:
         return self._directory / f"model-calls-{safe}.jsonl"
 
     def append(self, scope_id: str, record: Mapping[str, Any]) -> None:
-        projected = _redact_projected_value(
-            project_archive_value(dict(record)), self._redact_secret_text
-        )
+        projected = project_archive_value(dict(record))
         line = (
             json.dumps(projected, ensure_ascii=False, default=str, separators=(",", ":"))
             + "\n"

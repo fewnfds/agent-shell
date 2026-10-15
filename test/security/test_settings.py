@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -382,5 +383,8 @@ def test_invalid_network_settings_report_the_concrete_validation_reason(
         get_settings(application_home=tmp_path)
 
     assert key in str(captured.value)
-    assert value in str(captured.value)
+    issues = json.loads(str(captured.value).split("Cause: ValidationError: ", 1)[1])
+    assert issues[0]["loc"][0] == field
+    assert issues[0]["msg"]
+    assert all("input" not in issue for issue in issues)
     assert "ValidationError" in str(captured.value)

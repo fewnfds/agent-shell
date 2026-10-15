@@ -16,16 +16,18 @@ def output(event, origin):
         return ""
     if not isinstance(payload, dict):
         return ""
-    if payload.get("event") != "content-block-delta":
+    if payload.get("event") != "content-block-finish":
         return ""
-    delta = payload.get("delta")
-    return str(delta.get("text", "")) if isinstance(delta, dict) else ""
+    content = payload.get("content")
+    return str(content.get("text", "")) if isinstance(content, dict) else ""
 
 
 def segment_end(event, origin):
     # Runtime 只在 text/reasoning content-block-start 上调用该 hook。
     return ""
 ```
+
+此示例按完整 content block 输出。需要增量输出时可从内置 `default`、`assistant-text-only` 或 `all-events` 模板创建组件；模板按官方 namespace、模型 Run 和 block index 记录已输出的文本长度，并在 `content-block-finish` 消费尚未输出的尾部。PIIMiddleware 的 transformer 可以暂存 delta，完整文本以完成快照为准。需要逐字一致的 append-only 输出时使用 [PIIMiddleware 说明](pii-config.md#流式输出与资源代价)中的模型 streaming 配置。
 
 `event` 是官方 SDK 解码后的 ProtocolEvent envelope，Agent Shell 不重新包装或附加产品字段。按 `event["method"]` 读取 `params.namespace`、`params.timestamp` 和 `params.data`。Agent Server stream 中 `messages` 的 data 是含 message event 字段及可选 `metadata` 的 mapping；LangGraph 进程内 v3 iterator 使用 `(payload, metadata)`。可复用模板应同时接受这两种官方 transport shape。metadata 通常含 `run_id`、`langgraph_node` 和 provider metadata。`tools`、`custom`、`values`、`updates`、`tasks`、`input`、`input.requested`、`lifecycle` 等 channel 的 data 保持 SDK 解码结果。
 

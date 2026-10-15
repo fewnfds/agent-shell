@@ -1,6 +1,6 @@
 # 组件说明
 
-本目录是配置编辑页的字段索引：14 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 3 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
+本目录是配置编辑页的字段索引：15 项属于 Agent capability catalog，其中 Skill Component 只制作独立包；MCP Requirement 是独立的 Repository resource component；末 3 项是 Workflow-owned 组件。创建与装配见[能力说明](../user-guide/capabilities.md)和[Workflow 配置](../user-guide/configuration-workflow.md)，总体 identity 与引用边界见[Agent Shell 系统契约](../../.docs/architecture/agent-shell-system-contract.md)。
 
 | 所属 / 顺序 | 页面 | 类型 |
 | --- | --- | --- |
@@ -18,6 +18,7 @@
 | Agent / 12 | [Tool Call Limit](tool-call-limit-config.md) | `tool-call-limit` |
 | Agent / 13 | [Subagent Delegation](subagent-config.md) | `subagent` |
 | Agent / 14 | [Summarization](summarization-config.md) | `summarization` |
+| Agent / 15 | [PIIMiddleware](pii-config.md) | `pii` |
 | Resource | [MCP Requirement、Connection 与 Mapping](../user-guide/mcp.md) | `mcp-requirement`（绑定实例 MCP Connection） |
 | Workflow | [Workflow Event Output](workflow-event-output-config.md) | `workflow-event-output` |
 | Workflow | [Command Node](command-config.md) | `command` |

@@ -169,7 +169,6 @@ def create_app(
     event_logger = SecurityEventLogger(
         logs_dir,
         max_bytes=system_log_settings.snapshot()["max_size_mib"] * MIB_BYTES,
-        redact=environment.redact_secrets,
     )
     history_retention = HistoryRetentionStore(configuration)
     runtime_diagnostic_details = RuntimeDiagnosticDetailStore(logs_dir / "diagnostics")
@@ -251,11 +250,9 @@ def create_app(
         api_server_events.publish_nowait,
         store=runtime_diagnostic_store,
         details=runtime_diagnostic_details,
-        redact_secret_text=environment.redact_secret_text,
     )
     model_call_archive = ModelCallArchive(
         logs_dir / "model-calls",
-        redact_secret_text=environment.redact_secret_text,
     )
     detached_tasks = DetachedTaskManager()
     event_logger.set_failure_reporter(
@@ -286,7 +283,7 @@ def create_app(
     provider_http_clients = ProviderHttpClients(
         settings.provider_http,
         data_root=settings.data_root,
-        observer=ProviderHttpObserver(provider_http_logs, environment),
+        observer=ProviderHttpObserver(provider_http_logs),
     )
     file_manager = FileManagerService(
         settings.data_root,
@@ -458,16 +455,10 @@ def create_app(
         request_id = getattr(request.state, "request_id", "")
         if request_id:
             headers["X-Request-ID"] = request_id
-        detail = await asyncio.to_thread(
-            environment.redact_secrets,
-            jsonable_encoder(exc.detail),
-        )
+        detail = jsonable_encoder(exc.detail)
         cause = exc.__cause__ or exc.__context__
         if cause is not None:
-            cause_message = await asyncio.to_thread(
-                environment.redact_secret_text,
-                describe_exception(cause),
-            )
+            cause_message = describe_exception(cause)
             if isinstance(detail, dict):
                 detail = dict(detail)
                 message = str(detail.get("message", "")).strip()
@@ -544,7 +535,6 @@ def create_app(
             }
         else:
             detail = errors
-        detail = await asyncio.to_thread(environment.redact_secrets, detail)
         await record_management_failure(request, status_code=422, detail=detail)
         return JSONResponse(
             status_code=422,
@@ -565,10 +555,7 @@ def create_app(
             ),
         )
         request_id = getattr(request.state, "request_id", "")
-        message = await asyncio.to_thread(
-            environment.redact_secret_text,
-            describe_exception(exc),
-        )
+        message = describe_exception(exc)
         if is_agent_shell_api_path(request.url.path):
             content: dict[str, object] = {
                 "detail": localized_error_detail(
@@ -748,7 +735,6 @@ def create_app(
             api_server_events,
             message_interception,
             detached_tasks,
-            environment.redact_secret_text,
         )
     )
 

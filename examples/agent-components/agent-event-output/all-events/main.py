@@ -20,6 +20,21 @@ _MESSAGE_STYLE = "white-space:pre-wrap;margin:0.4rem 0 0.35rem"
 _META_STYLE = "color:#6c757d;font-size:0.78em;line-height:1.35"
 
 
+# Lengths of already emitted source text, scoped to official message blocks.
+_emitted = {}
+
+
+def _stream_fragment(event, payload, metadata, field, *, complete=False):
+    scope = (tuple(_params(event).get("namespace") or ()), metadata.get("run_id", ""))
+    key = (*scope, payload.get("index"))
+    value = payload.get("content" if complete else "delta")
+    text = str(value.get(field, "")) if isinstance(value, Mapping) else ""
+    if complete:
+        return text[_emitted.pop(key, 0):]
+    _emitted[key] = _emitted.get(key, 0) + len(text)
+    return text
+
+
 def _params(event):
     value = event.get("params")
     return value if isinstance(value, Mapping) else {}
@@ -154,14 +169,14 @@ def render_assistant_text_start(event, origin, payload, metadata):
 def render_assistant_text_delta(event, origin, payload, metadata):
     """Append one assistant-text token fragment."""
 
-    delta = payload.get("delta")
-    return escape(str(delta.get("text", ""))) if isinstance(delta, Mapping) else ""
+    return escape(_stream_fragment(event, payload, metadata, "text"))
 
 
 def render_assistant_text_end(event, origin, payload, metadata):
     """Close a normally completed assistant-text block."""
 
-    return _stream_end(event, origin, "content-block-finish", payload, metadata)
+    tail = escape(_stream_fragment(event, payload, metadata, "text", complete=True))
+    return tail + _stream_end(event, origin, "content-block-finish", payload, metadata)
 
 
 def render_assistant_text_segment_end(event, origin, payload, metadata):
@@ -179,14 +194,14 @@ def render_reasoning_start(event, origin, payload, metadata):
 def render_reasoning_delta(event, origin, payload, metadata):
     """Append one model-reasoning token fragment."""
 
-    delta = payload.get("delta")
-    return escape(str(delta.get("reasoning", ""))) if isinstance(delta, Mapping) else ""
+    return escape(_stream_fragment(event, payload, metadata, "reasoning"))
 
 
 def render_reasoning_end(event, origin, payload, metadata):
     """Close a normally completed model-reasoning block."""
 
-    return _stream_end(event, origin, "content-block-finish", payload, metadata)
+    tail = escape(_stream_fragment(event, payload, metadata, "reasoning", complete=True))
+    return tail + _stream_end(event, origin, "content-block-finish", payload, metadata)
 
 
 def render_reasoning_segment_end(event, origin, payload, metadata):
@@ -353,6 +368,12 @@ def output(event, origin):
         if not isinstance(payload, Mapping):
             return render_ai_message_snapshot(event, origin, payload, metadata)
         event_name = str(payload.get("event") or "")
+        if event_name in {"message-finish", "error"}:
+            scope = (tuple(_params(event).get("namespace") or ()), metadata.get("run_id", ""))
+            for active in tuple(_emitted):
+                if active[:2] == scope:
+                    _emitted.pop(active)
+
         content = payload.get("content")
         delta = payload.get("delta")
         block = content if isinstance(content, Mapping) else delta

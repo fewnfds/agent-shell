@@ -31,6 +31,8 @@ Subagent 是 Main Agent 可直接委派的一层独立配置实体：
 
 `tool_refs`、`middleware_refs` 和 `mcp_refs` 是 Subagent 自己的有序列表，不继承 Main Agent，也不使用 capability override。每条 MCP 引用独立保存全部或指定原始 Tool name 的选择。Filesystem Backend 与 Filesystem Tools 未覆写时分别继承，显式替换时使用该 Subagent 的最终组合。
 
+`pii` 是可选、可覆写的 [PIIMiddleware](../wizard-pages/pii-config.md) capability。没有 override 时继承 Main Agent 的规则；`replace` 引用另一份组件，`disabled` 关闭。每个 Subagent 独立物化官方实例，配置和 Main Agent 使用同一 schema。
+
 `component_name` 是配置显示名；`name` 是模型可见 routing name，必须匹配 `^[A-Za-z_][A-Za-z0-9_-]*$`，并在同一 Main Agent 直接引用的 Subagent 集合中按大小写不敏感方式保持唯一。Subagent contract 不保存下级 Subagent 引用。运行时将 Main Agent 直接引用的每个 Subagent 机械投影为 Deep Agents 官方 dictionary-based `SubAgent` 配置，交给显式 `SubAgentMiddleware` 编译，并由 `task` 调用执行。
 
 每份 Custom Middleware 配置只产生一个官方 `AgentMiddleware`。Subagent 默认看到 Deep Agents delegated state；需要处理消息时在自己的 `before_agent`/`abefore_agent` 中返回 state update。装配基线见[LangChain Agent runtime 基线](../langchain-agent-runtime.md)。

@@ -34,7 +34,9 @@ MCP Connection
   -> Main Agent / Subagent ordered mcp_refs
 ```
 
-Main Agent还可以引用System Prompt、Todo List、Exception Retry、Model Call Limit、Tool Call Limit、Summarization、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 synchronous Subagent。直接请求或 Command facade 启动 Run 时物化该 Main Agent 的完整 assembly。
+Main Agent还可以引用System Prompt、Todo List、Exception Retry、Model Call Limit、Tool Call Limit、Summarization、PIIMiddleware、Custom Tool、Custom Middleware、MCP Requirement、Skill package 和 synchronous Subagent。直接请求或 Command facade 启动 Run 时物化该 Main Agent 的完整 assembly。
+
+PII detection 使用内置 `pii` Component：从 `GET /agent-shell/api/catalog` 的 `editor_defaults.pii` 取得 `default_value`、`pii_types` 和 `strategies`，通过 `POST /agent-shell/api/blocks/pii` 保存有序 `rules`，再把 `{"type":"pii","block_id":"<UUID>"}` 加入 `capability_refs`。每条规则直接对应官方 `PIIMiddleware`，自定义类型需要 Python regex `detector`。Subagent 的 `settings.capability_overrides` 支持继承、替换和禁用。具体字段、保存范围和输出流条件见 [PIIMiddleware](../../wizard-pages/pii-config.md)。
 
 ## 2. Model Requirement
 

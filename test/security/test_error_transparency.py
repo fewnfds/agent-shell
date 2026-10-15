@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from agent_shell.app import create_app
-from agent_shell.storage.environment import EnvironmentSnapshot
 from support import MANAGEMENT_TOKEN, ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -22,33 +21,6 @@ def clean_agent_shell_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in tuple(os.environ):
         if key.upper().startswith("AGENT_SHELL_"):
             monkeypatch.delenv(key, raising=False)
-
-
-def test_environment_snapshot_redacts_only_stored_secret_values() -> None:
-    snapshot = EnvironmentSnapshot.capture(
-        {
-            "FIRST_KEY": "stored-secret",
-            "SECOND_KEY": "longer-stored-secret",
-        }
-    )
-    payload = {
-        "authorization": "Bearer ordinary-debug-value",
-        "messages": [{"content": "complete user message"}],
-        "provider_response": "provider rejected the request",
-        "traceback": r"C:\Users\developer\agent.py:42",
-        "secret_occurrences": [
-            "longer-stored-secret",
-            "prefix stored-secret suffix",
-        ],
-    }
-
-    assert snapshot.redact_secrets(payload) == {
-        "authorization": "Bearer ordinary-debug-value",
-        "messages": [{"content": "complete user message"}],
-        "provider_response": "provider rejected the request",
-        "traceback": r"C:\Users\developer\agent.py:42",
-        "secret_occurrences": ["[REDACTED]", "prefix [REDACTED] suffix"],
-    }
 
 
 def test_authenticated_http_error_keeps_structured_detail_and_debug_content(
@@ -70,10 +42,18 @@ def test_authenticated_http_error_keeps_structured_detail_and_debug_content(
                 "provider_response": "provider-private response body",
                 "traceback": r"C:\Users\developer\agent.py:42",
                 "stored_secret": MANAGEMENT_TOKEN,
+                "222": {"run_id": "22222222-2222-4222-8222-222222222222", "duration_ms": 222.796},
             },
         )
 
     with ScopedAuthTestClient(app) as client:
+        saved = client.post("/agent-shell/api/model-connections", json={
+            "name": "Numeric credential", "provider": "openai", "credential": "222",
+            "base_url": "https://provider.example/v1", "model": "fake",
+            "provider_settings": {}, "model_settings": {},
+            "tool_choice": None, "response_format": None,
+        })
+        assert saved.status_code == 200, saved.text
         response = client.get("/agent-shell/api/debug-error")
 
     assert response.status_code == 400
@@ -83,7 +63,8 @@ def test_authenticated_http_error_keeps_structured_detail_and_debug_content(
         "messages": [{"content": "complete user message"}],
         "provider_response": "provider-private response body",
         "traceback": r"C:\Users\developer\agent.py:42",
-        "stored_secret": "[REDACTED]",
+        "stored_secret": MANAGEMENT_TOKEN,
+        "222": {"run_id": "22222222-2222-4222-8222-222222222222", "duration_ms": 222.796},
     }
 
 
@@ -148,7 +129,7 @@ def test_anonymous_unhandled_error_hides_exception_chain_and_keeps_diagnostics(
     assert len(diagnostics) == 1
     assert "RuntimeError: admin shell failed" in diagnostics[0]["summary"]
     assert "anonymous.py" in diagnostics[0]["summary"]
-    assert MANAGEMENT_TOKEN not in diagnostics[0]["summary"]
+    assert MANAGEMENT_TOKEN in diagnostics[0]["summary"]
 
 
 def test_wrapped_http_error_keeps_its_underlying_exception_chain(
@@ -211,6 +192,32 @@ def test_request_validation_omits_rejected_input(
     ] == "Input should be a valid integer, unable to parse string as an integer"
 
 
+def test_credential_validation_errors_omit_rejected_input(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    configure_scope_tokens(monkeypatch, tmp_path)
+    app = create_app()
+    secret = "synthetic-rejected-credential"
+    with ScopedAuthTestClient(app) as client:
+        model = client.post("/agent-shell/api/model-connections", json={
+            "name": "Invalid connection", "provider": "openai", "credential": [secret],
+            "base_url": "https://provider.example/v1", "model": "fake",
+            "provider_settings": {}, "model_settings": {}, "tool_choice": None,
+            "response_format": None,
+        })
+        candidate = client.post("/agent-shell/api/fetch-models", json={
+            "provider": "openai", "base_url": "https://provider.example/v1",
+            "credential": [secret], "block_id": "",
+        })
+        mcp = client.post("/agent-shell/api/mcp-connections", json={
+            "name": "Invalid MCP", "transport": "http", "url": "invalid",
+            "headers": {"Authorization": {"source": "secret", "value": [secret]}},
+        })
+    for response in (model, candidate, mcp):
+        assert response.status_code == 422, response.text
+        assert secret not in response.text
+        assert "input_value" not in response.text
+
+
 def test_openai_error_returns_classification_and_keeps_details_in_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -258,7 +265,7 @@ def test_openai_error_returns_classification_and_keeps_details_in_diagnostics(
     assert len(diagnostics) == 1
     assert "RuntimeError: Provider failed" in diagnostics[0]["summary"]
     assert "provider.py" in diagnostics[0]["summary"]
-    assert MANAGEMENT_TOKEN not in diagnostics[0]["summary"]
+    assert MANAGEMENT_TOKEN in diagnostics[0]["summary"]
     assert detail.status_code == 200
     assert r"C:\Users\developer\provider.py" in detail.content.decode("utf-8")
 

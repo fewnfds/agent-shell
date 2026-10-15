@@ -42,6 +42,7 @@
 | Skill package / Skill 独立包 | Skill Component 创建后按配置名称保存、由 Component UUID 拥有的独立 Skill 目录；可继续编辑，与原 Template 没有同步关系，并由 CompositeBackend 引用 |
 | Custom Tool / 自定义工具 | 从 Python `@tool` 资源物化的 LangChain Tool |
 | Custom Middleware / 自定义中间件 | 从本地包加载的官方 LangChain `AgentMiddleware` |
+| PIIMiddleware | `pii` Component 配置的官方 PII detection Middleware；按有序规则处理指定 Agent 消息与事件 |
 | Agent Run call | Command根据Workflow State/Context通过`agent_runs`创建独立Main Agent Thread/Run |
 | Agent Event Output | Main Agent拥有的v3运行事件到响应文本投影规则 |
 | Workflow Lifecycle / 运行监控 | 一次客户端请求及其全部 Main Agent/Workflow Run 的产品分组；通过 LangGraph Dev 公共 API 按 Thread 组合 Run、Graph、State/history 与 Lifecycle Store，并按终态 Lifecycle 数量保留；不提供 Resume |

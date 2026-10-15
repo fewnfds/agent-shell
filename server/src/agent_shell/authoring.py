@@ -10,6 +10,9 @@ from agent_shell.contracts import (
     ExceptionRetryBlock,
     FilesystemToolConfigs,
     FilesystemToolsBlock,
+    PIIBlock,
+    PII_STRATEGIES,
+    PII_TYPES,
     SKILL_PROMPT_FIELDS,
     SummarizationBlock,
 )
@@ -367,6 +370,13 @@ _EDITOR_DEFAULTS = {
             exclude={"name"},
         ),
         "summary_prompt_default": DEEPAGENTS_SUMMARY_PROMPT,
+    },
+    "pii": {
+        "pii_types": list(PII_TYPES),
+        "strategies": list(PII_STRATEGIES),
+        "default_value": PIIBlock(name="PIIMiddleware").model_dump(
+            mode="json", exclude={"name"},
+        ),
     },
     "workflow_event_output": {},
     "command": {},

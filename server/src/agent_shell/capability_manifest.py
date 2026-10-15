@@ -125,6 +125,10 @@ CAPABILITY_MANIFESTS = (
         "file-text", "summarization",
         subagent_overrideable=True, required=False, subagent_policy="inherit",
     ),
+    CapabilityManifest(
+        "pii", "pii", "PIIMiddleware", 15, "shield", "pii",
+        subagent_overrideable=True, required=False, subagent_policy="inherit",
+    ),
 )
 
 

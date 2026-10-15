@@ -47,6 +47,7 @@ def _resources(
     retry: object,
     packages: tuple[object, ...],
     workspace: object,
+    pii: tuple[object, ...] = (),
 ) -> MaterializedAgentResources:
     return MaterializedAgentResources(
         model=object(),
@@ -65,6 +66,7 @@ def _resources(
         backend=object(),
         middleware_backend=object(),
         workspace=workspace,
+        pii_middleware=pii,
     )
 
 
@@ -75,6 +77,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     main_skill = SkillsMiddleware(backend=StateBackend(), sources=["/skills/"])
     main_filesystem = _middleware("MainFilesystem")
     main_todo = _middleware("MainTodo")
+    main_pii = _middleware("MainPII")
     main_summarization = _middleware("MainSummarization")
     main_model_call_limit = _middleware("MainModelCallLimit")
     main_tool_call_limit = _middleware("MainToolCallLimit")
@@ -87,6 +90,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         foundation=(main_skill, main_filesystem),
         todo=main_todo,
         summarization=main_summarization,
+        pii=(main_pii,),
         model_call_limit=main_model_call_limit,
         tool_call_limit=main_tool_call_limit,
         retry=main_retry,
@@ -97,6 +101,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     child_skill = SkillsMiddleware(backend=StateBackend(), sources=["/skills/"])
     child_filesystem = _middleware("ChildFilesystem")
     child_todo = _middleware("ChildTodo")
+    child_pii = _middleware("ChildPII")
     child_summarization = _middleware("ChildSummarization")
     child_model_call_limit = _middleware("ChildModelCallLimit")
     child_tool_call_limit = _middleware("ChildToolCallLimit")
@@ -109,6 +114,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
         foundation=(child_skill, child_filesystem),
         todo=child_todo,
         summarization=child_summarization,
+        pii=(child_pii,),
         model_call_limit=child_model_call_limit,
         tool_call_limit=child_tool_call_limit,
         retry=child_retry,
@@ -270,6 +276,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     assert constructor["state_schema"] is AgentShellState
     assert constructor["middleware"][:-1] == [
         main_filesystem,
+        main_pii,
         delegation,
         main_summarization,
         main_patch,
@@ -287,6 +294,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     assert isinstance(constructor["middleware"][-1], UnsupportedContentMiddleware)
     assert captured["delegation_input"][:-1] == [
         main_filesystem,
+        main_pii,
         main_summarization,
         main_patch,
         main_model_call_limit,
@@ -307,6 +315,7 @@ def test_main_agent_and_subagent_use_the_shell_owned_middleware_slots(
     assert "runnable" not in child_spec
     assert child_spec["middleware"][:-1] == [
         child_filesystem,
+        child_pii,
         child_summarization,
         child_patch,
         child_model_call_limit,

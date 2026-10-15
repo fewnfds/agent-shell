@@ -11,6 +11,7 @@ import { agentEventOutputAdapter } from './blocks/agentEventOutput'
 import { skillAdapter } from './blocks/skill'
 import { subagentAdapter } from './blocks/subagent'
 import { summarizationAdapter } from './blocks/summarization'
+import { piiAdapter } from './blocks/pii'
 import { systemPromptAdapter } from './blocks/systemPrompt'
 import { todoListAdapter } from './blocks/todoList'
 import { workflowEventOutputAdapter } from './blocks/workflowEventOutput'
@@ -79,6 +80,7 @@ export type {
   SummarizationThresholdType,
 } from './blocks/summarization'
 export type { SystemPromptDraft } from './blocks/systemPrompt'
+export type { PiiDefaults, PiiDraft, PiiRule } from './blocks/pii'
 export type { TodoListDefaults, TodoListDraft } from './blocks/todoList'
 export type {
   WorkflowEventOutputCatalogItem,
@@ -108,6 +110,7 @@ export {
   skillAdapter,
   subagentAdapter,
   summarizationAdapter,
+  piiAdapter,
   systemPromptAdapter,
   todoListAdapter,
   workflowEventOutputAdapter,
@@ -130,6 +133,7 @@ export const blockTypes = [
   'subagent',
   'todo-list',
   'summarization',
+  'pii',
 ] as const
 
 export const managedComponentTypes = [
@@ -155,6 +159,7 @@ export const blockAdapters = {
   subagent: subagentAdapter,
   'todo-list': todoListAdapter,
   summarization: summarizationAdapter,
+  pii: piiAdapter,
   'mcp-requirement': mcpRequirementAdapter,
   'workflow-event-output': workflowEventOutputAdapter,
   'command': commandAdapter,

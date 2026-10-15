@@ -16,3 +16,5 @@
 - Subagent 的 `name`、模型可见 `description`、`settings.capability_overrides`、`tool_refs` 和 `middleware_refs` 在 Subagent 实体页面维护；Main Agent 另通过 `subagents[].subagent_id` 引用实体。
 
 Main Agent 的 `capability_refs` 必须引用该组件，并且 `subagents` 至少包含一条有效实体引用，运行时才显式装配 `SubAgentMiddleware` 和 `task`；`task_description_override` 也只在存在有效 Subagent spec 时生效。每个实体由 Shell 投影为 Deep Agents 官方 dictionary-based SubAgent 并同步执行。该 capability 是 `top-level-only`，Subagent 不能继承、替换或关闭它；Subagent contract 也没有下级实体引用字段。
+
+被委派实体的 `settings.capability_overrides` 可对 [PIIMiddleware](pii-config.md) 使用 `inherit`（不保存条目）、`replace` 或 `disabled`。Main Agent 与 Subagent 各自按最终配置创建官方 PII Middleware；需要在两类 Agent 都处理敏感上下文时，保留继承或分别引用所需规则。

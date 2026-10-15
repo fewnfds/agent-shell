@@ -22,7 +22,6 @@ from agent_shell.provider_http_logging import (
     bind_provider_http_context,
 )
 from agent_shell.storage.database import SQLiteDatabase
-from agent_shell.storage.environment import InstanceEnvironmentStore
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.provider_http_logs import ProviderHttpLogStore
@@ -37,8 +36,7 @@ def _observer(tmp_path: Path) -> tuple[ProviderHttpObserver, SQLiteDatabase]:
         data_root / "logs" / "provider-http",
         HistoryRetentionStore(config),
     )
-    environment = InstanceEnvironmentStore(data_root / "config" / "agent-shell.env")
-    return ProviderHttpObserver(store, environment), database
+    return ProviderHttpObserver(store), database
 
 
 def _bundle(store: ProviderHttpLogStore, item_id: str) -> dict[str, bytes]:
@@ -67,17 +65,19 @@ class _InterruptedChunks(httpx.SyncByteStream):
 
 
 @pytest.mark.parametrize("encoding", ["gzip", "deflate", "deflate-raw"])
-def test_sync_capture_keeps_decoded_response_and_cross_chunk_credential(tmp_path: Path, encoding: str) -> None:
+def test_sync_capture_keeps_entity_bytes_and_projects_authentication_headers(tmp_path: Path, encoding: str) -> None:
     observer, database = _observer(tmp_path)
-    credential = "abc123secret"
-    payload = b'{"message":"ok","key":"abc123secret"}'
+    credential = "222"
+    payload = b'{"message":"ok","key":"222"}'
     encoded = (
         gzip.compress(payload) if encoding == "gzip"
         else zlib.compress(payload, wbits=-zlib.MAX_WBITS if encoding == "deflate-raw" else zlib.MAX_WBITS)
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.read() == b'{"key":"abc123secret"}'
+        assert request.headers["Authorization"] == "Bearer 222"
+        assert request.headers["x-goog-api-key"] == "222"
+        assert request.read() == b'{"key":"222"}'
         return httpx.Response(
             429,
             headers={"Content-Encoding": encoding.replace("-raw", ""), "Content-Type": "application/json"},
@@ -88,9 +88,9 @@ def test_sync_capture_keeps_decoded_response_and_cross_chunk_credential(tmp_path
     with httpx.Client(transport=transport) as client:
         request = httpx.Request(
             "POST",
-            "https://provider.example/v1/chat/completions",
-            headers={"Authorization": f"Bearer {credential}"},
-            stream=_Chunks(b'{"key":"abc123', b'secret"}'),
+            "https://provider.example/v1/chat/completions?route=222",
+            headers={"Authorization": f"Bearer {credential}", "x-goog-api-key": credential, "x-route": "222"},
+            stream=_Chunks(b'{"key":"2', b'22"}'),
         )
         with bind_provider_http_context(request_id="request-from-agent-runtime", run_id="run-1"):
             response = client.send(request)
@@ -105,9 +105,12 @@ def test_sync_capture_keeps_decoded_response_and_cross_chunk_credential(tmp_path
     metadata = json.loads(bundle["metadata.json"])
     assert metadata["response"]["status"] == 429
     assert metadata["response"]["headers"][0][0].lower() == "content-encoding"
-    assert bundle["request.body"] == b'{"key":"[REDACTED]"}'
-    assert bundle["response.body"] == b'{"message":"ok","key":"[REDACTED]"}'
-    assert credential.encode() not in b"".join(bundle.values())
+    assert bundle["request.body"] == b'{"key":"222"}'
+    assert bundle["response.body"] == payload
+    assert ["Authorization", "Bearer [REDACTED]"] in metadata["request"]["headers"]
+    assert ["x-goog-api-key", "[REDACTED]"] in metadata["request"]["headers"]
+    assert ["x-route", "222"] in metadata["request"]["headers"]
+    assert metadata["request"]["url"].endswith("?route=222")
     asyncio.run(database.close())
 
 
@@ -163,7 +166,7 @@ def test_read_error_keeps_prefix_and_startup_recovers_active_exchange(tmp_path: 
 
     active = observer.store.begin(
         method="GET", url="https://provider.example/pending", headers=[],
-        secrets=(), request_id="request-pending",
+        request_id="request-pending",
     )
     observer.store.append_request(active, b"partial upload")
     recovered = ProviderHttpLogStore(

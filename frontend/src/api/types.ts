@@ -21,6 +21,7 @@ export type BlockType =
   | 'tool-call-limit'
   | 'subagent'
   | 'summarization'
+  | 'pii'
 
 export type WorkflowComponentType =
   | 'workflow-event-output'

@@ -15,7 +15,6 @@ from agent_shell.security import ApiKeyPolicyError, validate_api_key_policy
 from agent_shell.storage.file_config import FileConfigRepository
 from agent_shell.storage.configuration_mutations import ConfigurationMutationCoordinator
 from agent_shell.storage.environment import (
-    EnvironmentSnapshot,
     InstanceEnvironmentStore,
     SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
 )
@@ -168,17 +167,7 @@ class SystemSettingsService:
             candidate = Settings(**values)
         except ValidationError as exc:
             keys = ", ".join(_validation_keys(exc))
-            secret_values = {
-                name: value
-                for name, value in {
-                    "AGENT_SHELL_MANAGEMENT_TOKEN": values["management_token"],
-                    "LANGSMITH_API_KEY": values["langsmith_api_key"],
-                }.items()
-                if isinstance(value, str)
-            }
-            detail = EnvironmentSnapshot.capture(secret_values).redact_secret_text(
-                str(exc)
-            )
+            detail = exc.json(include_input=False, include_url=False)
             raise SystemSettingsError(
                 422,
                 "system_settings_invalid",

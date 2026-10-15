@@ -27,19 +27,22 @@ CORS 只接受明确的 `http://` 或 `https://` origin，不支持 `*`、userin
 
 ## 数据分类与错误披露
 
-本节是 Agent Shell 的唯一数据敏感性与错误披露声明。实例 `data/config/agent-shell.env` 中保存的实际密钥值属于敏感信息，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。Provider HTTP 日志还把本次请求中已解析的 Provider credential 实际值纳入同一投影；这包括模型目录读取时尚未保存的候选 API Key。模型连接与 MCP 连接 YAML 保存变量引用；模型连接 credential 读取 API 只投影 `masked`、`missing` 或 `none` 状态，MCP secret map 只投影 `masked` 或 `missing` 状态，其他 API Key 只投影 `configured` 布尔状态。不要提交或公开分享 `agent-shell.env`。
+本节是 Agent Shell 的唯一数据敏感性与错误披露声明。实例 `data/config/agent-shell.env` 中保存的实际密钥值属于敏感信息，包括 Provider/MCP credential、API Key、管理密码和 LangSmith API Key。模型连接与 MCP 连接 YAML 保存变量引用；模型连接 credential 读取 API 只投影 `masked`、`missing` 或 `none` 状态，MCP secret map 只投影 `masked` 或 `missing` 状态，其他 API Key 只投影 `configured` 布尔状态。不要提交或公开分享 `agent-shell.env`。
 
 Provider Network 的 transport、HTTP version、TLS、CA 路径、proxy URL 和默认 HTTP Header 是普通系统配置，明文保存在 `data/config/system.yaml` 并由经过认证的 System Settings API 回显。它们不使用 secret storage；显式 proxy URL 因此不接受内嵌用户名或密码。`x-opencode-session` 一类缓存/路由 Header 可以保存在这里，API Key、Authorization credential 等实际密钥继续使用 Model Connection credential owner。
 
 应用写入 `agent-shell.env` 时先在同目录创建空临时文件并验证私有权限，再写入内容并原子替换；权限无法确认时保留原文件并让写操作失败。启动时也会复核现存文件权限。该机制只限制本机文件读取主体，不替代磁盘加密和备份保护。
 
-`InstanceEnvironmentStore` 在 API error、system log 和 runtime diagnostic 边界替换已保存密钥值的实际出现。Provider HTTP 日志在发送时捕获该环境快照，并从该请求使用的标准 `Authorization: Bearer` 或 `x-goog-api-key` 取得本次 Provider credential 实际值；URL、Header、请求与响应正文、异常文本在写盘前替换这些实际值，流式正文覆盖跨 chunk 出现的值。普通内容是否进入某个载体由该领域 owner 的 contract 决定；其他错误事实不根据字段名、内容类型、路径、异常类型或 token 形状猜测脱敏规则。
+`InstanceEnvironmentStore` 负责凭据文件的持久化与按引用解析。Provider HTTP 日志在日志副本中隐藏明确的认证 Header：`Authorization` 保留认证方案并隐藏其值，`x-goog-api-key` 隐藏整个值；真实出站请求使用原认证值。日志的 URL、其他 Header、请求与响应正文、异常文本和关联 metadata 保留其 owner 提供的内容。应用按字段与协议生成公开 projection；正文、ID、时间、JSON key 和数字保持原值，即使它们与实例凭据包含相同字符。
+
+上下文敏感信息由用户可选的 [PIIMiddleware Component](wizard-pages/pii-config.md) 处理。Main Agent 选择 `pii` 后按配置装配 LangChain 官方 Middleware，Subagent 可以继承、替换或禁用；规则检测对象由用户声明，系统凭据存储与规则彼此独立。官方 hook 处理进入对应 Agent 的用户消息、Tool result 或模型输出，输出侧按官方 transformer 处理 v3 事件；具体作用范围与流式限制见组件说明。Shell 原始请求 Store、已存在的 checkpoint、system prompt、HTTP 原始响应和任意日志具有各自保存边界。用户写入上下文的密钥，以及 Provider 在错误正文中回显的密钥，可能进入这些载体；请按用途选择规则和保护导出文件。
 
 披露内容按鉴权等级分层：
 
 - management 鉴权出口（管理台 `/admin`、`/agent-shell/api/*`、LangGraph Dev 官方路由，以及日志中心与诊断附件下载）返回完整分类、真实原因、具体异常链和完整 traceback 附件；
 - 非 management 出口（`/compat/openai/v1/*`）只返回稳定 code、HTTP status、固定英文分类消息、`request_id` 与已建立的 `lifecycle_id`；调用方凭这些 identity 在日志中心查看完整异常链与 traceback 附件；
 - FastAPI 请求结构错误返回 Pydantic issue 的 `type`、`loc`、`msg` 和 `ctx`，不含被拒绝的原始 `input`；
+- Settings 与 credential 输入校验使用 Pydantic 的输入隐藏或排除 `input` 的结构化错误，保留字段位置与原因；
 - system log 保存具体错误 message；Lifecycle error 保留 Server 失败 payload；management-only runtime diagnostic 保留异常链，其附件保留完整 traceback。
 
 稳定 code、HTTP status 和本地化标题是分类与展示元数据，在 management 出口与真实原因同时保留。

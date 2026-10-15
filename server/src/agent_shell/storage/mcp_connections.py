@@ -159,7 +159,9 @@ McpConnection = Annotated[
     McpStdioConnection | McpHttpConnection,
     Field(discriminator="transport"),
 ]
-MCP_CONNECTION_ADAPTER = TypeAdapter(McpConnection)
+MCP_CONNECTION_ADAPTER = TypeAdapter(
+    McpConnection, config=ConfigDict(hide_input_in_errors=True)
+)
 
 
 class McpConnectionNameConflictError(ValueError):

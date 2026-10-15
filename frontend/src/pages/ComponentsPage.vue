@@ -96,6 +96,7 @@ const editorLoaders: Record<EditorType, () => Promise<EditorModule>> = {
   'tool-call-limit': () => import('@/editors/ToolCallLimitEditor.vue'),
   subagent: () => import('@/editors/SubagentCapabilityEditor.vue'),
   summarization: () => import('@/editors/SummarizationEditor.vue'),
+  pii: () => import('@/editors/PiiEditor.vue'),
   'workflow-event-output': () => import('@/editors/WorkflowEventOutputEditor.vue'),
   command: () => import('@/editors/CommandEditor.vue'),
   'python-schema': () => import('@/editors/PythonSchemaEditor.vue'),
@@ -311,6 +312,7 @@ const editorProps = computed<Record<string, unknown>>(() => {
     case 'exception-retry':
     case 'subagent':
     case 'summarization':
+    case 'pii':
       return {
         defaults: activeDefaults.value,
       }

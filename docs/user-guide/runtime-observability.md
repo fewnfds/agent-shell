@@ -8,7 +8,9 @@
 
 `Provider HTTP` 在每次 Provider HTTP 发送尝试建立一条记录，覆盖 OpenAI、DeepSeek、Google GenAI 的模型请求、流式请求、Responses API 以及模型目录读取；SDK 重试产生新的记录。列表只返回时间、级别、request ID 和简短摘要，不载入完整 Header 或正文。查询匹配摘要、URL、status 和保存的关联元数据，不搜索请求或响应正文。正在进行的记录可见，结束后提供“下载请求与响应”。
 
-下载的 ZIP 包含 `metadata.json`、`request.body`、收到响应时的 `response.body`，以及有传输或读取异常时的 `transport-error.txt`。`metadata.json` 记录 method、URL、按顺序排列的请求和响应 Header、HTTP status、时间、关联 ID、正文表示层、结束原因、字节数和采集完整性。正文保存 HTTP client 实际观察到的 JSON、SSE 或其他字节内容；SSE 不被合成为最终回答。标准 HTTPX 的压缩响应在日志副本中解码，curl-cffi 已解码的响应直接复制，原响应 Header 仍保留，随后执行[凭据值投影](../security-and-deployment.md#数据分类与错误披露)。
+下载的 ZIP 包含 `metadata.json`、`request.body`、收到响应时的 `response.body`，以及有传输或读取异常时的 `transport-error.txt`。`metadata.json` 记录 method、URL、按顺序排列的请求和响应 Header、HTTP status、时间、关联 ID、正文表示层、结束原因、字节数和采集完整性。正文保存 HTTP client 实际观察到的 JSON、SSE 或其他字节内容；SSE 不被合成为最终回答。标准 HTTPX 的压缩响应在日志副本中解码，curl-cffi 已解码的响应直接复制；认证 Header 的日志副本遵循[数据分类与错误披露](../security-and-deployment.md#数据分类与错误披露)。
+
+PIIMiddleware 的 hook 和 v3 transformer 作用于 Agent 消息与官方事件。Provider HTTP 日志保存 transport 观察到的正文，模型调用归档保存其调用位置观察到的请求和返回，Lifecycle Store 保存请求入口原文。查看这些载体时，按各自 owner 的保存边界解释内容；规则行为见 [PIIMiddleware](../wizard-pages/pii-config.md)。
 
 HTTP 4xx/5xx 和连接失败显示为 error；取消、服务中断或采集故障显示为 warning。HTTP 200 只说明该次 HTTP 交互的状态，模型解析或后续 Graph 执行结果仍以运行诊断与官方 Run 状态为准。流式消费者提前关闭时，ZIP 保存已读前缀并标记 `consumer_closed`；读取失败时保存已读前缀和异常。取消请求时，当前写盘操作完成后将条目标记 `cancelled`。连接失败时 `response` 为 `null`，SDK 已构造并缓存在 HTTP request 中的正文仍会保存；它表示尝试发送的内容，不证明对端已收到。日志观察到的是本进程 HTTP client 与配置的直接对端之间的内容；若端点是本地网关，网关后续转发不在此日志内。
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import re
 from pathlib import Path, PurePosixPath
 from string import Formatter
 from typing import Annotated, Literal
@@ -193,7 +194,9 @@ CredentialValue = Annotated[
     StringConstraints(strip_whitespace=False),
     Field(min_length=1),
 ]
-CREDENTIAL_VALUE_ADAPTER = TypeAdapter(CredentialValue | None)
+CREDENTIAL_VALUE_ADAPTER = TypeAdapter(
+    CredentialValue | None, config=ConfigDict(hide_input_in_errors=True)
+)
 
 
 def _reject_masked_credential(value: str | None) -> str | None:
@@ -203,6 +206,8 @@ def _reject_masked_credential(value: str | None) -> str | None:
 
 
 class ModelConnectionBlock(StrictBlock):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     provider: Annotated[
         str,
         Field(min_length=1, pattern=r"^[a-z0-9_-]+$"),
@@ -373,6 +378,53 @@ class ExceptionRetryBlock(StrictBlock):
     ) -> list[ExceptionRetryCondition]:
         if len(values) != len(set(values)):
             raise ValueError("retry_on conditions must be unique")
+        return values
+
+
+PII_TYPES = ("email", "credit_card", "ip", "mac_address", "url")
+PII_STRATEGIES = ("block", "redact", "mask", "hash")
+
+
+class PIIRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pii_type: Annotated[str, Field(min_length=1)] = "email"
+    strategy: Literal["block", "redact", "mask", "hash"] = "redact"
+    detector: str | None = None
+    apply_to_input: bool = True
+    apply_to_output: bool = False
+    apply_to_tool_results: bool = False
+
+    @field_validator("detector")
+    @classmethod
+    def validate_detector(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValueError(f"detector must be a valid Python regex: {exc}") from exc
+        return value
+
+    @model_validator(mode="after")
+    def require_detector(self) -> "PIIRule":
+        if self.pii_type not in PII_TYPES and self.detector is None:
+            raise ValueError("custom pii_type requires a detector regex")
+        return self
+
+
+class PIIBlock(StrictBlock):
+    rules: Annotated[list[PIIRule], Field(min_length=1)] = Field(
+        default_factory=lambda: [PIIRule()]
+    )
+
+    @field_validator("rules")
+    @classmethod
+    def unique_pii_types(cls, values: list[PIIRule]) -> list[PIIRule]:
+        # create_agent requires unique middleware names; the official name is
+        # PIIMiddleware[pii_type], including when the detector is custom.
+        names = [rule.pii_type for rule in values]
+        if len(names) != len(set(names)):
+            raise ValueError("rules must have unique pii_type values")
         return values
 
 
@@ -1077,6 +1129,7 @@ BLOCK_MODELS: dict[str, type[StrictBlock]] = {
     "tool-call-limit": ToolCallLimitBlock,
     "subagent": SubagentBlock,
     "summarization": SummarizationBlock,
+    "pii": PIIBlock,
 }
 
 validate_capability_manifests(CAPABILITY_MANIFESTS, BLOCK_MODELS)

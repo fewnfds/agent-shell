@@ -25,15 +25,6 @@ class LangSmithConnectionError(RuntimeError):
     pass
 
 
-def _without_langsmith_key(settings: Settings, value: str) -> str:
-    key = (
-        settings.langsmith_api_key.get_secret_value()
-        if settings.langsmith_api_key is not None
-        else None
-    )
-    return value.replace(key, "[REDACTED]") if key else value
-
-
 def _client(settings: Settings, *, report_upload_errors: bool) -> Client:
     def report_error(exc: Exception) -> None:
         detail = "".join(
@@ -41,7 +32,7 @@ def _client(settings: Settings, *, report_upload_errors: bool) -> Client:
         ).rstrip()
         logging.getLogger("agent_shell.langsmith").error(
             "LangSmith trace upload failed\n%s",
-            _without_langsmith_key(settings, detail),
+            detail,
         )
 
     return Client(
@@ -93,7 +84,7 @@ def validate_langsmith_connection(settings: Settings) -> None:
         next(client.list_projects(limit=1), None)
     except Exception as exc:
         raise LangSmithConnectionError(
-            _without_langsmith_key(settings, describe_exception(exc))
+            describe_exception(exc)
         ) from exc
     finally:
         client.close()

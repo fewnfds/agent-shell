@@ -8,7 +8,6 @@ import re
 import threading
 from types import MappingProxyType
 from typing import Mapping
-from urllib.parse import quote, quote_plus
 
 from dotenv import dotenv_values
 
@@ -153,90 +152,6 @@ class EnvironmentSnapshot:
     def as_dict(self) -> dict[str, str]:
         return dict(self._values)
 
-    def redact_secrets(self, value: object) -> object:
-        """Replace only values stored in the instance credential environment."""
-
-        secrets = tuple(
-            sorted(
-                {item for item in self._values.values() if item},
-                key=len,
-                reverse=True,
-            )
-        )
-
-        def redact(item: object) -> object:
-            if isinstance(item, str):
-                for secret in secrets:
-                    item = item.replace(secret, "[REDACTED]")
-                return item
-            if isinstance(item, Mapping):
-                return {key: redact(child) for key, child in item.items()}
-            if isinstance(item, list):
-                return [redact(child) for child in item]
-            if isinstance(item, tuple):
-                return tuple(redact(child) for child in item)
-            return item
-
-        return redact(value)
-
-    def redact_secret_text(self, value: str) -> str:
-        redacted = self.redact_secrets(value)
-        if not isinstance(redacted, str):
-            raise TypeError("environment secret text projection must remain text")
-        return redacted
-
-    def provider_http_secrets(self, *operation_values: str) -> tuple[bytes, ...]:
-        """Actual credential values for one Provider HTTP exchange."""
-        values = {value for value in (*self._values.values(), *operation_values) if value}
-        encoded = {
-            variant.encode("utf-8")
-            for value in values
-            for variant in (
-                value,
-                quote(value, safe=""),
-                quote_plus(value, safe=""),
-                json.dumps(value, ensure_ascii=True)[1:-1],
-            )
-        }
-        return tuple(sorted(encoded, key=len, reverse=True))
-
-
-class CredentialByteProjector:
-    """Replace actual credential bytes even when a value spans stream chunks."""
-
-    def __init__(self, secrets: tuple[bytes, ...]) -> None:
-        self._secrets = secrets
-        self._pending = b""
-        self._lookbehind = max((len(value) for value in secrets), default=1) - 1
-
-    def write(self, chunk: bytes) -> bytes:
-        data = self._pending + chunk
-        safe_end = max(0, len(data) - self._lookbehind)
-        out = bytearray()
-        position = 0
-        while position < safe_end:
-            matches = (
-                (index, secret)
-                for secret in self._secrets
-                if (index := data.find(secret, position)) >= 0 and index < safe_end
-            )
-            match = min(matches, default=None, key=lambda value: (value[0], -len(value[1])))
-            if match is None:
-                out.extend(data[position:safe_end])
-                position = safe_end
-            else:
-                index, secret = match
-                out.extend(data[position:index])
-                out.extend(b"[REDACTED]")
-                position = index + len(secret)
-        self._pending = data[position:]
-        return bytes(out)
-
-    def finish(self) -> bytes:
-        data, self._pending = self._pending, b""
-        for secret in self._secrets:
-            data = data.replace(secret, b"[REDACTED]")
-        return data
 
 
 class InstanceEnvironmentStore:
@@ -278,12 +193,6 @@ class InstanceEnvironmentStore:
 
     def get(self, name: str) -> str | None:
         return self.snapshot().get(name)
-
-    def redact_secrets(self, value: object) -> object:
-        return self.snapshot().redact_secrets(value)
-
-    def redact_secret_text(self, value: str) -> str:
-        return self.snapshot().redact_secret_text(value)
 
     def owned_values(self, owner: str) -> dict[str, str]:
         self._validate_owner(owner)
@@ -341,7 +250,6 @@ class InstanceEnvironmentStore:
 
 __all__ = [
     "API_SERVER_ENVIRONMENT_OWNER",
-    "CredentialByteProjector",
     "EnvironmentFormatError",
     "EnvironmentOwnershipError",
     "EnvironmentSnapshot",

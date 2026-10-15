@@ -116,7 +116,6 @@ class SecurityEventLogger:
         logs_dir: Path,
         *,
         max_bytes: int = 5 * 1024 * 1024,
-        redact: Callable[[object], object] | None = None,
     ) -> None:
         if max_bytes < 1:
             raise ValueError("system event maximum size must be positive")
@@ -124,7 +123,6 @@ class SecurityEventLogger:
         self._max_bytes = max_bytes
         self._failure_reporter: SecurityEventFailureReporter | None = None
         self._publisher: SystemEventPublisher | None = None
-        self._redact = redact or (lambda value: value)
         self.directory_permission = secure_directory(logs_dir)
         self.path = logs_dir / "security-events.jsonl"
         self.path.touch(exist_ok=True)
@@ -159,24 +157,16 @@ class SecurityEventLogger:
     def _public_record(self, record: Mapping[str, Any]) -> dict[str, object]:
         event = str(record.get("event", ""))
         metadata = record.get("metadata", {})
-        projected_metadata = self._redact(
-            dict(metadata) if isinstance(metadata, Mapping) else {}
-        )
-        if not isinstance(projected_metadata, dict):
-            projected_metadata = {"status": "[UNAVAILABLE]"}
-        projected_request_id = self._redact(str(record.get("request_id", "")))
-        projected_actor = self._redact(str(record.get("actor", "")))
+        projected_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+        projected_request_id = str(record.get("request_id", ""))
+        projected_actor = str(record.get("actor", ""))
         return {
             "timestamp": str(record.get("timestamp", "")),
             "event": event,
             "category": SYSTEM_EVENT_CATEGORIES.get(event, "system"),
             "level": SYSTEM_EVENT_LEVELS.get(event, "info"),
-            "request_id": (
-                projected_request_id
-                if isinstance(projected_request_id, str)
-                else ""
-            ),
-            "actor": projected_actor if isinstance(projected_actor, str) else "",
+            "request_id": projected_request_id,
+            "actor": projected_actor,
             "metadata": projected_metadata,
         }
 
@@ -232,20 +222,15 @@ class SecurityEventLogger:
             except Exception as exc:
                 reporter_error = exc
         try:
-            failure = self._redact(
-                "".join(
-                    traceback.TracebackException.from_exception(error).format(
-                        chain=True
-                    )
-                ).rstrip()
-                or describe_exception(error)
-            )
+            failure = "".join(
+                traceback.TracebackException.from_exception(error).format(chain=True)
+            ).rstrip() or describe_exception(error)
             reporter_failure = (
-                self._redact(
+                (
                     "".join(
-                        traceback.TracebackException.from_exception(
-                            reporter_error
-                        ).format(chain=True)
+                        traceback.TracebackException.from_exception(reporter_error).format(
+                            chain=True
+                        )
                     ).rstrip()
                     or describe_exception(reporter_error)
                 )
@@ -279,15 +264,12 @@ class SecurityEventLogger:
         unknown = set(raw_metadata) - SECURITY_EVENT_FIELDS[event]
         if unknown:
             raise ValueError(f"unsupported metadata fields for security event: {event}")
-        projected_metadata = self._redact(raw_metadata)
-        if not isinstance(projected_metadata, dict):
-            projected_metadata = {"status": "[UNAVAILABLE]"}
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
             "event": event,
             "request_id": request_id if request_id is not None else current_request_id(),
             "actor": actor if actor is not None else current_actor(),
-            "metadata": projected_metadata,
+            "metadata": raw_metadata,
         }
         line = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         with self._lock:

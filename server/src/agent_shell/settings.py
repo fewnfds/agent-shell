@@ -22,7 +22,6 @@ from agent_shell.provider_http import ProviderHttpSettings
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.storage.environment import (
     EnvironmentFormatError,
-    EnvironmentSnapshot,
     read_environment_file,
     unknown_environment_names,
 )
@@ -88,6 +87,7 @@ class Settings(BaseSettings):
         env_file=None,
         extra="ignore",
         case_sensitive=False,
+        hide_input_in_errors=True,
     )
 
     _application_home: Path = PrivateAttr(default_factory=lambda: Path.cwd().resolve())
@@ -458,9 +458,7 @@ def load_settings(
             system_values["langsmith_api_key"] = langsmith_api_key
         settings = Settings(**system_values)
     except ValidationError as exc:
-        detail = EnvironmentSnapshot.capture(environment_values).redact_secret_text(
-            str(exc)
-        )
+        detail = exc.json(include_input=False, include_url=False)
         raise SettingsError(
             _error_keys(exc),
             "Correct the listed setting keys and restart. "

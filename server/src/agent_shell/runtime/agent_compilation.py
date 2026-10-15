@@ -41,6 +41,7 @@ class MaterializedAgentResources:
     backend: Any | None
     middleware_backend: Any | None
     workspace: DeepAgentsWorkspace | None
+    pii_middleware: tuple[Any, ...] = ()
 
 
 class AgentResourceMaterializer(Protocol):
@@ -75,6 +76,7 @@ def assemble_agent_middleware(
     model_request_settings: Any | None,
     provider_error_boundary: Any,
     exception_retry: Sequence[Any] = (),
+    pii: Sequence[Any] = (),
     model_call_archive: Any | None = None,
     initial_files: Any | None = None,
     package: Sequence[Any] = (),
@@ -87,6 +89,8 @@ def assemble_agent_middleware(
     middleware = [
         item for item in foundation if not isinstance(item, SkillsMiddleware)
     ]
+    # before_model hooks run in list order: sanitize input before summarization.
+    middleware.extend(pii)
     middleware.extend(
         item
         for item in (

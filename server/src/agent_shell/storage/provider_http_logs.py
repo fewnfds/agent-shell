@@ -14,7 +14,6 @@ from zipfile import ZIP_STORED, ZipFile
 
 from agent_shell.storage.atomic_files import write_private_text_atomic
 from agent_shell.storage.database import SQLiteDatabase
-from agent_shell.storage.environment import CredentialByteProjector
 from agent_shell.storage.history_retention import HistoryRetentionStore
 from agent_shell.storage.permissions import secure_directory, secure_file
 
@@ -30,8 +29,6 @@ def _now() -> str:
 class ProviderHttpCapture:
     id: str
     metadata: dict[str, object]
-    request_projector: CredentialByteProjector
-    response_projector: CredentialByteProjector
     observed_request_bytes: int = 0
     observed_response_bytes: int = 0
     stored_request_bytes: int = 0
@@ -69,11 +66,17 @@ class ProviderHttpLogStore:
             pass
 
     @staticmethod
-    def _project(value: str, secrets: tuple[bytes, ...]) -> str:
-        raw = value.encode("utf-8", errors="surrogateescape")
-        for secret in secrets:
-            raw = raw.replace(secret, b"[REDACTED]")
-        return raw.decode("utf-8", errors="replace")
+    def _log_headers(headers: list[tuple[str, str]]) -> list[list[str]]:
+        """Project protocol authentication fields in the log copy only."""
+        projected = []
+        for name, value in headers:
+            if name.lower() == "authorization":
+                scheme, separator, _ = value.partition(" ")
+                value = f"{scheme} [REDACTED]" if separator else "[REDACTED]"
+            elif name.lower() == "x-goog-api-key":
+                value = "[REDACTED]"
+            projected.append([name, value])
+        return projected
 
     def _entry_dir(self, item_id: str) -> Path:
         if _ID.fullmatch(item_id) is None:
@@ -98,41 +101,31 @@ class ProviderHttpLogStore:
         method: str,
         url: str,
         headers: list[tuple[str, str]],
-        secrets: tuple[bytes, ...],
         request_id: str,
         context: dict[str, str] | None = None,
     ) -> ProviderHttpCapture:
         item_id = uuid4().hex
         occurred_at = _now()
-        projected_url = self._project(url, secrets)
-        projected_headers = [
-            [self._project(name, secrets), self._project(value, secrets)]
-            for name, value in headers
-        ]
         metadata: dict[str, object] = {
             "id": item_id,
             "occurred_at": occurred_at,
             "ended_at": None,
             "request": {
                 "method": method,
-                "url": projected_url,
-                "headers": projected_headers,
+                "url": url,
+                "headers": self._log_headers(headers),
                 "body_file": "request.body",
-                "representation": "HTTP entity body after credential projection",
+                "representation": "HTTP entity body",
             },
             "response": None,
             "request_id": request_id,
-            "context": {
-                key: self._project(value, secrets) for key, value in (context or {}).items()
-            },
+            "context": dict(context or {}),
             "state": "active",
             "capture_complete": False,
         }
         capture = ProviderHttpCapture(
             id=item_id,
             metadata=metadata,
-            request_projector=CredentialByteProjector(secrets),
-            response_projector=CredentialByteProjector(secrets),
         )
         with self._lock:
             entry = self._entry_dir(item_id)
@@ -151,11 +144,11 @@ class ProviderHttpLogStore:
                         (
                             item_id,
                             occurred_at,
-                            self._summary(method, projected_url, None, "active"),
+                            self._summary(method, url, None, "active"),
                             request_id,
                             json.dumps(metadata["context"], ensure_ascii=False),
                             method,
-                            projected_url,
+                            url,
                         ),
                     )
             except BaseException:
@@ -183,18 +176,16 @@ class ProviderHttpLogStore:
             if capture.finished:
                 return
             capture.observed_request_bytes += len(chunk)
-            content = capture.request_projector.write(chunk)
-            self._append(capture, "request.body", content)
-            capture.stored_request_bytes += len(content)
+            self._append(capture, "request.body", chunk)
+            capture.stored_request_bytes += len(chunk)
 
     def append_response(self, capture: ProviderHttpCapture, chunk: bytes) -> None:
         with self._lock:
             if capture.finished:
                 return
             capture.observed_response_bytes += len(chunk)
-            content = capture.response_projector.write(chunk)
-            self._append(capture, "response.body", content)
-            capture.stored_response_bytes += len(content)
+            self._append(capture, "response.body", chunk)
+            capture.stored_response_bytes += len(chunk)
 
     def response_headers(
         self,
@@ -204,15 +195,11 @@ class ProviderHttpLogStore:
         http_version: str,
         headers: list[tuple[str, str]],
         representation: str,
-        secrets: tuple[bytes, ...],
     ) -> None:
         response = {
             "status": status,
             "http_version": http_version,
-            "headers": [
-                [self._project(name, secrets), self._project(value, secrets)]
-                for name, value in headers
-            ],
+            "headers": self._log_headers(headers),
             "body_file": "response.body",
             "representation": representation,
         }
@@ -249,20 +236,6 @@ class ProviderHttpLogStore:
             if capture.finished:
                 return
             capture.finished = True
-            for name, projector in (
-                ("request.body", capture.request_projector),
-                ("response.body", capture.response_projector),
-            ):
-                content = projector.finish()
-                if content:
-                    path = self._entry_dir(capture.id) / name
-                    with path.open("ab") as stream:
-                        secure_file(path)
-                        stream.write(content)
-                    if name == "request.body":
-                        capture.stored_request_bytes += len(content)
-                    else:
-                        capture.stored_response_bytes += len(content)
             capture.metadata.update(
                 ended_at=_now(),
                 state=state,

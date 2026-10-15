@@ -330,7 +330,6 @@ async def _completion_stream(
     detached_tasks: DetachedTaskManager,
     disconnect_lifecycle: Callable[[], Awaitable[None]],
     response_terminated: asyncio.Event,
-    redact_secret_text: Callable[[str], str],
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
     created = int(time.time())
@@ -448,7 +447,7 @@ async def _completion_stream(
         yield "data: [DONE]\n\n"
         return
     except Exception as exc:
-        detail = redact_secret_text(describe_exception(exc))
+        detail = describe_exception(exc)
         identity = getattr(execution, "identity", None)
         diagnostics = getattr(execution, "runtime_diagnostics", None)
         if diagnostics is not None:
@@ -581,7 +580,6 @@ def build_api_server_router(
     events: ApiServerEventHub,
     message_interception: MessageInterceptionState,
     detached_tasks: DetachedTaskManager,
-    redact_secret_text: Callable[[str], str],
 ) -> APIRouter:
     router = APIRouter()
     management_router = management_api_router()
@@ -757,7 +755,7 @@ def build_api_server_router(
         try:
             request_snapshot = await runtime.capture()
         except Exception as exc:
-            detail = redact_secret_text(describe_exception(exc))
+            detail = describe_exception(exc)
             with suppress(Exception):
                 await runtime.runtime_diagnostics.aruntime_error(
                     AgentRuntimeError("configuration_snapshot_failed", detail),
@@ -856,7 +854,6 @@ def build_api_server_router(
                     detached_tasks=detached_tasks,
                     disconnect_lifecycle=lifecycle_coordinator.disconnect,
                     response_terminated=lifecycle_coordinator.response_terminated,
-                    redact_secret_text=redact_secret_text,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -880,7 +877,7 @@ def build_api_server_router(
                 lifecycle_id=lifecycle_coordinator.lifecycle_id,
             )
         except Exception as exc:
-            detail = redact_secret_text(describe_exception(exc))
+            detail = describe_exception(exc)
             with suppress(Exception):
                 await runtime.runtime_diagnostics.aruntime_error(
                     AgentRuntimeError("completion_failed", detail),

@@ -31,7 +31,6 @@ def test_provider_http_feed_download_and_retention(tmp_path, monkeypatch: pytest
             method="POST",
             url="https://provider.example/v1/chat/completions",
             headers=[("Authorization", "Bearer [REDACTED]")],
-            secrets=(),
             request_id="request-http-1",
             context={"run_id": "run-http-1", "operation": "model_call"},
         )
@@ -39,14 +38,14 @@ def test_provider_http_feed_download_and_retention(tmp_path, monkeypatch: pytest
         store.response_headers(
             first, status=500, http_version="HTTP/1.1",
             headers=[("Content-Type", "application/json")],
-            representation="decoded HTTP entity body", secrets=(),
+            representation="decoded HTTP entity body",
         )
         store.append_response(first, b'{"error":"provider failed"}')
         store.finish(first, "eof")
 
         active = store.begin(
             method="POST", url="https://provider.example/v1/chat/completions",
-            headers=[], secrets=(), request_id="request-http-active",
+            headers=[], request_id="request-http-active",
         )
         listing = client.get(
             "/agent-shell/api/event-feed",
@@ -80,7 +79,7 @@ def test_provider_http_feed_download_and_retention(tmp_path, monkeypatch: pytest
         )
         second = store.begin(
             method="GET", url="https://provider.example/models", headers=[],
-            secrets=(), request_id="request-http-2",
+            request_id="request-http-2",
         )
         store.finish(second, "eof")
         trimmed = client.get(

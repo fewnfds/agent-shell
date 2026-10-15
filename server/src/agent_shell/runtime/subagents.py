@@ -116,6 +116,7 @@ def _build_subagent_spec(
         foundation=subagent_resources.foundation_middleware,
         subagent=None,
         summarization=subagent_resources.summarization_middleware,
+        pii=subagent_resources.pii_middleware,
         patch_tool_calls=materialize_patch_tool_calls_middleware(),
         model_call_limit=subagent_resources.model_call_limit_middleware,
         tool_call_limit=subagent_resources.tool_call_limit_middleware,

@@ -11,7 +11,6 @@ from agent_shell.app import create_app
 from agent_shell.event_feed import EventFeedService
 from agent_shell import security_events
 from agent_shell.security_events import SecurityEventLogger
-from agent_shell.storage.environment import EnvironmentSnapshot
 from support import ScopedAuthTestClient, configure_scope_tokens
 
 
@@ -120,13 +119,11 @@ def test_lifecycle_configuration_events_and_model_secrets_are_metadata_only(
     assert all(set(record) == {"timestamp", "event", "request_id", "actor", "metadata"} for record in records)
 
 
-def test_event_logger_redacts_stored_secrets_and_keeps_debug_metadata(
+def test_event_logger_keeps_debug_metadata_and_checks_event_fields(
     tmp_path: Path,
 ) -> None:
-    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": "audit-token-sentinel"})
     logger = SecurityEventLogger(
         tmp_path / "logs",
-        redact=snapshot.redact_secrets,
     )
     logger.emit(
         "service_stopped",
@@ -150,21 +147,18 @@ def test_event_logger_redacts_stored_secrets_and_keeps_debug_metadata(
         )
 
     raw = logger.path.read_text(encoding="utf-8")
-    assert "audit-token-sentinel" not in raw
-    assert "[REDACTED]" in raw
+    assert "audit-token-sentinel" in raw
     assert r"C:\\Users\\private\\runtime\\trace.txt" in raw
     assert "unregistered-secret-sentinel" not in raw
     assert logger.directory_permission.enforced is True
     assert logger.file_permission.enforced is True
 
 
-def test_public_event_projection_preserves_timestamp_that_contains_a_short_secret(
+def test_public_event_projection_preserves_identity_timestamp_and_metadata(
     tmp_path: Path,
 ) -> None:
-    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": "111"})
     logger = SecurityEventLogger(
         tmp_path / "logs",
-        redact=snapshot.redact_secrets,
     )
     timestamp = "2026-09-09T16:48:53.111+00:00"
     logger.path.write_text(
@@ -189,9 +183,9 @@ def test_public_event_projection_preserves_timestamp_that_contains_a_short_secre
             "event": "service_stopped",
             "category": "lifecycle",
             "level": "info",
-            "request_id": "request-[REDACTED]",
-            "actor": "actor-[REDACTED]",
-            "metadata": {"reason": "test credential [REDACTED]"},
+            "request_id": "request-111",
+            "actor": "actor-111",
+            "metadata": {"reason": "test credential 111"},
         }
     ]
     feed = EventFeedService(logger, None, None)  # type: ignore[arg-type]
@@ -265,10 +259,8 @@ def test_event_persistence_fallback_log_keeps_the_failure_reason(
 ) -> None:
     stored_secret = "stored-event-secret"
     private_detail = str(tmp_path / "private" / "security-events.jsonl")
-    snapshot = EnvironmentSnapshot.capture({"TEST_KEY": stored_secret})
     logger = SecurityEventLogger(
         tmp_path / "logs",
-        redact=snapshot.redact_secrets,
     )
 
     def fail_rollover(*_args, **_kwargs):
@@ -285,8 +277,7 @@ def test_event_persistence_fallback_log_keeps_the_failure_reason(
     assert "security_event_record_failed" in caplog.text
     assert private_detail in caplog.text
     assert "OSError" in caplog.text
-    assert stored_secret not in caplog.text
-    assert "[REDACTED]" in caplog.text
+    assert stored_secret in caplog.text
 
 
 def test_event_log_enforces_one_file_without_backups(tmp_path: Path) -> None:

@@ -648,6 +648,7 @@ export const en: MessageSchema = {
     summarization: {
       label: 'Context summarization',
     },
+    pii: { label: 'PIIMiddleware' },
     'workflow-event-output': {
       label: 'Workflow event output',
     },
@@ -692,6 +693,12 @@ export const en: MessageSchema = {
     submit: 'Continue',
   },
   fields: {
+    pii_type: 'PII type',
+    pii_strategy: 'PII strategy',
+    detector: 'Detector (Python regex)',
+    apply_to_input: 'Apply to input',
+    apply_to_output: 'Apply to output',
+    apply_to_tool_results: 'Apply to tool results',
     unknown: 'Configuration item',
     id: 'UUID',
     agent_name: 'Agent name',
@@ -798,6 +805,14 @@ export const en: MessageSchema = {
     },
   },
   editors: {
+    pii: {
+      addRule: 'Add rule',
+      rule: 'Rule {number}',
+      moveUp: 'Move up',
+      moveDown: 'Move down',
+      customDetector: 'Use a custom detector regex',
+      strategies: { block: 'Block', redact: 'Redact', mask: 'Mask', hash: 'Hash' },
+    },
     common: {
       add: 'Add',
       disabled: 'Disabled',
