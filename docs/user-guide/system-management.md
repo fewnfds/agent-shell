@@ -52,6 +52,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 可见目录包括普通文件 `data/files/`、Skill 模板 `data/skills-template/`、Python 模板 `data/templates/`，以及每个 Configuration Repository 中的 Component、Agent、Workflow、Python private package 与 Skill package。Agent 响应中的受支持 Base64 图片、音频、视频和文件会保存到 `data/files/generated/<YYYY-MM>/<request-id>/`；客户端收到包含具体文件路径的文字，文件可在这里下载、改名或删除，不随服务重启自动清理。`components/`、`agents/`、`workflows/` 可以查看和下载，内容修改仍通过对应配置页面完成。两类 package 支持文件操作。Python package 的结构和 factory contract 会在组件检查或运行装配时校验；Skill 独立包的问题只在 Skill 组件页载入或显式刷新时显示 warning，不阻塞保存、Repository 切换或 Bundle 操作。
 
 - 路径和面包屑直接显示 `data/...` 的真实目录名；
+- 上传默认 `overwrite=false`，最终提交时目标已存在就返回 `409 file_already_exists` 并保留目标内容；显式 `overwrite=true` 才替换已有文件；
 - 在线文本编辑只接受UTF-8普通文件，不设置项目级字节上限；
 - 文件打开时记录内容 revision。磁盘内容发生变化后，保存会保留页面草稿并提供重新载入、确认覆盖或继续编辑；
 - 编辑期间不锁定磁盘文件，外部编辑器和文件管理页面都可以修改同一文件；

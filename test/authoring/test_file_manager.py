@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 import os
 from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+
+from agent_shell.file_manager import FileManagerError, FileManagerService
 
 from .app_support import make_client
 
@@ -216,6 +219,62 @@ def test_file_upload_streams_nested_paths_and_requires_explicit_overwrite(
     assert conflict.json()["detail"]["code"] == "file_already_exists"
     assert replaced.status_code == 200
     assert downloaded.content == b"second"
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_file_upload_respects_overwrite_when_another_upload_finishes_first(
+    tmp_path: Path, overwrite: bool
+) -> None:
+    data_root = tmp_path / "data"
+    target = data_root / "files" / "shared.txt"
+    target.parent.mkdir(parents=True)
+    files = FileManagerService(data_root, tmp_path / "temporary")
+
+    async def upload_in_order() -> None:
+        paused = asyncio.Event()
+        resume = asyncio.Event()
+
+        async def slow_chunks():
+            yield b"slow-"
+            paused.set()
+            await resume.wait()
+            yield b"upload"
+
+        async def fast_chunks():
+            yield b"fast-"
+            yield b"upload"
+
+        slow_upload = asyncio.create_task(
+            files.upload("data/files/shared.txt", slow_chunks(), overwrite=overwrite)
+        )
+        await paused.wait()
+        try:
+            assert not target.exists()
+            completed = await files.upload(
+                "data/files/shared.txt", fast_chunks(), overwrite=False
+            )
+            assert completed == {
+                "path": "data/files/shared.txt",
+                "kind": "file",
+                "size": len(b"fast-upload"),
+            }
+            assert target.read_bytes() == b"fast-upload"
+        finally:
+            resume.set()
+
+        if overwrite:
+            result = await slow_upload
+            assert result["size"] == len(b"slow-upload")
+        else:
+            with pytest.raises(FileManagerError) as conflict:
+                await slow_upload
+            assert conflict.value.status_code == 409
+            assert conflict.value.code == "file_already_exists"
+
+        assert target.read_bytes() == (b"slow-upload" if overwrite else b"fast-upload")
+        assert list(target.parent.iterdir()) == [target]
+
+    asyncio.run(upload_in_order())
 
 
 def test_archive_preview_supports_mixed_selection_and_cleans_temporary_zip(

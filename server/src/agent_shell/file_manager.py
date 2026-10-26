@@ -64,11 +64,19 @@ def _append_upload_chunk(path: Path, chunk: bytes) -> None:
         output.write(chunk)
 
 
-def _commit_upload_file(temporary: Path, target: Path) -> None:
+def _commit_upload_file(temporary: Path, target: Path, *, overwrite: bool) -> None:
     with temporary.open("ab") as output:
         output.flush()
         os.fsync(output.fileno())
-    os.replace(temporary, target)
+    if overwrite:
+        os.replace(temporary, target)
+    elif os.name == "nt":
+        # Windows rename fails if the destination already exists.
+        os.rename(temporary, target)
+    else:
+        # POSIX rename replaces existing files; link publishes without replacing.
+        os.link(temporary, target)
+        temporary.unlink()
 
 
 _DATA_CHILDREN = (
@@ -528,7 +536,17 @@ class FileManagerService:
             async for chunk in chunks:
                 await _blocking_file_call(_append_upload_chunk, temporary, chunk)
                 size += len(chunk)
-            await _blocking_file_call(_commit_upload_file, temporary, target)
+            await _blocking_file_call(
+                _commit_upload_file, temporary, target, overwrite=overwrite
+            )
+        except FileExistsError as exc:
+            await _blocking_file_call(temporary.unlink, missing_ok=True)
+            raise FileManagerError(
+                409,
+                "file_already_exists",
+                "errors.fileAlreadyExists",
+                "A file or directory already exists at the destination.",
+            ) from exc
         except OSError as exc:
             await _blocking_file_call(temporary.unlink, missing_ok=True)
             raise self._operation_failed() from exc
