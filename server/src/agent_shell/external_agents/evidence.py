@@ -80,7 +80,7 @@ class SessionEvidence:
 
     def _open(self) -> None:
         self._session.create()
-        self._events = self._session.event_log.open("a", encoding="utf-8")
+        self._events = self._session.event_log.open(mode="a", encoding="utf-8")
 
     def _close(self) -> None:
         if self._events is not None:
@@ -138,7 +138,7 @@ class SessionEvidence:
 
         def open_log() -> None:
             nonlocal log
-            log = self._session.stderr_log.open("wb")
+            log = self._session.stderr_log.open(mode="wb")
 
         def append(chunk: bytes) -> None:
             assert log is not None
