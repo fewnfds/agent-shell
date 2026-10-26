@@ -647,7 +647,9 @@ class LifecycleRunCoordinator:
                     )
             with suppress(Exception):
                 await self.close_official_session(binding.thread_id)
-            if isinstance(exc, Exception):
+            if isinstance(exc, Exception) and not (
+                isinstance(exc, AgentRuntimeError) and exc.code == "completion_cancelled"
+            ):
                 with suppress(Exception):
                     await self._record_entry_start_failure(
                         exc,
@@ -740,7 +742,9 @@ class LifecycleRunCoordinator:
             if client is not None and binding.thread_id not in self._sessions:
                 with suppress(Exception):
                     await client.aclose()
-            if isinstance(exc, Exception):
+            if isinstance(exc, Exception) and not (
+                isinstance(exc, AgentRuntimeError) and exc.code == "completion_cancelled"
+            ):
                 with suppress(Exception):
                     await self._record_entry_start_failure(
                         exc,
@@ -1288,21 +1292,32 @@ class LifecycleRunCoordinator:
     async def disconnect(self) -> None:
         """Apply each active Run's frozen policy to one user disconnect event."""
 
-        if not self._lifecycle_id:
+        if self._disconnected:
             return
         self._disconnected = True
-        async with self._owner.new_agent_server_client() as client:
-            for relation in tuple(self._relations.values()):
-                if relation.on_disconnect != "cancel":
-                    continue
-                with suppress(Exception):
-                    run = await client.runs.get(relation.thread_id, relation.run_id)
-                    if official_status(run) in ACTIVE_RUN_STATUSES:
-                        await client.runs.cancel(
-                            relation.thread_id,
-                            relation.run_id,
-                            wait=False,
-                        )
+        for relation in tuple(self._relations.values()):
+            await self._apply_disconnect_policy(relation)
+
+    async def _apply_disconnect_policy(self, relation: GraphRunCallRelation) -> None:
+        if relation.on_disconnect != "cancel":
+            return
+        try:
+            await self.cancel_official_run(relation.thread_id, relation.run_id)
+        except Exception as exc:
+            with suppress(Exception):
+                await self._owner.runtime_diagnostics.aobservation_error(
+                    exc,
+                    code="run_disconnect_cancel_failed",
+                    component="graph_runtime",
+                    context=RuntimeDiagnosticContext(
+                        lifecycle_id=relation.lifecycle_id,
+                        thread_id=relation.thread_id,
+                        run_id=relation.run_id,
+                        subject_kind=relation.graph_kind,
+                        subject_id=relation.resource_id,
+                        subject_name=relation.resource_name,
+                    ),
+                )
 
     def terminate_response(self) -> None:
         """Stop the in-flight request-entry response of this one Lifecycle."""
@@ -1332,8 +1347,8 @@ class LifecycleRunCoordinator:
                 name=f"lifecycle-run-retention:{relation.run_id}",
             )
         await self._owner.register_run_relation(self, relation)
-        if self._disconnected and relation.on_disconnect == "cancel":
-            await self.cancel_official_run(relation.thread_id, relation.run_id)
+        if self._disconnected:
+            await self._apply_disconnect_policy(relation)
 
     async def _watch_detached_run(self, relation: GraphRunCallRelation) -> None:
         try:
@@ -1360,6 +1375,22 @@ class LifecycleRunCoordinator:
             run = await client.runs.get(thread_id, run_id)
             if official_status(run) in ACTIVE_RUN_STATUSES:
                 await client.runs.cancel(thread_id, run_id, wait=wait)
+                for binding in (*self._bindings.values(), *self._agent_bindings.values()):
+                    future = binding.execution_ready
+                    if (
+                        binding.thread_id == thread_id
+                        and binding.run_id == run_id
+                        and future is not None
+                        and not future.done()
+                    ):
+                        future.set_exception(
+                            AgentRuntimeError(
+                                "completion_cancelled",
+                                "The Run was cancelled before its Graph was ready.",
+                                status_code=409,
+                            )
+                        )
+                        future.exception()
 
     async def official_output(self, thread_id: str) -> object:
         session = self._sessions.get(thread_id)

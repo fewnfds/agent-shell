@@ -5,6 +5,8 @@ import json
 from types import SimpleNamespace
 from typing import ClassVar
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from agent_shell.api import api_server
 from agent_shell.runtime.errors import AgentRuntimeError
 from agent_shell.runtime.request_snapshot import (
@@ -14,6 +16,227 @@ from agent_shell.runtime.request_snapshot import (
 from agent_shell.storage.file_config import FileConfigRepository
 
 from .support import *
+
+
+class _CompletionConnection:
+    """Drive the real API route with explicit ASGI transport messages."""
+
+    def __init__(self, payload: dict, *, spec_version: str = "2.3") -> None:
+        self.incoming: asyncio.Queue[dict] = asyncio.Queue()
+        body = json.dumps(payload).encode()
+        self.incoming.put_nowait(
+            {"type": "http.request", "body": body[:5], "more_body": True}
+        )
+        self.incoming.put_nowait(
+            {"type": "http.request", "body": body[5:], "more_body": False}
+        )
+        self.sent: list[dict] = []
+        self.chunk_sent = asyncio.Event()
+        self.fail_send = False
+        self.scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": spec_version},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/compat/openai/v1/chat/completions",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"testserver"),
+                (b"content-type", b"application/json"),
+                (b"authorization", f"Bearer {API_KEY}".encode()),
+            ],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+        }
+
+    async def send(self, message: dict) -> None:
+        if self.fail_send:
+            raise OSError("the response transport is closed")
+        self.sent.append(message)
+        if message["type"] == "http.response.body":
+            self.chunk_sent.set()
+
+    async def run(self, app) -> None:
+        await app(self.scope, self.incoming.get, self.send)
+
+
+@pytest.mark.parametrize(
+    ("stream", "phase"),
+    [(False, "result"), (True, "stream"), (True, "start"), (False, "capture")],
+)
+def test_client_disconnect_notifies_once_across_request_phases_and_keeps_execution_owned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stream: bool, phase: str
+) -> None:
+    async def dispatch(request, call_next):
+        return await call_next(request)
+
+    test_client = make_client(tmp_path, monkeypatch)
+    test_client.app.add_middleware(BaseHTTPMiddleware, dispatch=dispatch)
+    with test_client as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def scenario() -> None:
+            entered = asyncio.Event()
+            startup_release = asyncio.Event()
+            execution_release = asyncio.Event()
+            consumed = asyncio.Event()
+            notified = asyncio.Event()
+            policy_release = asyncio.Event()
+            notifications: list[str] = []
+            original_capture = RequestSnapshotRuntime.capture
+
+            class Execution:
+                identity = None
+                usage: dict[str, int] = {}
+                finish_reason = "stop"
+
+                async def run(self):
+                    if phase == "result":
+                        entered.set()
+                    await execution_release.wait()
+                    consumed.set()
+                    return "background result", {}
+
+                async def stream_text(self):
+                    if phase == "stream":
+                        entered.set()
+                    await execution_release.wait()
+                    yield "background output"
+                    consumed.set()
+
+            async def capture(runtime):
+                if phase == "capture":
+                    entered.set()
+                    await startup_release.wait()
+                return await original_capture(runtime)
+
+            async def start(coordinator, _agent, payload, **_kwargs):
+                assert payload["messages"] == [{"role": "user", "content": "hello"}]
+                if phase == "start":
+                    entered.set()
+                    await startup_release.wait()
+                return Execution()
+
+            async def disconnect(_coordinator):
+                notifications.append("disconnected")
+                notified.set()
+                await policy_release.wait()
+
+            monkeypatch.setattr(RequestSnapshotRuntime, "capture", capture)
+            monkeypatch.setattr(LifecycleRunCoordinator, "start_agent", start)
+            monkeypatch.setattr(LifecycleRunCoordinator, "disconnect", disconnect)
+            connection = _CompletionConnection(
+                {
+                    "model": main_agent["name"],
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "stream": stream,
+                }
+            )
+            request = asyncio.create_task(connection.run(client.app))
+            await asyncio.wait_for(entered.wait(), timeout=2)
+            if phase == "stream":
+                await asyncio.wait_for(connection.chunk_sent.wait(), timeout=2)
+            connection.incoming.put_nowait({"type": "http.disconnect"})
+            # The HTTP request returns even while policy cleanup is blocked.
+            await asyncio.wait_for(request, timeout=2)
+            sent_before_resume = len(connection.sent)
+            startup_release.set()
+            await asyncio.wait_for(notified.wait(), timeout=2)
+            assert not consumed.is_set()
+            execution_release.set()
+            await asyncio.wait_for(consumed.wait(), timeout=2)
+            policy_release.set()
+            assert notifications == ["disconnected"]
+            assert len(connection.sent) == sent_before_resume
+
+        assert client.portal is not None
+        client.portal.call(scenario)
+
+
+@pytest.mark.parametrize("ending", ["normal", "management", "task_cancel", "closed_send"])
+def test_completion_transport_distinguishes_disconnect_from_other_endings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    async def dispatch(request, call_next):
+        return await call_next(request)
+
+    test_client = make_client(tmp_path, monkeypatch)
+    if ending != "closed_send":
+        test_client.app.add_middleware(BaseHTTPMiddleware, dispatch=dispatch)
+    with test_client as client:
+        main_agent = create_main_agent(client, is_model_entry=True)
+
+        async def scenario() -> None:
+            started = asyncio.Event()
+            release = asyncio.Event()
+            consumed = asyncio.Event()
+            notified = asyncio.Event()
+            coordinators: list[LifecycleRunCoordinator] = []
+            notifications: list[str] = []
+
+            class Execution:
+                identity = None
+                usage: dict[str, int] = {}
+                finish_reason = "stop"
+
+                async def stream_text(self):
+                    started.set()
+                    await release.wait()
+                    yield "answer"
+                    consumed.set()
+
+            async def start(coordinator, *_args, **_kwargs):
+                coordinator._begin_lifecycle("lifecycle-transport")
+                coordinators.append(coordinator)
+                return Execution()
+
+            async def disconnect(_coordinator):
+                notifications.append("disconnected")
+                notified.set()
+
+            monkeypatch.setattr(LifecycleRunCoordinator, "start_agent", start)
+            monkeypatch.setattr(LifecycleRunCoordinator, "disconnect", disconnect)
+            connection = _CompletionConnection(
+                {
+                    "model": main_agent["name"],
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "stream": True,
+                },
+                spec_version="2.4" if ending == "closed_send" else "2.3",
+            )
+            request = asyncio.create_task(connection.run(client.app))
+            await asyncio.wait_for(started.wait(), timeout=2)
+            await asyncio.wait_for(connection.chunk_sent.wait(), timeout=2)
+            if ending == "management":
+                coordinators[0].terminate_response()
+            elif ending == "task_cancel":
+                request.cancel()
+            elif ending == "closed_send":
+                connection.fail_send = True
+            if ending in {"normal", "closed_send"}:
+                release.set()
+            await asyncio.wait_for(
+                asyncio.gather(request, return_exceptions=ending == "task_cancel"),
+                timeout=2,
+            )
+            # Some servers expose http.disconnect after a normal final body.
+            connection.incoming.put_nowait({"type": "http.disconnect"})
+            release.set()
+            await asyncio.wait_for(consumed.wait(), timeout=2)
+            if ending == "closed_send":
+                await asyncio.wait_for(notified.wait(), timeout=2)
+                assert notifications == ["disconnected"]
+            else:
+                assert notifications == []
+            output = b"".join(item.get("body", b"") for item in connection.sent)
+            if ending == "normal":
+                assert b"answer" in output and b"[DONE]" in output
+            elif ending == "management":
+                assert b"completion_cancelled" in output and b"[DONE]" in output
+
+        assert client.portal is not None
+        client.portal.call(scenario)
 
 
 def test_published_main_agent_runs_without_filesystem_capabilities(
@@ -207,129 +430,6 @@ def test_execution_failure_returns_decoded_provider_reason(
     assert "upstream returned 503" not in response.text
 
 
-def test_completion_stream_notifies_lifecycle_and_keeps_execution_owned(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Execution:
-        identity = None
-        context = None
-        finish_reason = "stop"
-        usage: dict[str, int] = {}
-
-        def __init__(self) -> None:
-            self.started = asyncio.Event()
-            self.release = asyncio.Event()
-            self.cancelled = asyncio.Event()
-            self.completed = asyncio.Event()
-
-        async def stream_text(self):
-            self.started.set()
-            try:
-                await self.release.wait()
-            except asyncio.CancelledError:
-                self.cancelled.set()
-                raise
-            self.completed.set()
-            yield "unobserved output"
-
-    with make_client(tmp_path, monkeypatch) as client:
-        portal = client.portal
-        assert portal is not None
-
-        async def scenario() -> tuple[bool, bool]:
-            execution = Execution()
-            lifecycle_cancelled = asyncio.Event()
-
-            async def disconnect_lifecycle() -> None:
-                lifecycle_cancelled.set()
-
-            stream = api_server._completion_stream(
-                execution,
-                "Workflow",
-                detached_tasks=client.app.state.detached_tasks,
-                disconnect_lifecycle=disconnect_lifecycle,
-                response_terminated=asyncio.Event(),
-            )
-            first = await anext(stream)
-            assert '"role":"assistant"' in first
-            pending = asyncio.create_task(anext(stream))
-            await execution.started.wait()
-            pending.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await pending
-            await asyncio.wait_for(lifecycle_cancelled.wait(), timeout=1)
-            assert execution.cancelled.is_set() is False
-            execution.release.set()
-            await asyncio.wait_for(execution.completed.wait(), timeout=1)
-            return execution.cancelled.is_set(), execution.completed.is_set()
-
-        cancelled, completed = portal.call(scenario)
-
-    assert cancelled is False
-    assert completed is True
-
-
-def test_completion_stream_does_not_wait_for_disconnect_cleanup(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Execution:
-        identity = None
-        context = None
-        finish_reason = "stop"
-        usage: dict[str, int] = {}
-
-        def __init__(self) -> None:
-            self.started = asyncio.Event()
-            self.cancel_started = asyncio.Event()
-            self.cancel_release = asyncio.Event()
-            self.cancel_recorded = asyncio.Event()
-            self.stream_release = asyncio.Event()
-
-        async def disconnect_lifecycle(self) -> None:
-            self.cancel_started.set()
-            await self.cancel_release.wait()
-            self.cancel_recorded.set()
-
-        async def stream_text(self):
-            self.started.set()
-            await self.stream_release.wait()
-            yield "unobserved"
-
-    with make_client(tmp_path, monkeypatch) as client:
-        portal = client.portal
-        assert portal is not None
-
-        async def scenario() -> tuple[bool, bool]:
-            execution = Execution()
-            stream = api_server._completion_stream(
-                execution,
-                "Workflow",
-                detached_tasks=client.app.state.detached_tasks,
-                disconnect_lifecycle=execution.disconnect_lifecycle,
-                response_terminated=asyncio.Event(),
-            )
-            await anext(stream)
-            pending = asyncio.create_task(anext(stream))
-            await execution.started.wait()
-            pending.cancel()
-            await execution.cancel_started.wait()
-            for _ in range(3):
-                await asyncio.sleep(0)
-            response_closed = pending.done()
-            execution.cancel_release.set()
-            execution.stream_release.set()
-            await asyncio.wait_for(execution.cancel_recorded.wait(), timeout=1)
-            await asyncio.gather(pending, return_exceptions=True)
-            return response_closed, execution.cancel_recorded.is_set()
-
-        response_closed, cancellation_recorded = portal.call(scenario)
-
-    assert response_closed is True
-    assert cancellation_recorded is True
-
-
 def test_completion_stream_reports_cancelled_lifecycle_without_disconnect(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -353,19 +453,13 @@ def test_completion_stream_reports_cancelled_lifecycle_without_disconnect(
         portal = client.portal
         assert portal is not None
 
-        async def scenario() -> tuple[str, str, bool]:
+        async def scenario() -> tuple[str, str]:
             execution = Execution()
             terminated = asyncio.Event()
-            disconnected = asyncio.Event()
-
-            async def disconnect_lifecycle() -> None:
-                disconnected.set()
-
             stream = api_server._completion_stream(
                 execution,
                 "Workflow",
                 detached_tasks=client.app.state.detached_tasks,
-                disconnect_lifecycle=disconnect_lifecycle,
                 response_terminated=terminated,
             )
             await anext(stream)
@@ -376,14 +470,13 @@ def test_completion_stream_reports_cancelled_lifecycle_without_disconnect(
             done = await anext(stream)
             execution.release.set()
             await asyncio.sleep(0)
-            return error_chunk, done, disconnected.is_set()
+            return error_chunk, done
 
-        error_chunk, done, was_disconnected = portal.call(scenario)
+        error_chunk, done = portal.call(scenario)
 
     assert '"finish_reason":"error"' in error_chunk
     assert '"code":"completion_cancelled"' in error_chunk
     assert done == "data: [DONE]\n\n"
-    assert was_disconnected is False
 
 
 def test_completion_result_reports_cancelled_lifecycle(
@@ -411,14 +504,10 @@ def test_completion_result_reports_cancelled_lifecycle(
             execution = Execution()
             terminated = asyncio.Event()
 
-            async def disconnect_lifecycle() -> None:
-                raise AssertionError("a Lifecycle cancel is not a user disconnect")
-
             pending = asyncio.ensure_future(
                 api_server._completion_result(
                     execution,
                     detached_tasks=client.app.state.detached_tasks,
-                    disconnect_lifecycle=disconnect_lifecycle,
                     response_terminated=terminated,
                 )
             )

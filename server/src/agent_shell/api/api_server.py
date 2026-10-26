@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from datetime import datetime, timezone
 from threading import Lock
@@ -14,6 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from agent_shell.api.completion_request import CompletionRoute
 from agent_shell.api.errors import compat_failure_message, management_error
 from agent_shell.http_surface import (
     API_KEY_BEARER_SCHEME,
@@ -328,7 +329,6 @@ async def _completion_stream(
     model: str,
     *,
     detached_tasks: DetachedTaskManager,
-    disconnect_lifecycle: Callable[[], Awaitable[None]],
     response_terminated: asyncio.Event,
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl_{uuid4().hex}"
@@ -374,7 +374,7 @@ async def _completion_stream(
         if execution.identity is not None
         else "unbound"
     )
-    producer = detached_tasks.create(
+    detached_tasks.create(
         consume_execution(),
         name=f"request-workflow:{run_id}",
     )
@@ -505,20 +505,12 @@ async def _completion_stream(
                 queue.get_nowait()
         except asyncio.QueueEmpty:
             pass
-        # A Lifecycle cancel stops its own Runs; it is not a user disconnect.
-        disconnected = not response_terminated.is_set() and not producer.done()
-        if disconnected:
-            detached_tasks.create(
-                disconnect_lifecycle(),
-                name=f"disconnect-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
-            )
 
 
 async def _completion_result(
     execution: RunExecution,
     *,
     detached_tasks: DetachedTaskManager,
-    disconnect_lifecycle: Callable[[], Awaitable[None]],
     response_terminated: asyncio.Event,
 ) -> tuple[str, dict[str, int]]:
     queue: asyncio.Queue[tuple[Literal["result", "error"], object]] = asyncio.Queue(
@@ -540,7 +532,7 @@ async def _completion_result(
                 await queue.put(("result", result))
 
     run_id = execution.identity.run_id if execution.identity else "unbound"
-    producer = detached_tasks.create(
+    detached_tasks.create(
         consume_execution(),
         name=f"request-workflow:{run_id}",
     )
@@ -560,14 +552,8 @@ async def _completion_result(
         if not isinstance(value, tuple) or len(value) != 2:
             raise RuntimeError("the Workflow execution returned an invalid result")
         return value
-    except asyncio.CancelledError:
-        detached.set()
-        detached_tasks.create(
-            disconnect_lifecycle(),
-            name=f"disconnect-lifecycle:{execution.identity.lifecycle_id if execution.identity else 'unbound'}",
-        )
-        raise
     finally:
+        detached.set()
         termination.cancel()
 
 
@@ -584,6 +570,7 @@ def build_api_server_router(
     router = APIRouter()
     management_router = management_api_router()
     compat_router = openai_compat_api_router()
+    completion_router = APIRouter(route_class=CompletionRoute)
 
     def public_settings(request: Request) -> dict[str, object]:
         current = store.settings()
@@ -700,17 +687,17 @@ def build_api_server_router(
             content={"object": "list", "data": [*workflow_models, *agent_models]}
         )
 
-    @compat_router.post(
+    @completion_router.post(
         "/chat/completions",
         response_model=None,
         openapi_extra={"security": [{API_KEY_BEARER_SCHEME: []}]},
     )
     async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
         request_id = str(getattr(request.state, "request_id", "") or "")
+        body = await request.body()
         server_settings = await asyncio.to_thread(store.settings)
         if not server_settings["enabled"]:
             return _openai_error(503, "api_server_stopped", "The API server is stopped.")
-        body = await request.body()
         try:
             raw_json = body.decode("utf-8")
             payload = json.loads(raw_json)
@@ -798,6 +785,9 @@ def build_api_server_router(
             lifecycle_coordinator = runtime.create_lifecycle_coordinator(
                 request_snapshot
             )
+            request.state.completion_request.bind_disconnect(
+                lifecycle_coordinator.disconnect
+            )
             if agent_entry:
                 execution = await lifecycle_coordinator.start_agent(
                     main_agent,
@@ -852,7 +842,6 @@ def build_api_server_router(
                     execution,
                     model,
                     detached_tasks=detached_tasks,
-                    disconnect_lifecycle=lifecycle_coordinator.disconnect,
                     response_terminated=lifecycle_coordinator.response_terminated,
                 ),
                 media_type="text/event-stream",
@@ -865,7 +854,6 @@ def build_api_server_router(
             content, _usage = await _completion_result(
                 execution,
                 detached_tasks=detached_tasks,
-                disconnect_lifecycle=lifecycle_coordinator.disconnect,
                 response_terminated=lifecycle_coordinator.response_terminated,
             )
         except AgentRuntimeError as exc:
@@ -900,6 +888,8 @@ def build_api_server_router(
                 execution=execution,
             )
         )
+
+    compat_router.include_router(completion_router)
 
     @compat_router.api_route(
         "/{unmatched_path:path}",

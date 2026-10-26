@@ -36,6 +36,10 @@ Main Agent 与 Workflow 显式配置`on_disconnect`。实例级`recursion_limit`
 
 每个 Main Agent 与 Workflow 独立保存`on_disconnect=cancel|continue`，界面名称为【用户断开】，默认`cancel`。创建每个 Run 时会把目标资源的值冻结进 Lifecycle relation；用户在 Run 完成前断开时，只取消选择`cancel`的 active Run，选择`continue`的 Run 继续执行。断开之后才登记的 Run 也立即执行自己的冻结策略。其他 Run 的成功、失败或主动取消不会触发隐式连锁取消，调用关系不传播策略。
 
+客户端的停止操作通过终止当前 HTTP 请求生效。API 从请求正文读完起持续接收 HTTP 框架的断连通知，覆盖配置捕获、Run 创建与排队、非流式等待和流式输出期间；暂时没有输出也能接收通知。断连事实由 API 统一记录一次，运行层按上述每个 Run 的策略处理。`continue` Run 的启动、输出收集和资源释放由服务端后台任务持有。正常响应完成和运行监控中的【取消 Lifecycle】分别沿自己的结束流程处理。
+
+客户端只停止界面显示、仍保持请求时，服务端能观察到的仍是有效连接。请求取消要求客户端实际 abort 这次 HTTP 请求；HTTP/2 可以只终止当前请求流，保留复用连接。
+
 【系统 / 系统配置 / 响应流调度】保存全局 `idle_timeout_seconds`、`max_batch_kb` 和 `send_interval_seconds`。每个新请求冻结当时的设置并为 Lifecycle 创建一个 scheduler；保存新值不要求重启，也不改变已运行的 Lifecycle。该设置只调度 Agent/Workflow Event Output 已批准的 presentation frame，不拥有事件可见性或修饰规则。
 
 `stream=false` 返回标准 `chat.completion` JSON。`stream=true` 返回 `chat.completion.chunk` SSE，并以 `data: [DONE]` 结束。一次 OpenAI response 创建一个 Lifecycle Response Scheduler，各 participating Run 的 Event Output producer 将已投影 frame 提交给它；任一时刻只有一个 `(thread_id, run_id)` 可以向 append-only assistant 字符串写入。两种模式消费同一 frame sequence，因此流式 content chunk 拼接结果与非流式 message content 一致。
