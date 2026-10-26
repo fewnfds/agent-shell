@@ -86,6 +86,7 @@ def test_direct_subagents_become_explicit_dictionary_specs_with_shared_workspace
             foundation_middleware=(skill, filesystem),
             todo_middleware=todo,
             summarization_middleware=summarization,
+            pii_middleware=(),
             model_call_limit_middleware=model_call_limit,
             tool_call_limit_middleware=tool_call_limit,
             package_middleware=(package,),

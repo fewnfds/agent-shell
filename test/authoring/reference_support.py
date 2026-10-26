@@ -151,6 +151,7 @@ def block_payload(capability_type: str, name: str) -> dict:
             "exit_behavior": "continue",
         },
         "summarization": {"name": name},
+        "pii": {"name": name},
     }
     return payloads[capability_type]
 

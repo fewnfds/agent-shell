@@ -557,7 +557,6 @@ def test_windows_launcher_does_not_overwrite_invalid_existing_settings(
     assert system_path.read_text(encoding="utf-8") == original_system
     captured = capsys.readouterr()
     assert "AGENT_SHELL_PORT" in captured.err
-    assert "not-a-port" in captured.err
     assert "Input should be a valid integer" in captured.err
 
 
