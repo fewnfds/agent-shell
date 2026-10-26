@@ -37,9 +37,13 @@ from agent_shell.external_agents.errors import (
     conversation_invalid,
     system_prompt_changed,
 )
+from agent_shell.external_agents.evidence import (
+    SessionEvidence,
+    complete_before_cancel,
+    recorded_definition_revision,
+)
 from agent_shell.external_agents.layout import (
     AntigravityLifecycleLayout,
-    AntigravitySessionLayout,
     antigravity_lifecycle_layout,
     new_session_id,
 )
@@ -47,7 +51,6 @@ from agent_shell.external_agents.materialize import (
     MaterializedExternalAgent,
     materialize_external_agent,
 )
-from agent_shell.storage.atomic_files import write_text_atomic
 
 
 TIMEOUT_PATTERN = re.compile(r"^([1-9][0-9]*)(s|m|h)$")
@@ -323,53 +326,6 @@ def classify_run(
     return "success"
 
 
-class _EventRecorder:
-    def __init__(
-        self,
-        session: AntigravitySessionLayout,
-        on_event: Callable[[ExternalAgentRunEvent], None] | None,
-    ) -> None:
-        self._session = session
-        self._on_event = on_event
-        self._stream = None
-
-    def __enter__(self) -> "_EventRecorder":
-        self._stream = self._session.event_log.open("a", encoding="utf-8")
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        if self._stream is not None:
-            self._stream.close()
-            self._stream = None
-
-    def emit(self, kind: str, payload: Mapping[str, object]) -> None:
-        event = ExternalAgentRunEvent(
-            kind=kind,
-            payload=dict(payload),
-            at=datetime.now(UTC).isoformat(),
-        )
-        record = json.dumps(event.as_record(), ensure_ascii=False, default=str)
-        if self._stream is not None:
-            self._stream.write(record + "\n")
-            self._stream.flush()
-        if self._on_event is not None:
-            self._on_event(event)
-
-
-async def _collect_stderr(stream: asyncio.StreamReader, path: Path) -> str:
-    chunks: list[bytes] = []
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as log:
-        while True:
-            chunk = await stream.read(READ_CHUNK_BYTES)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            log.write(chunk)
-            log.flush()
-    return b"".join(chunks).decode("utf-8", errors="replace")
-
-
 async def _terminate_process(process: asyncio.subprocess.Process) -> None:
     """Stop the CLI and everything it spawned, then reap the handle."""
 
@@ -397,32 +353,6 @@ async def _terminate_process(process: asyncio.subprocess.Process) -> None:
     except TimeoutError:
         process.kill()
         await process.wait()
-
-
-def recorded_definition_revision(
-    layout: AntigravityLifecycleLayout,
-    conversation_id: str,
-) -> str | None:
-    """Return the definition revision that created a recorded conversation."""
-
-    if not layout.sessions.is_dir():
-        return None
-    for directory in sorted(layout.sessions.iterdir()):
-        meta_file = directory / "meta.json"
-        if not meta_file.is_file():
-            continue
-        try:
-            document = json.loads(meta_file.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(document, Mapping):
-            continue
-        if document.get("conversation_id") != conversation_id:
-            continue
-        revision = document.get("definition_revision")
-        if isinstance(revision, str) and revision:
-            return revision
-    return None
 
 
 class ConversationRegistry:
@@ -517,13 +447,15 @@ class AntigravityRunner:
             layout.home, selection, owner=profile.name
         )
         try:
-            materialized = await asyncio.to_thread(
-                materialize_external_agent,
-                profile,
-                layout,
-                host_environment=self._host_environment,
+            materialized = await complete_before_cancel(
+                asyncio.to_thread(
+                    materialize_external_agent,
+                    profile,
+                    layout,
+                    host_environment=self._host_environment,
+                )
             )
-            self._guard_recorded_prompt(layout, selection, profile, materialized)
+            await self._guard_recorded_prompt(layout, selection, profile, materialized)
             return await self._execute(
                 profile,
                 layout=layout,
@@ -537,9 +469,9 @@ class AntigravityRunner:
                 on_event=on_event,
             )
         finally:
-            await self._conversations.release(layout.home, claim)
+            await complete_before_cancel(self._conversations.release(layout.home, claim))
 
-    def _guard_recorded_prompt(
+    async def _guard_recorded_prompt(
         self,
         layout: AntigravityLifecycleLayout,
         selection: ConversationSelection,
@@ -548,7 +480,7 @@ class AntigravityRunner:
     ) -> None:
         if selection.explicit_id is None:
             return
-        recorded = recorded_definition_revision(layout, selection.explicit_id)
+        recorded = await recorded_definition_revision(layout, selection.explicit_id)
         if recorded is None or recorded == materialized.definition_revision:
             return
         raise system_prompt_changed(
@@ -574,7 +506,6 @@ class AntigravityRunner:
     ) -> ExternalAgentRunResult:
         session_id = new_session_id()
         session = layout.session(session_id)
-        session.create()
         argv = build_antigravity_argv(
             binary_path=binary_path,
             profile=profile,
@@ -610,37 +541,34 @@ class AntigravityRunner:
             "result_file": str(session.result_file),
         }
         started = time.monotonic()
-        with _EventRecorder(session, on_event) as recorder:
-            write_text_atomic(
-                session.meta_file,
-                json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
-            )
-            recorder.emit(
-                "run_started",
-                {
-                    "session_id": session_id,
-                    "conversation_requested": selection.requested,
-                    "definition_name": materialized.definition_name,
-                    "workspace": str(layout.workspace),
-                    "started_at": started_at,
-                },
-            )
+        async with SessionEvidence(session, on_event) as recorder:
             try:
+                await recorder.save_metadata(meta)
+                await recorder.emit(
+                    "run_started",
+                    {
+                        "session_id": session_id,
+                        "conversation_requested": selection.requested,
+                        "definition_name": materialized.definition_name,
+                        "workspace": str(layout.workspace),
+                        "started_at": started_at,
+                    },
+                )
                 outcome = await self._stream(
                     profile,
                     argv=argv,
                     environment=materialized.environment,
                     layout=layout,
-                    session=session,
                     recorder=recorder,
                     selection=selection,
                 )
             except BaseException:
-                self._record_failure(
-                    session=session,
-                    meta=meta,
-                    recorder=recorder,
-                    message="The Antigravity CLI process was interrupted.",
+                await complete_before_cancel(
+                    self._record_failure(
+                        meta=meta,
+                        recorder=recorder,
+                        message="The Antigravity CLI process was interrupted.",
+                    )
                 )
                 raise
             status = classify_run(
@@ -669,11 +597,8 @@ class AntigravityRunner:
                 stderr_log=str(session.stderr_log),
                 result_file=str(session.result_file),
             )
-            self._finalize(
-                session=session,
-                meta=meta,
-                recorder=recorder,
-                result=result,
+            await complete_before_cancel(
+                self._finalize(meta=meta, recorder=recorder, result=result)
             )
             return result
 
@@ -727,8 +652,7 @@ class AntigravityRunner:
         argv: list[str],
         environment: Mapping[str, str],
         layout: AntigravityLifecycleLayout,
-        session: AntigravitySessionLayout,
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         selection: ConversationSelection,
     ) -> _ProcessOutcome:
         process = await asyncio.create_subprocess_exec(
@@ -742,72 +666,68 @@ class AntigravityRunner:
         )
         assert process.stdout is not None
         assert process.stderr is not None
+        process_exited = asyncio.Event()
         stderr_task = asyncio.create_task(
-            _collect_stderr(process.stderr, session.stderr_log)
+            recorder.collect_stderr(process.stderr, process_exited, READ_CHUNK_BYTES)
         )
         state = _StreamState()
         buffer = b""
         timed_out = False
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+        async def stop() -> None:
+            try:
+                await _terminate_process(process)
+            finally:
+                stderr_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await stderr_task
+
         try:
-            async with asyncio.timeout(watchdog_seconds(profile.print_timeout)):
-                while True:
-                    chunk = await process.stdout.read(READ_CHUNK_BYTES)
-                    if not chunk:
-                        break
-                    if profile.output_format == "text":
-                        text = decoder.decode(chunk)
-                        if not text:
+            try:
+                async with asyncio.timeout(watchdog_seconds(profile.print_timeout)):
+                    while True:
+                        chunk = await process.stdout.read(READ_CHUNK_BYTES)
+                        if not chunk:
+                            break
+                        if profile.output_format == "text":
+                            text = decoder.decode(chunk)
+                            if not text:
+                                continue
+                            state.text_parts.append(text)
+                            await recorder.emit("text_delta", {"text": text})
                             continue
-                        state.text_parts.append(text)
-                        recorder.emit("text_delta", {"text": text})
-                        continue
-                    buffer += chunk
-                    if profile.output_format == "json":
-                        continue
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        self._consume_envelope(
-                            line, state, recorder, selection
-                        )
-                # Process.wait() can remain pending after CLI exit if a
-                # descendant still holds an inherited stderr pipe.
-                while process.returncode is None:
-                    await asyncio.sleep(0.1)
-                exit_code = await process.wait()
-                # Let the collector flush any stderr already delivered before
-                # stopping it when a descendant keeps the pipe open.
-                await asyncio.sleep(0)
-        except TimeoutError:
-            timed_out = True
-            await _terminate_process(process)
-            exit_code = process.returncode
+                        buffer += chunk
+                        if profile.output_format == "json":
+                            continue
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            await self._consume_envelope(line, state, recorder, selection)
+                    # An inherited pipe can outlive the CLI; wait() alone may
+                    # stay pending even after returncode has been populated.
+                    while process.returncode is None:
+                        await asyncio.sleep(0.1)
+                    exit_code = await process.wait()
+            except TimeoutError:
+                timed_out = True
+                await _terminate_process(process)
+                exit_code = process.returncode
+            process_exited.set()
+            stderr_text = await stderr_task
         except BaseException:
-            await _terminate_process(process)
-            stderr_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await stderr_task
+            await complete_before_cancel(stop())
             raise
-        if stderr_task.done() and not stderr_task.cancelled():
-            stderr_text = stderr_task.result()
-        else:
-            stderr_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await stderr_task
-            stderr_text = await asyncio.to_thread(
-                session.stderr_log.read_text, encoding="utf-8", errors="replace"
-            )
         if profile.output_format == "text":
             tail = decoder.decode(b"", final=True)
             if tail:
                 state.text_parts.append(tail)
-                recorder.emit("text_delta", {"text": tail})
+                await recorder.emit("text_delta", {"text": tail})
         remaining = buffer
         if not timed_out:
             if profile.output_format == "stream-json" and remaining.strip():
-                self._consume_envelope(remaining, state, recorder, selection)
+                await self._consume_envelope(remaining, state, recorder, selection)
             elif profile.output_format == "json" and remaining.strip():
-                self._consume_json_result(remaining, state, recorder, selection)
+                await self._consume_json_result(remaining, state, recorder, selection)
         denied_actions = state.denied_actions or denied_permissions_from_stderr(
             stderr_text
         )
@@ -823,11 +743,11 @@ class AntigravityRunner:
             error_message=state.error_message,
         )
 
-    def _consume_envelope(
+    async def _consume_envelope(
         self,
         line: bytes,
         state: _StreamState,
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         selection: ConversationSelection,
     ) -> None:
         text = line.decode("utf-8", errors="replace").strip()
@@ -836,47 +756,47 @@ class AntigravityRunner:
         try:
             payload = json.loads(text)
         except ValueError:
-            recorder.emit("stdout_unparsed", {"text": text})
+            await recorder.emit("stdout_unparsed", {"text": text})
             return
         if not isinstance(payload, Mapping):
-            recorder.emit("stdout_unparsed", {"text": text})
+            await recorder.emit("stdout_unparsed", {"text": text})
             return
         for kind, body in normalize_cli_event(payload):
-            recorder.emit(kind, body)
-            self._apply_event(kind, body, state, recorder, selection)
+            await recorder.emit(kind, body)
+            await self._apply_event(kind, body, state, recorder, selection)
 
-    def _consume_json_result(
+    async def _consume_json_result(
         self,
         payload_bytes: bytes,
         state: _StreamState,
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         selection: ConversationSelection,
     ) -> None:
         text = payload_bytes.decode("utf-8", errors="replace").strip()
         try:
             payload = json.loads(text)
         except ValueError:
-            recorder.emit("stdout_unparsed", {"text": text})
+            await recorder.emit("stdout_unparsed", {"text": text})
             return
         if not isinstance(payload, Mapping):
-            recorder.emit("stdout_unparsed", {"text": text})
+            await recorder.emit("stdout_unparsed", {"text": text})
             return
         for kind, body in _normalize_result(payload):
-            recorder.emit(kind, body)
-            self._apply_event(kind, body, state, recorder, selection)
+            await recorder.emit(kind, body)
+            await self._apply_event(kind, body, state, recorder, selection)
 
-    def _apply_event(
+    async def _apply_event(
         self,
         kind: str,
         body: Mapping[str, object],
         state: _StreamState,
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         selection: ConversationSelection,
     ) -> None:
         if kind in {"session_initialized", "result"}:
             conversation_id = body.get("conversation_id")
             if isinstance(conversation_id, str) and conversation_id:
-                self._note_conversation(
+                await self._note_conversation(
                     conversation_id, state, recorder, selection
                 )
         if kind == "result":
@@ -905,17 +825,17 @@ class AntigravityRunner:
             if isinstance(text, str):
                 state.text_parts.append(text)
 
-    def _note_conversation(
+    async def _note_conversation(
         self,
         conversation_id: str,
         state: _StreamState,
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         selection: ConversationSelection,
     ) -> None:
         if state.conversation_id == conversation_id:
             return
         state.conversation_id = conversation_id
-        recorder.emit(
+        await recorder.emit(
             "session_resolved",
             {
                 "conversation_id": conversation_id,
@@ -924,12 +844,11 @@ class AntigravityRunner:
             },
         )
 
-    def _finalize(
+    async def _finalize(
         self,
         *,
-        session: AntigravitySessionLayout,
         meta: dict[str, object],
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         result: ExternalAgentRunResult,
     ) -> None:
         meta.update(
@@ -946,37 +865,28 @@ class AntigravityRunner:
                 "finished_at": datetime.now(UTC).isoformat(),
             }
         )
-        write_text_atomic(
-            session.meta_file,
-            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
-        )
-        write_text_atomic(
-            session.result_file,
-            json.dumps(
-                {
-                    "status": result.status,
-                    "response": result.response,
-                    "conversation_id": result.conversation_id,
-                    "conversation_requested": result.conversation_requested,
-                    "conversation_reused": result.conversation_reused,
-                    "exit_code": result.exit_code,
-                    "duration_ms": result.duration_ms,
-                    "usage": dict(result.usage),
-                    "denied_actions": list(result.denied_actions),
-                    "error_code": result.error_code,
-                    "error_message": result.error_message,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
+        await recorder.save_result(
+            meta,
+            {
+                "status": result.status,
+                "response": result.response,
+                "conversation_id": result.conversation_id,
+                "conversation_requested": result.conversation_requested,
+                "conversation_reused": result.conversation_reused,
+                "exit_code": result.exit_code,
+                "duration_ms": result.duration_ms,
+                "usage": dict(result.usage),
+                "denied_actions": list(result.denied_actions),
+                "error_code": result.error_code,
+                "error_message": result.error_message,
+            },
         )
         if result.error_code is not None:
-            recorder.emit(
+            await recorder.emit(
                 "run_failed",
                 {"code": result.error_code, "message": result.error_message},
             )
-        recorder.emit(
+        await recorder.emit(
             "run_finished",
             {
                 "status": result.status,
@@ -986,12 +896,11 @@ class AntigravityRunner:
             },
         )
 
-    def _record_failure(
+    async def _record_failure(
         self,
         *,
-        session: AntigravitySessionLayout,
         meta: dict[str, object],
-        recorder: _EventRecorder,
+        recorder: SessionEvidence,
         message: str,
     ) -> None:
         code = "external_agent_run_interrupted"
@@ -1003,21 +912,11 @@ class AntigravityRunner:
                 "finished_at": datetime.now(UTC).isoformat(),
             }
         )
-        write_text_atomic(
-            session.meta_file,
-            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+        await recorder.save_result(
+            meta, {"status": "failed", "error_code": code, "error_message": message}
         )
-        write_text_atomic(
-            session.result_file,
-            json.dumps(
-                {"status": "failed", "error_code": code, "error_message": message},
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-        )
-        recorder.emit("run_failed", {"code": code, "message": message})
-        recorder.emit("run_finished", {"status": "failed", "exit_code": None})
+        await recorder.emit("run_failed", {"code": code, "message": message})
+        await recorder.emit("run_finished", {"status": "failed", "exit_code": None})
 
 
 __all__ = [
@@ -1033,6 +932,5 @@ __all__ = [
     "denied_action_labels",
     "denied_permissions_from_stderr",
     "normalize_cli_event",
-    "recorded_definition_revision",
     "watchdog_seconds",
 ]

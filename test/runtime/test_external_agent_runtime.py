@@ -5,12 +5,14 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
 from uuid import uuid4
 
 import pytest
 
 from agent_shell.contracts import ExternalAgentProfile
 from agent_shell.external_agents import runtime as runtime_module
+from agent_shell.external_agents import evidence as evidence_module
 from agent_shell.external_agents.binary import AntigravityCliBinary
 from agent_shell.external_agents.runtime import (
     WATCHDOG_GRACE_SECONDS,
@@ -454,15 +456,96 @@ def test_runner_records_success_evidence(
             ),
             result_envelope(conversation_id),
         ],
+        stderr_lines=["stderr evidence"],
     )
     runner = make_runner(tmp_path, monkeypatch, fake_binary(binary))
     seen: list[str] = []
+    file_threads: list[int] = []
+    callback_threads: list[int] = []
+    original_open = Path.open
+    loop_thread = threading.get_ident()
+
+    def note_file_io() -> None:
+        thread = threading.get_ident()
+        file_threads.append(thread)
+        if thread == loop_thread:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return  # Assertions below run after asyncio.run has finished.
+            pytest.fail("External Agent evidence I/O ran on the event loop")
+
+    class ObservedFile:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            note_file_io()
+            return self.stream.__exit__(*exc)
+
+        def write(self, content):
+            note_file_io()
+            return self.stream.write(content)
+
+        def flush(self):
+            note_file_io()
+            return self.stream.flush()
+
+        def close(self):
+            note_file_io()
+            return self.stream.close()
+
+    def observed_open(path, *args, **kwargs):
+        note_file_io()
+        return ObservedFile(original_open(path, *args, **kwargs))
+
+    monkeypatch.setattr(Path, "open", observed_open)
+    original_fdopen = os.fdopen
+
+    def observed_fdopen(*args, **kwargs):
+        note_file_io()
+        return ObservedFile(original_fdopen(*args, **kwargs))
+
+    monkeypatch.setattr(os, "fdopen", observed_fdopen)
+    for name in ("mkdir", "iterdir", "stat"):
+        original = getattr(Path, name)
+
+        def observe(path, *args, call=original, **kwargs):
+            note_file_io()
+            return call(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, name, observe)
+
+    external_agent_id, lifecycle_id = str(uuid4()), str(uuid4())
+    layout = antigravity_lifecycle_layout(tmp_path / "data", external_agent_id, lifecycle_id)
+    sessions: list[Path] = []
+
+    def on_event(event):
+        callback_threads.append(threading.get_ident())
+        assert asyncio.get_running_loop().is_running()
+        if event.kind == "run_started":
+            sessions.append(layout.session(str(event.payload["session_id"])).root)
+        # The corresponding event must already be readable when notified.
+        with original_open(sessions[-1] / "events.ndjson", encoding="utf-8") as stream:
+            records = [json.loads(line) for line in stream]
+        assert records[-1] == event.as_record()
+        seen.append(event.kind)
 
     result = run_agent(
         runner,
         external_agent_profile(),
-        on_event=lambda event: seen.append(event.kind),
+        external_agent_id=external_agent_id,
+        lifecycle_id=lifecycle_id,
+        on_event=on_event,
     )
+    assert callback_threads and set(callback_threads) == {loop_thread}
+    assert file_threads and all(thread != loop_thread for thread in file_threads)
 
     assert result.status == "success"
     assert result.response == "PONG"
@@ -497,10 +580,21 @@ def test_runner_records_success_evidence(
     assert meta["conversation_id"] == conversation_id
     assert Path(str(meta["home_path"])).is_dir()
     assert Path(str(meta["workspace_path"])).is_dir()
-    assert Path(result.stderr_log).read_text(encoding="utf-8") == ""
+    assert Path(result.stderr_log).read_text(encoding="utf-8").strip() == "stderr evidence"
     stored = json.loads(Path(result.result_file).read_text(encoding="utf-8"))
     assert stored["response"] == "PONG"
     assert stored["status"] == "success"
+
+    # Resume still checks the original recorded revision outside the loop.
+    with pytest.raises(AgentRuntimeError) as changed:
+        run_agent(
+            runner,
+            external_agent_profile(system_prompt="An edited system prompt."),
+            external_agent_id=external_agent_id,
+            lifecycle_id=lifecycle_id,
+            conversation=conversation_id,
+        )
+    assert changed.value.code == "external_agent_system_prompt_changed"
 
 
 def test_runner_classifies_denied_and_unknown_conversation(
@@ -532,6 +626,28 @@ def test_runner_classifies_denied_and_unknown_conversation(
     assert result.conversation_requested == requested
     assert result.conversation_id == actual
     assert result.conversation_reused is False
+
+
+@pytest.mark.parametrize("output_format", ["text", "json"])
+def test_runner_preserves_non_streaming_cli_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output_format: str
+) -> None:
+    conversation_id = str(uuid4())
+    stdout = (
+        "PONG"
+        if output_format == "text"
+        else json.dumps(
+            {"conversation_id": conversation_id, "status": "SUCCESS", "response": "PONG"}
+        )
+    )
+    binary = write_fake_cli(tmp_path, stdout_lines=[stdout])
+    runner = make_runner(tmp_path, monkeypatch, fake_binary(binary))
+    result = run_agent(runner, external_agent_profile(output_format=output_format))
+    assert result.status == "success"
+    assert result.response.strip() == "PONG"
+    assert result.conversation_id == ("" if output_format == "text" else conversation_id)
+    stored = json.loads(Path(result.result_file).read_text(encoding="utf-8"))
+    assert stored["response"] == result.response
 
 
 def test_runner_reports_print_timeout_as_timeout(
@@ -600,6 +716,7 @@ def test_watchdog_distinguishes_cli_exit_from_inherited_stderr(
             self.stdout = asyncio.StreamReader()
             self.stdout.feed_eof()
             self.stderr = asyncio.StreamReader()
+            self.stderr.feed_data(("stderr 多块\n" * 1500).encode())
             if pending_part == "process":
                 self.stderr.feed_eof()
             self.exited = asyncio.Event()
@@ -631,14 +748,13 @@ def test_watchdog_distinguishes_cli_exit_from_inherited_stderr(
     async def scene() -> object:
         nonlocal process
         process = ClosedStdoutProcess()
-        with runtime_module._EventRecorder(session, None) as recorder:
+        async with runtime_module.SessionEvidence(session, None) as recorder:
             return await asyncio.wait_for(
                 runner._stream(
                     external_agent_profile(print_timeout="1s"),
                     argv=["fake-cli"],
                     environment={},
                     layout=layout,
-                    session=session,
                     recorder=recorder,
                     selection=ConversationSelection.parse("new"),
                 ),
@@ -649,3 +765,152 @@ def test_watchdog_distinguishes_cli_exit_from_inherited_stderr(
     outcome = asyncio.run(scene())
     assert outcome.timed_out is (pending_part == "process")
     assert outcome.exit_code == (None if pending_part == "process" else 0)
+    assert outcome.stderr_text == "stderr 多块\n" * 1500
+
+
+@pytest.mark.parametrize("writing", ["event", "stderr", "result"])
+def test_cancellation_waits_for_evidence_then_reaps_and_releases_conversation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, writing: str
+) -> None:
+    conversation_id = str(uuid4())
+    runner = make_runner(tmp_path, monkeypatch, fake_binary(tmp_path / "fake-cli"))
+    external_agent_id, lifecycle_id = str(uuid4()), str(uuid4())
+    layout = antigravity_lifecycle_layout(tmp_path / "data", external_agent_id, lifecycle_id)
+    release_write = threading.Event()
+    blocked = False
+    original_open = Path.open
+    original_atomic_write = evidence_module.write_text_atomic
+    callbacks: list[str] = []
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        write_started = asyncio.Event()
+        reaped = asyncio.Event()
+
+        def wait_in_write() -> None:
+            nonlocal blocked
+            if blocked:
+                return
+            blocked = True
+            assert threading.get_ident() != loop_thread
+            loop.call_soon_threadsafe(write_started.set)
+            if not release_write.wait(timeout=5):
+                raise AssertionError("test did not release the file write")
+
+        class File:
+            def __init__(self, stream, name):
+                self.stream, self.name = stream, name
+
+            def __getattr__(self, name):
+                return getattr(self.stream, name)
+
+            def write(self, data):
+                if (writing == "stderr" and self.name == "stderr.log") or (
+                    writing == "event"
+                    and self.name == "events.ndjson"
+                    and '"text_delta"' in str(data)
+                ):
+                    wait_in_write()
+                return self.stream.write(data)
+
+        def open_file(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if path.name in {"events.ndjson", "stderr.log"} and mode in {"a", "wb"}:
+                return File(stream, path.name)
+            return stream
+
+        def atomic_write(path, *args, **kwargs):
+            if writing == "result" and path.name == "result.json":
+                wait_in_write()
+            return original_atomic_write(path, *args, **kwargs)
+
+        class Process:
+            returncode = 0 if writing == "result" else None
+
+            def __init__(self):
+                self.stdout = asyncio.StreamReader()
+                self.stderr = asyncio.StreamReader()
+                lines = [
+                    init_envelope(conversation_id),
+                    stream_envelope("step_update", {"text_delta": "PONG"}),
+                ]
+                if writing == "result":
+                    lines.append(result_envelope(conversation_id))
+                self.stdout.feed_data(("\n".join(lines) + "\n").encode())
+                self.stderr.feed_data(b"stderr before cancel\n")
+                if writing == "result":
+                    self.stdout.feed_eof()
+                    self.stderr.feed_eof()
+
+            async def wait(self):
+                reaped.set()
+                return self.returncode
+
+        process = Process()
+
+        async def start_process(*_args, **_kwargs):
+            return process
+
+        async def terminate(target):
+            target.returncode = -15
+            target.stdout.feed_eof()
+            target.stderr.feed_eof()
+            await target.wait()
+
+        def on_event(event):
+            assert threading.get_ident() == loop_thread
+            callbacks.append(event.kind)
+
+        monkeypatch.setattr(Path, "open", open_file)
+        monkeypatch.setattr(evidence_module, "write_text_atomic", atomic_write)
+        monkeypatch.setattr(runtime_module.asyncio, "create_subprocess_exec", start_process)
+        monkeypatch.setattr(runtime_module, "_terminate_process", terminate)
+        task = asyncio.create_task(
+            runner.run(
+                external_agent_profile(),
+                external_agent_id=external_agent_id,
+                lifecycle_id=lifecycle_id,
+                prompt="ping",
+                conversation=conversation_id,
+                on_event=on_event,
+            )
+        )
+        try:
+            await asyncio.wait_for(write_started.wait(), timeout=3)
+            task.cancel()
+            await asyncio.sleep(0)
+            task.cancel()  # Repeated cancellation must not detach the writer.
+            await asyncio.sleep(0)
+            assert not task.done()
+        finally:
+            release_write.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=3)
+        assert reaped.is_set()
+        assert process.returncode is not None
+        claim = await runner._conversations.acquire(
+            layout.home, ConversationSelection.parse(conversation_id), owner="next call"
+        )
+        await runner._conversations.release(layout.home, claim)
+
+    loop_thread = threading.get_ident()
+    try:
+        asyncio.run(scenario())
+    finally:
+        release_write.set()
+    session = next(layout.sessions.iterdir())
+    meta = json.loads((session / "meta.json").read_text(encoding="utf-8"))
+    result = json.loads((session / "result.json").read_text(encoding="utf-8"))
+    events = [
+        json.loads(line)
+        for line in (session / "events.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    expected = "success" if writing == "result" else "failed"
+    assert meta["status"] == result["status"] == expected
+    assert callbacks == [event["kind"] for event in events]
+    assert events[-1]["kind"] == "run_finished"
+    if writing != "result":
+        assert result["error_code"] == "external_agent_run_interrupted"
+    if writing == "stderr":
+        assert (session / "stderr.log").read_bytes() == b"stderr before cancel\n"
