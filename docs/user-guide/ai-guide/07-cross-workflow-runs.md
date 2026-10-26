@@ -64,7 +64,7 @@ Agent Run handle包含 `operation_id/main_agent_id/assistant_id/thread_id/run_id
 
 Workflow各命令的作用：
 
-- `start_workflow()` 创建或复用当前 operation 对应的官方 Assistant/Thread/Run，并立即返回 handle；
+- `start_workflow()` 创建或复用当前 operation 对应的官方 Assistant/Thread/Run，并返回 handle；返回前的装配等待见第 7 节；
 - `check()` 通过公共 Run API 读取指定 Run；终态 Run 同时返回该 Workflow Run 的扁平 State；
 - `list()` 列出 current caller 直接启动的 Run，可按官方状态筛选；
 - `join()` 通过公共 Run join API 等待指定 Run 到达终态，并返回输出；
@@ -134,6 +134,12 @@ Workflow root State是扁平变量表：入口传入的键和Command写回的键
 轮询循环必须有业务退出条件，例如全部 terminal、达到业务 deadline、已有 winner 或用户取消。`recursion_limit` 是运行失败边界，不代替正常退出条件。
 
 同时启动多个 Workflow Run 是正常用法。每个调用使用独立 Thread，因此可以并行运行；实际吞吐受用户配置的 Worker 并发和宿主资源影响。Agent Shell 不额外设置隐藏的 Run 数量上限。
+
+**Run 执行名额注意事项。** Workflow Run 与 Main Agent Run 共用 Agent Server 的执行名额。单 worker 的容量由【系统 / 系统配置 / 限制策略】中的 `n_jobs_per_worker` 控制，默认 `20`；设置的有效范围、生效条件和资源代价见[系统设置](../system-management.md#系统设置)。一张 Workflow 内的多个 Node 和循环分支合计占一个 Run 名额；`max_concurrency` 控制 Graph 内的并行任务数量。运行中的 Run 在 `await`、轮询或等待下游期间仍占名额，pending Run 排队等待空闲名额。
+
+当前 `agent_runs.start()` 与 `workflow_runs.start_workflow()` 在新 Run 已创建后，还会等待其 Graph factory 完成装配再返回 handle；`join()` 等待下游 Run 终态。下游装配和执行需要取得 Run 名额。如果全部名额都由等待下游的调用方 Run 占用，下游会留在 pending，调用方也无法继续推进。
+
+使用持续轮询的 Workflow 时，为它启动的下游 Run 保留执行容量。容量规划同时计入活跃 Workflow、需要同时执行的 Main Agent，以及其他活跃 Run；例如一个 Workflow 与三个独立 Main Agent 同时执行需要至少四个名额。多个循环持续处理事务时，通过 `check()` / `list()` 读取当轮状态，处理后返回下一跳，由 Workflow 脚本决定后续调用。LangGraph 按 super-step 推进，同一步的节点完成后才进入下一步，节点内的长等待会延迟该步之后的控制流程。
 
 ## 8. 输出收集
 

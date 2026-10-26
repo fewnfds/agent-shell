@@ -80,6 +80,8 @@ LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在�
 
 限制策略包含三个官方运行字段：`n_jobs_per_worker` 默认 `20`，控制单 worker 同时处理的 Run 槽位；`recursion_limit` 默认 `100000`，达到后由 LangGraph 抛出 `GraphRecursionError`；`max_concurrency` 默认 `20`，控制 Graph 内并行任务，留空时不向 `RunnableConfig` 传值。三者只接受正整数且没有产品最大值，增大会提高 CPU、内存和外部请求压力。它们与其他系统启动设置在服务重启后生效。
 
+Workflow 与独立 Main Agent 共用 Run 执行名额；跨 Run 调用的容量规划见[等待和业务循环中的注意事项](ai-guide/07-cross-workflow-runs.md#7-等待和业务循环)。
+
 响应流调度直接保存全局`response_stream_scheduling`：`idle_timeout_seconds`默认`10`，控制当前writer全静默多久后让位；`max_batch_kb`默认`64`，控制一次公开发送的软批次大小；`send_interval_seconds`默认`0.05`，控制连续批次的最小间隔。前两项必须大于零，发送间隔可以为零。保存立即生效于后续Lifecycle，已经开始的Lifecycle继续使用请求创建时冻结的副本。调度单位是官方Graph的`(thread_id, run_id)`；Run终态立即让位，静默超时只切换writer，不取消Run。
 
 Provider Network Card 管理 Provider 出站请求。`transport=httpx` 使用标准 HTTPX 网络栈；`transport=curl_cffi` 使用带 Chrome TLS/HTTP fingerprint 的浏览器兼容线路，默认保持该线路以延续现有网关兼容行为。`curl-cffi` 始终是随软件安装的运行依赖，选择 HTTPX 只让请求不经过它。系统不会在请求失败后自动切换或重放到另一条线路，避免重复提交模型请求。
