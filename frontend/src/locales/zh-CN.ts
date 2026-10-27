@@ -370,6 +370,9 @@ export const zhCN = {
       title: 'LangGraph Dev',
       debugPort: 'DAP 调试端口（可选）',
       debugPortDisabled: '关闭',
+      flushInterval: '保存间隔',
+      writeIfChanged: '仅在内容变化时写盘',
+      secondsUnit: '秒',
     },
     runtimePolicy: {
       title: '限制策略',

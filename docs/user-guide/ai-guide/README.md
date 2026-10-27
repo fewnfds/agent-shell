@@ -25,6 +25,8 @@ Agent Shell 使用 LangChain、LangGraph 和 Deep Agents 公共组件，但只�
 
 Management API 使用 `/agent-shell/api/*`，负责发现、创建、修改、校验和发布配置。
 
+System Settings 使用 `GET/PUT /agent-shell/api/system/settings`。保存完整 payload 时保留 `langgraph_persistence`；其中 `flush_interval_seconds` 默认 `10` 秒，`write_if_changed` 默认 `true`，保存后重启生效。该组控制 Core resource 快照的检查与写盘，字段范围、资源代价和失败行为见[系统设置](../system-management.md#系统设置)。
+
 OpenAI-compatible API 使用 `/compat/openai/v1/*`，负责发现和运行 `enabled=true` 且 `is_model_entry=true` 的 Main Agent/Workflow。其他请求入口也复用同一套官方 Assistant、Thread 与 Run 执行模型。
 
 官方 `/mcp` 是独立的无状态工具入口，只公开已发布的 MCP Tool。`tools/call.arguments` 直接进入该 MCP Tool 的 Graph State，不创建 Lifecycle，也不复用 Model Shell request。

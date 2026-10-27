@@ -19,6 +19,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_shell.configuration.repositories import ensure_active_configuration_repository
 from agent_shell.provider_http import ProviderHttpSettings
+from agent_shell.langgraph_dev_persistence import LangGraphPersistenceSettings
 from agent_shell.response_stream_policy import ResponseStreamPolicy
 from agent_shell.storage.environment import (
     EnvironmentFormatError,
@@ -99,6 +100,9 @@ class Settings(BaseSettings):
     recursion_limit: int = Field(default=DEFAULT_GRAPH_RECURSION_LIMIT, ge=1)
     max_concurrency: int | None = Field(default=DEFAULT_GRAPH_MAX_CONCURRENCY, ge=1)
     debug_port: int | None = Field(default=None, ge=1, le=65535)
+    langgraph_persistence: LangGraphPersistenceSettings = Field(
+        default_factory=LangGraphPersistenceSettings
+    )
     allow_remote: bool = False
     langsmith_tracing_enabled: bool = False
     langsmith_endpoint: str = DEFAULT_LANGSMITH_ENDPOINT

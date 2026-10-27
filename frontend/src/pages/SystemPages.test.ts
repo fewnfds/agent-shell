@@ -24,6 +24,7 @@ const currentSettings: SystemSettings = {
   recursion_limit: 100000,
   max_concurrency: 20,
   debug_port: null,
+  langgraph_persistence: { flush_interval_seconds: 10, write_if_changed: true },
   allow_remote: false,
   langsmith_tracing_enabled: false,
   langsmith_endpoint: 'https://api.smith.langchain.com',
@@ -142,6 +143,7 @@ describe('SystemSettingsPage', () => {
       recursion_limit: 100000,
       max_concurrency: 20,
       debug_port: null,
+      langgraph_persistence: { flush_interval_seconds: 10, write_if_changed: true },
       allow_remote: false,
       langsmith_tracing_enabled: false,
       langsmith_endpoint: 'https://api.smith.langchain.com',
@@ -191,6 +193,7 @@ describe('SystemSettingsPage', () => {
         recursion_limit: payload.recursion_limit,
         max_concurrency: payload.max_concurrency,
         debug_port: payload.debug_port,
+        langgraph_persistence: payload.langgraph_persistence,
         allow_remote: payload.allow_remote,
         cors_origins: payload.cors_origins,
         trusted_proxy_cidrs: payload.trusted_proxy_cidrs,
@@ -211,6 +214,9 @@ describe('SystemSettingsPage', () => {
     await wrapper.get('#limit-recursion').setValue('321')
     await wrapper.get('#limit-concurrency').setValue('7')
     await wrapper.get('#langgraph-debug-port').setValue('21001')
+    await wrapper.get('#langgraph-flush-interval').setValue('60')
+    expect(wrapper.get('#langgraph-write-if-changed').element.tagName).toBe('SELECT')
+    await wrapper.get('#langgraph-write-if-changed').setValue(false)
     await wrapper.get('#response-idle-timeout').setValue('1.5')
     await wrapper.get('#response-max-batch').setValue('32')
     await wrapper.get('#response-send-interval').setValue('0.1')
@@ -232,6 +238,7 @@ describe('SystemSettingsPage', () => {
       recursion_limit: 100000,
       max_concurrency: 20,
       debug_port: null,
+      langgraph_persistence: { flush_interval_seconds: 10, write_if_changed: true },
       allow_remote: true,
       langsmith_tracing_enabled: false,
       langsmith_api_key: { operation: 'keep' },
@@ -247,6 +254,7 @@ describe('SystemSettingsPage', () => {
       port: 21000,
       n_jobs_per_worker: 20,
       debug_port: 21001,
+      langgraph_persistence: { flush_interval_seconds: 60, write_if_changed: false },
       allow_remote: true,
       langsmith_tracing_enabled: false,
       langsmith_api_key: { operation: 'keep' },

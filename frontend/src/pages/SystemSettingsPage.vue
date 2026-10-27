@@ -64,6 +64,8 @@ const nJobsPerWorker = ref(10)
 const recursionLimit = ref(25)
 const maxConcurrency = ref<number | ''>('')
 const debugPort = ref<number | ''>('')
+const persistenceFlushInterval = ref(10)
+const persistenceWriteIfChanged = ref(true)
 const allowRemote = ref(false)
 const langsmithTracingEnabled = ref(false)
 const langsmithEndpoint = ref('https://api.smith.langchain.com')
@@ -118,11 +120,13 @@ const langgraphSettingsValid = computed(() => {
   const normalizedPort = Number(port.value)
   const normalizedDebugPort = debugPort.value === '' ? null : Number(debugPort.value)
   const savedPort = settings.value?.port ?? normalizedPort
-  return normalizedDebugPort === null
-    || (Number.isInteger(normalizedDebugPort)
-      && normalizedDebugPort >= 1
-      && normalizedDebugPort <= 65_535
-      && normalizedDebugPort !== savedPort)
+  return Number.isInteger(Number(persistenceFlushInterval.value))
+    && Number(persistenceFlushInterval.value) >= 1
+    && (normalizedDebugPort === null
+      || (Number.isInteger(normalizedDebugPort)
+        && normalizedDebugPort >= 1
+        && normalizedDebugPort <= 65_535
+        && normalizedDebugPort !== savedPort))
 })
 const limitsSettingsValid = computed(() => {
   const normalizedJobs = Number(nJobsPerWorker.value)
@@ -242,6 +246,8 @@ function applySystemSettings(value: SystemSettings): void {
   recursionLimit.value = value.recursion_limit
   maxConcurrency.value = value.max_concurrency ?? ''
   debugPort.value = value.debug_port ?? ''
+  persistenceFlushInterval.value = value.langgraph_persistence.flush_interval_seconds
+  persistenceWriteIfChanged.value = value.langgraph_persistence.write_if_changed
   allowRemote.value = value.allow_remote
   langsmithTracingEnabled.value = value.langsmith_tracing_enabled
   langsmithEndpoint.value = value.langsmith_endpoint
@@ -282,6 +288,8 @@ function applySystemSettingsSection(
   settings.value = value
   if (section === 'langgraph') {
     debugPort.value = value.debug_port ?? ''
+    persistenceFlushInterval.value = value.langgraph_persistence.flush_interval_seconds
+    persistenceWriteIfChanged.value = value.langgraph_persistence.write_if_changed
     return
   }
   if (section === 'limits') {
@@ -347,6 +355,12 @@ function systemSettingsPayload(section: SystemSettingsSection): SystemSettingsUp
     debug_port: section === 'langgraph'
       ? (debugPort.value === '' ? null : Number(debugPort.value))
       : saved.debug_port,
+    langgraph_persistence: section === 'langgraph'
+      ? {
+          flush_interval_seconds: Number(persistenceFlushInterval.value),
+          write_if_changed: persistenceWriteIfChanged.value,
+        }
+      : saved.langgraph_persistence,
     allow_remote: section === 'proxy' ? allowRemote.value : saved.allow_remote,
     langsmith_tracing_enabled: section === 'langsmith'
       ? langsmithTracingEnabled.value
@@ -960,6 +974,24 @@ onMounted(() => { void load() })
                       type="number"
                     >
                   </template>
+                </FormField>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <FormField control-id="langgraph-flush-interval" field-path="langgraph_persistence.flush_interval_seconds" label-key="systemSettings.langgraphDev.flushInterval">
+                  <template #default="{ describedBy }">
+                    <div class="input-group">
+                      <input id="langgraph-flush-interval" v-model.number="persistenceFlushInterval" :aria-describedby="[describedBy, 'langgraph-flush-interval-unit'].filter(Boolean).join(' ')" class="form-control" min="1" required step="1" type="number">
+                      <span id="langgraph-flush-interval-unit" class="input-group-text">{{ t('systemSettings.langgraphDev.secondsUnit') }}</span>
+                    </div>
+                  </template>
+                </FormField>
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <FormField control-id="langgraph-write-if-changed" field-path="langgraph_persistence.write_if_changed" label-key="systemSettings.langgraphDev.writeIfChanged">
+                  <select id="langgraph-write-if-changed" v-model="persistenceWriteIfChanged" class="form-select">
+                    <option :value="true">{{ t('common.yes') }}</option>
+                    <option :value="false">{{ t('common.no') }}</option>
+                  </select>
                 </FormField>
               </div>
             </div>

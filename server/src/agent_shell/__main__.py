@@ -51,13 +51,8 @@ def _langgraph_config_path() -> Path:
 
 
 def _run_server(*, settings: Settings, config_path: Path) -> None:
-    from agent_shell.langgraph_dev import (
-        _configure_windows_curl_blockbuster_compatibility,
-    )
-    from langgraph_cli.cli import cli
+    from agent_shell.langgraph_dev_persistence import configured_dev_persistence
 
-    if settings.provider_http.transport == "curl_cffi":
-        _configure_windows_curl_blockbuster_compatibility()
     arguments = [
         "dev",
         "--config",
@@ -73,11 +68,19 @@ def _run_server(*, settings: Settings, config_path: Path) -> None:
     ]
     if settings.debug_port is not None:
         arguments.extend(("--debug-port", str(settings.debug_port)))
-    cli.main(
-        args=arguments,
-        prog_name="langgraph",
-        standalone_mode=False,
-    )
+    with configured_dev_persistence(settings.langgraph_persistence):
+        from agent_shell.langgraph_dev import (
+            _configure_windows_curl_blockbuster_compatibility,
+        )
+        from langgraph_cli.cli import cli
+
+        if settings.provider_http.transport == "curl_cffi":
+            _configure_windows_curl_blockbuster_compatibility()
+        cli.main(
+            args=arguments,
+            prog_name="langgraph",
+            standalone_mode=False,
+        )
 
 
 def _parse_port(value: str) -> int:

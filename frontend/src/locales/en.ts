@@ -372,6 +372,9 @@ export const en: MessageSchema = {
       title: 'LangGraph Dev',
       debugPort: 'DAP debug port (optional)',
       debugPortDisabled: 'Disabled',
+      flushInterval: 'Save interval',
+      writeIfChanged: 'Write only when content changes',
+      secondsUnit: 's',
     },
     runtimePolicy: {
       title: 'Restriction policy',

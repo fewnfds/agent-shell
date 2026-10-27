@@ -335,6 +335,11 @@ export interface ProviderHttpSettings {
   default_headers: Record<string, string>
 }
 
+export interface LangGraphPersistenceSettings {
+  flush_interval_seconds: number
+  write_if_changed: boolean
+}
+
 export interface SystemSettings {
   host: string
   port: number
@@ -342,6 +347,7 @@ export interface SystemSettings {
   recursion_limit: number
   max_concurrency: number | null
   debug_port: number | null
+  langgraph_persistence: LangGraphPersistenceSettings
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
   langsmith_endpoint: string
@@ -367,6 +373,7 @@ export interface SystemSettingsUpdate {
   recursion_limit: number
   max_concurrency: number | null
   debug_port: number | null
+  langgraph_persistence: LangGraphPersistenceSettings
   allow_remote: boolean
   langsmith_tracing_enabled: boolean
   langsmith_endpoint: string

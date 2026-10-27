@@ -28,5 +28,6 @@
 - [LangChain 系依赖升级](langchain-dependency-upgrades.md)
 - [LangChain Agent runtime 基线](langchain-agent-runtime.md)
 - [Deep Agents 公共组件接入清单](deep-agents-customizations.md)
+- [LangGraph Dev 持久化二次开发](langgraph-dev-customizations.md)
 
 当前运行时与依赖基线以 [源码运行、Debug 与版本](development-and-release.md) 和 `server/pyproject.toml` 为准。

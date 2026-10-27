@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import threading
 
 import pytest
 import yaml
@@ -45,6 +46,7 @@ def _payload(**overrides) -> dict:
         "recursion_limit": 100_000,
         "max_concurrency": 20,
         "debug_port": None,
+        "langgraph_persistence": {"flush_interval_seconds": 10, "write_if_changed": True},
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
         "langsmith_endpoint": "https://api.smith.langchain.com",
@@ -86,6 +88,7 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         "recursion_limit": 100_000,
         "max_concurrency": 20,
         "debug_port": None,
+        "langgraph_persistence": {"flush_interval_seconds": 10, "write_if_changed": True},
         "allow_remote": False,
         "langsmith_tracing_enabled": False,
         "langsmith_endpoint": "https://api.smith.langchain.com",
@@ -118,6 +121,46 @@ def test_system_settings_get_reports_secret_status_without_secret_values(
         ),
     }
     assert MANAGEMENT_TOKEN not in response.text
+
+
+def test_langgraph_persistence_settings_require_restart_and_survive_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app, client = _client(tmp_path, monkeypatch)
+    policy = {"flush_interval_seconds": 60, "write_if_changed": False}
+    response = client.put(
+        "/agent-shell/api/system/settings", json=_payload(langgraph_persistence=policy)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["restart_required"] is True
+    assert response.json()["langgraph_persistence"] == policy
+    assert app.state.settings.langgraph_persistence.flush_interval_seconds == 10
+    assert client.get("/agent-shell/api/system/settings").json()["langgraph_persistence"] == policy
+    restarted = get_settings(application_home=tmp_path)
+    assert restarted.langgraph_persistence.model_dump() == policy
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"flush_interval_seconds": 0, "write_if_changed": True},
+        {"flush_interval_seconds": 1.5, "write_if_changed": True},
+        {"flush_interval_seconds": True, "write_if_changed": True},
+        {"flush_interval_seconds": int(threading.TIMEOUT_MAX) + 1, "write_if_changed": True},
+        {"flush_interval_seconds": 10, "write_if_changed": "yes"},
+    ],
+)
+def test_langgraph_persistence_api_rejects_invalid_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy: dict
+) -> None:
+    _, client = _client(tmp_path, monkeypatch)
+    response = client.put(
+        "/agent-shell/api/system/settings", json=_payload(langgraph_persistence=policy)
+    )
+    assert response.status_code == 422
+    assert client.get("/agent-shell/api/system/settings").json()["langgraph_persistence"] == {
+        "flush_interval_seconds": 10, "write_if_changed": True
+    }
 
 
 def test_response_stream_scheduling_updates_without_restart(

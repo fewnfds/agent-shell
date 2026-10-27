@@ -9,6 +9,7 @@ from agent_shell.api.errors import management_error
 from agent_shell.settings import DEFAULT_GRAPH_MAX_CONCURRENCY
 from agent_shell.provider_http import DEFAULT_PROVIDER_USER_AGENT, ProviderHttpSettings
 from agent_shell.response_stream_policy import ResponseStreamPolicy
+from agent_shell.langgraph_dev_persistence import LangGraphPersistenceSettings
 from agent_shell.system_settings import SystemSettingsError, SystemSettingsService
 
 
@@ -39,6 +40,7 @@ class SystemSettingsUpdate(BaseModel):
         ge=1,
     )
     debug_port: int | None = Field(default=None, strict=True, ge=1, le=65535)
+    langgraph_persistence: LangGraphPersistenceSettings
     allow_remote: bool
     langsmith_tracing_enabled: bool
     langsmith_endpoint: str

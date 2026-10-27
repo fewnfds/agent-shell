@@ -20,7 +20,9 @@ data/
       journals/<transaction-uuid>.json
       staging/<transaction-uuid>/
   state/agent-shell.sqlite3*
-  state/langgraph-dev/.langgraph_api/   LangGraph Dev 的 Assistant、Thread、Run、State 与 Store 数据
+  state/langgraph-dev/.langgraph_api/   LangGraph Dev 的 Assistant、Thread、Run 等 Core resource
+  state/langgraph-dev/checkpoints.sqlite3*  官方 checkpoint 与 State/history
+  state/langgraph-dev/store.sqlite3*        官方 Server Store
   files/
     generated/<YYYY-MM>/<request-id>/  Agent 响应生成的媒体文件
   skills-template/
@@ -35,7 +37,7 @@ data/
   logs/provider-http/<id>/  metadata.json、request.body、response.body
 ```
 
-它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行数据，完整 `data/` 是实例备份单位。数据分类与 credential 披露边界见[安全与部署](../security-and-deployment.md#数据分类与错误披露)。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存结构化 runtime 失败诊断与 Provider HTTP 摘要；完整 HTTP 附件位于 `data/logs/provider-http/`。LangGraph Dev 把 Assistant、Thread、Run、checkpoint、State/history、Server Store、Lifecycle input、Filesystem route 和Graph Run调用关系集中写入 `data/state/langgraph-dev/.langgraph_api/`；这是官方运行时拥有的内部目录，Agent Shell 只通过公开 SDK/API 读写，不解析其中的文件。迁移时先完全停止服务，再复制完整 `data/`，包括当时存在的 SQLite、WAL、SHM 和 `.langgraph_api` 数据。外部 filesystem 映射需要单独迁移并更新路径。
+它包含管理密码、API Key、Provider/MCP credential、Workflow、Agent/组件配置、用户文件、最终响应媒体和运行数据，完整 `data/` 是实例备份单位。数据分类与 credential 披露边界见[安全与部署](../security-and-deployment.md#数据分类与错误披露)。可装配配置文件位于 `data/config_repos/`；`data/config/` 保存系统配置、secret env、active pointer、实例模型/MCP 连接与映射。`agent-shell.sqlite3` 保存结构化 runtime 失败诊断与 Provider HTTP 摘要；完整 HTTP 附件位于 `data/logs/provider-http/`。LangGraph Dev 在 `data/state/langgraph-dev/` 保存运行数据：Core resource 位于 `.langgraph_api/`，checkpoint 与 State/history 位于 `checkpoints.sqlite3*`，Server Store、Lifecycle input、Filesystem route 和 Graph Run 调用关系位于 `store.sqlite3*`。这些格式由官方运行时拥有，业务读取使用公开 SDK/API；Core resource 保存策略由项目的[持久化二次开发](../langgraph-dev-customizations.md)提供。迁移时先完全停止服务，再复制完整 `data/`，包括当时存在的 SQLite、WAL、SHM 和 `.langgraph_api` 数据。外部 filesystem 映射需要单独迁移并更新路径。
 
 静态 Python 模板保存在 `data/templates/`，配置独占的 Python 扩展及其可选 `requirements.txt` 保存在 `data/config_repos/<repository-name>/python_packages/`。两者都属于需备份的 data；Windows 生成的共享依赖位于 `runtime/python_packages/site-packages/` 及 dependency state，属于可重建 runtime，不进入备份。模板不运行且不参与依赖。
 
@@ -78,6 +80,10 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 【系统 / 系统配置】页面从上到下展示 Agent Shell API Server、代理设置、Provider Network、限制策略、响应流调度、LangGraph Dev、LangSmith 和配置校验。代理设置、限制策略、响应流调度、Provider Network、LangGraph Dev 与 LangSmith 使用 `PUT /agent-shell/api/system/settings`；Agent Shell API Server 使用 `PUT /agent-shell/api/api-server`；配置校验使用 `PUT /agent-shell/api/validation/settings`。每张 Card 有自己的 Save、校验和错误反馈；保存一个区域只采用该区域的草稿，其他区域的未保存修改不会一起提交。页面管理监听地址、普通服务端口、可选 DAP 调试端口、LangGraph 官方运行限制、远程访问、管理密码、API Key、Provider 出站网络、LangSmith tracing、Endpoint、Project、可选 Workspace ID 与 write-only API Key，以及 CORS origins 和可信代理 CIDR。API Docs 与 LangGraph Studio 位于首页的服务入口 Card，链接不携带 Token。secret 只显示是否配置，不回显明文。
 
 LangGraph Dev 与管理台、Management API 和 OpenAI-compatible API 运行在同一个进程，并共用 `host` 与普通 `port`。`debug_port` 默认留空；填写 `1..65535` 且不同于普通端口的值后才会额外启动 DAP listener。
+
+同一 LangGraph Dev Card 的“保存间隔”输入整数秒，“仅在内容变化时写盘”使用是/否下拉框。对应 `system.yaml.settings.langgraph_persistence.flush_interval_seconds`（默认 `10`）与 `write_if_changed`（默认 `true`），保存后重启生效。间隔最小 `1` 秒，最大为当前 CPython 的 `int(threading.TIMEOUT_MAX)`（Windows 内置 CPython 3.12 为 `4294967` 秒），由线程等待接口的超时边界决定；无效输入由后端拒绝，API 返回 `422` 并保留原值，手工配置无效时启动失败。
+
+开启变化比较时，每轮在内存序列化 Core resource，只有内容变化才原子写入完整快照；本进程首次快照会提交一次。选择“否”后每轮都写盘。检查仍消耗与快照大小相关的 CPU 与临时内存，增大间隔可以减少检查频率，也会扩大异常退出时未保存修改的时间窗口；正常停止服务会同步最后的变化。磁盘提交失败会记录异常并在下一轮重试，关闭时的最终同步失败会报告错误。该设置管理 Assistant、Thread、Run 等 Core resource 与 retry counter；checkpoint、State/history 和 Server Store 继续由各自的官方 SQLite transaction 提交。详细维护和依赖升级规则见 [LangGraph Dev 持久化二次开发](../langgraph-dev-customizations.md)。
 
 限制策略包含三个官方运行字段：`n_jobs_per_worker` 默认 `20`，控制单 worker 同时处理的 Run 槽位；`recursion_limit` 默认 `100000`，达到后由 LangGraph 抛出 `GraphRecursionError`；`max_concurrency` 默认 `20`，控制 Graph 内并行任务，留空时不向 `RunnableConfig` 传值。三者只接受正整数且没有产品最大值，增大会提高 CPU、内存和外部请求压力。它们与其他系统启动设置在服务重启后生效。
 

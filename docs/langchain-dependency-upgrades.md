@@ -14,7 +14,7 @@
 | Deep Agents 传递依赖 | Anthropic `1.7.6` | 由 Deep Agents `0.7.24` 传递引入；Python SDK 锁定 `1.13.0`，adapter 的默认 client wrapper 使用 SDK 对应的 HTTPX2 类型；当前 Shell Main Agent Provider 集合为 OpenAI/DeepSeek/Google GenAI |
 | MCP adapters / Python SDK | `0.3.2` / `1.30.0` | 当前使用 `MultiServerMCPClient`；远程 Streamable HTTP 使用最终 endpoint URL，SDK 跟随同源或同主机默认端口 HTTP→HTTPS 重定向，POST 要求 307/308；新的 beta `langchain.mcp` 属于独立功能迁移 |
 | LangGraph / checkpoint / SQLite checkpoint | `1.2.15` / `4.3.0` / `3.1.2` | LangGraph 保持 `>=1.2.15,<1.3.0`，Checkpoint-SQLite 保持 `>=3.1.2,<4.0`；三包共同满足 checkpoint `>=4.3.0`，官方 saver 按 task_path 顺序恢复 DeltaChannel writes，SQLite schema 由 `setup()` 管理 |
-| LangGraph Agent Server | API `0.14.6`；runtime `0.34.3`；CLI `0.4.33`；SDK `0.4.7` | API/runtime 按官方协同发布线升级；复核异常重启的 Run 调度、custom FastAPI、auth、stream 和持久化；当前未启用 LangSmith API-key auth、encryption、BYOC logging 或 `cancel_on_disconnect` |
+| LangGraph Agent Server | API `0.14.6`；runtime `0.34.3`；CLI `0.4.33`；SDK `0.4.7` | API/runtime 按官方协同发布线升级；复核异常重启的 Run 调度、custom FastAPI、auth、stream 和持久化，并完成 [LangGraph Dev 持久化二次开发](langgraph-dev-customizations.md) 的私有接入点与 runtime/checkpoint 精确版本门禁检查；当前未启用 LangSmith API-key auth、encryption、BYOC logging 或 `cancel_on_disconnect` |
 | LangSmith Python SDK | `0.14.8` | `>=0.14.8,<0.15.0`，见下方专门说明；满足当前 Deep Agents 的最低依赖 |
 | frontend LangChain | Core `1.2.17`；Vue `1.2.4`；LangGraph SDK `1.12.4` | 当前直接消费 `useStream`、Message、content block 和 Tool call projection；SDK 负责 Thread stream 的重连与恢复；queue 使用官方默认 `local` |
 

@@ -23,6 +23,8 @@ Windows 10/11 x64 需要 Node.js 22，不需要预装 Python。启动脚本按 `
 
 最终服务进程由锁定的 `langgraph dev --no-reload` 启动。现有 FastAPI 作为 custom app 与官方 Assistant、Thread、Run、State 和 Store route 共用同一个 `host:port`；普通启动不创建第二个 API listener。只有系统设置显式配置 `debug_port` 时才额外创建 DAP 调试 listener。LangGraph Dev 的运行目录固定为实例 `data/state/langgraph-dev/`；Core resource 使用该目录下的 `.langgraph_api/`，官方 SQLite checkpointer 与 Store 分别使用 `checkpoints.sqlite3` 和 `store.sqlite3`。应用通过公共 SDK/API 操作这些资源，不直接读取数据库表。
 
+【系统 / 系统配置 / LangGraph Dev】管理 Core resource 保存间隔与仅变化时写盘，默认每 `10` 秒检查且开启变化比较，保存后重启生效。检查在内存生成官方完整快照，内容相同时跳过磁盘写入，变化时原子替换 `.langgraph_api/.langgraph_ops.pckl` 与对应 retry counter 文件。序列化成本随快照大小增长，增大间隔会拉长异常退出时可能丢失修改的窗口；官方 SQLite checkpointer 与 Store 按各自 transaction 提交。字段范围、失败边界、私有接入点和依赖升级检查见 [LangGraph Dev 持久化二次开发](langgraph-dev-customizations.md)。运行历史数量由[运行监控的保留设置](user-guide/runtime-observability.md#保留与删除)管理。
+
 ```powershell
 .\start_server.bat
 ```
@@ -68,7 +70,7 @@ git pull --ff-only
 
 第三方声明见 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。修改任一依赖锁、`packaging/windows/runtime-lock.json` 或 `packaging/windows/mcp-runtime-lock.json` 后，在 `server/.venv` 已按锁同步的环境中运行 `packaging/development/generate_third_party_notices.py` 并提交生成结果。`mcp-runtime-lock.json` 只锁定 Managed Local npm MCP 按需使用的内部 Node.js，不进入核心 Python runtime fingerprint；前端源码构建使用的 Node.js 22 仍由开发机提供。
 
-无范围的 `uv lock --upgrade` 会把 FastAPI、Provider SDK 和开发依赖等无关行为面一起带入，不作为日常升级入口。依赖升级先用 `uv tree --outdated` 扫描，再按单一影响面使用 scoped `--upgrade-package` 推进。LangChain 系的版本边界和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)；升级 Deep Agents 还须逐项复核 [Deep Agents 公共组件接入清单](deep-agents-customizations.md)。
+无范围的 `uv lock --upgrade` 会把 FastAPI、Provider SDK 和开发依赖等无关行为面一起带入，不作为日常升级入口。依赖升级先用 `uv tree --outdated` 扫描，再按单一影响面使用 scoped `--upgrade-package` 推进。LangChain 系的版本边界和下一次复核步骤见[LangChain 系依赖升级](langchain-dependency-upgrades.md)；升级 Deep Agents 还须逐项复核 [Deep Agents 公共组件接入清单](deep-agents-customizations.md)，升级 Agent Server runtime/checkpoint 须复核 [LangGraph Dev 持久化二次开发](langgraph-dev-customizations.md) 的私有接入点和精确版本门禁。
 
 ## 前端 Debug
 

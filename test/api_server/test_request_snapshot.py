@@ -201,6 +201,7 @@ def test_snapshot_freezes_response_stream_scheduling(
                     "recursion_limit",
                     "max_concurrency",
                     "debug_port",
+                    "langgraph_persistence",
                     "allow_remote",
                     "langsmith_tracing_enabled",
                     "langsmith_endpoint",
