@@ -1,11 +1,74 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import CONFIG_VERSION, FileConfigRepository
 from agent_shell.storage.workflows import WorkflowStore
 
 from .app_support import make_client
+
+
+def test_configuration_options_keep_repository_context_during_concurrent_switch(
+    tmp_path, monkeypatch,
+) -> None:
+    client = make_client(tmp_path, monkeypatch)
+    repository = client.app.state.mcp_tool_store._repository
+    original_id = repository.repository_id
+    alternate_id = str(repository.create_repository("Alternate")["id"])
+    prompt_id = repository.new_configuration_id()
+    BlockStore(repository).save_block(
+        "system-prompt", prompt_id,
+        {"name": "Original prompt", "system_prompt": "Original"},
+    )
+    original_context = repository.repository_context
+    original_revision = original_context()[1]
+    context_read = threading.Event()
+    release_options = threading.Event()
+    switch_started = threading.Event()
+    switch_finished = threading.Event()
+
+    def pause_context():
+        value = original_context()
+        if not context_read.is_set():
+            context_read.set()
+            assert release_options.wait(timeout=5)
+        return value
+
+    def switch_repository():
+        switch_started.set()
+        try:
+            return repository.switch_repository(alternate_id)
+        finally:
+            switch_finished.set()
+
+    monkeypatch.setattr(repository, "repository_context", pause_context)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        options = executor.submit(client.get, "/agent-shell/api/configuration-options")
+        assert context_read.wait(timeout=5)
+        switching = executor.submit(switch_repository)
+        try:
+            assert switch_started.wait(timeout=5)
+            # Give the competing mutation time to finish when it can; assert
+            # the returned identity and content rather than lock internals.
+            switch_finished.wait(timeout=0.2)
+        finally:
+            release_options.set()
+        response = options.result(timeout=5)
+        switching.result(timeout=5)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["repository_id"] == original_id
+    assert payload["repository_revision"] == original_revision
+    assert payload["components"]["system-prompt"] == [
+        {"id": prompt_id, "name": "Original prompt"},
+    ]
+    current = client.get("/agent-shell/api/configuration-options").json()
+    assert current["repository_id"] == alternate_id
+    assert current["components"]["system-prompt"] == []
 
 
 def test_configuration_collection_views_keep_full_discovery_and_offer_summary_query(

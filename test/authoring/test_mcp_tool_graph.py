@@ -204,7 +204,8 @@ class Output(BaseModel):
     assert "at least 1 character" in raised.value.message
 
 
-def test_schema_mcp_tool_command_goto_end_runs_output_validation() -> None:
+@pytest.mark.parametrize("goto", [END, None], ids=["explicit-end", "natural-leaf"])
+def test_schema_mcp_tool_terminal_command_validates_output(goto: str | None) -> None:
     schema = compile_graph_schema(
         """
 from pydantic import BaseModel, ConfigDict, Field
@@ -233,11 +234,17 @@ class Output(BaseModel):
     async def finish(state, runtime):
         return Command(
             update={"answer": state["topic"].upper() if state["topic"] else ""},
-            goto=END,
+            **({"goto": goto} if goto is not None else {}),
         )
 
+    payload = _document().model_dump(mode="json")
+    if goto is None:
+        payload["definition"]["edges"] = [
+            edge for edge in payload["definition"]["edges"]
+            if edge["source"] == "start"
+        ]
     graph = compile_mcp_tool_graph(
-        _document(),
+        WorkflowGraphDocumentV1.model_validate(payload),
         mcp_tool_id=TOOL_ID,
         commands={"echo": finish},
         schema=schema,
@@ -250,6 +257,75 @@ class Output(BaseModel):
     with pytest.raises(AgentRuntimeError) as raised:
         asyncio.run(graph.ainvoke({"topic": ""}))
     assert raised.value.code == "mcp_tool.output_invalid"
+
+
+def test_schema_mcp_tool_validates_output_after_the_longest_selected_branch() -> None:
+    schema = compile_graph_schema(
+        """
+from typing import Self
+from pydantic import BaseModel, model_validator
+
+
+class Input(BaseModel):
+    final_right: int
+
+
+class State(Input):
+    left: int = 0
+    right: int = 0
+
+
+class Output(BaseModel):
+    left: int
+    right: int
+
+    @model_validator(mode="after")
+    def validate_matching_results(self) -> Self:
+        if self.left != self.right:
+            raise ValueError("branch results must match")
+        return self
+""",
+        require_input=True,
+        require_output=True,
+    )
+    payload = _document().model_dump(mode="json")
+    payload["definition"]["nodes"] = [
+        {"id": "start", "type": "start", "type_version": 1, "config": {}},
+        {"id": "short", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+        {"id": "long", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+        {"id": "long-tail", "type": "command", "type_version": 1, "config": {"command_id": COMMAND_ID}},
+        {"id": "end", "type": "end", "type_version": 1, "config": {}},
+    ]
+    payload["definition"]["edges"] = [
+        {"id": "start-short", "source": "start", "source_handle": "next", "target": "short", "target_handle": "in"},
+        {"id": "start-long", "source": "start", "source_handle": "next", "target": "long", "target_handle": "in"},
+        {"id": "long-tail", "source": "long", "source_handle": "next", "target": "long-tail", "target_handle": "in"},
+    ]
+
+    async def short(state, runtime):
+        return Command(update={"left": 1})
+
+    async def long(state, runtime):
+        return Command(goto="long-tail")
+
+    async def long_tail(state, runtime):
+        return Command(update={"right": state["final_right"]})
+
+    graph = compile_mcp_tool_graph(
+        WorkflowGraphDocumentV1.model_validate(payload),
+        mcp_tool_id=TOOL_ID,
+        commands={"short": short, "long": long, "long-tail": long_tail},
+        schema=schema,
+    )
+
+    assert asyncio.run(graph.ainvoke({"final_right": 1})) == {
+        "left": 1,
+        "right": 1,
+    }
+    with pytest.raises(AgentRuntimeError) as raised:
+        asyncio.run(graph.ainvoke({"final_right": 2}))
+    assert raised.value.code == "mcp_tool.output_invalid"
+    assert "branch results must match" in raised.value.message
 
 
 def test_mcp_tool_without_schema_keeps_open_mapping_state() -> None:

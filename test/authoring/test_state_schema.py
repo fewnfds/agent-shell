@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import gc
+import sys
+from typing import get_type_hints
+import weakref
+
 import pytest
 
+from agent_shell.graph_schema import _cached_schema, compile_graph_schema
 from agent_shell.workflow.state_schema import (
     WorkflowStateSchemaError,
     compile_workflow_state_schema,
@@ -89,3 +95,34 @@ class State(BaseModel):
     )
     with pytest.raises(WorkflowStateSchemaError, match="seven is unsupported"):
         validate_workflow_state({"count": 7}, schema)
+
+
+def test_evicted_schema_keeps_its_module_until_active_owner_releases_it() -> None:
+    schema = compile_graph_schema(
+        """
+from __future__ import annotations
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    count: int
+
+class State(BaseModel):
+    item: Item
+"""
+    )
+    assert schema is not None
+    module_name = schema.state_model.__module__
+    model_ref = weakref.ref(schema.state_model)
+    module_ref = weakref.ref(sys.modules[module_name])
+    # Eviction drops the cache's ownership, but a running Graph can still hold it.
+    _cached_schema.cache_clear()
+    gc.collect()
+    assert get_type_hints(schema.state_model)["item"].__name__ == "Item"
+    schema.validate_state({"item": {"count": 3}})
+    assert module_ref() is not None
+
+    del schema
+    gc.collect()
+    assert module_name not in sys.modules
+    assert module_ref() is None
+    assert model_ref() is None

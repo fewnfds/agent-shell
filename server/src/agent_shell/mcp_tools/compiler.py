@@ -347,6 +347,9 @@ def compile_mcp_tool_graph(
 
     if schema is not None:
         builder.add_edge(START, _MCP_TOOL_INPUT_NODE)
+        # Queue final validation even when every Command ends without goto.
+        # The deferred node reads State after all selected branches finish.
+        builder.add_edge(_MCP_TOOL_INPUT_NODE, _MCP_TOOL_OUTPUT_NODE)
     for edge in normalized.definition.edges:
         if edge.source not in entry_ids:
             continue

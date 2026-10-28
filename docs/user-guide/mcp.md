@@ -37,7 +37,7 @@ class Output(BaseModel):
     answer: str
 ```
 
-LangGraph使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段，并在所有 Graph 分支完成后按完整 Pydantic 模型校验，缺失或非法结果会使调用失败。带 Schema 的 State 在入口、每个 Command patch 与同一轮全部并行 patch 合并后校验，跨字段 validator 对最终合并值生效。未选择 Python Schema Card 时使用开放mapping State，参数直接成为扁平键；Command 返回的 update 作为正式 root patch 写入 LangGraph channel，同一轮并行分支更新不同键时由 channel 合并。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
+LangGraph使用这三个模型，并把Pydantic自动生成的JSON Schema作为官方`inputSchema`。`Input`字段必须全部存在于`State`；`Output`只投影`State`同名字段，并在所有 Graph 分支完成后按完整 Pydantic 模型校验；显式到达 End 与省略 `goto` 自然结束均执行该校验，缺失或非法结果会使调用失败。带 Schema 的 State 在入口、每个 Command patch 与同一轮全部并行 patch 合并后校验，跨字段 validator 对最终合并值生效。未选择 Python Schema Card 时使用开放mapping State，参数直接成为扁平键；Command 返回的 update 作为正式 root patch 写入 LangGraph channel，同一轮并行分支更新不同键时由 channel 合并。`tools/call`返回Graph最终值的TextContent，不是Workflow事件流。
 
 Command 返回 `Command(goto=END)` 时必须有该节点到 End 的 Control Edge；带 Python Schema 的 Tool 会先经过 Output 校验，再结束本次调用。
 
@@ -116,7 +116,7 @@ Connection、Mapping 和 Requirement 可以保留，供以后重新装配；它�
 }
 ```
 
-`type`/`transport` 的 `http` 与 `streamable_http`/`streamable-http` 会规范化为 Streamable HTTP；省略 transport 时，有 `url` 的条目按 HTTP，其余按 stdio。Preview 列出本地软件包来源以及每个 env/Header，用户逐项选择 secret 或 literal 后一次提交。整批导入原子完成，任何条目无效或名称冲突时不创建部分 Connection。
+`type`/`transport` 的 `http` 与 `streamable_http`/`streamable-http` 会规范化为 Streamable HTTP；省略 transport 时，有 `url` 的条目按 HTTP，其余按 stdio。Preview 列出本地软件包来源以及每个 env/Header，用户逐项选择 secret 或 literal 后一次提交预览对应的 JSON。文件读取、Preview 与导入期间输入保持禁用；修改 JSON 后需要重新 Preview。整批导入原子完成，任何条目无效或名称冲突时不创建部分 Connection。
 
 导入只创建 Connection，不创建 Requirement、映射、安装产物或 Agent/Command 引用，也不持续同步原 JSON。stdio 只确定性转换 `npx -y package@精确版本`、`uvx package==精确版本` 与 `uvx --from package==精确版本 entrypoint`；`latest`、版本范围和任意宿主 command 会被拒绝。`${VAR}` 形式的未解析环境引用也会被拒绝；请在导入前提供真实值，并在 Preview 中选择 secret 存储。当前只接受上述两个 transport 的语义字段，避免悄悄忽略 OAuth、SSE、WebSocket 或其他未实现行为。
 

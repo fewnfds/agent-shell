@@ -28,8 +28,11 @@ watch(() => props.open, async (open) => {
 }, { immediate: true })
 
 function close(): void {
-  visible.value = false
   if (props.open) emit('close')
+}
+
+function updateVisibility(open: boolean): void {
+  if (!open) close()
 }
 </script>
 
@@ -40,7 +43,7 @@ function close(): void {
     :size="modalSize"
     scrollable
     :title="title"
-    @close="close"
+    @update:model-value="updateVisibility"
   >
     <template #header>
       <h5 class="modal-title">{{ title }}</h5>

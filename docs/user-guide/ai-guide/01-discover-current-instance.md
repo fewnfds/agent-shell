@@ -118,7 +118,7 @@ Component、Main Agent、Subagent、External Agent 和 Workflow collection 支�
 
 `view=full` 返回完整 item projection，`view=summary` 返回引用和列表所需字段。只需要 UUID 和候选引用时，优先读取 `/agent-shell/api/configuration-options`。只修改一个对象时，优先读取单项 GET。
 
-`repository_revision` 表示当前进程内的 Repository 内容一致性身份，不是发布版本或历史版本。
+`repository_revision` 表示当前进程内的 Repository 内容一致性身份。`configuration-options` 的 Repository identity、revision 和全部引用摘要来自同一个受协调的读取范围；并发配置修改或 Repository 切换在该读取完成后继续。
 
 ## 5. 建立 reference ledger
 

@@ -131,13 +131,19 @@ class SkillPackageAuthoringService:
         return names
 
     def _copy_template(self, source: Path, destination: Path) -> None:
-        if destination.exists():
+        try:
+            destination.mkdir()
+        except FileExistsError as exc:
             raise SkillPackageAuthoringError(
                 "skill_name_conflict",
                 "A Skill with this name already exists in the Skill package.",
                 status_code=409,
-            )
-        shutil.copytree(source, destination, symlinks=False)
+            ) from exc
+        try:
+            shutil.copytree(source, destination, symlinks=False, dirs_exist_ok=True)
+        except BaseException:
+            shutil.rmtree(destination, ignore_errors=True)
+            raise
 
     def create(
         self,
@@ -185,11 +191,17 @@ class SkillPackageAuthoringService:
             raise SkillPackageAuthoringError(
                 "skill_package_not_found", "The source Skill package is unavailable.", status_code=404
             )
-        if os.path.lexists(target):
+        try:
+            target.mkdir()
+        except FileExistsError as exc:
             raise SkillPackageAuthoringError(
                 "skill_package_exists", "The target Skill package already exists.", status_code=409
-            )
-        shutil.copytree(source, target, symlinks=False)
+            ) from exc
+        try:
+            shutil.copytree(source, target, symlinks=False, dirs_exist_ok=True)
+        except BaseException:
+            shutil.rmtree(target, ignore_errors=True)
+            raise
         return StagedPathChange(lambda: shutil.rmtree(target, ignore_errors=True))
 
     def stage_delete(self, owner_id: str, folder_name: str) -> StagedPathChange:

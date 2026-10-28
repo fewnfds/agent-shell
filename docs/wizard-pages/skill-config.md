@@ -23,6 +23,6 @@ public Skill Template 根为 `data/skills-template/`。扫描允许任意层级�
 
 `system_prompt_enabled: false` 时，`instruction_override` 必须为 `null`。启用且提供 override 时，文本必须各包含一次或多次 `{skills_locations}`、`{skills_load_warnings}` 和 `{skills_list}`；不支持其他 placeholder、conversion 或 format spec。
 
-Skill 独立包根的直接子目录是 Skill；独立包与 Template 完全解耦，用户或 AI 可以直接编辑。已存在同名 Skill 时 Add 返回冲突且不覆盖，必须先从右侧删除或手动删除目录并点击 Refresh。组件页载入或刷新时才扫描独立包并显示 warning；warning 不阻塞保存、装配、仓库切换、Bundle 或进程退出。
+Skill 独立包根的直接子目录是 Skill；独立包与 Template 完全解耦，用户或 AI 可以直接编辑。已存在同名 Skill 时 Add 返回冲突且不覆盖，必须先从右侧删除或手动删除目录并点击 Refresh。复制组件或添加 Template 时，复制异常会清理本次新建的目标目录并返回原失败；源内容与已有目标保持原样，排除复制失败原因后可直接重试。组件页载入或刷新时才扫描独立包并显示 warning；warning 不阻塞保存、装配、仓库切换、Bundle 或进程退出。
 
 Skill Component 是独立包制作与管理工具，不直接出现在 Main Agent 或 Subagent 的 capability 选择中。需要使用 Skill 时，在 `backend_type=composite` 的 Filesystem Backend 中设置 `skill_package_id`，并为同一effective Agent选择Filesystem Tools；运行时把独立包只读挂载到`/skills/`并通过固定可见的`read_file`加载内容。Skill随Backend一起被Subagent继承或替换；LocalShellBackend不接受Skill独立包。

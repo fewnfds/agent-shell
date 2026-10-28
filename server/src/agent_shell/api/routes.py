@@ -298,22 +298,23 @@ def build_router(
 
     @router.get("/configuration-options")
     def get_configuration_options() -> dict[str, object]:
-        repository_id, repository_revision = configuration.repository_context()
-        return {
-            "repository_id": repository_id,
-            "repository_revision": repository_revision,
-            "components": {
-                component_type: block_summaries(component_type)
-                for component_type in MANAGED_COMPONENT_MODELS
-            },
-            "main_agents": config_store.list_item_summaries("main_agents"),
-            "subagents": config_store.list_item_summaries("subagents"),
-            "external_agents": config_store.list_item_summaries(
-                "external_agents"
-            ),
-            "workflows": workflow_store.list_item_summaries(),
-            "mcp_tools": mcp_tool_store.list_item_summaries(),
-        }
+        with configuration.exclusive_config_mutation():
+            repository_id, repository_revision = configuration.repository_context()
+            return {
+                "repository_id": repository_id,
+                "repository_revision": repository_revision,
+                "components": {
+                    component_type: block_summaries(component_type)
+                    for component_type in MANAGED_COMPONENT_MODELS
+                },
+                "main_agents": config_store.list_item_summaries("main_agents"),
+                "subagents": config_store.list_item_summaries("subagents"),
+                "external_agents": config_store.list_item_summaries(
+                    "external_agents"
+                ),
+                "workflows": workflow_store.list_item_summaries(),
+                "mcp_tools": mcp_tool_store.list_item_summaries(),
+            }
 
     def authoring_error(exc: PythonPackageAuthoringError) -> HTTPException:
         parts = exc.code.split("_")

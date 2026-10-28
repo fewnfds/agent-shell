@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAlert, LteButton } from '@adminlte/vue'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -20,11 +20,15 @@ const { notify } = useToasts()
 const open = ref(false)
 const document = ref('')
 const preview = ref<McpImportPreview | null>(null)
+const previewDocument = ref<string | null>(null)
 const valueSources = ref<McpImportValueSources>({})
 const busy = ref(false)
 const error = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
-const canImport = computed(() => Boolean(preview.value) && !busy.value)
+const canImport = computed(() => Boolean(preview.value) && previewDocument.value === document.value && !busy.value)
+let inputGeneration = 0
+
+onBeforeUnmount(() => { inputGeneration += 1 })
 
 function show(): void {
   open.value = true
@@ -33,9 +37,12 @@ function show(): void {
 
 function close(): void {
   if (busy.value) return
-  open.value = false
-  document.value = ''
+  resetImport()
+}
+
+function clearPreview(): void {
   preview.value = null
+  previewDocument.value = null
   valueSources.value = {}
   error.value = ''
 }
@@ -49,8 +56,7 @@ async function selectFile(event: Event): Promise<void> {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  document.value = await file.text()
-  await loadPreview()
+  await loadPreview(file)
 }
 
 function initialSources(result: McpImportPreview): McpImportValueSources {
@@ -63,19 +69,30 @@ function initialSources(result: McpImportPreview): McpImportValueSources {
   ]))
 }
 
-async function loadPreview(): Promise<void> {
-  if (!document.value.trim() || busy.value) return
+async function loadPreview(file?: File): Promise<void> {
+  if (!open.value || busy.value || (!file && !document.value.trim())) return
+  const generation = ++inputGeneration
+  let sourceDocument = document.value
   busy.value = true
-  error.value = ''
-  preview.value = null
+  clearPreview()
   try {
-    const result = await managementApi.previewMcpConnectionsImport(document.value)
+    if (file) {
+      const content = await file.text()
+      if (generation !== inputGeneration || sourceDocument !== document.value) return
+      sourceDocument = content
+      document.value = content
+    }
+    const result = await managementApi.previewMcpConnectionsImport(sourceDocument)
+    if (generation !== inputGeneration || sourceDocument !== document.value) return
     preview.value = result
+    previewDocument.value = sourceDocument
     valueSources.value = initialSources(result)
   } catch (cause) {
-    error.value = managementError.describe(cause).display
+    if (generation === inputGeneration && sourceDocument === document.value) {
+      error.value = managementError.describe(cause).display
+    }
   } finally {
-    busy.value = false
+    if (generation === inputGeneration) busy.value = false
   }
 }
 
@@ -101,12 +118,12 @@ function transportSummary(connection: McpImportPreview['connections'][number]): 
 }
 
 async function commit(): Promise<void> {
-  if (!canImport.value) return
+  if (!canImport.value || previewDocument.value === null) return
   busy.value = true
   error.value = ''
   try {
-    const connections = await managementApi.importMcpConnections(document.value, valueSources.value)
-    closeAfterBusy()
+    const connections = await managementApi.importMcpConnections(previewDocument.value, valueSources.value)
+    resetImport()
     notify({ tone: 'success', title: t('mcp.import.imported', { count: connections.length }) })
     emit('imported', connections)
   } catch (cause) {
@@ -116,26 +133,26 @@ async function commit(): Promise<void> {
   }
 }
 
-function closeAfterBusy(): void {
+function resetImport(): void {
+  inputGeneration += 1
   open.value = false
   document.value = ''
-  preview.value = null
-  valueSources.value = {}
+  clearPreview()
 }
 </script>
 
 <template>
-  <input ref="fileInput" accept=".json,application/json" class="visually-hidden" type="file" @change="selectFile">
+  <input ref="fileInput" accept=".json,application/json" class="visually-hidden" :disabled="busy" type="file" @change="selectFile">
   <LteButton class="action-button" type="button" @click="show"><i class="bi bi-upload" aria-hidden="true" />{{ t('mcp.import.action') }}</LteButton>
 
   <ModalHost :open="open" size="wide" :title="t('mcp.import.title')" :description="t('mcp.import.description')" @close="close">
     <LteAlert v-if="error" theme="danger">{{ error }}</LteAlert>
     <div class="d-flex flex-wrap gap-2 mb-2">
       <LteButton class="action-button" :disabled="busy" type="button" @click="openFile"><i class="bi bi-file-earmark-code" aria-hidden="true" />{{ t('mcp.import.chooseFile') }}</LteButton>
-      <LteButton class="action-button" data-action="mcp-import-preview" :disabled="busy || !document.trim()" type="button" @click="loadPreview"><i class="bi bi-eye" aria-hidden="true" />{{ t('mcp.import.preview') }}</LteButton>
+      <LteButton class="action-button" data-action="mcp-import-preview" :disabled="busy || !document.trim()" type="button" @click="loadPreview()"><i class="bi bi-eye" aria-hidden="true" />{{ t('mcp.import.preview') }}</LteButton>
     </div>
     <label class="form-label" for="mcp-import-json">{{ t('mcp.import.json') }}</label>
-    <textarea id="mcp-import-json" v-model="document" class="form-control font-monospace mb-3" rows="12" :placeholder="t('mcp.import.placeholder')" @input="preview = null" />
+    <textarea id="mcp-import-json" v-model="document" class="form-control font-monospace mb-3" :disabled="busy" rows="12" :placeholder="t('mcp.import.placeholder')" @input="clearPreview" />
 
     <template v-if="preview">
       <h3 class="h5">{{ t('mcp.import.previewTitle') }}</h3>
@@ -150,7 +167,7 @@ function closeAfterBusy(): void {
                 <td>{{ transportSummary(connection) }}</td>
                 <td><span class="font-monospace text-body-secondary me-2">{{ value.target }}:</span><code>{{ value.name }}</code></td>
                 <td>
-                  <select class="form-select" data-testid="mcp-import-value-source" :value="selectedSource(connection.name, value.target, value.name)" @change="setSource(connection.name, value.target, value.name, ($event.target as HTMLSelectElement).value as 'literal' | 'secret')">
+                  <select class="form-select" data-testid="mcp-import-value-source" :disabled="busy" :value="selectedSource(connection.name, value.target, value.name)" @change="setSource(connection.name, value.target, value.name, ($event.target as HTMLSelectElement).value as 'literal' | 'secret')">
                     <option value="secret">{{ t('mcp.connections.secret') }}</option>
                     <option value="literal">{{ t('mcp.connections.literal') }}</option>
                   </select>

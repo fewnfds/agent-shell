@@ -21,7 +21,7 @@ Workflow 与 MCP Tool 的 metadata 都保存可选 `python_schema_id`，在同�
 | 引用方 | 源码要求 | 运行效果 |
 | --- | --- | --- |
 | Workflow | 至少定义 `State` | Run 入口输入与每个 Command 的 `update` 结果都按 `State` 校验 |
-| MCP Tool | 定义 `State`、`Input` 和 `Output` | `Input` 生成官方 `inputSchema`，`Output` 投影 `State` 的同名字段 |
+| MCP Tool | 定义 `State`、`Input` 和 `Output` | `Input` 生成官方 `inputSchema`，`Output` 在全部分支完成后校验并投影 `State` 的同名字段，包含省略 `goto` 的自然结束路径 |
 
 MCP Tool 的每个 `Input` 字段必须存在于 `State`，每个 `Output` 字段也必须存在于 `State`。LangGraph 直接使用这三个模型，并把 Pydantic 生成的 JSON Schema 作为官方 `inputSchema`。未引用 Python Schema 时使用开放 mapping State，参数直接成为扁平键，不做键名与类型校验。
 

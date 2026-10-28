@@ -8,6 +8,7 @@ import sys
 from types import ModuleType
 from typing import Any
 from uuid import uuid4
+from weakref import finalize
 
 from pydantic import BaseModel, ValidationError
 
@@ -16,7 +17,7 @@ class GraphSchemaError(ValueError):
     """The configured Python graph schema is missing or invalid."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class GraphSchema:
     """Compiled Pydantic models declared by one graph resource."""
 
@@ -139,12 +140,16 @@ def _compile_source(
             f"The Python graph schema could not be compiled: {exc}"
         ) from exc
 
-    return GraphSchema(
+    schema = GraphSchema(
         source=source,
         state_model=state_model,
         input_model=input_model,
         output_model=output_model,
     )
+    # Cached schemas and active graphs keep deferred type annotations resolvable.
+    # Release the private module once neither owns this compiled schema.
+    finalize(schema, sys.modules.pop, module_name, None)
+    return schema
 
 
 @lru_cache(maxsize=128)

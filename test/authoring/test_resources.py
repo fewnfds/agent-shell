@@ -217,6 +217,60 @@ def test_failed_skill_create_rolls_back_private_package(tmp_path: Path, monkeypa
     assert set(repository.skill_packages_root.iterdir()) == before
 
 
+@pytest.mark.parametrize("operation", ["copy", "add"])
+def test_skill_copy_failure_preserves_source_and_allows_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str,
+) -> None:
+    owner_id = "11111111-1111-4111-8111-111111111111"
+    target_id = "22222222-2222-4222-8222-222222222222"
+    templates = tmp_path / "templates"
+    template = templates / "outline"
+    template.mkdir(parents=True)
+    template_content = "---\nname: outline\ndescription: Outline.\n---\n"
+    (template / "SKILL.md").write_text(template_content, encoding="utf-8")
+    instances = tmp_path / "instances"
+    source_skill = instances / "Source" / "original" / "SKILL.md"
+    source_skill.parent.mkdir(parents=True)
+    source_content = "---\nname: original\ndescription: Original.\n---\n"
+    source_skill.write_text(source_content, encoding="utf-8")
+    service = SkillPackageAuthoringService(
+        templates_root=templates, instances_root=instances,
+    )
+    target = instances / "Copy" if operation == "copy" else instances / "Source" / "outline"
+
+    def perform():
+        if operation == "copy":
+            return service.copy(owner_id, "Source", target_id, "Copy")
+        return service.add(owner_id, "Source", "outline")
+
+    failure = OSError("Skill copy failed after writing a partial destination")
+
+    def fail_copy(_source, destination, **_kwargs):
+        destination = Path(destination)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "partial.txt").write_text("partial", encoding="utf-8")
+        raise failure
+
+    with monkeypatch.context() as failure_patch:
+        failure_patch.setattr("agent_shell.skills.authoring.shutil.copytree", fail_copy)
+        with pytest.raises(OSError) as raised:
+            perform()
+    assert raised.value is failure
+    assert not target.exists()
+    assert source_skill.read_text(encoding="utf-8") == source_content
+    assert (template / "SKILL.md").read_text(encoding="utf-8") == template_content
+
+    perform().finalize()
+    copied_skill = target / "original" / "SKILL.md" if operation == "copy" else target / "SKILL.md"
+    expected = source_content if operation == "copy" else template_content
+    assert copied_skill.read_text(encoding="utf-8") == expected
+
+    with pytest.raises(SkillPackageAuthoringError) as conflict:
+        perform()
+    assert conflict.value.status_code == 409
+    assert copied_skill.read_text(encoding="utf-8") == expected
+
+
 @pytest.mark.parametrize("owner_id", ["", ".", "..", "nested/owner"])
 def test_skill_package_rejects_non_configuration_owner_without_side_effects(
     tmp_path: Path,
