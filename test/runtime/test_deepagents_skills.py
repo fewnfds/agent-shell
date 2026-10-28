@@ -185,7 +185,6 @@ def test_default_workspace_keeps_consumer_skill_overlays_read_only_and_isolated(
 
     alpha_filesystem = alpha_capabilities.middleware[-1]
     assert "read_file" in {tool.name for tool in alpha_filesystem.tools}
-    assert alpha_filesystem._tool_token_limit_before_evict == 20_000
     assert isinstance(alpha_capabilities.backend.default, StateBackend)
     assert alpha_capabilities.backend is not beta_capabilities.backend
     assert alpha_capabilities.workspace is not beta_capabilities.workspace

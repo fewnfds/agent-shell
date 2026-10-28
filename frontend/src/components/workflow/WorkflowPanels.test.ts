@@ -95,27 +95,6 @@ describe('Workflow control panels', () => {
     expect(wrapper.emitted('updateNodeId')).toEqual([[node.id, 'review']])
   })
 
-  it('does not expose an embedded State schema editor', () => {
-    const wrapper = mount(WorkflowInspector, {
-      props: {
-        edge: null,
-        edgeSourceEndpoints: [],
-        edgeTargetEndpoints: [],
-        edgeTypeOptions: [],
-        externalAgents,
-        inputEndpoints: [],
-        commands,
-        node: null,
-        nodeIds: [],
-        outputEndpoints: [],
-        stateContract: 'agent-shell.workflow.control.v1',
-        workflowName: 'Control Workflow',
-      },
-      global: { plugins: [i18n()] },
-    })
-    expect(wrapper.find('#workflow-state-schema').exists()).toBe(false)
-  })
-
   it('connects and serializes one normal Edge kind', () => {
     const command = newCommandCanvasNode('router', commands[0]!.id)
     command.data.externalAgentId = externalAgents[0]!.id

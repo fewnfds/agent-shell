@@ -19,6 +19,21 @@ from agent_shell.runtime.capabilities import (
 from agent_shell.runtime.capabilities import deepagents as deepagents_capability
 
 
+@pytest.fixture
+def filesystem_middleware_options(monkeypatch):
+    from deepagents import middleware
+
+    constructor = middleware.FilesystemMiddleware
+    calls: list[dict[str, object]] = []
+
+    def capture(**kwargs):
+        calls.append(kwargs)
+        return constructor(**kwargs)
+
+    monkeypatch.setattr(middleware, "FilesystemMiddleware", capture)
+    return calls
+
+
 def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -44,10 +59,8 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
     assert "execute" in {tool.name for tool in capabilities.middleware[-1].tools}
     assert capabilities.permissions == ()
     from deepagents.backends import LocalShellBackend
-    from deepagents.middleware.filesystem import _route_host_path_prompt
 
     assert isinstance(capabilities.backend, LocalShellBackend)
-    assert _route_host_path_prompt(capabilities.backend) == ""
     result = capabilities.backend.execute("cd" if os.name == "nt" else "pwd")
     assert result.exit_code == 0
     assert os.path.normcase(result.output.strip()) == os.path.normcase(
@@ -55,7 +68,9 @@ def test_local_shell_workspace_exposes_execute_when_selected(tmp_path: Path) -> 
     )
 
 
-def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Path) -> None:
+def test_filesystem_runtime_options_and_tool_switches_are_compiled(
+    tmp_path: Path, filesystem_middleware_options,
+) -> None:
     mapped = tmp_path / "mapped"
     mapped.mkdir()
     skills_dir = tmp_path / "skills"
@@ -108,18 +123,16 @@ def test_filesystem_runtime_options_and_tool_switches_are_compiled(tmp_path: Pat
         "glob",
         "grep",
     ]
-    assert middleware._enabled_tools == frozenset(
-        {"read_file", "write_file", "edit_file", "delete", "glob", "grep"}
-    )
-    assert middleware._custom_system_prompt == "Use the configured workspace only."
-    assert middleware._custom_tool_descriptions == {
+    options, = filesystem_middleware_options
+    assert options["system_prompt"] == "Use the configured workspace only."
+    assert options["custom_tool_descriptions"] == {
         "read_file": "Read a configured workspace file.",
         "delete": "Delete a configured workspace path.",
     }
-    assert middleware._tool_token_limit_before_evict == 4096
-    assert middleware._human_message_token_limit_before_evict == 8192
-    assert middleware._grep_max_count == 321
-    assert middleware._max_execute_timeout == 45
+    assert options["tool_token_limit_before_evict"] == 4096
+    assert options["human_message_token_limit_before_evict"] == 8192
+    assert options["grep_max_count"] == 321
+    assert options["max_execute_timeout"] == 45
 
 
 def test_composite_backend_hides_selected_execute_tool(tmp_path: Path) -> None:
@@ -241,7 +254,7 @@ def test_configured_workspace_route_preserves_recursive_glob_contract(
 
 
 def test_composite_sources_compile_atomic_path_permissions(
-    tmp_path: Path,
+    tmp_path: Path, filesystem_middleware_options,
 ) -> None:
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
@@ -286,8 +299,9 @@ def test_composite_sources_compile_atomic_path_permissions(
     middleware = capabilities.middleware[0]
 
     assert "ls" not in {tool.name for tool in middleware.tools}
-    assert middleware._custom_system_prompt == "Base filesystem prompt"
-    assert middleware._custom_tool_descriptions == {
+    options, = filesystem_middleware_options
+    assert options["system_prompt"] == "Base filesystem prompt"
+    assert options["custom_tool_descriptions"] == {
         "write_file": "Policy write description"
     }
     rules = [
@@ -299,21 +313,7 @@ def test_composite_sources_compile_atomic_path_permissions(
         (("write",), ("/source/", "/source/**"), "deny"),
         (("read", "write"), ("/private/", "/private/**"), "deny"),
     ]
-    assert middleware._permissions == list(capabilities.permissions)
-    from deepagents.middleware.filesystem import _check_fs_permission
-
-    assert (
-        _check_fs_permission(
-            list(capabilities.permissions), "read", "/source/demo.md"
-        )
-        == "allow"
-    )
-    assert (
-        _check_fs_permission(
-            list(capabilities.permissions), "write", "/source/demo.md"
-        )
-        == "deny"
-    )
+    assert options["_permissions"] == list(capabilities.permissions)
 
 
 def test_nested_source_permissions_override_broader_virtual_directory(
@@ -488,7 +488,7 @@ def test_virtual_source_rejects_windows_reparse_points(
         deepagents_capability._assert_plain_source(tmp_path / "reparse-source")
 
 def test_filesystem_runtime_options_keep_upstream_defaults_or_disable_eviction(
-    tmp_path: Path,
+    tmp_path: Path, filesystem_middleware_options,
 ) -> None:
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
@@ -510,6 +510,7 @@ def test_filesystem_runtime_options_keep_upstream_defaults_or_disable_eviction(
     )
     middleware = capabilities.middleware[0]
 
-    assert middleware._custom_system_prompt is None
-    assert middleware._tool_token_limit_before_evict is None
+    options, = filesystem_middleware_options
+    assert "system_prompt" not in options
+    assert options["tool_token_limit_before_evict"] is None
     assert "delete" not in {tool.name for tool in middleware.tools}

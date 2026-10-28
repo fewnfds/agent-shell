@@ -50,3 +50,4 @@ packages = ["src/agent_shell"]
 pythonpath = ["src"]
 testpaths = ["../test"]
 addopts = "-p no:cacheprovider"
+tmp_path_retention_policy = "failed"

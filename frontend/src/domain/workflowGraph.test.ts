@@ -17,30 +17,48 @@ describe('Workflow control graph projection', () => {
     expect(startEnd.animated).toBe(false)
   })
 
-  it('loads and saves only the control graph wire fields', () => {
+  it('round-trips Command references, control edges, node positions, and viewport', () => {
     const document: WorkflowGraphDocument = {
       definition: {
         schema_version: 1,
         state_contract: 'agent-shell.workflow.control.v1',
         nodes: [
           { id: 'start', type: 'start', type_version: 1, config: {} },
+          {
+            id: 'command', type: 'command', type_version: 1,
+            config: {
+              command_id: '11111111-1111-4111-8111-111111111111',
+              external_agent_id: '22222222-2222-4222-8222-222222222222',
+            },
+          },
           { id: 'end', type: 'end', type_version: 1, config: {} },
         ],
         edges: [{
           id: 'edge-1',
           source: 'start',
           source_handle: 'next',
-          target: 'end',
+          target: 'command',
           target_handle: 'in',
+        }, {
+          id: 'edge-2', source: 'command', source_handle: 'next',
+          target: 'end', target_handle: 'in',
         }],
       },
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+      layout: {
+        nodes: { start: { x: 80, y: 180 }, command: { x: 360, y: 180 }, end: { x: 680, y: 180 } },
+        viewport: { x: 25, y: 40, zoom: 1.25 },
+      },
     }
     const catalog = [
       {
         type: 'start',
         output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal'], max_connections: null }],
         input_handles: [],
+      },
+      {
+        type: 'command',
+        output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal'], max_connections: null }],
+        input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', accepted_edge_types: ['normal'], max_connections: null }],
       },
       {
         type: 'end',
@@ -52,9 +70,7 @@ describe('Workflow control graph projection', () => {
     const canvas = workflowDocumentToCanvas(document, catalog)
     expect(canvas.edges[0]).toMatchObject({ data: { edgeType: 'normal' } })
     const saved = workflowCanvasToDocument(canvas.nodes, canvas.edges, canvas.viewport)
-    expect(saved.definition).toEqual(document.definition)
-    expect(saved.layout.viewport).toEqual(document.layout.viewport)
-    expect(Object.keys(saved.layout.nodes)).toEqual(['start', 'end'])
+    expect(saved).toEqual(document)
   })
 
   it('adds editor terminals only for an empty editable document', () => {

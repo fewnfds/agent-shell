@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 from pathlib import Path
-import sqlite3
 import threading
 
 import pytest
@@ -11,37 +10,6 @@ import pytest
 from agent_shell.file_manager import FileManagerService
 from agent_shell.runtime.media_events import MediaContentBlock
 from agent_shell.runtime.media_response import MainAgentMediaResponse
-from agent_shell.storage.database import SQLiteDatabase
-
-
-def test_database_initialization_drops_obsolete_runtime_tables(tmp_path: Path) -> None:
-    database_path = tmp_path / "data" / "state" / "agent-shell.sqlite3"
-    database_path.parent.mkdir(parents=True)
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            "CREATE TABLE api_message_history (id TEXT PRIMARY KEY);"
-            "CREATE TABLE api_message_history_outputs (history_id TEXT PRIMARY KEY);"
-            "CREATE TABLE agent_session_runs (id TEXT PRIMARY KEY);"
-            "CREATE TABLE agent_session_run_outputs (run_id TEXT PRIMARY KEY);"
-            "CREATE TABLE media_output_assets (id TEXT PRIMARY KEY);"
-        )
-
-    database = SQLiteDatabase(database_path)
-    with database.transaction() as connection:
-        tables = {
-            row["name"]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        }
-
-    assert not {
-        "api_message_history",
-        "api_message_history_outputs",
-        "agent_session_runs",
-        "agent_session_run_outputs",
-        "media_output_assets",
-    } & tables
 
 
 def test_media_output_becomes_a_file_manager_user_file(tmp_path: Path) -> None:

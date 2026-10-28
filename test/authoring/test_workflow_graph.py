@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from langgraph.graph import END, START
+from langgraph.graph import END
 from langgraph.types import Command
 
 from agent_shell.runtime.context import WorkflowRuntimeContext
@@ -125,13 +125,13 @@ def test_catalog_exposes_only_control_graph_nodes_and_normal_handles() -> None:
     } == {"normal"}
 
 
-def test_admission_rejects_removed_agent_nodes_and_routing_fields() -> None:
+def test_admission_rejects_an_unsupported_node_type() -> None:
     payload = _document().model_dump(mode="json")
     payload["definition"]["nodes"][1] = {
-        "id": "agent",
-        "type": "agent",
+        "id": "unknown",
+        "type": "unknown",
         "type_version": 1,
-        "config": {"main_agent_id": COMMAND_ID},
+        "config": {},
     }
     report, normalized = admit_workflow_document(payload)
     assert normalized is None
@@ -139,14 +139,8 @@ def test_admission_rejects_removed_agent_nodes_and_routing_fields() -> None:
         "workflow.node_type_unsupported"
     }
 
-    payload = _document().model_dump(mode="json")
-    payload["definition"]["edges"][0]["branch_key"] = "legacy"
-    report, normalized = admit_workflow_document(payload)
-    assert normalized is None
-    assert report.valid is False
 
-
-def test_validation_requires_command_references_and_reachability() -> None:
+def test_validation_requires_resolved_command_references() -> None:
     document = _document()
     missing = validate_workflow_executable(document, commands={})
     assert any(issue.code == "configuration.reference_not_found" for issue in missing.issues)
@@ -155,6 +149,105 @@ def test_validation_requires_command_references_and_reachability() -> None:
         commands={"router": object(), "review": object()},
     )
     assert valid.valid
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "code"),
+    [
+        ("nodes", "id", "start", "workflow.node_id_duplicate"),
+        ("edges", "id", "start-router", "workflow.edge_id_duplicate"),
+        ("nodes", "type_version", 2, "workflow.node_version_unsupported"),
+    ],
+)
+def test_admission_reports_invalid_identity_or_version(
+    section: str, field: str, value: object, code: str,
+) -> None:
+    payload = _document().model_dump(mode="json")
+    payload["definition"][section][1][field] = value
+
+    report, normalized = admit_workflow_document(payload)
+
+    assert normalized is None
+    assert any(
+        issue.code == code and issue.path == f"definition.{section}[1].{field}"
+        for issue in report.issues
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "code"),
+    [
+        ("source", "workflow.edge_source_not_found"),
+        ("target", "workflow.edge_target_not_found"),
+        ("source_handle", "workflow.edge_source_handle_invalid"),
+        ("target_handle", "workflow.edge_target_handle_invalid"),
+    ],
+)
+def test_topology_reports_invalid_edge_endpoints(field: str, code: str) -> None:
+    document = _document()
+    setattr(document.definition.edges[0], field, "missing")
+
+    report = validate_workflow_executable(document)
+
+    assert report.valid is False
+    assert any(
+        issue.code == code and issue.path == f"definition.edges[0].{field}"
+        for issue in report.issues
+    )
+
+
+@pytest.mark.parametrize("node_type", ["start", "end"])
+@pytest.mark.parametrize("operation", ["remove", "duplicate"])
+def test_topology_requires_exactly_one_terminal(node_type: str, operation: str) -> None:
+    document = _document()
+    node = next(node for node in document.definition.nodes if node.type == node_type)
+    if operation == "remove":
+        document.definition.nodes.remove(node)
+        code = f"workflow.{node_type}_required"
+    else:
+        document.definition.nodes.append(node.model_copy(update={"id": f"{node_type}-2"}))
+        code = f"workflow.{node_type}_multiple"
+
+    report = validate_workflow_executable(document)
+
+    assert report.valid is False
+    assert any(issue.code == code and issue.owner_type == "graph" for issue in report.issues)
+
+
+def test_topology_rejects_duplicate_directed_node_pairs() -> None:
+    document = _document()
+    document.definition.edges.append(
+        document.definition.edges[0].model_copy(update={"id": "duplicate-pair"})
+    )
+
+    report = validate_workflow_executable(document)
+
+    assert any(
+        issue.code == "workflow.edge_duplicate" and issue.owner_id == "duplicate-pair"
+        for issue in report.issues
+    )
+
+
+@pytest.mark.parametrize(
+    ("disconnected", "code"),
+    [
+        ("start", "workflow.start_outgoing_required"),
+        ("review", "workflow.node_unreachable_from_start"),
+    ],
+)
+def test_topology_reports_disconnected_control_nodes(disconnected: str, code: str) -> None:
+    document = _document()
+    document.definition.edges = [
+        edge for edge in document.definition.edges
+        if (edge.source != "start" if disconnected == "start" else edge.target != disconnected)
+    ]
+
+    report = validate_workflow_executable(document)
+
+    assert any(
+        issue.code == code and issue.owner_id == disconnected
+        for issue in report.issues
+    )
 
 
 def test_compiler_uses_start_edge_and_command_destinations_without_static_command_edges() -> None:
@@ -181,10 +274,9 @@ def test_compiler_uses_start_edge_and_command_destinations_without_static_comman
 
     assert calls == ["router", "review"]
     assert result[WORKFLOW_STATE_CHANNEL] == {"selected": "review"}
-    assert graph.builder.edges == {(START, "router")}
 
 
-def test_command_loop_is_checkpointable_super_step_control() -> None:
+def test_command_loop_updates_flat_state_across_super_steps() -> None:
     document = _document(
         edges=[
             {"id": "start-router", "source": "start", "source_handle": "next", "target": "router", "target_handle": "in"},

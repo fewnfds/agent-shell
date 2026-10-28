@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-import pytest
+import asyncio
+from copy import deepcopy
 
-from agent_shell.runtime.context import WorkflowRuntimeContext
+import pytest
+from deepagents.backends.utils import create_file_data
+from langchain.agents import create_agent
+from langchain_core.language_models import FakeListChatModel
+from langgraph.checkpoint.memory import InMemorySaver
+from pydantic import ValidationError
+
 from agent_shell.runtime.state import (
+    AgentInitialFilesMiddleware,
     AgentShellState,
     WORKFLOW_STATE_CHANNEL,
-    WorkflowState,
     flatten_workflow_state,
     merge_workflow_state,
     wrap_workflow_state_update,
@@ -15,7 +22,6 @@ from agent_shell.runtime.state import (
 
 
 def test_workflow_state_exposes_one_flat_store_channel() -> None:
-    assert WorkflowState.__annotations__.keys() == {WORKFLOW_STATE_CHANNEL}
     assert merge_workflow_state({"left": 1}, {"right": 2}) == {
         "left": 1,
         "right": 2,
@@ -23,7 +29,7 @@ def test_workflow_state_exposes_one_flat_store_channel() -> None:
     assert validate_workflow_state_update(
         {WORKFLOW_STATE_CHANNEL: {"enabled": True}}
     ) == {WORKFLOW_STATE_CHANNEL: {"enabled": True}}
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError, match="state"):
         validate_workflow_state_update({WORKFLOW_STATE_CHANNEL: []})
 
 
@@ -36,18 +42,48 @@ def test_workflow_state_wrap_and_flatten_round_trip() -> None:
     assert flatten_workflow_state({WORKFLOW_STATE_CHANNEL: []}) == {}
 
 
-def test_agent_state_has_no_workflow_bridge_channels() -> None:
-    removed = {
-        "shared_vars",
-        "workflow_task",
-        "workflow_state_snapshot",
-        "agent_invocations",
-    }
-    assert removed.isdisjoint(AgentShellState.__annotations__)
+def test_initial_files_middleware_isolates_source_and_each_seed() -> None:
+    expected = create_file_data("configured content")
+    source = {"/seed.txt": deepcopy(expected)}
+    middleware = AgentInitialFilesMiddleware(source)
+    source["/seed.txt"].clear()
+
+    async def scenario() -> None:
+        first = await middleware.abefore_agent({}, None)
+        assert first is not None
+        assert first["files"] == {"/seed.txt": expected}
+        first["files"]["/seed.txt"].clear()
+
+        second = await middleware.abefore_agent({}, None)
+        assert second is not None
+        assert second["files"] == {"/seed.txt": expected}
+
+    asyncio.run(scenario())
 
 
-def test_workflow_runtime_context_has_only_command_node_scope() -> None:
-    fields = set(WorkflowRuntimeContext.__dataclass_fields__)
-    assert "workflow_node_id" in fields
-    assert "node_invocation_id" in fields
-    assert "agent_profile_id" not in fields
+def test_initial_files_are_seeded_once_per_agent_thread() -> None:
+    seed = create_file_data("configured content")
+    edited = create_file_data("user edited content")
+    agent = create_agent(
+        model=FakeListChatModel(responses=["ok"]),
+        middleware=[AgentInitialFilesMiddleware({"/seed.txt": seed})],
+        state_schema=AgentShellState,
+        checkpointer=InMemorySaver(),
+    )
+
+    async def scenario() -> None:
+        config = {"configurable": {"thread_id": "first-thread"}}
+        first = await agent.ainvoke({"messages": [("user", "first turn")]}, config)
+        assert first["files"]["/seed.txt"] == seed
+        await agent.aupdate_state(config, {"files": {"/seed.txt": edited}})
+
+        continued = await agent.ainvoke({"messages": [("user", "next turn")]}, config)
+        assert continued["files"]["/seed.txt"] == edited
+
+        other = await agent.ainvoke(
+            {"messages": [("user", "independent thread")]},
+            {"configurable": {"thread_id": "second-thread"}},
+        )
+        assert other["files"]["/seed.txt"] == seed
+
+    asyncio.run(scenario())

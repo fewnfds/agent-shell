@@ -7,14 +7,9 @@ import {
   managementApi,
   type SavedBlock,
   type Workflow,
-  type WorkflowGraphDocument,
 } from '@/api'
 import { useConfirmation } from '@/composables/useConfirmation'
 import { useToasts } from '@/composables/useToasts'
-import {
-  workflowCanvasToDocument,
-  workflowDocumentToCanvas,
-} from '@/domain/workflowGraph'
 import { en } from '@/locales/en'
 
 import WorkflowsPage from './WorkflowsPage.vue'
@@ -369,83 +364,5 @@ describe('WorkflowsPage', () => {
 
     expect(emptyRouter.currentRoute.value.query.id).toBeUndefined()
     emptyWrapper.unmount()
-  })
-
-  it('round-trips the current Vue Flow document and viewport', () => {
-    const document: WorkflowGraphDocument = {
-      definition: {
-        schema_version: 1,
-        state_contract: 'agent-shell.workflow.control.v1',
-        nodes: [
-          { id: 'start', type: 'start', type_version: 1, config: {} },
-          {
-            id: 'command',
-            type: 'command',
-            type_version: 1,
-            config: { command_id: '11111111-1111-4111-8111-111111111111' },
-          },
-          { id: 'end', type: 'end', type_version: 1, config: {} },
-        ],
-        edges: [
-          {
-            id: 'edge-start-command',
-            source: 'start',
-            source_handle: 'next',
-            target: 'command',
-            target_handle: 'in',
-          },
-          {
-            id: 'edge-command-end',
-            source: 'command',
-            source_handle: 'next',
-            target: 'end',
-            target_handle: 'in',
-          },
-        ],
-      },
-      layout: {
-        nodes: {
-          start: { x: 80, y: 180 },
-          command: { x: 360, y: 180 },
-          end: { x: 680, y: 180 },
-        },
-        viewport: { x: 25, y: 40, zoom: 1.25 },
-      },
-    }
-
-    const canvas = workflowDocumentToCanvas(document, [
-      {
-        type: 'start',
-        type_version: 1,
-        runtime_kind: 'graph_entry',
-        title_key: '',
-        description_key: '',
-        config_schema: {},
-        input_handles: [],
-        output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
-      },
-      {
-        type: 'command',
-        type_version: 1,
-        runtime_kind: 'command_node',
-        title_key: '',
-        description_key: '',
-        config_schema: {},
-        input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-        output_handles: [{ id: 'next', kind: 'control', edge_type: 'normal', max_connections: null }],
-      },
-      {
-        type: 'end',
-        type_version: 1,
-        runtime_kind: 'graph_exit',
-        title_key: '',
-        description_key: '',
-        config_schema: {},
-        input_handles: [{ id: 'in', kind: 'control', edge_type: 'normal', max_connections: null }],
-        output_handles: [],
-      },
-    ])
-
-    expect(workflowCanvasToDocument(canvas.nodes, canvas.edges, canvas.viewport)).toEqual(document)
   })
 })

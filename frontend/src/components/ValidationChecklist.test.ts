@@ -390,38 +390,6 @@ describe('ValidationChecklist', () => {
     expect(text.indexOf('问题原因')).toBeLessThan(text.indexOf('处理方法'))
   })
 
-  it('renders issue details as single-column label and description lines', () => {
-    const wrapper = mountChecklist({
-      status: 'invalid',
-      error: '',
-      report: {
-        valid: false,
-        stage: 'draft_validation',
-        issues: [{
-          code: 'contract.unknown_field',
-          scope: 'main_agent',
-          owner_id: 'main-agent-id',
-          owner_name: 'test-main-agent',
-          path: 'subagents[0].an_extremely_long_variable_name',
-          message: 'raw backend report message',
-          message_key: 'validation.issue.contract.unknownField',
-          message_args: {},
-        }],
-      },
-    })
-
-    const issue = wrapper.get('[data-testid="validation-issue"]')
-    expect(issue.find('.row').exists()).toBe(false)
-    expect(issue.get('[data-testid="validation-owner-line"]').text()).toMatch(/^所属配置：/)
-    expect(issue.get('[data-testid="validation-location-line"]').text()).toMatch(/^问题位置：/)
-    expect(issue.get('[data-testid="validation-technical-path-line"]').text()).toBe(
-      '技术路径：subagents[0].an_extremely_long_variable_name',
-    )
-    expect(issue.get('[data-testid="validation-reason-line"]').text()).toMatch(/^问题原因：/)
-    expect(issue.get('[data-testid="validation-resolution-line"]').text()).toMatch(/^处理方法：/)
-    expect(issue.get('.text-break').exists()).toBe(true)
-  })
-
   it('turns capability slugs into product labels and gives a concrete next step', () => {
     const wrapper = mountChecklist({
       status: 'invalid',

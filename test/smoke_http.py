@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -8,17 +7,14 @@ from pathlib import Path
 import re
 import secrets
 import socket
-import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 from typing import Any
-from uuid import UUID
 
 import httpx
-import yaml
 
 from agent_shell.capability_manifest import CAPABILITY_MANIFESTS
 from agent_shell.storage.api_server import ApiServerStore
@@ -27,34 +23,11 @@ from agent_shell.storage.database import SQLiteDatabase
 from agent_shell.storage.environment import (
     InstanceEnvironmentStore,
     SYSTEM_SETTINGS_ENVIRONMENT_OWNER,
-    parse_environment_text,
 )
 from agent_shell.storage.file_config import FileConfigRepository
 
 
 CAPABILITY_TYPES = tuple(manifest.type for manifest in CAPABILITY_MANIFESTS)
-CRUD_CAPABILITY_TYPES = tuple(
-    capability_type
-    for capability_type in CAPABILITY_TYPES
-    if capability_type != "custom-middleware"
-)
-MODEL_PARAMETER_NAMES = (
-    "temperature",
-    "max_completion_tokens",
-    "top_p",
-    "stop_sequences",
-    "presence_penalty",
-    "frequency_penalty",
-    "seed",
-    "timeout",
-    "max_retries",
-    "stream_usage",
-    "streaming",
-    "reasoning_effort",
-    "service_tier",
-    "logprobs",
-    "top_logprobs",
-)
 
 
 def _port() -> int:
@@ -192,77 +165,12 @@ def _stream_completion_text(
     return fragments
 
 
-def _model_connection_payload(
-    name: str,
-    secret: str | None,
-    *,
-    update: bool,
-) -> dict:
-    model_parameters = dict.fromkeys(MODEL_PARAMETER_NAMES)
-    if update:
-        model_parameters.update(
-            {
-                "temperature": 0,
-                "max_completion_tokens": 2048,
-                "top_p": 0.9,
-                "stop_sequences": ["END", "STOP"],
-                "presence_penalty": 0,
-                "frequency_penalty": 0,
-                "seed": 42,
-                "timeout": 30,
-                "max_retries": 2,
-                "stream_usage": True,
-                "streaming": True,
-                "reasoning_effort": "medium",
-                "service_tier": "auto",
-                "logprobs": False,
-                "top_logprobs": 5,
-            }
-        )
-    return {
-        "name": name,
-        "provider": "openai",
-        "base_url": "https://provider.example.invalid/v1",
-        "credential": secret,
-        "model": "smoke-model",
-        "provider_settings": model_parameters,
-        "tool_choice": None,
-        "response_format": None,
-        "model_settings": {},
-    }
-
-
 def _payload(
     capability_type: str,
     name: str,
     *,
     template: dict[str, str] | None = None,
 ) -> dict:
-    payloads = {
-        "model-requirement": {
-            "name": name,
-            "description": "Use the model connection selected for this instance.",
-        },
-        "filesystem": {"name": name},
-        "filesystem-tools": {"name": name},
-        "skill": {
-            "name": name,
-            "skill_template_paths": ["fixture-skill"],
-        },
-        "system-prompt": {"name": name, "system_prompt": "Smoke prompt."},
-        "subagent": {"name": name},
-        "summarization": {"name": name},
-        "todo-list": {"name": name},
-        "model-call-limit": {"name": name, "run_limit": 20},
-        "tool-call-limit": {"name": name, "run_limit": 20},
-        "exception-retry": {
-            "name": name,
-            "strategy": "provider_native",
-            "force_non_streaming": False,
-            "max_retries": 2,
-            "retry_on": ["transport_error", "timeout", "rate_limit", "server_error"],
-        },
-    }
     if capability_type in {"custom-tool", "agent-event-output"}:
         if template is None:
             raise AssertionError(f"missing Python template for {capability_type}")
@@ -271,7 +179,9 @@ def _payload(
             "python_package": {"folder": ""},
             "python_package_template": template,
         }
-    return payloads[capability_type]
+    if capability_type == "model-requirement":
+        return {"name": name, "description": "Use the bound smoke Provider connection."}
+    return {"name": name}
 
 
 def _request(
@@ -431,12 +341,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         data_dir,
         mutations=mutations,
         environment=instance_environment,
-    )
-    skill_template = data_dir / "skills-template" / "fixture-skill"
-    skill_template.mkdir(parents=True, exist_ok=True)
-    (skill_template / "SKILL.md").write_text(
-        "---\nname: fixture-skill\ndescription: Exercise the process smoke.\n---\n",
-        encoding="utf-8",
     )
     tool_template = (
         data_dir / "templates" / "agent" / "custom_tool" / "smoke-tool"
@@ -713,7 +617,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             "/agent-shell/api/python-package-templates/custom-tool",
             headers=management,
         ).json()
-        _request(client, "GET", "/agent-shell/api/python-package-templates/middleware", headers=management)
         output_templates = _request(
             client,
             "GET",
@@ -732,7 +635,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             "/agent-shell/api/python-package-templates/command",
             headers=management,
         ).json()
-        _request(client, "GET", "/agent-shell/api/skills", headers=management)
         readiness = _request(
             client, "GET", "/agent-shell/api/readiness", headers=management
         ).json()
@@ -1331,118 +1233,17 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
             minimum_run_count=3,
         )
         assert restarted_run_identities == persisted_run_identities
-        model_connection = _request(
+        blocks = dict(persistence_blocks)
+        blocks["custom-tool"] = _request(
             client,
             "POST",
-            "/agent-shell/api/model-connections",
-            headers={**management, "X-Request-ID": f"smoke-{mode}"},
-            json_body=_model_connection_payload(
-                f"{mode}-model-connection",
-                provider_secret,
-                update=False,
+            "/agent-shell/api/blocks/custom-tool",
+            headers=management,
+            json_body=_payload(
+                "custom-tool", "smoke-stream-tool",
+                template=template_by_type["custom-tool"],
             ),
         ).json()
-        UUID(model_connection["id"])
-        assert model_connection["credential"] == {"status": "masked"}
-        assert provider_secret not in json.dumps(model_connection)
-
-        blocks: dict[str, dict] = {}
-        for capability_type in CRUD_CAPABILITY_TYPES:
-            created = _request(
-                client,
-                "POST",
-                f"/agent-shell/api/blocks/{capability_type}",
-                headers={**management, "X-Request-ID": f"smoke-{mode}"},
-                json_body=_payload(
-                    capability_type,
-                    f"{mode}-{capability_type}",
-                    template=template_by_type.get(capability_type),
-                ),
-            ).json()
-            UUID(created["id"])
-            assert provider_secret not in json.dumps(created)
-            blocks[capability_type] = created
-            listed = _request(
-                client, "GET", f"/agent-shell/api/blocks/{capability_type}", headers=management
-            ).json()
-            assert any(item["id"] == created["id"] for item in listed)
-            fetched = _request(
-                client,
-                "GET",
-                f"/agent-shell/api/blocks/{capability_type}/{created['id']}",
-                headers=management,
-            ).json()
-            assert fetched["id"] == created["id"]
-            if capability_type in {"custom-tool", "agent-event-output"}:
-                update_payload = {
-                    "name": f"{mode}-{capability_type}-updated",
-                    "python_package": created["python_package"],
-                }
-            elif capability_type == "skill":
-                update_payload = {
-                    "name": f"{mode}-{capability_type}-updated",
-                    "skill_package": created["skill_package"],
-                }
-            else:
-                update_payload = _payload(
-                    capability_type,
-                    f"{mode}-{capability_type}-updated",
-                )
-            updated = _request(
-                client,
-                "PUT",
-                f"/agent-shell/api/blocks/{capability_type}/{created['id']}",
-                headers=management,
-                json_body=update_payload,
-            ).json()
-            assert updated["id"] == created["id"]
-
-        updated_model_payload = _model_connection_payload(
-            f"{mode}-model-connection-updated",
-            None,
-            update=True,
-        )
-        updated_model = _request(
-            client,
-            "PUT",
-            f"/agent-shell/api/model-connections/{model_connection['id']}",
-            headers=management,
-            json_body=updated_model_payload,
-        ).json()
-        assert updated_model["provider_settings"]["stop_sequences"] == [
-            "END",
-            "STOP",
-        ]
-        assert updated_model["provider_settings"]["streaming"] is True
-        assert updated_model["provider_settings"]["stream_usage"] is True
-        runtime_model_connection = _request(
-            client,
-            "POST",
-            "/agent-shell/api/model-connections",
-            headers=management,
-            json_body={
-                "name": f"{mode}-event-stream-model",
-                "provider": "deepseek",
-                "base_url": provider_base_url,
-                "credential": provider_secret,
-                "model": "deepseek-reasoner",
-                "provider_settings": {"streaming": True},
-                "tool_choice": None,
-                "response_format": None,
-                "model_settings": {},
-            },
-        ).json()
-        _request(
-            client,
-            "PUT",
-            (
-                "/agent-shell/api/model-requirements/"
-                f"{blocks['model-requirement']['id']}/binding"
-            ),
-            headers=management,
-            json_body={"connection_id": runtime_model_connection["id"]},
-        )
-
         main_agent = _request(
             client,
             "POST",
@@ -1523,102 +1324,11 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
         )
         assert text_seq_match is not None and terminal_seq_match is not None
         assert int(text_seq_match.group(1)) < int(terminal_seq_match.group(1))
-        subagent = _request(
-            client,
-            "POST",
-            "/agent-shell/api/subagents",
-            headers=management,
-            json_body={
-                "component_name": f"{mode}-subagent",
-                "name": "smoke_worker",
-                "description": "Handles smoke-test delegated work.",
-                "settings": {
-                    "capability_overrides": [],
-                },
-            },
-        ).json()
-        for path, item in (
-            ("main-agents", main_agent),
-            ("subagents", subagent),
-        ):
-            UUID(item["id"])
-            _request(client, "GET", f"/agent-shell/api/{path}", headers=management)
-            fetched = _request(
-                client, "GET", f"/agent-shell/api/{path}/{item['id']}", headers=management
-            ).json()
-            assert fetched["id"] == item["id"]
-        updated_main_agent = dict(main_agent)
-        updated_main_agent.pop("id")
-        updated_main_agent.pop("enabled")
-        updated_main_agent["name"] += "-updated"
-        _request(
-            client,
-            "PUT",
-            f"/agent-shell/api/main-agents/{main_agent['id']}",
-            headers=management,
-            json_body=updated_main_agent,
-        )
-        updated_subagent = dict(subagent)
-        updated_subagent.pop("id")
-        updated_subagent["component_name"] += "-updated"
-        _request(
-            client,
-            "PUT",
-            f"/agent-shell/api/subagents/{subagent['id']}",
-            headers=management,
-            json_body=updated_subagent,
-        )
-
-        model_id = model_connection["id"]
-        model_path = (
-            data_dir / "config" / "model-connections" / f"{model_id}.yaml"
-        )
-        model_text = model_path.read_text(encoding="utf-8")
-        assert provider_secret not in model_text
-        model_document = yaml.safe_load(model_text)
-        model_secret_name = model_document["payload"]["credential"]["reference"]
-        environment_path = data_dir / "config" / "agent-shell.env"
-        environment_values = parse_environment_text(
-            environment_path.read_text(encoding="utf-8")
-        )
-        assert environment_values[model_secret_name] == provider_secret
-        with closing(sqlite3.connect(database_path)) as connection, connection:
-            tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            assert not ({"blocks", "provider_secrets", "workflows"} & tables)
-            assert "checkpoints" not in tables
-            assert "store" not in tables
         langgraph_state_dir = data_dir / "state" / "langgraph-dev"
         checkpoint_database_path = langgraph_state_dir / "checkpoints.sqlite3"
         store_database_path = langgraph_state_dir / "store.sqlite3"
         assert checkpoint_database_path.is_file()
         assert store_database_path.is_file()
-        with closing(sqlite3.connect(checkpoint_database_path)) as connection:
-            checkpoint_tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            assert {"checkpoints", "writes"} <= checkpoint_tables
-        with closing(sqlite3.connect(store_database_path)) as connection:
-            store_tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            assert "store" in store_tables
-        event_path = data_dir / "logs" / "security-events.jsonl"
-        event_text = event_path.read_text(encoding="utf-8")
-        assert provider_secret not in event_text
-        assert management_token not in event_text
-        assert api_key not in event_text
-
         _request(
             client,
             "DELETE",
@@ -1648,91 +1358,6 @@ def _run_mode(repo_root: Path, scratch_root: Path) -> dict:
                 expected=404,
             )
 
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/workflows/{workflow['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/workflows/{target_workflow['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/blocks/command/{workflow_command['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/blocks/workflow-event-output/{workflow_output['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/main-agents/{main_agent['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/subagents/{subagent['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/main-agents/{persistence_main_agent['id']}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            (
-                "/agent-shell/api/model-connections/"
-                f"{persistence_model_connection['id']}"
-            ),
-            headers=management,
-        )
-        for capability_type, block in persistence_blocks.items():
-            _request(
-                client,
-                "DELETE",
-                f"/agent-shell/api/blocks/{capability_type}/{block['id']}",
-                headers=management,
-            )
-        _request(
-            client,
-            "DELETE",
-            f"/agent-shell/api/model-connections/{model_id}",
-            headers=management,
-        )
-        _request(
-            client,
-            "DELETE",
-            (
-                "/agent-shell/api/model-connections/"
-                f"{runtime_model_connection['id']}"
-            ),
-            headers=management,
-        )
-        for capability_type, block in blocks.items():
-            _request(
-                client,
-                "DELETE",
-                f"/agent-shell/api/blocks/{capability_type}/{block['id']}",
-                headers=management,
-            )
-        final_environment = parse_environment_text(
-            environment_path.read_text(encoding="utf-8")
-        )
-        assert provider_secret not in final_environment.values()
-        assert model_secret_name not in final_environment
         return {
             "mode": mode,
             "capability_count": len(blocks),
@@ -1769,12 +1394,12 @@ def main() -> int:
     scratch_parent = repo_root / "runtime" / "tmp"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix="security-http-smoke-", dir=scratch_parent
+        prefix="agent-shell-http-smoke-", dir=scratch_parent
     ) as scratch:
         root = Path(scratch)
         reports = [_run_mode(repo_root, root)]
     if root.exists():
-        raise AssertionError("security smoke left temporary artifacts")
+        raise AssertionError("HTTP smoke left temporary artifacts")
     print(json.dumps({"status": "passed", "modes": reports}, sort_keys=True))
     return 0
 

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   blankMainAgent,
   blankSubagent,
-  normalizeSubagentReference,
   overrideSelection,
   mainAgentPayload,
   setOverrideSelection,
@@ -63,15 +62,6 @@ describe('agent profile adapters', () => {
         middleware_refs: [],
         mcp_refs: [],
       },
-    })
-  })
-
-  it('normalizes only the current Subagent reference field', () => {
-    expect(normalizeSubagentReference({
-      subagent_id: '00000000-0000-0000-0000-000000000020',
-      name: 'legacy field',
-    })).toEqual({
-      subagent_id: '00000000-0000-0000-0000-000000000020',
     })
   })
 })

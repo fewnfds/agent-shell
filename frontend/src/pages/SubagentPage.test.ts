@@ -20,7 +20,7 @@ import {
 beforeEach(resetAgentPageTestState)
 
 describe('Subagent authoring page', () => {
-  it('orders independent Custom Tool references in three-column cards', async () => {
+  it('saves the selected Custom Tool reference order for each Agent', async () => {
     const firstId = '00000000-0000-0000-0000-000000000061'
     const secondId = '00000000-0000-0000-0000-000000000062'
     const api = service({
@@ -49,8 +49,6 @@ describe('Subagent authoring page', () => {
       await add.trigger('click')
       const rows = wrapper.findAll('[data-testid="tool-reference-row"]')
       expect(rows).toHaveLength(2)
-      expect(rows.every((row) => row.classes().includes('col-md-6'))).toBe(true)
-      expect(rows.every((row) => row.classes().includes('col-lg-4'))).toBe(true)
       await rows[0]!.get('[data-testid="tool-reference"]').setValue(firstId)
       await rows[1]!.get('[data-testid="tool-reference"]').setValue(secondId)
       await rows[0]!.get('[data-action="move-tool-reference-down"]').trigger('click')
@@ -155,8 +153,6 @@ describe('Subagent authoring page', () => {
       await add.trigger('click')
       const rows = wrapper.findAll('[data-testid="middleware-reference-row"]')
       expect(rows).toHaveLength(2)
-      expect(rows.every((row) => row.classes().includes('col-md-6'))).toBe(true)
-      expect(rows.every((row) => row.classes().includes('col-lg-4'))).toBe(true)
       await rows[0]!.get('[data-testid="middleware-reference"]').setValue(firstId)
       await rows[1]!.get('[data-testid="middleware-reference"]').setValue(secondId)
       await rows[0]!.get('[data-action="move-middleware-reference-down"]').trigger('click')

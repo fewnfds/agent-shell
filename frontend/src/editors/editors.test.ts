@@ -119,28 +119,26 @@ function mountEditor(component: Component, props: Record<string, unknown>): VueW
 }
 
 describe('dedicated block editors', () => {
-  it('renders exception retry as two unnested responsive strategy cards', () => {
-    const editor = mount(ExceptionRetryEditor, {
-      props: {
-        modelValue: exceptionRetryAdapter.blank(exceptionRetryDefaults),
-        defaults: exceptionRetryDefaults,
-      },
-      global: { plugins: [localizedI18n] },
+  it('switches retry strategy and emits its editable policy', async () => {
+    const editor = mountEditor(ExceptionRetryEditor, {
+      modelValue: exceptionRetryAdapter.blank(exceptionRetryDefaults),
+      defaults: exceptionRetryDefaults,
     })
-    const columns = editor.get('[data-editor="exception-retry"]').findAll(':scope > .col-12')
-    const cards = columns.map((column) => column.get(':scope > .card'))
+    const provider = editor.get('[data-testid="retry-owner"] fieldset')
+    const middleware = editor.get('[data-testid="middleware-policy"] fieldset')
+    expect((provider.element as HTMLFieldSetElement).disabled).toBe(false)
+    expect((middleware.element as HTMLFieldSetElement).disabled).toBe(true)
 
-    expect(columns).toHaveLength(2)
-    expect(editor.findAll('.card')).toHaveLength(2)
-    expect(columns.every((column) => column.classes().includes('col-lg-6'))).toBe(true)
-    expect(cards.every((card) => card.find('.card').exists() === false)).toBe(true)
-    expect(cards.map((card) => card.get('.card-header').text())).toEqual([
-      'Provider 原生重试',
-      'LangChain ModelRetryMiddleware',
-    ])
-    expect(cards.every((card) => card.text().includes('强制非流式'))).toBe(true)
-    expect(cards.every((card) => card.find('input[type="number"]').exists())).toBe(true)
-    expect(editor.findAll('input[name="exception-retry-strategy"]')).toHaveLength(2)
+    await editor.get('#retry-strategy-model_retry_middleware').setValue(true)
+    expect((provider.element as HTMLFieldSetElement).disabled).toBe(true)
+    expect((middleware.element as HTMLFieldSetElement).disabled).toBe(false)
+    await editor.get('#max-retries-model_retry_middleware').setValue('4')
+    await editor.get('#retry-authentication_error').setValue(true)
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      strategy: 'model_retry_middleware',
+      max_retries: 4,
+      retry_on: ['transport_error', 'timeout', 'rate_limit', 'server_error', 'authentication_error'],
+    })
   })
 
   it('switches between CompositeBackend and LocalShellBackend forms', async () => {
@@ -192,55 +190,32 @@ describe('dedicated block editors', () => {
     expect((tools.emitted('update:modelValue')?.at(-1)?.[0] as { tool_configs: Record<string, { visible: boolean }> }).tool_configs.execute?.visible).toBe(true)
   })
 
-  it('uses one list-group card for every built-in tool description set', () => {
-    const scenarios = [
-      {
-        component: FilesystemToolsEditor,
-        props: {
-          modelValue: filesystemToolsAdapter.blank(filesystemToolsDefaults),
-          defaults: filesystemToolsDefaults,
-        },
-        title: '文件系统工具',
-        toolNames: filesystemToolsDefaults.tools.map((tool) => tool.name),
-        switchCount: filesystemToolsDefaults.tools.filter((tool) => tool.configurable).length,
-      },
-      {
-        component: TodoListEditor,
-        props: {
-          modelValue: todoListAdapter.blank(todoListDefaults),
-          defaults: todoListDefaults,
-        },
-        title: '待办计划工具',
-        toolNames: ['write_todos'],
-        switchCount: 0,
-      },
-      {
-        component: SubagentCapabilityEditor,
-        props: {
-          modelValue: subagentAdapter.blank(subagentDefaults),
-          defaults: subagentDefaults,
-        },
-        title: '同步子代理工具',
-        toolNames: ['task'],
-        switchCount: 0,
-      },
-    ]
-
-    for (const scenario of scenarios) {
-      const editor = mount(scenario.component, {
-        props: scenario.props,
-        global: { plugins: [localizedI18n] },
-      })
-      const card = editor.get('[data-testid="tool-description-card"]')
-      const items = card.findAll('[data-testid="tool-description-item"]')
-
-      expect(card.get('.card-header').text()).toBe(scenario.title)
-      expect(items).toHaveLength(scenario.toolNames.length)
-      expect(items.map((item) => item.get('label').text())).toEqual(scenario.toolNames)
-      expect(card.findAll('.form-switch')).toHaveLength(scenario.switchCount)
-      expect(items.every((item) => item.get('[data-action="restore-default"]').classes().includes('ms-auto'))).toBe(true)
-      expect(card.find('.card-body').exists()).toBe(false)
-    }
+  it.each([
+    {
+      name: 'Filesystem', component: FilesystemToolsEditor,
+      props: { modelValue: filesystemToolsAdapter.blank(filesystemToolsDefaults), defaults: filesystemToolsDefaults },
+      changed: { tool_configs: { ls: { description_override: 'custom description' } } },
+      restored: { tool_configs: { ls: { description_override: 'ls default' } } },
+    },
+    {
+      name: 'Todo', component: TodoListEditor,
+      props: { modelValue: todoListAdapter.blank(todoListDefaults), defaults: todoListDefaults },
+      changed: { tool_description_override: 'custom description' },
+      restored: { tool_description_override: 'write_todos default description' },
+    },
+    {
+      name: 'Subagent', component: SubagentCapabilityEditor,
+      props: { modelValue: subagentAdapter.blank(subagentDefaults), defaults: subagentDefaults },
+      changed: { task_description_override: 'custom description' },
+      restored: { task_description_override: 'task default description' },
+    },
+  ])('edits and restores the $name tool description', async ({ component, props, changed, restored }) => {
+    const editor = mountEditor(component, props)
+    const item = editor.get('[data-testid="tool-description-item"]')
+    await item.get('textarea').setValue('custom description')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject(changed)
+    await item.get('[data-action="restore-default"]').trigger('click')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject(restored)
   })
 
   it('keeps required tool variables concise and visible', () => {
@@ -255,58 +230,34 @@ describe('dedicated block editors', () => {
       .toBe('必要变量 {available_agents}')
   })
 
-  it('places system prompt controls in the card body with only the Skill switch', () => {
-    const scenarios = [
-      {
-        component: FilesystemEditor,
-        props: {
-          modelValue: filesystemAdapter.blank(filesystemDefaults),
-          defaults: filesystemDefaults,
-        },
-        title: '文件系统提示词',
-        switchCount: 0,
-      },
-      {
-        component: SkillEditor,
-        props: {
-          modelValue: skillAdapter.blank(skillDefaults),
-          defaults: skillDefaults,
-        },
-        title: 'Skill 系统提示词',
-        switchCount: 1,
-      },
-      {
-        component: SubagentCapabilityEditor,
-        props: {
-          modelValue: subagentAdapter.blank(subagentDefaults),
-          defaults: subagentDefaults,
-        },
-        title: '同步子代理系统提示词',
-        switchCount: 0,
-      },
-      {
-        component: TodoListEditor,
-        props: {
-          modelValue: todoListAdapter.blank(todoListDefaults),
-          defaults: todoListDefaults,
-        },
-        title: '待办计划系统提示词',
-        switchCount: 0,
-      },
-    ]
-
-    for (const scenario of scenarios) {
-      const editor = mount(scenario.component, {
-        props: scenario.props,
-        global: { plugins: [localizedI18n] },
-      })
-      const card = editor.get('[data-testid="system-prompt-card"]')
-
-      expect(card.get('.card-header').text()).toBe(scenario.title)
-      expect(card.findAll('.form-switch')).toHaveLength(scenario.switchCount)
-      expect(card.get('.card-body > .d-flex [data-action="restore-default"]').classes()).toContain('ms-auto')
-      expect(card.find('.card-header [data-action="restore-default"]').exists()).toBe(false)
-    }
+  it.each([
+    {
+      name: 'Filesystem', component: FilesystemEditor,
+      props: { modelValue: filesystemAdapter.blank(filesystemDefaults), defaults: filesystemDefaults },
+      field: 'system_prompt_override', value: 'filesystem default',
+    },
+    {
+      name: 'Skill', component: SkillEditor,
+      props: { modelValue: skillAdapter.blank(skillDefaults), defaults: skillDefaults },
+      field: 'instruction_override', value: 'skill default',
+    },
+    {
+      name: 'Subagent', component: SubagentCapabilityEditor,
+      props: { modelValue: subagentAdapter.blank(subagentDefaults), defaults: subagentDefaults },
+      field: 'instruction_override', value: 'subagent default prompt',
+    },
+    {
+      name: 'Todo', component: TodoListEditor,
+      props: { modelValue: todoListAdapter.blank(todoListDefaults), defaults: todoListDefaults },
+      field: 'system_prompt_override', value: 'todo default prompt',
+    },
+  ])('edits and restores the $name system prompt', async ({ component, props, field, value }) => {
+    const editor = mountEditor(component, props)
+    const prompt = editor.get('[data-testid="system-prompt-card"]')
+    await prompt.get('textarea').setValue('custom prompt')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ [field]: 'custom prompt' })
+    await prompt.get('[data-action="restore-default"]').trigger('click')
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ [field]: value })
   })
 
   it('loads configuration-owned Python package templates for both event output editors', async () => {
@@ -369,44 +320,16 @@ describe('dedicated block editors', () => {
     expect(tools.emitted('refresh')).toHaveLength(1)
   })
 
-  it('renders model parameters in one card with the requested grid widths', () => {
-    const editor = mount(ModelEditor, {
-      props: { modelValue: modelAdapter.blank() },
-      global: { plugins: [localizedI18n] },
+  it('emits tool choice and structured model request settings without altering JSON text', async () => {
+    const editor = mountEditor(ModelEditor, { modelValue: modelAdapter.blank() })
+    const responseFormat = '{"type":"object","properties":{"answer":{"type":"string"}}}'
+    const modelSettings = '{"parallel_tool_calls":false}'
+    await editor.get('[data-request-setting="tool_choice"] input').setValue('required')
+    await editor.get('[data-request-setting="response_format"] textarea').setValue(responseFormat)
+    await editor.get('[data-request-setting="model_settings"] textarea').setValue(modelSettings)
+    expect(editor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      tool_choice: 'required', response_format: responseFormat, model_settings: modelSettings,
     })
-    const card = editor.get('[data-testid="model-parameters-card"]')
-    const providerFields = card.findAll('[data-testid="provider-parameter-field"]')
-    const settings = card.findAll('[data-request-setting]')
-    const requestSettingsRow = card.get('[data-testid="model-request-settings-row"]')
-
-    expect(card.get('.card-title').text()).toBe('模型参数')
-    expect(providerFields.length).toBeGreaterThan(0)
-    expect(providerFields.every((field) => field.classes().includes('col-md-4'))).toBe(true)
-    expect(settings.map((field) => field.attributes('data-request-setting'))).toEqual([
-      'tool_choice',
-      'response_format',
-      'model_settings',
-    ])
-    expect(settings[0]?.classes()).toContain('col-md-4')
-    expect(settings[1]?.classes()).toContain('col-md-6')
-    expect(settings[2]?.classes()).toContain('col-md-6')
-    expect(requestSettingsRow.classes()).toContain('row')
-    expect(requestSettingsRow.findAll(':scope > [data-request-setting]')).toHaveLength(2)
-    expect(requestSettingsRow.find('[data-request-setting="tool_choice"]').exists()).toBe(false)
-    expect(settings[0]?.find('input[list="tool-choice-options"]').exists()).toBe(true)
-    expect(settings[1]?.find('textarea').exists()).toBe(true)
-    expect(settings[2]?.find('textarea').exists()).toBe(true)
-  })
-
-  it('labels the default stream settings as Default', () => {
-    const editor = mount(ModelEditor, {
-      props: { modelValue: modelAdapter.blank() },
-      global: { plugins: [localizedI18n] },
-    })
-
-    for (const key of ['stream_usage', 'streaming', 'logprobs']) {
-      expect(editor.get(`[data-provider-setting="${key}"] option`).text()).toBe('默认')
-    }
   })
 
   it('selects OpenAI-compatible Chat Completions by default and can opt into Responses', async () => {
@@ -615,22 +538,16 @@ describe('dedicated block editors', () => {
     expect(summaryPrompt?.element).toHaveProperty('value', summarizationDefaults.summary_prompt_default)
   })
 
-  it('uses compact field-only editors for model and tool call limits', async () => {
+  it('emits edited model and tool call limits', async () => {
     const modelEditor = mountEditor(ModelCallLimitEditor, {
       modelValue: modelCallLimitAdapter.blank(),
     })
-    expect(modelEditor.findAll('.card')).toHaveLength(0)
-    expect(modelEditor.findAll('input[type="number"]')).toHaveLength(2)
-    expect(modelEditor.findAll('select')).toHaveLength(1)
     await modelEditor.get('#model-call-run-limit').setValue('6')
     expect(modelEditor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ run_limit: 6 })
 
     const toolEditor = mountEditor(ToolCallLimitEditor, {
       modelValue: toolCallLimitAdapter.blank(),
     })
-    expect(toolEditor.findAll('.card')).toHaveLength(0)
-    expect(toolEditor.findAll('input')).toHaveLength(3)
-    expect(toolEditor.findAll('select')).toHaveLength(1)
     await toolEditor.get('#tool-call-tool-name').setValue('search')
     expect(toolEditor.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ tool_name: 'search' })
   })

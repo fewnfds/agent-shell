@@ -20,6 +20,33 @@ WINDOWS_POWERSHELL = (
 )
 
 
+def _run_bootstrap_function(name: str, command: str) -> subprocess.CompletedProcess[str]:
+    bootstrap_path = REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
+    escaped_path = str(bootstrap_path).replace("'", "''")
+    load_function = (
+        "$tokens = $null\n"
+        "$parseErrors = $null\n"
+        "$ast = [System.Management.Automation.Language.Parser]::ParseFile(\n"
+        f"    '{escaped_path}', [ref]$tokens, [ref]$parseErrors\n"
+        ")\n"
+        "if ($parseErrors.Count) { throw $parseErrors[0] }\n"
+        "$function = $ast.Find({\n"
+        "    param($node)\n"
+        "    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
+        f"-and $node.Name -eq '{name}'\n"
+        "}, $true)\n"
+        "Invoke-Expression $function.Extent.Text\n"
+    )
+    return subprocess.run(
+        [str(WINDOWS_POWERSHELL), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", load_function + command],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
 def test_source_launcher_refreshes_runtime_and_prepares_production_frontend() -> None:
     launcher = (REPOSITORY_ROOT / "start_server.bat").read_text(encoding="utf-8")
 
@@ -134,74 +161,35 @@ def test_windows_runtime_allows_source_builds_and_limits_path_files() -> None:
     assert bootstrap.count(path_file_filter) == 2
 
 
-def test_windows_runtime_unwraps_powershell_file_system_exceptions_for_retry() -> None:
-    bootstrap = (
-        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
-    ).read_text(encoding="utf-8")
-
-    assert "function Test-IsRetryableFileSystemException" in bootstrap
-    assert "$current = $current.InnerException" in bootstrap
-    assert bootstrap.count("Test-IsRetryableFileSystemException $_.Exception") == 2
-    assert "catch [System.IO.IOException]" not in bootstrap
-    assert "$maxAttempts = 120" in bootstrap
-    assert "remained in use for 30 seconds" in bootstrap
-
-
-def test_windows_runtime_retries_only_uv_python_sharing_conflicts() -> None:
-    bootstrap = (
-        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
-    ).read_text(encoding="utf-8")
-
-    sharing_retry = r'-MaxAttempts 61 -RetryOutputPattern "0xc0000043|\(os error 32\)"'
-    assert bootstrap.count(sharing_retry) == 2
-    assert r"\(os error 32\)" in bootstrap
-    assert '$ErrorActionPreference = "Continue"' in bootstrap
-    assert "$_ -is [System.Management.Automation.ErrorRecord]" in bootstrap
-    assert "Write-Host $nativeLine" in bootstrap
-    assert '($nativeOutput -join "`n") -match $RetryOutputPattern' in bootstrap
-    assert "-and -not $matchesRetryPattern" in bootstrap
-    assert "transient Windows sharing conflict" in bootstrap
-    assert "remained blocked by a Windows sharing conflict for 30 seconds" in bootstrap
+@pytest.mark.skipif(os.name != "nt", reason="source launcher is Windows-only")
+@pytest.mark.parametrize(
+    ("exception_expression", "expected"),
+    [
+        ("[System.IO.IOException]::new('sharing')", True),
+        ("[System.Exception]::new('outer', [System.IO.IOException]::new('sharing'))", True),
+        ("[System.UnauthorizedAccessException]::new('sharing')", True),
+        ("[System.InvalidOperationException]::new('invalid')", False),
+    ],
+)
+def test_windows_runtime_classifies_wrapped_filesystem_exceptions(
+    exception_expression: str, expected: bool,
+) -> None:
+    result = _run_bootstrap_function(
+        "Test-IsRetryableFileSystemException",
+        f"Test-IsRetryableFileSystemException ({exception_expression})\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(expected)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="source launcher is Windows-only")
 def test_windows_runtime_accepts_successful_native_stderr() -> None:
-    bootstrap_path = (
-        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
-    )
-    escaped_bootstrap_path = str(bootstrap_path).replace("'", "''")
-    command = (
-        "$tokens = $null\n"
-        "$parseErrors = $null\n"
-        "$ast = [System.Management.Automation.Language.Parser]::ParseFile(\n"
-        f"    '{escaped_bootstrap_path}', [ref]$tokens, [ref]$parseErrors\n"
-        ")\n"
-        "$invokeNative = $ast.Find({\n"
-        "    param($node)\n"
-        "    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
-        "-and $node.Name -eq 'Invoke-Native'\n"
-        "}, $true)\n"
-        "Invoke-Expression $invokeNative.Extent.Text\n"
+    result = _run_bootstrap_function(
+        "Invoke-Native",
         '$ErrorActionPreference = "Stop"\n'
         "Invoke-Native $env:ComSpec @(\n"
         "    '/d', '/c', 'echo normal native stderr 1>&2 & exit /b 0'\n"
-        ") (Get-Location).Path -MaxAttempts 2 -RetryOutputPattern '0xc0000043'\n"
-    )
-
-    result = subprocess.run(
-        [
-            str(WINDOWS_POWERSHELL),
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            command,
-        ],
-        cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+        ") (Get-Location).Path -MaxAttempts 2 -RetryOutputPattern '0xc0000043'\n",
     )
 
     assert result.returncode == 0, result.stderr
@@ -210,59 +198,43 @@ def test_windows_runtime_accepts_successful_native_stderr() -> None:
 
 
 @pytest.mark.skipif(os.name != "nt", reason="source launcher is Windows-only")
-def test_windows_runtime_retries_uv_os_error_sharing_conflict(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("error_output", "recovers", "expected_attempts"),
+    [
+        ("failed to inspect interpreter (os error 32)", True, 2),
+        ("sharing failure 0xc0000043", True, 2),
+        ("permission denied", True, 1),
+        ("sharing failure 0xc0000043", False, 3),
+    ],
+)
+def test_windows_runtime_retries_only_sharing_failures(
+    tmp_path: Path, error_output: str, recovers: bool, expected_attempts: int,
 ) -> None:
-    bootstrap_path = (
-        REPOSITORY_ROOT / "packaging" / "windows" / "bootstrap_runtime.ps1"
-    )
-    escaped_bootstrap_path = str(bootstrap_path).replace("'", "''")
     marker = tmp_path / "retry.marker"
+    attempts = tmp_path / "attempts.txt"
     fail_script = tmp_path / "fail-once.cmd"
     escaped_fail_script = str(fail_script).replace("'", "''")
     fail_script.write_text(
-        "@echo off\r\n"
-        f'if exist "{marker}" exit /b 0\r\n'
-        f'echo.> "{marker}"\r\n'
-        "echo failed to inspect interpreter (os error 32) 1>&2\r\n"
-        "exit /b 2\r\n",
+        "".join((
+            "@echo off\r\n",
+            f'echo attempt>>"{attempts}"\r\n',
+            f'if exist "{marker}" exit /b 0\r\n' if recovers else "",
+            f'echo.> "{marker}"\r\n',
+            f"echo {error_output} 1>&2\r\n",
+            "exit /b 2\r\n",
+        )),
         encoding="ascii",
     )
-    command = (
-        "$tokens = $null\n"
-        "$parseErrors = $null\n"
-        "$ast = [System.Management.Automation.Language.Parser]::ParseFile(\n"
-        f"    '{escaped_bootstrap_path}', [ref]$tokens, [ref]$parseErrors\n"
-        ")\n"
-        "$invokeNative = $ast.Find({\n"
-        "    param($node)\n"
-        "    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] "
-        "-and $node.Name -eq 'Invoke-Native'\n"
-        "}, $true)\n"
-        "Invoke-Expression $invokeNative.Extent.Text\n"
+    result = _run_bootstrap_function(
+        "Invoke-Native",
         f"$failScript = '{escaped_fail_script}'\n"
         '$ErrorActionPreference = "Stop"\n'
         "Invoke-Native $failScript @('run') (Get-Location).Path "
-        "-MaxAttempts 3 -RetryOutputPattern '\\(os error 32\\)'\n"
+        "-MaxAttempts 3 -RetryOutputPattern '0xc0000043|\\(os error 32\\)'\n",
     )
 
-    result = subprocess.run(
-        [
-            str(WINDOWS_POWERSHELL),
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            command,
-        ],
-        cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-
-    assert result.returncode == 0, result.stderr
+    assert attempts.read_text(encoding="ascii").splitlines() == ["attempt"] * expected_attempts
+    assert (result.returncode == 0) is (recovers and expected_attempts == 2), result.stderr
     assert marker.exists()
 
 

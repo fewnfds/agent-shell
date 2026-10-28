@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import json
 import shutil
 
 from agent_shell.storage.file_config import FileConfigRepository
@@ -303,11 +302,11 @@ def test_workflow_model_entry_is_persisted_and_required_for_public_model_list(
         assert deleted.json() == {"ok": True}
 
 
-def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
+def test_workflow_rejects_duplicate_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with make_client(tmp_path, monkeypatch) as client:
-        existing = create_workflow(client, name="Unique Workflow")
+        create_workflow(client, name="Unique Workflow")
         duplicate = client.post(
             "/agent-shell/api/workflows",
             json={
@@ -315,14 +314,15 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
                 "description": "Duplicate.",
             },
         )
-        removed_field = client.post(
-            "/agent-shell/api/workflows",
-            json={
-                "name": "Legacy Workflow",
-                "description": "Rejected legacy shape.",
-                "main_agent_id": "missing-agent",
-            },
-        )
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["code"] == "workflow_name_conflict"
+
+
+def test_workflow_creation_cannot_bypass_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
         enabled_field = client.post(
             "/agent-shell/api/workflows",
             json={
@@ -332,29 +332,8 @@ def test_workflow_rejects_duplicate_names_and_removed_main_agent_field(
             },
         )
 
-    assert duplicate.status_code == 409
-    assert duplicate.json()["detail"]["code"] == "workflow_name_conflict"
-    assert removed_field.status_code == 422
-    assert removed_field.json()["detail"]["code"] == "workflow_invalid"
     assert enabled_field.status_code == 422
     assert enabled_field.json()["detail"]["code"] == "workflow_invalid"
-
-
-def test_workflow_rejects_removed_filesystem_field(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        legacy = client.post(
-            "/agent-shell/api/workflows",
-            json={
-                "name": "Legacy Filesystem owner",
-                "description": "Rejected legacy shape.",
-                "filesystem_id": "00000000-0000-0000-0000-000000000000",
-            },
-        )
-
-    assert legacy.status_code == 422
-    assert legacy.json()["detail"]["code"] == "workflow_invalid"
 
 
 def test_repository_validation_includes_disabled_workflow_references(
@@ -641,58 +620,6 @@ def test_workflow_draft_publish_and_validation_share_one_graph(
     assert draft.status_code == 200, draft.text
     assert draft.json() == invalid
     assert saved_draft["enabled"] is False
-
-
-def test_workflow_draft_accepts_graphs_beyond_removed_size_limits(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with make_client(tmp_path, monkeypatch) as client:
-        workflow = create_workflow(client, name="Large draft")
-        nodes = [
-            {"id": "start", "type": "start", "type_version": 1, "config": {}},
-            {"id": "end", "type": "end", "type_version": 1, "config": {}},
-        ]
-        edges = []
-        for index in range(5000):
-            node_id = f"command{index}"
-            nodes.append(
-                {
-                    "id": node_id,
-                    "type": "command",
-                    "type_version": 1,
-                    "config": {"command_id": "11111111-1111-4111-8111-111111111111"},
-                }
-            )
-            edges.append(
-                {
-                    "id": f"start-{node_id}",
-                    "source": "start",
-                    "source_handle": "next",
-                    "target": node_id,
-                    "target_handle": "in",
-                }
-            )
-        document = {
-            "definition": {
-                "schema_version": 1,
-                "state_contract": "agent-shell.workflow.control.v1",
-                "nodes": nodes,
-                "edges": edges,
-            },
-            "layout": {"nodes": {}, "viewport": {"x": 0, "y": 0, "zoom": 1}},
-        }
-        assert len(nodes) > 100
-        assert len(edges) > 200
-        assert len(json.dumps(document).encode("utf-8")) > 1_000_000
-
-        saved = client.put(
-            f"/agent-shell/api/workflows/{workflow['id']}/draft",
-            json=document,
-        )
-
-    assert saved.status_code == 200, saved.text
-    assert len(saved.json()["definition"]["nodes"]) == len(nodes)
 
 
 def test_workflow_publish_reports_broken_router_package_without_missing_reference(

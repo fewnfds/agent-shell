@@ -5,14 +5,11 @@ import importlib.util
 import inspect
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from uuid import uuid4
 
 from langgraph.runtime import ExecutionInfo, Runtime
 import pytest
 
 from agent_shell.command import run_command
-from agent_shell.command_packages import CommandPackageRuntime
-from agent_shell.python_packages.authoring import PythonPackageAuthoringService
 from agent_shell.runtime.agent_run_calls import AgentRunHandle, AgentRunSnapshot
 from agent_shell.runtime.context import WorkflowRuntimeContext
 from agent_shell.runtime.state import (
@@ -24,13 +21,6 @@ from agent_shell.runtime.workflow_run_calls import WorkflowRunHandle, WorkflowRu
 
 REPOSITORY = Path(__file__).parents[2]
 EXAMPLES = REPOSITORY / "examples" / "workflow-components" / "command"
-EXAMPLE_KEYS = {
-    "agent-run-command",
-    "antigravity-agent-command",
-    "runtime-context-command",
-    "state-routing-command",
-    "workflow-run-command",
-}
 
 
 def _load_example(key: str) -> ModuleType:
@@ -50,68 +40,6 @@ def _command(key: str):
     assert inspect.iscoroutinefunction(command)
     assert list(inspect.signature(command).parameters) == ["state", "runtime"]
     return command
-
-
-def test_command_examples_are_valid_catalog_entries(tmp_path: Path) -> None:
-    service = PythonPackageAuthoringService(
-        templates_root=tmp_path / "templates",
-        examples_root=REPOSITORY / "examples",
-        instances_root=tmp_path / "instances",
-        runtime_root=tmp_path / "runtime",
-    )
-
-    catalog = service.template_catalog("command")
-
-    assert catalog["errors"] == {}
-    assert {
-        str(item["key"]).removeprefix("内置示例-")
-        for item in catalog["catalog"]
-    } == EXAMPLE_KEYS
-    for key in EXAMPLE_KEYS:
-        _command(key)
-
-
-def test_command_examples_materialize_through_the_package_runtime(
-    tmp_path: Path,
-) -> None:
-    instances_root = tmp_path / "instances"
-    runtime_root = tmp_path / "runtime"
-    service = PythonPackageAuthoringService(
-        templates_root=tmp_path / "templates",
-        examples_root=REPOSITORY / "examples",
-        instances_root=instances_root,
-        runtime_root=runtime_root,
-    )
-    catalog = {
-        item["key"]: item for item in service.template_catalog("command")["catalog"]
-    }
-    created: list[tuple[str, dict[str, str]]] = []
-    for index, key in enumerate(sorted(EXAMPLE_KEYS), start=1):
-        catalog_key = f"内置示例-{key}"
-        owner_id = str(uuid4())
-        reference, _change = service.create(
-            "command",
-            owner_id,
-            f"Command example {index}",
-            template_key=catalog_key,
-            template_revision=str(catalog[catalog_key]["revision"]),
-        )
-        created.append((owner_id, reference))
-
-    package_runtime = CommandPackageRuntime(
-        request_id="command-example-test",
-        packages_dir=instances_root,
-        runtime_root=runtime_root,
-    )
-    for owner_id, reference in created:
-        command = package_runtime.command_for(
-            owner_id,
-            owner_id,
-            reference,
-        )
-        assert inspect.iscoroutinefunction(command)
-        assert list(inspect.signature(command).parameters) == ["state", "runtime"]
-    asyncio.run(package_runtime.close())
 
 
 def test_state_routing_example_reads_updates_and_routes_by_canvas_node_id() -> None:

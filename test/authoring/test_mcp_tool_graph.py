@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from langgraph.graph import END
 from langgraph.types import Command
+from pydantic import ValidationError
 
 from agent_shell.graph_schema import compile_graph_schema
 from agent_shell.mcp_tools.compiler import compile_mcp_tool_graph
@@ -153,7 +154,7 @@ def test_mcp_tool_rejects_invalid_state_and_input() -> None:
         asyncio.run(graph.ainvoke({"topic": "hi"}))
     assert raised.value.code == "mcp_tool.state_invalid"
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError, match="topic"):
         asyncio.run(graph.ainvoke({"topic": 7}))
 
 

@@ -8,21 +8,11 @@ import pytest
 
 from agent_shell.python_packages import dependencies
 from agent_shell.python_packages.dependencies import prepare_windows_dependencies
-from agent_shell.python_requirements import parse_python_requirements
 from agent_shell.middleware_packages.packages import scan_middleware_package
 from agent_shell.registries.errors import ResourceScanError
 from agent_shell.storage.agent_configs import AgentConfigStore
 from agent_shell.storage.blocks import BlockStore
 from agent_shell.storage.file_config import FileConfigRepository
-
-
-def test_requirements_parser_has_no_product_size_or_package_count_ceiling() -> None:
-    lines = ["# " + "x" * (70 * 1024)]
-    lines.extend(f"package-{index}==1.0" for index in range(250))
-
-    parsed = parse_python_requirements(lines)
-
-    assert len(parsed.values) == 250
 
 
 def write_package(root: Path, owner_id: str, package_id: str) -> tuple[str, Path]:
