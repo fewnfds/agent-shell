@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import stat
 import tempfile
+import threading
 from typing import Any, Literal
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -137,6 +138,7 @@ class FileManagerService:
     ) -> None:
         self._data_root = Path(data_root).resolve()
         self._temporary_directory = temporary_directory.resolve()
+        self._mutation_lock = threading.Lock()
 
     @staticmethod
     def _validate_segment(segment: str) -> None:
@@ -462,34 +464,36 @@ class FileManagerService:
         return target, normalized, parts, mode
 
     def create_directory(self, path: str) -> dict[str, Any]:
-        target, normalized, _, _ = self._creation_target(path, "create")
-        try:
-            target.mkdir(exist_ok=False)
-        except FileExistsError as exc:
-            raise FileManagerError(
-                409,
-                "file_already_exists",
-                "errors.fileAlreadyExists",
-                "A file or directory already exists at the destination.",
-            ) from exc
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            target, normalized, _, _ = self._creation_target(path, "create")
+            try:
+                target.mkdir(exist_ok=False)
+            except FileExistsError as exc:
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                ) from exc
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {"path": normalized, "kind": "directory"}
 
     def create_text_file(self, path: str) -> dict[str, Any]:
-        target, normalized, _, _ = self._creation_target(path, "create")
-        try:
-            with target.open("x", encoding="utf-8", newline=""):
-                pass
-        except FileExistsError as exc:
-            raise FileManagerError(
-                409,
-                "file_already_exists",
-                "errors.fileAlreadyExists",
-                "A file or directory already exists at the destination.",
-            ) from exc
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            target, normalized, _, _ = self._creation_target(path, "create")
+            try:
+                with target.open("x", encoding="utf-8", newline=""):
+                    pass
+            except FileExistsError as exc:
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                ) from exc
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {
             "path": normalized,
             "kind": "file",
@@ -504,41 +508,48 @@ class FileManagerService:
         overwrite: bool,
     ) -> dict[str, Any]:
         def prepare() -> tuple[Path, str]:
-            target, normalized, _, _ = self._creation_target(path, "upload")
-            if os.path.lexists(target) and is_reparse_point(target):
-                raise FileManagerError(
-                    422,
-                    "file_link_unsupported",
-                    "errors.fileLinkUnsupported",
-                    "Symbolic links and reparse points are not supported.",
-                )
-            if target.exists() and not overwrite:
-                raise FileManagerError(
-                    409,
-                    "file_already_exists",
-                    "errors.fileAlreadyExists",
-                    "A file or directory already exists at the destination.",
-                )
-            if target.exists() and not target.is_file():
-                raise FileManagerError(
-                    409,
-                    "file_not_regular",
-                    "errors.fileNotRegular",
-                    "The selected path is not a regular file.",
-                )
-            return target, normalized
+            with self._mutation_lock:
+                target, normalized, _, _ = self._creation_target(path, "upload")
+                if os.path.lexists(target) and is_reparse_point(target):
+                    raise FileManagerError(
+                        422,
+                        "file_link_unsupported",
+                        "errors.fileLinkUnsupported",
+                        "Symbolic links and reparse points are not supported.",
+                    )
+                if target.exists() and not overwrite:
+                    raise FileManagerError(
+                        409,
+                        "file_already_exists",
+                        "errors.fileAlreadyExists",
+                        "A file or directory already exists at the destination.",
+                    )
+                if target.exists() and not target.is_file():
+                    raise FileManagerError(
+                        409,
+                        "file_not_regular",
+                        "errors.fileNotRegular",
+                        "The selected path is not a regular file.",
+                    )
+                return target, normalized
 
         target, normalized = await _blocking_file_call(prepare)
         temporary = target.parent / f"{_TEMPORARY_PREFIX}{uuid4().hex}.tmp"
+
+        def commit() -> None:
+            # Only publication is serialized; receiving the request body keeps
+            # running independently of other File Manager commands.
+            with self._mutation_lock:
+                self._path(path)
+                _commit_upload_file(temporary, target, overwrite=overwrite)
+
         size = 0
         try:
             await _blocking_file_call(_create_upload_file, temporary)
             async for chunk in chunks:
                 await _blocking_file_call(_append_upload_chunk, temporary, chunk)
                 size += len(chunk)
-            await _blocking_file_call(
-                _commit_upload_file, temporary, target, overwrite=overwrite
-            )
+            await _blocking_file_call(commit)
         except FileExistsError as exc:
             await _blocking_file_call(temporary.unlink, missing_ok=True)
             raise FileManagerError(
@@ -557,18 +568,19 @@ class FileManagerService:
 
     def save_generated_file(self, path: str, content: bytes) -> dict[str, Any]:
         """Persist one program-generated user file through File Manager ownership."""
-        target, normalized, _, _ = self._creation_target(path, "upload")
-        if os.path.lexists(target):
-            raise FileManagerError(
-                409,
-                "file_already_exists",
-                "errors.fileAlreadyExists",
-                "A file or directory already exists at the destination.",
-            )
-        try:
-            write_bytes_atomic(target, content)
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            target, normalized, _, _ = self._creation_target(path, "upload")
+            if os.path.lexists(target):
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                )
+            try:
+                write_bytes_atomic(target, content)
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {"path": normalized, "kind": "file", "size": len(content)}
 
     def _archive_targets(self, paths: list[str]) -> list[Path]:
@@ -779,23 +791,24 @@ class FileManagerService:
         content: str,
         revision: str,
     ) -> dict[str, Any]:
-        target, normalized = self._regular_file_path(path, "write")
-        try:
-            current = target.read_bytes()
-        except OSError as exc:
-            raise self._operation_failed() from exc
-        if self._content_revision(current) != revision:
-            raise FileManagerError(
-                409,
-                "text_file_revision_conflict",
-                "errors.textFileRevisionConflict",
-                "The file changed after it was opened.",
-            )
         encoded = content.encode("utf-8")
-        try:
-            write_bytes_atomic(target, encoded)
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            target, normalized = self._regular_file_path(path, "write")
+            try:
+                current = target.read_bytes()
+            except OSError as exc:
+                raise self._operation_failed() from exc
+            if self._content_revision(current) != revision:
+                raise FileManagerError(
+                    409,
+                    "text_file_revision_conflict",
+                    "errors.textFileRevisionConflict",
+                    "The file changed after it was opened.",
+                )
+            try:
+                write_bytes_atomic(target, encoded)
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {
             "path": normalized,
             "revision": self._content_revision(encoded),
@@ -803,39 +816,48 @@ class FileManagerService:
 
     def rename(self, path: str, name: str) -> dict[str, Any]:
         self._validate_segment(name)
-        source, source_normalized, parts, _, _ = self._require(path, "rename")
-        destination_normalized = "/".join((*parts[:-1], name))
-        destination, _, _, destination_mode = self._path(destination_normalized)
-        if destination_mode != "editable":
-            raise self._denied()
-        if destination == source:
-            return {"source_path": source_normalized, "path": source_normalized}
-        if os.path.lexists(destination):
-            raise FileManagerError(
-                409,
-                "file_already_exists",
-                "errors.fileAlreadyExists",
-                "A file or directory already exists at the destination.",
-            )
-        try:
-            os.replace(source, destination)
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            source, source_normalized, parts, _, _ = self._require(path, "rename")
+            destination_normalized = "/".join((*parts[:-1], name))
+            destination, _, _, destination_mode = self._path(destination_normalized)
+            if destination_mode != "editable":
+                raise self._denied()
+            if destination == source:
+                return {"source_path": source_normalized, "path": source_normalized}
+            if os.path.lexists(destination):
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                )
+            try:
+                os.rename(source, destination)
+            except FileExistsError as exc:
+                raise FileManagerError(
+                    409,
+                    "file_already_exists",
+                    "errors.fileAlreadyExists",
+                    "A file or directory already exists at the destination.",
+                ) from exc
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {"source_path": source_normalized, "path": destination_normalized}
 
     def delete(self, path: str) -> dict[str, Any]:
-        target, normalized, _, _, kind = self._require(path, "delete")
-        try:
-            if kind == "directory":
-                shutil.rmtree(target)
-            elif kind == "file":
-                target.unlink()
-            else:
-                raise self._denied()
-        except FileManagerError:
-            raise
-        except OSError as exc:
-            raise self._operation_failed() from exc
+        with self._mutation_lock:
+            target, normalized, _, _, kind = self._require(path, "delete")
+            try:
+                if kind == "directory":
+                    shutil.rmtree(target)
+                elif kind == "file":
+                    target.unlink()
+                else:
+                    raise self._denied()
+            except FileManagerError:
+                raise
+            except OSError as exc:
+                raise self._operation_failed() from exc
         return {"path": normalized, "deleted": True}
 
 

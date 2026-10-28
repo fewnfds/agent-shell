@@ -15,6 +15,8 @@ from agent_shell.storage.file_config import (
     ActiveRepositoryChangedError,
     FileConfigRepository,
 )
+from agent_shell.storage.mcp_connections import McpResourceStore
+from agent_shell.storage.model_connections import ModelResourceStore
 from agent_shell.storage.workflows import WorkflowStore
 from agent_shell.mcp_tools.publication import McpToolPublicationService
 
@@ -471,3 +473,91 @@ def test_configuration_stores_reject_writes_after_repository_switch(
             expected_repository_id=expected_repository_id
         ):
             raise AssertionError("the stale mutation body must not run")
+
+
+@pytest.mark.parametrize("resource_kind", ["model", "mcp"])
+def test_requirement_binding_keeps_its_repository_during_concurrent_switch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    resource_kind: str,
+) -> None:
+    with make_client(tmp_path, monkeypatch) as client:
+        repository = client.app.state.mcp_tool_store._repository
+        original_id = repository.repository_id
+        alternate_id = str(repository.create_repository("Alternate")["id"])
+        requirement_id = repository.new_configuration_id()
+        BlockStore(repository).save_block(
+            f"{resource_kind}-requirement",
+            requirement_id,
+            {"name": "Requirement", "description": "Scoped binding", **(
+                {"namespace": "review"} if resource_kind == "mcp" else {}
+            )},
+        )
+        connection_payload = (
+            {
+                "name": "Connection", "provider": "openai",
+                "base_url": "https://provider.example/v1", "credential": None,
+                "model": "provider-model", "provider_settings": {},
+                "tool_choice": None, "response_format": None, "model_settings": {},
+            }
+            if resource_kind == "model"
+            else {
+                "name": "Connection", "transport": "http",
+                "url": "https://mcp.example/mcp", "headers": {},
+            }
+        )
+        created = client.post(
+            f"/agent-shell/api/{resource_kind}-connections", json=connection_payload
+        )
+        assert created.status_code == 200, created.text
+        connection_id = created.json()["id"]
+        store_type = ModelResourceStore if resource_kind == "model" else McpResourceStore
+        connection_read = threading.Event()
+        release_binding = threading.Event()
+        switch_started = threading.Event()
+        switch_finished = threading.Event()
+        original_get_connection = store_type.get_connection
+
+        def pause_connection_read(store, requested_id: str):
+            connection = original_get_connection(store, requested_id)
+            if requested_id == connection_id and not connection_read.is_set():
+                connection_read.set()
+                assert release_binding.wait(timeout=5)
+            return connection
+
+        def switch_repository():
+            switch_started.set()
+            try:
+                return repository.switch_repository(alternate_id)
+            finally:
+                switch_finished.set()
+
+        monkeypatch.setattr(store_type, "get_connection", pause_connection_read)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            binding = executor.submit(
+                client.put,
+                f"/agent-shell/api/{resource_kind}-requirements/{requirement_id}/binding",
+                json={"connection_id": connection_id},
+            )
+            assert connection_read.wait(timeout=5)
+            switching = executor.submit(switch_repository)
+            try:
+                assert switch_started.wait(timeout=5)
+                # The real connection read has finished and released its own
+                # snapshot guard before the competing switch starts.
+                switch_finished.wait(timeout=0.2)
+            finally:
+                release_binding.set()
+            bound = binding.result(timeout=5)
+            switching.result(timeout=5)
+
+        bindings_path = tmp_path / "data" / "config" / f"{resource_kind}-bindings.yaml"
+        bindings = (
+            yaml.safe_load(bindings_path.read_text(encoding="utf-8")) or {}
+            if bindings_path.exists() else {}
+        )
+
+    assert bound.status_code == 200, bound.text
+    assert bound.json()["binding"] == connection_id
+    assert bindings[original_id][requirement_id] == connection_id
+    assert requirement_id not in bindings.get(alternate_id, {})

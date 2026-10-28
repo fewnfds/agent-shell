@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from agent_shell.async_tasks import complete_before_cancel
 from agent_shell.contracts import (
     ExternalAgentProfile,
     FilesystemBlock,
@@ -1105,7 +1106,9 @@ class AgentRuntime:
                         for node_id, (command_id, block) in command_blocks.items()
                     }
 
-                commands = await asyncio.to_thread(materialize_commands)
+                commands = await complete_before_cancel(
+                    asyncio.to_thread(materialize_commands)
+                )
 
             graph = await asyncio.to_thread(
                 compile_mcp_tool_graph,
@@ -1360,7 +1363,9 @@ class AgentRuntime:
                     ),
                 )
 
-            output, segment_end = await asyncio.to_thread(materialize_output)
+            output, segment_end = await complete_before_cancel(
+                asyncio.to_thread(materialize_output)
+            )
         except BaseException:
             if built is not None:
                 if built.tool_runtime is not None:
@@ -1661,7 +1666,9 @@ class AgentRuntime:
                         for node_id, (command_id, block) in command_blocks.items()
                     }
 
-                commands = await asyncio.to_thread(materialize_commands)
+                commands = await complete_before_cancel(
+                    asyncio.to_thread(materialize_commands)
+                )
 
             if public_output and output_id is not None:
                 stored_output = (
@@ -1726,7 +1733,9 @@ class AgentRuntime:
                     workflow_event_output,
                     workflow_event_segment_end,
                     workflow_run_output,
-                ) = await asyncio.to_thread(materialize_workflow_event_output)
+                ) = await complete_before_cancel(
+                    asyncio.to_thread(materialize_workflow_event_output)
+                )
 
             graph = await asyncio.to_thread(
                 compile_workflow,

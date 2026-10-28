@@ -111,7 +111,6 @@ const {
     items.some((item) => item.id === requestedId) ? requestedId : items[0]?.id ?? ''
   ),
   sort: sortWorkflows,
-  trackUnsaved: false,
   messages: {
     serviceUnavailable: 'errors.requestFailed',
     loadFailed: 'workflows.loadFailed',

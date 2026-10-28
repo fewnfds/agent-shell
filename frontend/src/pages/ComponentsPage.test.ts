@@ -267,7 +267,7 @@ async function settleComponentPage(wrapper: ReturnType<typeof mount>): Promise<v
   await flushPromises()
 }
 
-function buttonByText(wrapper: Awaited<ReturnType<typeof mountAt>>['wrapper'], text: string) {
+function buttonByText(wrapper: ReturnType<typeof mount>, text: string) {
   const button = wrapper.findAll('button').find((item) => item.text() === text)
   if (!button) throw new Error(`Button not found: ${text}`)
   return button
@@ -966,6 +966,58 @@ describe('ComponentsPage', () => {
     wrapper.unmount()
   })
 
+  it('keeps a created Python extension saved when inspection fails and can refresh it', async () => {
+    const id = '00000000-0000-4000-8000-000000000079'
+    const saved = { id, name: 'Created command', python_package: { folder: id }, mcp_refs: [] }
+    api.getCatalog.mockResolvedValueOnce({
+      block_types: [], workflow_component_types: [commandManifest], editor_defaults: { command: {} },
+    })
+    api.listBlockSummaries.mockResolvedValue(summaryCollection([]))
+    api.listCommandTemplates.mockResolvedValue({ catalog: [commandTemplate], errors: {} })
+    api.createBlock.mockResolvedValueOnce(saved)
+    api.updateBlock.mockResolvedValueOnce(saved)
+    api.inspectPythonPackage.mockRejectedValueOnce(new Error('Package inspection unavailable'))
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{
+        path: '/workflow-components/:type', component: ComponentsPage, props: { scope: 'workflow' },
+      }],
+    })
+    await router.push('/workflow-components/command')
+    await router.isReady()
+    const wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router] } })
+    await settleComponentPage(wrapper)
+    await wrapper.get('[data-field="record-name"]').setValue(saved.name)
+    await wrapper.get('#command-template').setValue(commandTemplate.key)
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+
+    expect(api.createBlock).toHaveBeenCalledOnce()
+    expect(router.currentRoute.value.query.id).toBe(id)
+    expect(wrapper.find('#command-template').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="resource-error"]').text()).toContain('Package inspection unavailable')
+    expect(toastNotify).toHaveBeenCalledWith({ tone: 'success', title: 'components.feedback.saved' })
+    expect(toastNotify).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'components.feedback.saveFailed' }))
+
+    api.inspectPythonPackage.mockResolvedValueOnce({
+      ...pythonPackageInspection(id),
+      files: [{
+        path: 'main.py', size: 20, file_manager_path: `data/packages/${id}/main.py`,
+        modified_at: '2026-10-28T00:00:00Z',
+      }],
+    })
+    await wrapper.get('[data-editor="command"] button[aria-label="common.refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="resource-error"]').exists()).toBe(false)
+    expect(wrapper.get('[data-editor="command"]').text()).toContain('main.py')
+
+    await buttonByText(wrapper, 'common.save').trigger('click')
+    await flushPromises()
+    expect(api.createBlock).toHaveBeenCalledOnce()
+    expect(api.updateBlock).toHaveBeenCalledWith('command', id, expect.objectContaining({ name: saved.name }))
+    wrapper.unmount()
+  })
+
   it('updates with an explicit UUID and creates a uniquely named new draft', async () => {
     const id = '00000000-0000-0000-0000-000000000001'
     const { wrapper } = await mountAt(`/agent-components/model-requirement?id=${id}`)
@@ -1020,6 +1072,38 @@ describe('ComponentsPage', () => {
 
     expect(api.deleteBlock).toHaveBeenCalledWith('model-requirement', copyId)
     expect(router.currentRoute.value.query.id).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it.each(['delete', 'copy'] as const)('keeps a different Component type and draft when an earlier %s completes', async (operation) => {
+    const firstId = '00000000-0000-0000-0000-000000000001'
+    const secondId = '00000000-0000-0000-0000-000000000002'
+    const copyId = '00000000-0000-4000-8000-000000000088'
+    const deletion = deferred<{ ok: boolean }>()
+    const copy = deferred<SavedBlock>()
+    if (operation === 'delete') api.deleteBlock.mockReturnValueOnce(deletion.promise)
+    else api.copyBlock.mockReturnValueOnce(copy.promise)
+    const { router, wrapper } = await mountAt(`/agent-components/model-requirement?id=${firstId}`)
+    await buttonByText(wrapper, `common.${operation}`).trigger('click')
+    if (operation === 'delete') useConfirmation().accept()
+    else {
+      await wrapper.get('#component-copy-form input').setValue('Copied requirement')
+      await wrapper.get('#component-copy-form').trigger('submit')
+    }
+    await flushPromises()
+
+    await router.push(`/agent-components/skill?id=${secondId}`)
+    await vi.waitFor(() => expect(wrapper.find('[data-editor="skill"]').exists()).toBe(true))
+    await flushPromises()
+    await wrapper.get('[data-field="record-name"]').setValue('Skill draft')
+    if (operation === 'delete') deletion.resolve({ ok: true })
+    else copy.resolve({ ...modelRequirementRecord(copyId), name: 'Copied requirement' })
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe(`/agent-components/skill?id=${secondId}`)
+    expect(wrapper.get('[data-field="record-name"]').element).toHaveProperty('value', 'Skill draft')
+    expect(wrapper.get('[data-testid="record-picker-select"]').find(`option[value="${copyId}"]`).exists()).toBe(false)
+    expect(toastNotify).not.toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' }))
     wrapper.unmount()
   })
 

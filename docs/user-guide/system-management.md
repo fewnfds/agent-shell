@@ -56,7 +56,7 @@ MCP 连接保存在 `data/config/mcp-connections/<uuid>.yaml`，secret env/Heade
 - 路径和面包屑直接显示 `data/...` 的真实目录名；
 - 上传默认 `overwrite=false`，最终提交时目标已存在就返回 `409 file_already_exists` 并保留目标内容；显式 `overwrite=true` 才替换已有文件；
 - 在线文本编辑只接受UTF-8普通文件，不设置项目级字节上限；
-- 文件打开时记录内容 revision。磁盘内容发生变化后，保存会保留页面草稿并提供重新载入、确认覆盖或继续编辑；
+- 文件打开时记录内容 revision。同一服务中的并发文本保存按 revision 检查和提交顺序处理；磁盘内容发生变化后，保存会保留页面草稿并提供重新载入、确认覆盖或继续编辑；
 - 编辑期间不锁定磁盘文件，外部编辑器和文件管理页面都可以修改同一文件；
 - 文件操作不跟随符号链接或 Windows reparse point（含 `data/` 根与每段路径的检查）；
 - `data/config/`、Repository metadata/import journal、`data/state/`、`data/logs/`、`runtime/`、外部映射和其他宿主路径不开放；

@@ -52,8 +52,10 @@ def build_model_connection_router(
                 message="The model connection is invalid.",
             ) from exc
 
-    def requirement_projection(requirement: dict[str, Any]) -> dict[str, Any]:
-        connection_id = resources.get_binding(configuration.repository_id, str(requirement["id"]))
+    def requirement_projection(
+        requirement: dict[str, Any], repository_id: str
+    ) -> dict[str, Any]:
+        connection_id = resources.get_binding(repository_id, str(requirement["id"]))
         return {
             **requirement,
             "binding": connection_id,
@@ -113,35 +115,41 @@ def build_model_connection_router(
 
     @router.get("/model-requirements")
     def list_model_requirements() -> list[dict[str, Any]]:
-        requirements = block_store.list_blocks("model-requirement")
-        return [requirement_projection(item) for item in requirements]
+        with configuration.exclusive_config_mutation():
+            repository_id = configuration.repository_id
+            requirements = block_store.list_blocks("model-requirement")
+            return [requirement_projection(item, repository_id) for item in requirements]
 
     @router.put("/model-requirements/{requirement_id}/binding")
     def bind_model_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        requirement = block_store.get_block("model-requirement", requirement_id)
-        if requirement is None:
-            raise management_error(
-                404,
-                code="model_requirement_not_found",
-                message_key="errors.modelRequirementNotFound",
-                message="The model requirement does not exist.",
-            )
-        if set(payload) != {"connection_id"}:
-            raise management_error(422, code="model_binding_invalid", message_key="errors.modelBindingInvalid", message="The model binding must contain only connection_id.")
-        connection_id = payload["connection_id"]
-        if connection_id is not None and not isinstance(connection_id, str):
-            raise management_error(422, code="model_binding_invalid", message_key="errors.modelBindingInvalid", message="The model binding is invalid.")
-        if connection_id is not None:
-            connection_or_404(connection_id)
-        try:
-            resources.set_binding(configuration.repository_id, requirement_id, connection_id)
-        except KeyError as exc:
-            raise management_error(
-                404,
-                code="model_connection_not_found",
-                message_key="errors.modelConnectionNotFound",
-                message="The model connection does not exist.",
-            ) from exc
-        return requirement_projection(requirement)
+        repository_id = configuration.repository_id
+        with configuration.exclusive_config_mutation(
+            expected_repository_id=repository_id
+        ):
+            requirement = block_store.get_block("model-requirement", requirement_id)
+            if requirement is None:
+                raise management_error(
+                    404,
+                    code="model_requirement_not_found",
+                    message_key="errors.modelRequirementNotFound",
+                    message="The model requirement does not exist.",
+                )
+            if set(payload) != {"connection_id"}:
+                raise management_error(422, code="model_binding_invalid", message_key="errors.modelBindingInvalid", message="The model binding must contain only connection_id.")
+            connection_id = payload["connection_id"]
+            if connection_id is not None and not isinstance(connection_id, str):
+                raise management_error(422, code="model_binding_invalid", message_key="errors.modelBindingInvalid", message="The model binding is invalid.")
+            if connection_id is not None:
+                connection_or_404(connection_id)
+            try:
+                resources.set_binding(repository_id, requirement_id, connection_id)
+            except KeyError as exc:
+                raise management_error(
+                    404,
+                    code="model_connection_not_found",
+                    message_key="errors.modelConnectionNotFound",
+                    message="The model connection does not exist.",
+                ) from exc
+            return requirement_projection(requirement, repository_id)
 
     return router

@@ -11,6 +11,8 @@ import type {
   SavedBlock,
   ValidationReport,
 } from '@/api'
+import ConfigurationBundleImport from '@/components/ConfigurationBundleImport.vue'
+import ModalHost from '@/components/ModalHost.vue'
 import { useConfirmation } from '@/composables/useConfirmation'
 import { useToasts } from '@/composables/useToasts'
 import type { ConfigLibraryApi } from '@/pages/configLibrary'
@@ -442,7 +444,7 @@ describe('ConfigLibraryPage', () => {
       root: { kind: 'component', type: 'model', source_id: 'source-id', target_id: 'target-id' },
       target_ids: { 'source-id': 'target-id' }, records: [], skill_packages: [], warnings: [],
     })
-    const { wrapper } = await mountPage(api.service)
+    const { wrapper, router } = await mountPage(api.service)
     const input = wrapper.get('input[type="file"]')
     Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
     await input.trigger('change')
@@ -453,6 +455,14 @@ describe('ConfigLibraryPage', () => {
     expect(api.service.importConfigurationBundle).toHaveBeenCalledWith(file, 'a'.repeat(64), 'c'.repeat(64), {
       target_ids: { 'source-id': 'target-id' }, names: { 'source-id': 'Model' }, filesystem_bindings: {},
     })
+    const importer = wrapper.getComponent(ConfigurationBundleImport)
+    expect(importer.getComponent(ModalHost).props('open')).toBe(false)
+    expect(importer.findAll('button').some((button) => (
+      button.text() === 'Import' && button.attributes('disabled') === undefined
+    ))).toBe(false)
+    expect(api.listBlockSummaries).toHaveBeenCalledTimes(2)
+    expect(router.currentRoute.value.fullPath).toBe('/library/model')
+    wrapper.unmount()
   })
 
   it('requires an explicit name for a conflict and enables import after the user renames it', async () => {

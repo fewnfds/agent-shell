@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue'
+import { onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 
@@ -41,7 +41,6 @@ export interface ConfigurationResourceDefinition<Resource extends ConfigurationR
   validationRequest?: (resource: Resource) => ValidationRequest
   validate?: (request: ValidationRequest) => Promise<ValidationReport>
   deleteConfirmation: (resource: Resource) => ConfirmationRequest
-  trackUnsaved?: boolean
   initialSelection?: (records: readonly Resource[], requestedId: string) => string
   sort?: (records: readonly Resource[]) => Resource[]
   allowInvalidSave?: boolean
@@ -74,8 +73,8 @@ export function useConfigurationResource<
   const form = ref(definition.blank()) as Ref<Resource>
   let loadSequence = 0
 
-  const { markClean, runAfterDiscard } = useUnsavedChanges(
-    () => definition.trackUnsaved === false ? null : form.value,
+  const { markClean, confirmDiscard, runAfterDiscard } = useUnsavedChanges(
+    () => form.value,
     () => ({
       title: t('unsavedChanges.title'),
       description: t('unsavedChanges.description'),
@@ -124,6 +123,7 @@ export function useConfigurationResource<
 
   function resetDraft(notifyUser: boolean): void {
     loadSequence += 1
+    resetCopy()
     saving.value = false
     selectedId.value = ''
     form.value = definition.blank()
@@ -144,6 +144,7 @@ export function useConfigurationResource<
 
   async function loadDetail(id: string): Promise<void> {
     const sequence = ++loadSequence
+    resetCopy()
     const previousId = selectedId.value
     saving.value = false
     if (!id) {
@@ -289,6 +290,10 @@ export function useConfigurationResource<
 
   function closeCopy(): void {
     if (copying.value) return
+    resetCopy()
+  }
+
+  function resetCopy(): void {
     copyOpen.value = false
     copyName.value = ''
     copyError.value = ''
@@ -301,46 +306,49 @@ export function useConfigurationResource<
       copyError.value = t(definition.messages.copyNameRequired)
       return
     }
-    await runAfterDiscard(async () => {
-      copying.value = true
-      copyError.value = ''
-      try {
-        const copied = definition.normalize(await definition.copy(form.value.id, name))
-        upsert(copied)
-        form.value = copied
-        selectedId.value = copied.id
-        markClean()
-        copyOpen.value = false
-        copyName.value = ''
-        await router.replace(definition.location(copied.id))
-        notify({ tone: 'success', title: t(definition.messages.copied) })
-      } catch (error) {
-        copyError.value = managementError.describe(error).display
-      } finally {
-        copying.value = false
-      }
-    })
+    const sequence = loadSequence
+    const id = form.value.id
+    if (!await confirmDiscard() || sequence !== loadSequence) return
+    copying.value = true
+    copyError.value = ''
+    try {
+      const copied = definition.normalize(await definition.copy(id, name))
+      upsert(copied)
+      if (sequence !== loadSequence) return
+      form.value = copied
+      selectedId.value = copied.id
+      markClean()
+      resetCopy()
+      notify({ tone: 'success', title: t(definition.messages.copied) })
+      await router.replace(definition.location(copied.id))
+    } catch (error) {
+      if (sequence === loadSequence) copyError.value = managementError.describe(error).display
+    } finally {
+      copying.value = false
+    }
   }
 
   async function removeCurrent(): Promise<void> {
     if (!definition.available() || !form.value.id || deleting.value) return
-    await runAfterDiscard(async () => {
-      const id = form.value.id
-      if (!await confirm(definition.deleteConfirmation(form.value))) return
-      deleting.value = true
-      clearFeedback()
-      try {
-        await definition.remove(id)
-        records.value = records.value.filter((item) => item.id !== id)
-        resetDraft(false)
-        await router.replace(definition.location())
-        notify({ tone: 'success', title: t(definition.messages.deleted) })
-      } catch (error) {
-        setFailure(definition.messages.deleteFailed, error)
-      } finally {
-        deleting.value = false
-      }
-    })
+    const sequence = loadSequence
+    const id = form.value.id
+    const confirmation = definition.deleteConfirmation(form.value)
+    if (!await confirmDiscard() || sequence !== loadSequence) return
+    if (!await confirm(confirmation) || sequence !== loadSequence) return
+    deleting.value = true
+    clearFeedback()
+    try {
+      await definition.remove(id)
+      records.value = records.value.filter((item) => item.id !== id)
+      if (sequence !== loadSequence) return
+      resetDraft(false)
+      notify({ tone: 'success', title: t(definition.messages.deleted) })
+      await router.replace(definition.location())
+    } catch (error) {
+      if (sequence === loadSequence) setFailure(definition.messages.deleteFailed, error)
+    } finally {
+      deleting.value = false
+    }
   }
 
   watch(
@@ -351,6 +359,8 @@ export function useConfigurationResource<
       void loadDetail(id)
     },
   )
+
+  onScopeDispose(() => { loadSequence += 1 })
 
   return {
     loading,

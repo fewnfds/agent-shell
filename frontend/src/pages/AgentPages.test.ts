@@ -541,4 +541,60 @@ describe('agent authoring pages', () => {
       wrapper.unmount()
     }
   })
+
+  it.each(['delete', 'copy'] as const)('keeps the current Agent draft when an earlier %s completes', async (operation) => {
+    const firstId = '00000000-0000-0000-0000-000000000081'
+    const secondId = '00000000-0000-0000-0000-000000000082'
+    const copyId = '00000000-0000-0000-0000-000000000083'
+    const deletion = deferred<{ ok: boolean }>()
+    const copy = deferred<MainAgentProfile>()
+    const api = service({
+      getConfigurationOptions: vi.fn(async () => ({
+        repository_id: '00000000-0000-4000-8000-000000000099',
+        repository_revision: 1,
+        components: {},
+        main_agents: [{ id: firstId, name: 'First Agent' }, { id: secondId, name: 'Second Agent' }],
+        subagents: [], workflows: [],
+      })),
+      getMainAgent: vi.fn(async (id) => ({
+        id, name: id === firstId ? 'First Agent' : 'Second Agent',
+        capability_refs: [], subagents: [],
+      })),
+      deleteMainAgent: vi.fn(() => deletion.promise),
+      copyMainAgent: vi.fn(() => copy.promise),
+    })
+    const { router, wrapper } = await mountMainAgentPage(api, `/agents/main?id=${firstId}`)
+
+    await buttonByText(wrapper, `common.${operation}`).trigger('click')
+    if (operation === 'delete') {
+      useConfirmation().accept()
+    } else {
+      const form = wrapper.get('form[id$="-copy-form"]')
+      await form.get('input').setValue('Copied Agent')
+      await form.trigger('submit')
+    }
+    await flushPromises()
+    if (operation === 'delete') {
+      expect(api.deleteMainAgent).toHaveBeenCalledWith(firstId)
+      await wrapper.get('[data-testid="record-picker-select"]').setValue(secondId)
+    } else {
+      expect(api.copyMainAgent).toHaveBeenCalledWith(firstId, 'Copied Agent')
+      await router.push({ path: '/agents/main', query: { id: secondId } })
+    }
+    await flushPromises()
+    await wrapper.get('[data-field="record-name"]').setValue('Second Agent draft')
+
+    if (operation === 'delete') deletion.resolve({ ok: true })
+    else copy.resolve({ id: copyId, name: 'Copied Agent', capability_refs: [], subagents: [] })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.id).toBe(secondId)
+    expect(wrapper.get('[data-field="record-name"]').element)
+      .toHaveProperty('value', 'Second Agent draft')
+    const picker = wrapper.get('[data-testid="record-picker-select"]')
+    if (operation === 'delete') expect(picker.find(`option[value="${firstId}"]`).exists()).toBe(false)
+    else expect(picker.find(`option[value="${copyId}"]`).exists()).toBe(true)
+    expect(getToastNotify()).not.toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' }))
+    wrapper.unmount()
+  })
 })

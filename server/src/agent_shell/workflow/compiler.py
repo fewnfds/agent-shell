@@ -164,7 +164,7 @@ def _node_runtime_context(
     return server_context.for_server_run(execution_info.run_id)
 
 
-def _command_failure(
+async def _command_failure(
     code: str,
     message: str,
     *,
@@ -176,7 +176,7 @@ def _command_failure(
 
     diagnostics = context.diagnostics
     diagnostic_id = (
-        diagnostics.runtime_error(
+        await diagnostics.aruntime_error(
             detail_exception,
             code=code,
             component="graph_runtime",
@@ -235,21 +235,23 @@ def _make_command_node(
                 state_schema=state_schema,
             )
         except CommandStateSchemaError as exc:
-            raise _command_failure(
+            failure = await _command_failure(
                 "workflow.state_invalid",
                 str(exc),
                 context=node_runtime.context,
                 detail_exception=exc,
                 server_projection=runtime_context is not None,
-            ) from exc
+            )
+            raise failure from exc
         except CommandError as exc:
-            raise _command_failure(
+            failure = await _command_failure(
                 "workflow.command_failed",
                 "The Command Node script failed.",
                 context=node_runtime.context,
                 detail_exception=exc,
                 server_projection=runtime_context is not None,
-            ) from exc
+            )
+            raise failure from exc
 
     return call_command
 

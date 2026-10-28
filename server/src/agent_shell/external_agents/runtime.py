@@ -22,6 +22,7 @@ import subprocess
 import time
 from uuid import uuid4
 
+from agent_shell.async_tasks import complete_before_cancel
 from agent_shell.configuration.identity import is_configuration_id
 from agent_shell.contracts import ExternalAgentProfile
 from agent_shell.external_agents.binary import resolved_antigravity_cli
@@ -39,7 +40,6 @@ from agent_shell.external_agents.errors import (
 )
 from agent_shell.external_agents.evidence import (
     SessionEvidence,
-    complete_before_cancel,
     recorded_definition_revision,
 )
 from agent_shell.external_agents.layout import (

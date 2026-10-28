@@ -85,8 +85,14 @@ async function selectBundle(event: Event): Promise<void> {
 
 function closeBundle(): void {
   if (bundleBusy.value) return
+  resetBundle()
+}
+
+function resetBundle(): void {
   bundleFile.value = null
   bundlePreview.value = null
+  bundleNames.value = {}
+  bundleBindings.value = {}
   bundleError.value = ''
 }
 
@@ -102,7 +108,7 @@ async function importBundle(): Promise<void> {
       names: bundleNames.value,
       filesystem_bindings: bundleBindings.value,
     })
-    closeBundle()
+    resetBundle()
     notify({ tone: 'success', title: t('library.bundle.imported') })
     emit('imported')
   } catch (cause) {

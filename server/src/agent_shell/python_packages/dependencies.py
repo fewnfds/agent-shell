@@ -332,26 +332,27 @@ def prepare_windows_dependencies(
     config = repository.config()
     components = config.get("components", {})
 
-    active_command_ids: set[str] = set()
-    active_workflow_event_output_ids: set[str] = set()
-    for workflow in config.get("workflows", []):
-        if not isinstance(workflow, dict) or workflow.get("enabled") is not True:
-            continue
-        workflow_event_output_id = workflow.get("workflow_event_output_id")
-        if isinstance(workflow_event_output_id, str) and workflow_event_output_id:
-            active_workflow_event_output_ids.add(workflow_event_output_id)
-        definition = workflow.get("definition", {})
-        for node in definition.get("nodes", []) if isinstance(definition, dict) else []:
-            if not isinstance(node, dict):
+    # Saved drafts need their dependencies before they can pass publication.
+    referenced_command_ids: set[str] = set()
+    referenced_workflow_event_output_ids: set[str] = set()
+    for section in ("workflows", "mcp_tools"):
+        for graph in config.get(section, []):
+            if not isinstance(graph, dict):
                 continue
-            node_config = node.get("config", {})
-            if not isinstance(node_config, dict):
-                continue
-            if node.get("type") == "command":
-                active_command_ids.add(
-                    str(node_config.get("command_id", ""))
-                )
-    active_command_ids.discard("")
+            if section == "workflows":
+                output_id = graph.get("workflow_event_output_id")
+                if isinstance(output_id, str) and output_id:
+                    referenced_workflow_event_output_ids.add(output_id)
+            definition = graph.get("definition", {})
+            for node in definition.get("nodes", []) if isinstance(definition, dict) else []:
+                if not isinstance(node, dict):
+                    continue
+                node_config = node.get("config", {})
+                if not isinstance(node_config, dict):
+                    continue
+                if node.get("type") == "command":
+                    referenced_command_ids.add(str(node_config.get("command_id", "")))
+    referenced_command_ids.discard("")
 
     main_agents = {
         str(item.get("id", "")): item
@@ -369,9 +370,9 @@ def prepare_windows_dependencies(
 
     def referenced_ids(component_type: str) -> set[str]:
         if component_type == "command":
-            return set(active_command_ids)
+            return set(referenced_command_ids)
         if component_type == "workflow-event-output":
-            return set(active_workflow_event_output_ids)
+            return set(referenced_workflow_event_output_ids)
         found: set[str] = set()
         active_subagent_ids: set[str] = set()
         for main_agent_id in active_main_agent_ids:

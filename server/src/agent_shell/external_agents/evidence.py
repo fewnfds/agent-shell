@@ -3,35 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import suppress
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 import json
 from pathlib import Path
 from typing import BinaryIO, TextIO
 
+from agent_shell.async_tasks import complete_before_cancel
 from agent_shell.external_agents.contracts import ExternalAgentRunEvent
 from agent_shell.external_agents.layout import (
     AntigravityLifecycleLayout,
     AntigravitySessionLayout,
 )
 from agent_shell.storage.atomic_files import write_text_atomic
-
-
-async def complete_before_cancel[T](operation: Awaitable[T]) -> T:
-    """Join owned work before cancellation can close its files or release a claim."""
-
-    task = asyncio.ensure_future(operation)
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        while not task.done():
-            with suppress(asyncio.CancelledError, Exception):
-                await asyncio.shield(task)
-        # Retrieve a concurrent failure; the caller's cancellation takes priority.
-        with suppress(asyncio.CancelledError, Exception):
-            task.result()
-        raise
 
 
 def _write_json(path: Path, document: Mapping[str, object]) -> None:

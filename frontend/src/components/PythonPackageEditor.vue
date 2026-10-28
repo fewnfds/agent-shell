@@ -108,11 +108,11 @@ function refresh(): void {
           theme="warning"
           :title="resourceError(inspection.python_package_error)"
         />
-        <div v-if="!inspection" class="d-flex align-items-center gap-2 p-3" role="status">
+        <div v-if="!inspection && loading" class="d-flex align-items-center gap-2 p-3" role="status">
           <span class="spinner-border" aria-hidden="true" />
           <span>{{ t('common.loading') }}</span>
         </div>
-        <div v-else class="table-responsive">
+        <div v-else-if="inspection" class="table-responsive">
           <table class="table table-hover align-middle">
             <thead class="management-table-head">
               <tr>

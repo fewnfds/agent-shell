@@ -110,7 +110,6 @@ const {
     items.some((item) => item.id === requestedId) ? requestedId : items[0]?.id ?? ''
   ),
   sort: sortMcpTools,
-  trackUnsaved: false,
   messages: {
     serviceUnavailable: 'errors.requestFailed',
     loadFailed: 'mcpTools.loadFailed',

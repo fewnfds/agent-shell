@@ -284,3 +284,83 @@ def test_dependency_preparation_replaces_only_successful_package_layer(
         folder, owner_id=owner_id, runtime_root=runtime_root
     )
     assert failed["dependency_status"] == "failed"
+
+
+@pytest.mark.parametrize("section", ["workflows", "mcp_tools"])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_saved_graph_dependencies_are_ready_for_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    section: str,
+    enabled: bool,
+) -> None:
+    from agent_shell.python_packages.validation import PythonPackageValidationService
+
+    data_root, runtime_root = tmp_path / "data", tmp_path / "runtime"
+    repository = FileConfigRepository(data_root)
+    blocks = BlockStore(repository)
+    command_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    output_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    package_specs = [
+        ("command", command_id, "workflow-node", "command", "Pillow==12.0.0", (
+            "def create_command():\n"
+            "    async def command(state, runtime):\n"
+            "        from langgraph.types import Command\n"
+            "        return Command(goto='end')\n"
+            "    return command\n"
+        )),
+        ("workflow-event-output", output_id, "event-output", "workflow-event-output", "idna==3.10", (
+            "def output(event, origin):\n"
+            "    return ''\n"
+        )),
+    ]
+    for kind, owner_id, family, adapter, requirement, source in package_specs:
+        folder = repository.python_packages_root / adapter.replace("-", "_") / kind
+        folder.mkdir(parents=True)
+        (folder / "package.json").write_text(json.dumps({
+            "format_version": 1, "id": owner_id, "family": family, "adapter": adapter,
+        }), encoding="utf-8")
+        (folder / "main.py").write_text(source, encoding="utf-8")
+        (folder / "requirements.txt").write_text(requirement + "\n", encoding="utf-8")
+        blocks.save_block(kind, owner_id, {"name": kind, "python_package": {"folder": kind}})
+    repository.update_config(lambda config: config.setdefault(section, []).append({
+        "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "name": "dependency_graph", "description": "", "enabled": enabled,
+        **({"workflow_event_output_id": output_id} if section == "workflows" else {}),
+        "definition": {"nodes": [
+            {"id": "start", "type": "start", "config": {}},
+            {"id": "command", "type": "command", "config": {"command_id": command_id}},
+            {"id": "end", "type": "end", "config": {}},
+        ], "edges": [
+            {"id": "a", "source": "start", "target": "command"},
+            {"id": "b", "source": "command", "target": "end"},
+        ]}, "layout": {},
+    }))
+    write_runtime_manifest(runtime_root)
+    monkeypatch.setattr(dependencies, "ensure_uv", lambda *_args: tmp_path / "uv.exe")
+    monkeypatch.setattr(dependencies, "_core_constraints", lambda: ())
+    installed: list[str] = []
+
+    def install(arguments: list[str], **_kwargs: object) -> SimpleNamespace:
+        requirements = Path(arguments[arguments.index("--requirements") + 1])
+        installed.extend(requirements.read_text(encoding="utf-8").splitlines())
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(dependencies.subprocess, "run", install)
+    prepare_windows_dependencies(data_root=data_root, runtime_root=runtime_root)
+
+    assert set(installed) == ({"Pillow==12.0.0", "idna==3.10"} if section == "workflows" else {"Pillow==12.0.0"})
+    validation = PythonPackageValidationService(
+        packages_dir=repository.python_packages_root, runtime_root=runtime_root,
+    )
+    assert validation.command_issues(
+        {"folder": "command"}, scope="component", owner_id=command_id,
+        package_owner_id=command_id, owner_name="command", path_prefix="python_package",
+    ) == []
+    output_issues = validation.workflow_event_output_issues(
+        {"folder": "workflow-event-output"}, scope="component", owner_id=output_id,
+        package_owner_id=output_id, owner_name="workflow-event-output", path_prefix="python_package",
+    )
+    assert [issue.code for issue in output_issues] == (
+        [] if section == "workflows" else ["python_package.dependencies_restart_required"]
+    )

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LteAlert } from '@adminlte/vue'
-import { computed, onMounted, ref, shallowRef, watch, type Component, type DeepReadonly } from 'vue'
+import { computed, onMounted, onScopeDispose, ref, shallowRef, watch, type Component, type DeepReadonly } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -144,7 +144,7 @@ const providers = ref<ModelProviderCatalog | null>(null)
 const models = ref<string[]>([])
 const loadingModels = ref(false)
 
-const { isDirty, markClean, runAfterDiscard } = useUnsavedChanges(
+const { isDirty, markClean, confirmDiscard, runAfterDiscard } = useUnsavedChanges(
   () => activeType.value && draft.value
     ? payloadFromDraft(activeType.value, draft.value)
     : draft.value,
@@ -174,6 +174,7 @@ const privateSkillPackage = ref<SkillPackageInspection | null>(null)
 const privateSkillLoading = ref(false)
 const privateSkillMutating = ref(false)
 const loadingResource = ref(false)
+const resourceError = ref('')
 
 let routeSequence = 0
 let catalogSequence = 0
@@ -193,9 +194,11 @@ function invalidateResourceRequests(): void {
   saving.value = false
   loadingModels.value = false
   loadingResource.value = false
+  resourceError.value = ''
   privateSkillLoading.value = false
   privateSkillMutating.value = false
   models.value = []
+  resetCopy()
 }
 
 function resourceRequestIsCurrent(
@@ -711,13 +714,6 @@ async function save(): Promise<void> {
           : await managementApi.createBlock(type, payload as BlockPayload)
     if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
     const savedDraft = draftFromApi(type, saved)
-    if (packageType) {
-      applyPythonPackageInspection(
-        savedDraft as BlockDraftBase & PythonPackageDraftState,
-        await managementApi.inspectPythonPackage(type as ManagedComponentType, saved.id),
-      )
-      if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
-    }
     draft.value = savedDraft
     privateSkillPackage.value = type === 'skill'
       ? ((saved as SavedBlock & { skill_package_contents?: SkillPackageInspection }).skill_package_contents ?? null)
@@ -727,7 +723,6 @@ async function save(): Promise<void> {
     selectedId.value = saved.id
     upsertRecord(saved)
     markClean()
-    await router.replace(editorLocation(saved.id))
     notify({
       tone: 'success',
       title: t(type === 'model-connection'
@@ -736,6 +731,9 @@ async function save(): Promise<void> {
           ? 'mcp.connections.saved'
         : 'components.feedback.saved'),
     })
+    await router.replace(editorLocation(saved.id))
+    if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== saved.id) return
+    if (packageType) await refreshResource()
   } catch (error) {
     if (routeGeneration !== routeSequence || activeType.value !== type || draft.value?.id !== ownerId) return
     if (error instanceof ManagementApiError && error.validation) {
@@ -751,7 +749,7 @@ async function save(): Promise<void> {
       )
     }
   } finally {
-    saving.value = false
+    if (routeGeneration === routeSequence) saving.value = false
   }
 }
 
@@ -803,6 +801,10 @@ async function openCopy(): Promise<void> {
 
 function closeCopy(): void {
   if (copying.value) return
+  resetCopy()
+}
+
+function resetCopy(): void {
   copyOpen.value = false
   copyName.value = ''
   copyError.value = ''
@@ -815,62 +817,72 @@ async function copyCurrent(): Promise<void> {
     copyError.value = t('components.copy.nameRequired')
     return
   }
-  await runAfterDiscard(async () => {
-    copying.value = true
-    copyError.value = ''
-    try {
-      const copied = activeType.value === 'model-connection'
-        ? await managementApi.copyModelConnection(draft.value!.id, name)
-        : activeType.value === 'mcp-connection'
-          ? await managementApi.copyMcpConnection(draft.value!.id, name)
-          : await managementApi.copyBlock(activeType.value!, draft.value!.id, name)
+  const type = activeType.value
+  const id = draft.value.id
+  const sequence = routeSequence
+  if (!await confirmDiscard() || sequence !== routeSequence) return
+  copying.value = true
+  copyError.value = ''
+  try {
+    const copied = type === 'model-connection'
+      ? await managementApi.copyModelConnection(id, name)
+      : type === 'mcp-connection'
+        ? await managementApi.copyMcpConnection(id, name)
+        : await managementApi.copyBlock(type, id, name)
+    if (activeType.value === type) {
       upsertRecord(copied)
       repositoryValidationPromise = null
-      copyOpen.value = false
-      copyName.value = ''
-      await router.replace(editorLocation(copied.id))
-      notify({ tone: 'success', title: t('components.copy.succeeded') })
-    } catch (error) {
-      copyError.value = managementError.describe(error).display
-    } finally {
-      copying.value = false
     }
-  })
+    if (sequence !== routeSequence) return
+    resetCopy()
+    markClean()
+    notify({ tone: 'success', title: t('components.copy.succeeded') })
+    await router.replace(editorLocation(copied.id))
+  } catch (error) {
+    if (sequence === routeSequence) copyError.value = managementError.describe(error).display
+  } finally {
+    copying.value = false
+  }
 }
 
 async function removeCurrent(): Promise<void> {
   if (!activeType.value || !draft.value?.id || deleting.value) return
-  await runAfterDiscard(async () => {
-    const id = draft.value!.id
-    const name = draft.value!.name
-    const accepted = await confirm({
-      title: t('components.delete.title'),
-      description: t('components.delete.description', { name }),
-      confirmLabel: t('common.delete'),
-      cancelLabel: t('common.cancel'),
-      dangerous: true,
-    })
-    if (!accepted) return
-    deleting.value = true
-    pageError.value = ''
-    try {
-      if (activeType.value === 'model-connection') {
-        await managementApi.deleteModelConnection(id)
-      } else if (activeType.value === 'mcp-connection') {
-        await managementApi.deleteMcpConnection(id)
-      } else {
-        await managementApi.deleteBlock(activeType.value!, id)
-      }
+  const type = activeType.value
+  const id = draft.value.id
+  const name = draft.value.name
+  const sequence = routeSequence
+  if (!await confirmDiscard() || sequence !== routeSequence) return
+  const accepted = await confirm({
+    title: t('components.delete.title'),
+    description: t('components.delete.description', { name }),
+    confirmLabel: t('common.delete'),
+    cancelLabel: t('common.cancel'),
+    dangerous: true,
+  })
+  if (!accepted || sequence !== routeSequence) return
+  deleting.value = true
+  pageError.value = ''
+  try {
+    if (type === 'model-connection') {
+      await managementApi.deleteModelConnection(id)
+    } else if (type === 'mcp-connection') {
+      await managementApi.deleteMcpConnection(id)
+    } else {
+      await managementApi.deleteBlock(type, id)
+    }
+    if (activeType.value === type) {
       records.value = records.value.filter((record) => record.id !== id)
       repositoryValidationPromise = null
-      await showBlankDraft()
-      notify({ tone: 'success', title: t('components.delete.succeeded') })
-    } catch (error) {
-      pageError.value = managementError.describe(error).display
-    } finally {
-      deleting.value = false
     }
-  })
+    if (sequence !== routeSequence) return
+    markClean()
+    notify({ tone: 'success', title: t('components.delete.succeeded') })
+    await router.replace(editorLocation())
+  } catch (error) {
+    if (sequence === routeSequence) pageError.value = managementError.describe(error).display
+  } finally {
+    deleting.value = false
+  }
 }
 
 async function fetchModels(request: {
@@ -951,24 +963,25 @@ async function refreshResource(
   const ownerId = draft.value?.id ?? ''
   resourceSequence += 1
   const sequence = resourceSequence
-    loadingResource.value = true
-    try {
-      if (type && usesPythonExtension(type) && ownerId) {
-        repositoryValidationPromise = null
-        const [inspection, invalid]: [PythonPackageInspection, boolean] = await Promise.all([
-          managementApi.inspectPythonPackage(
-            type as ManagedComponentType,
-            ownerId,
-          ),
-          isStoredRecordInvalid(ownerId),
-        ])
-        if (resourceRequestIsCurrent(sequence, type) && draft.value?.id === ownerId) {
-          applyPythonPackageInspection(
-            draft.value as BlockDraftBase & PythonPackageDraftState,
-            inspection,
-          )
-          storedRecordInvalid.value = invalid
-        }
+  resourceError.value = ''
+  loadingResource.value = true
+  try {
+    if (type && usesPythonExtension(type) && ownerId) {
+      repositoryValidationPromise = null
+      const [inspection, invalid]: [PythonPackageInspection, boolean] = await Promise.all([
+        managementApi.inspectPythonPackage(
+          type as ManagedComponentType,
+          ownerId,
+        ),
+        isStoredRecordInvalid(ownerId),
+      ])
+      if (resourceRequestIsCurrent(sequence, type) && draft.value?.id === ownerId) {
+        applyPythonPackageInspection(
+          draft.value as BlockDraftBase & PythonPackageDraftState,
+          inspection,
+        )
+        storedRecordInvalid.value = invalid
+      }
     } else if (type === 'custom-tool') {
       const result = await managementApi.listCustomToolTemplates()
       if (!resourceRequestIsCurrent(sequence, type)) return
@@ -1005,6 +1018,7 @@ async function refreshResource(
     }
   } catch (error) {
     if (resourceRequestIsCurrent(sequence, type)) {
+      resourceError.value = managementError.describe(error).display
       notifyFailure('components.feedback.resourceFailed', error)
     }
   } finally {
@@ -1113,6 +1127,12 @@ watch(
 onMounted(() => {
   void loadCatalog()
 })
+
+onScopeDispose(() => {
+  routeSequence += 1
+  catalogSequence += 1
+  invalidateResourceRequests()
+})
 </script>
 
 <template>
@@ -1182,6 +1202,16 @@ onMounted(() => {
 
           <LteAlert v-if="credentialReplacementRequired" class="mb-3" theme="warning">
             {{ t('models.connections.credentialReplacementRequired') }}
+          </LteAlert>
+
+          <LteAlert
+            v-if="resourceError"
+            class="mb-3"
+            data-testid="resource-error"
+            :title="t('components.feedback.resourceFailed')"
+            theme="danger"
+          >
+            {{ resourceError }}
           </LteAlert>
 
           <component

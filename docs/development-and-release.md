@@ -43,7 +43,7 @@ git pull --ff-only
 停止服务后可以整体移动 Windows 运行 Clone。启动器根据自身位置重新解析源码、`data/` 和 `runtime/`；
 `runtime/cache` 保存可重建的下载缓存；安装位置由启动器根据当前 Clone 解析。
 
-文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。启用 Workflow 可达集包含 Command、Main Agent/Subagent 引用的 Custom Tool、Custom Middleware、Agent Event Output 和 Workflow Event Output 扩展；静态模板和未触达的配置扩展不参与，输入未变化时复用。扩展层可以增加与核心锁兼容的公开 PyPI 发行包，uv 优先使用兼容 wheel，没有 wheel 时按包的标准构建声明尝试源码构建；扩展依赖不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
+文件化 Python 配置扩展中的 `requirements.txt` 不写入 `server/pyproject.toml`，而由 Windows 启动器按可达配置指纹生成 `runtime/python_packages/site-packages`。当前 Configuration Repository 中已保存的 Main Agent、Workflow 和 MCP Tool 都参与依赖准备，包括草稿：Main Agent 及其 Subagent 引用 Custom Tool、Custom Middleware 和 Agent Event Output；Workflow/MCP Tool Graph 引用 Command，Workflow 还可引用 Workflow Event Output。静态模板和未触达的配置扩展不参与，输入未变化时复用。草稿引用的依赖也进入同一个共享扩展层，新增依赖会增加安装成本，并须满足全部 requirements 与核心锁约束。扩展层可以增加与核心锁兼容的公开 PyPI 发行包，uv 优先使用兼容 wheel，没有 wheel 时按包的标准构建声明尝试源码构建；扩展依赖不能修改 `runtime/app`。启动设置初始化与读取合并为一次 preflight；扩展依赖准备在最终服务进程内、应用创建前完成，避免为了相邻启动步骤重复拉起并导入 Python 应用。
 
 依赖准备开始时终端先显示当前 requirements，随后直接显示 uv 原生的解析、下载、安装进度和错误；完成后才显示服务启动阶段。启动器不为扩展依赖安装设置主动超时，操作者根据终端中的真实进度决定继续等待、换网络或中止重启。
 

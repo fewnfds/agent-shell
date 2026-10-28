@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import os
 from pathlib import Path
+import threading
 from zipfile import ZipFile
 
 import pytest
 
 from agent_shell.file_manager import FileManagerError, FileManagerService
+import agent_shell.file_manager as file_manager_module
 
 from .app_support import make_client
 
@@ -355,6 +358,84 @@ def test_text_save_detects_external_changes_and_rejects_binary_files(
     assert disk_path.read_text(encoding="utf-8") == "external change"
     assert binary.status_code == 415
     assert binary.json()["detail"]["code"] == "text_file_invalid_encoding"
+
+
+@pytest.mark.parametrize("later_operation", ["save", "upload"])
+def test_text_save_preserves_concurrent_file_manager_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    later_operation: str,
+) -> None:
+    data_root = tmp_path / "data"
+    target = data_root / "files" / "shared.txt"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"original")
+    files = FileManagerService(data_root, tmp_path / "temporary")
+    revision = files.read_text("data/files/shared.txt")["revision"]
+    first_ready = threading.Event()
+    release_first = threading.Event()
+    later_started = threading.Event()
+    later_finished = threading.Event()
+    original_write = file_manager_module.write_bytes_atomic
+
+    def pause_first_write(path: Path, content: bytes, **kwargs) -> None:
+        if path == target and content == b"first edit":
+            first_ready.set()
+            assert release_first.wait(timeout=5)
+        original_write(path, content, **kwargs)
+
+    monkeypatch.setattr(file_manager_module, "write_bytes_atomic", pause_first_write)
+
+    def save(content: str):
+        try:
+            return files.save_text("data/files/shared.txt", content, revision)
+        except FileManagerError as exc:
+            return exc
+
+    def later_change():
+        later_started.set()
+        try:
+            if later_operation == "save":
+                return save("second edit")
+
+            async def chunks():
+                yield b"uploaded content"
+
+            return asyncio.run(
+                files.upload("data/files/shared.txt", chunks(), overwrite=True)
+            )
+        finally:
+            later_finished.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(save, "first edit")
+        assert first_ready.wait(timeout=5)
+        later = executor.submit(later_change)
+        try:
+            assert later_started.wait(timeout=5)
+            # Allow the competing command to finish if it can. The accepted
+            # outcomes below depend on file contents and revisions, not locks.
+            later_finished.wait(timeout=0.2)
+        finally:
+            release_first.set()
+        first_result = first.result(timeout=5)
+        later_result = later.result(timeout=5)
+
+    if later_operation == "save":
+        results = [first_result, later_result]
+        errors = [result for result in results if isinstance(result, FileManagerError)]
+        assert len(errors) == 1
+        assert errors[0].status_code == 409
+        assert errors[0].code == "text_file_revision_conflict"
+        successful_index = next(
+            index for index, result in enumerate(results)
+            if not isinstance(result, FileManagerError)
+        )
+        assert target.read_text(encoding="utf-8") == ["first edit", "second edit"][successful_index]
+    else:
+        assert not isinstance(later_result, FileManagerError)
+        assert target.read_bytes() == b"uploaded content"
+    assert list(target.parent.iterdir()) == [target]
 
 
 @pytest.mark.parametrize(

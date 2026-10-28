@@ -71,5 +71,5 @@ export function useUnsavedChanges(
   onMounted(() => window.addEventListener('beforeunload', guardUnload))
   onBeforeUnmount(() => window.removeEventListener('beforeunload', guardUnload))
 
-  return { isDirty, markClean, runAfterDiscard }
+  return { isDirty, markClean, confirmDiscard, runAfterDiscard }
 }

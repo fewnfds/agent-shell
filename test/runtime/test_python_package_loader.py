@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 import sys
+import threading
+from types import ModuleType, SimpleNamespace
+from uuid import uuid4
+
+import pytest
 
 from agent_shell.python_packages.loader import PythonPackageLoader
+from agent_shell.runtime.agent_runtime import AgentRuntime
+from agent_shell.workflow.contracts import WorkflowGraphDocumentV1
 
 
 def _write_package(folder: Path, value: str) -> None:
@@ -82,3 +91,107 @@ def test_package_loaders_own_unique_module_namespaces(
     second.close()
     assert second_module.__name__ not in sys.modules
     assert f"{second_module.__name__}.helper" not in sys.modules
+
+
+def test_cancelled_graph_construction_releases_imported_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation joins the package import before its runtime is closed."""
+
+    command_id = "11111111-1111-4111-8111-111111111111"
+    barrier_name = f"_package_cancel_test_{uuid4().hex}"
+    barrier = ModuleType(barrier_name)
+    barrier.release = threading.Event()
+    monkeypatch.setitem(sys.modules, barrier_name, barrier)
+    package_dir = tmp_path / "packages" / "command" / "cancel-command"
+    package_dir.mkdir(parents=True)
+    (package_dir / "package.json").write_text(
+        json.dumps({
+            "format_version": 1,
+            "family": "workflow-node",
+            "adapter": "command",
+            "id": command_id,
+        }),
+        encoding="utf-8",
+    )
+    (package_dir / "main.py").write_text(
+        f"from {barrier_name} import entered, release\n"
+        "entered(__name__)\n"
+        "assert release.wait(5), 'package import was not released'\n"
+        "def create_command():\n"
+        "    async def command(state, runtime):\n"
+        "        from langgraph.types import Command\n"
+        "        return Command(goto='end')\n"
+        "    return command\n",
+        encoding="utf-8",
+    )
+    document = WorkflowGraphDocumentV1.model_validate({
+        "definition": {
+            "nodes": [
+                {"id": "start", "type": "start", "config": {}},
+                {"id": "command", "type": "command", "config": {"command_id": command_id}},
+                {"id": "end", "type": "end", "config": {}},
+            ],
+            "edges": [
+                {"id": "start-command", "source": "start", "source_handle": "next", "target": "command", "target_handle": "in"},
+                {"id": "command-end", "source": "command", "source_handle": "next", "target": "end", "target_handle": "in"},
+            ],
+        },
+    })
+    command = {
+        "id": command_id,
+        "name": "Cancellation command",
+        "python_package": {"folder": package_dir.name},
+    }
+
+    async def discover_mcp(_references):
+        return None
+
+    runtime = AgentRuntime(
+        builder=SimpleNamespace(discover_mcp=discover_mcp),
+        files=None,
+        blocks=SimpleNamespace(get_block_internal=lambda _kind, _id: command),
+        python_packages_dir=package_dir.parent.parent,
+        runtime_dir=tmp_path / "runtime",
+        workflow_data=None,
+        graph_store=None,
+    )
+    loaded_module_names: list[str] = []
+
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def import_entered(module_name: str) -> None:
+            loaded_module_names.append(module_name)
+            loop.call_soon_threadsafe(entered.set)
+
+        barrier.entered = import_entered
+        construction = asyncio.create_task(
+            runtime.build_mcp_tool_graph(
+                document,
+                mcp_tool_id="22222222-2222-4222-8222-222222222222",
+            )
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            construction.cancel()
+            # Cancellation runs before the import is released on the next turn.
+            loop.call_soon(barrier.release.set)
+            with pytest.raises(asyncio.CancelledError):
+                await construction
+        finally:
+            barrier.release.set()
+            if not construction.done():
+                construction.cancel()
+            await asyncio.gather(construction, return_exceptions=True)
+
+    try:
+        # asyncio.run also joins its executor, so inspection cannot race a worker.
+        asyncio.run(scenario())
+        assert loaded_module_names
+        assert all(name not in sys.modules for name in loaded_module_names)
+    finally:
+        for name in loaded_module_names:
+            sys.modules.pop(name, None)

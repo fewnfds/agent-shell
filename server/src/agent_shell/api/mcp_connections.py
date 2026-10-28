@@ -63,9 +63,11 @@ def build_mcp_connection_router(
         except (ValidationError, ValueError) as exc:
             raise invalid_connection(exc) from exc
 
-    def requirement_projection(requirement: dict[str, Any]) -> dict[str, Any]:
+    def requirement_projection(
+        requirement: dict[str, Any], repository_id: str
+    ) -> dict[str, Any]:
         connection_id = resources.get_binding(
-            configuration.repository_id,
+            repository_id,
             str(requirement["id"]),
         )
         return {
@@ -221,48 +223,50 @@ def build_mcp_connection_router(
 
     @router.get("/mcp-requirements")
     def list_mcp_requirements() -> list[dict[str, Any]]:
-        return [
-            requirement_projection(item)
-            for item in block_store.list_blocks("mcp-requirement")
-        ]
+        with configuration.exclusive_config_mutation():
+            repository_id = configuration.repository_id
+            return [
+                requirement_projection(item, repository_id)
+                for item in block_store.list_blocks("mcp-requirement")
+            ]
 
     @router.put("/mcp-requirements/{requirement_id}/binding")
     def bind_mcp_requirement(requirement_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        requirement = block_store.get_block("mcp-requirement", requirement_id)
-        if requirement is None:
-            raise management_error(
-                404,
-                code="mcp_requirement_not_found",
-                message_key="errors.mcpRequirementNotFound",
-                message="The MCP Requirement does not exist.",
-            )
-        if set(payload) != {"connection_id"} or (
-            payload.get("connection_id") is not None
-            and not isinstance(payload.get("connection_id"), str)
+        repository_id = configuration.repository_id
+        with configuration.exclusive_config_mutation(
+            expected_repository_id=repository_id
         ):
-            raise management_error(
-                422,
-                code="mcp_binding_invalid",
-                message_key="errors.mcpBindingInvalid",
-                message="The MCP binding must contain only connection_id.",
-            )
-        connection_id = payload["connection_id"]
-        if connection_id is not None:
-            connection_or_404(connection_id)
-        try:
-            resources.set_binding(
-                configuration.repository_id,
-                requirement_id,
-                connection_id,
-            )
-        except KeyError as exc:
-            raise management_error(
-                404,
-                code="mcp_connection_not_found",
-                message_key="errors.mcpConnectionNotFound",
-                message="The MCP Connection does not exist.",
-            ) from exc
-        return requirement_projection(requirement)
+            requirement = block_store.get_block("mcp-requirement", requirement_id)
+            if requirement is None:
+                raise management_error(
+                    404,
+                    code="mcp_requirement_not_found",
+                    message_key="errors.mcpRequirementNotFound",
+                    message="The MCP Requirement does not exist.",
+                )
+            if set(payload) != {"connection_id"} or (
+                payload.get("connection_id") is not None
+                and not isinstance(payload.get("connection_id"), str)
+            ):
+                raise management_error(
+                    422,
+                    code="mcp_binding_invalid",
+                    message_key="errors.mcpBindingInvalid",
+                    message="The MCP binding must contain only connection_id.",
+                )
+            connection_id = payload["connection_id"]
+            if connection_id is not None:
+                connection_or_404(connection_id)
+            try:
+                resources.set_binding(repository_id, requirement_id, connection_id)
+            except KeyError as exc:
+                raise management_error(
+                    404,
+                    code="mcp_connection_not_found",
+                    message_key="errors.mcpConnectionNotFound",
+                    message="The MCP Connection does not exist.",
+                ) from exc
+            return requirement_projection(requirement, repository_id)
 
     return router
 

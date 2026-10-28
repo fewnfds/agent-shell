@@ -114,7 +114,7 @@ Agent Event Output只用于Main Agent Run；Workflow Event Output只用于Workfl
 
 ## 6. Dependency与验证
 
-`requirements.txt`只声明该extension真实使用且与核心lock兼容的公开发行包。修改后重启Agent Shell，让启动器按可达配置指纹准备共享extension layer。
+`requirements.txt`只声明该extension真实使用且与核心lock兼容的公开发行包。先保存引用该extension的Main Agent、Workflow或MCP Tool草稿，再重启Agent Shell，让启动器按当前Repository的已保存引用准备共享extension layer，检查dependency status为`ready`后正式保存。Main Agent会包含其Subagent引用，Workflow还包含Workflow Event Output；未被这些入口引用的模板和组件不参与安装。草稿依赖同样进入共享层，其安装成本和版本冲突按[开发与版本](../../development-and-release.md#源码运行)处理。
 
 Lifecycle snapshot只冻结package folder引用，不复制或预编译package内容。正式保存后的package仍可由作者或外部文件工具修改；下一次真实Graph装配会读取current磁盘内容。缺失、manifest、语法、import、factory和执行错误会终止对应Run：OpenAI-compatible JSON/SSE错误返回稳定code与基础分类消息，具体异常链和traceback写入【系统 / 日志中心】Runtime Diagnostic，凭`request_id`/`lifecycle_id`定位。
 

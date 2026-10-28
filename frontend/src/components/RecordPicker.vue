@@ -29,7 +29,11 @@ const nameMissing = computed(() => !props.disabled && !props.name.trim())
 const nameError = computed(() => nameMissing.value ? ' ' : '')
 
 function selectRecord(event: Event): void {
-  emit('select', (event.target as HTMLSelectElement).value)
+  const select = event.target as HTMLSelectElement
+  const requestedId = select.value
+  // The parent accepts the selection after discard confirmation and loading.
+  select.value = props.modelValue
+  emit('select', requestedId)
 }
 
 function updateName(value: string | number | undefined): void {

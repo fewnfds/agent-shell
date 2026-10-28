@@ -87,6 +87,40 @@ afterEach(() => {
 })
 
 describe('WorkflowsPage', () => {
+  it('confirms metadata discard before entering the Workflow editor', async () => {
+    mockComponentLists([workflow])
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/workflows', component: WorkflowsPage },
+        { path: '/workflows/:id/editor', component: { template: '<div />' } },
+      ],
+    })
+    await router.push(`/workflows?id=${workflow.id}`)
+    await router.isReady()
+    const wrapper = mount({ template: '<RouterView />' }, {
+      global: { plugins: [i18n(), router] },
+    })
+    await flushPromises()
+    await wrapper.get('#workflow-description').setValue('Unsaved workflow metadata')
+    await wrapper.findAll('button').find((button) => button.text() === 'Edit')!.trigger('click')
+    await flushPromises()
+
+    expect(useConfirmation().current.value?.title).toBe(en.unsavedChanges.title)
+    useConfirmation().cancel()
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(`/workflows?id=${workflow.id}`)
+    expect(wrapper.get('#workflow-description').element)
+      .toHaveProperty('value', 'Unsaved workflow metadata')
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Edit')!.trigger('click')
+    await flushPromises()
+    useConfirmation().accept()
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe(`/workflows/${workflow.id}/editor`)
+    wrapper.unmount()
+  })
+
   it('loads a Workflow and creates a new configuration from the action dock', async () => {
     mockComponentLists([workflow])
     const create = vi.spyOn(managementApi, 'createWorkflow').mockResolvedValue(workflow)

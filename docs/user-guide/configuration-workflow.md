@@ -25,6 +25,8 @@ Workflow State是一张扁平变量表，入口传入的键和Command写回的�
 
 已发布 Workflow 修改 metadata 时仍保持发布状态，后端会把更新后的模型入口、Python Schema 与 Event Output 和当前 Graph 一起重新校验；失败时原配置保持不变。草稿可以先保存不完整组合，再到编辑器完成验证和正式保存。
 
+Workflow 与 MCP Tool 的 metadata 修改通过 Save 保存；切换记录、进入 Edit Flow 或离开页面时，未保存修改会触发确认。取消离开保留当前草稿，确认离开则丢弃未保存修改。
+
 ## MCP Tool
 
 【工作流】页面下同时管理 Workflow 与 MCP Tool。MCP Tool 拥有独立名称、说明、Graph document 和启用状态；名称直接成为官方 `/mcp` 的 tool name，只允许 ASCII 字母、数字、点、下划线和连字符。

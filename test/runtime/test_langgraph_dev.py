@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from agent_shell.runtime.context import (
     WorkflowRunContext,
     WorkflowRuntimeContext,
 )
+from agent_shell.runtime.diagnostics import RuntimeDiagnostics
 from agent_shell.runtime.errors import decode_server_run_error
 from agent_shell.runtime.request_snapshot import (
     LifecycleRunCoordinator,
@@ -752,8 +754,12 @@ def test_command_failure_persists_source_fact_and_transports_reference() -> None
     recorded: list[dict[str, object]] = []
 
     class Diagnostics:
+        aruntime_error = RuntimeDiagnostics.aruntime_error
+
         def runtime_error(self, exc, **kwargs):
-            recorded.append({"exception": exc, **kwargs})
+            recorded.append(
+                {"exception": exc, "thread_id": threading.get_ident(), **kwargs}
+            )
             return "b" * 32
 
     async def failing(state, runtime):
@@ -794,6 +800,7 @@ def test_command_failure_persists_source_fact_and_transports_reference() -> None
     assert transported.diagnostic_id == "b" * 32
     assert "RuntimeError: command body exploded" in transported.message
     assert recorded[0]["component"] == "graph_runtime"
+    assert recorded[0]["thread_id"] != threading.get_ident()
     context = recorded[0]["context"]
     assert context.request_id == "request-1"
     assert context.lifecycle_id == "lifecycle-1"
