@@ -46,7 +46,7 @@ jobs:
 
       - name: Run deterministic backend tests
         working-directory: server
-        run: uv run pytest ../test -q
+        run: uv run pytest -c pyproject.toml ../test -q
 
   frontend:
     runs-on: ubuntu-latest

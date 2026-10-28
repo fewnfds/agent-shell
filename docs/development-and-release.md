@@ -110,7 +110,7 @@ npm run build
 
 ```powershell
 cd server
-.\.venv\Scripts\python.exe -m pytest ..\test\<domain>\test_relevant_module.py -q
+.\.venv\Scripts\python.exe -m pytest -c pyproject.toml ..\test\<domain>\test_relevant_module.py -q
 .\.venv\Scripts\python.exe ..\test\smoke_http.py
 ```
 
@@ -127,7 +127,7 @@ $python = Join-Path (Join-Path ..\runtime\app $pythonHome) python.exe
 永久测试按职责放入 `test/api_server/`、`test/authoring/`、`test/runtime/`、`test/security/` 或 `test/architecture/`；共享 fixture 与测试支撑代码保存在 `test/` 的直接支撑模块中（例如 `test/support.py`、`test/api_server/support.py`、`test/runtime/protocol_event_fixtures.py`）。
 用户可观察行为、API 和持久化结果是验收证据。
 
-pytest 使用 `tmp_path_retention_policy=failed`：通过用例的临时目录自动清理，失败用例的目录保留用于排查。需要检查通过用例的落盘内容时，在定向命令后添加 `-o tmp_path_retention_policy=all`；保留更多目录会增加磁盘占用。`none` 会清理所有用例的临时目录。
+pytest 命令通过 `-c pyproject.toml` 显式加载 `server/pyproject.toml`，统一应用源码路径、cache provider 和临时目录策略。测试目录 `test/` 与 `server/` 并列，指定测试路径时需要显式选择该配置。`tmp_path_retention_policy=failed` 自动清理通过用例的临时目录，保留失败用例的目录用于排查。需要检查通过用例的落盘内容时，在定向命令后添加 `-o tmp_path_retention_policy=all`；保留更多目录会增加磁盘占用。`none` 会清理所有用例的临时目录。
 
 推送 `dev` 时，GitHub Actions 运行一次无凭据的确定性门禁：前端 lint、typecheck、UI policy 与 Vitest，以及后端 `test/` 下由 pytest 默认收集的 `test_*.py`。本地需要复现完整门禁时使用：
 
@@ -141,10 +141,10 @@ npm test
 
 ```powershell
 cd server
-.\.venv\Scripts\python.exe -m pytest ..\test -q
+.\.venv\Scripts\python.exe -m pytest -c pyproject.toml ..\test -q
 ```
 
-`test/smoke_http.py` 通过显式命令运行。默认 pytest 集合用于确定性测试，真实 Provider 与 Agent eval 使用各自的显式入口。GitHub Actions 执行完整 pytest 门禁；普通局部修改运行最接近的 contract owner。本地复现完整门禁时使用上面的 `.venv\Scripts\python.exe -m pytest ..\test -q` 命令。
+`test/smoke_http.py` 通过显式命令运行。默认 pytest 集合用于确定性测试，真实 Provider 与 Agent eval 使用各自的显式入口。GitHub Actions 执行完整 pytest 门禁；普通局部修改运行最接近的 contract owner。本地复现完整门禁时使用上面的 `.venv\Scripts\python.exe -m pytest -c pyproject.toml ..\test -q` 命令。
 
 ## 源码版本
 

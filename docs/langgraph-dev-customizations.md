@@ -95,7 +95,7 @@ checkpoint、State/history 与 Server Store 分别使用官方 `AsyncSqliteSaver
 
    ```powershell
    cd server
-   .\.venv\Scripts\python.exe -m pytest ../test/runtime/test_langgraph_dev_persistence.py ../test/security/test_system_settings.py ../test/security/test_launch_settings.py ../test/api_server/test_request_snapshot.py
+   .\.venv\Scripts\python.exe -m pytest -c pyproject.toml ../test/runtime/test_langgraph_dev_persistence.py ../test/security/test_system_settings.py ../test/security/test_launch_settings.py ../test/api_server/test_request_snapshot.py
    ```
 
 4. 使用隔离 data 与随机 loopback 端口启动真实服务，通过公共 Thread API 验证嵌套更新、

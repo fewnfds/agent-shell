@@ -36,7 +36,7 @@ LangGraph Dev 是 Assistant、Thread、Run、checkpoint、State/history 和 Stor
 
 ```powershell
 cd server
-.\.venv\Scripts\python.exe -m pytest ..\test\<domain>\test_relevant_module.py -q
+.\.venv\Scripts\python.exe -m pytest -c pyproject.toml ..\test\<domain>\test_relevant_module.py -q
 ```
 
 `.venv` 首次准备必须显式使用项目自带的 uv 与 CPython，避免 PATH 上其他软件的 uv 选择用户目录解释器。完整首建命令见[开发与发布](../docs/development-and-release.md#验证)，日常不要使用裸 `python`、`pip` 或 `uv run pytest`。
